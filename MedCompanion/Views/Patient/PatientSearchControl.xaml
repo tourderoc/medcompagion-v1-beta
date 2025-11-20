@@ -1,0 +1,198 @@
+<UserControl x:Class="MedCompanion.Views.Patient.PatientSearchControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" 
+             d:DesignHeight="45" d:DesignWidth="800">
+    
+    <Grid VerticalAlignment="Center">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MaxWidth="600"/>
+            <ColumnDefinition Width="10"/>
+            <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        
+        <Border Grid.Column="0" BorderBrush="#BDC3C7" BorderThickness="2" CornerRadius="8" Background="White">
+            <Grid>
+                <TextBox x:Name="SearchBox" 
+                         Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         Height="45" 
+                         FontSize="15"
+                         Padding="45,0,15,0"
+                         BorderThickness="0"
+                         VerticalContentAlignment="Center">
+                    <TextBox.InputBindings>
+                        <KeyBinding Key="Down" Command="{Binding NavigateDownCommand}" />
+                        <KeyBinding Key="Up" Command="{Binding NavigateUpCommand}" />
+                        <KeyBinding Key="Enter" Command="{Binding ValidateCommand}" />
+                        <KeyBinding Key="Escape" Command="{Binding ClosePopupCommand}" />
+                    </TextBox.InputBindings>
+                </TextBox>
+                <TextBlock Text="🔍" 
+                           FontSize="20" 
+                           Foreground="#95A5A6"
+                           IsHitTestVisible="False"
+                           VerticalAlignment="Center"
+                           Margin="15,0,0,0"/>
+                <TextBlock x:Name="SearchPlaceholder"
+                           Text="Rechercher un patient..." 
+                           FontSize="14" 
+                           Foreground="#95A5A6"
+                           IsHitTestVisible="False"
+                           VerticalAlignment="Center"
+                           Margin="45,0,0,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SearchText}" Value="">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SearchText}" Value="{x:Null}">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </Border>
+        
+        <!-- Popup suggestions -->
+        <Popup x:Name="SuggestPopup"
+               PlacementTarget="{Binding ElementName=SearchBox}"
+               Placement="Bottom"
+               IsOpen="{Binding IsPopupOpen}"
+               StaysOpen="False"
+               AllowsTransparency="True"
+               Width="{Binding ElementName=SearchBox, Path=ActualWidth}"
+               MaxHeight="400">
+            <Border Background="White" 
+                    BorderBrush="#BDC3C7" 
+                    BorderThickness="2" 
+                    CornerRadius="8"
+                    Padding="5">
+                <Border.Effect>
+                    <DropShadowEffect ShadowDepth="2" BlurRadius="8" Opacity="0.3"/>
+                </Border.Effect>
+                <StackPanel>
+                    <!-- Liste des patients -->
+                    <ListBox x:Name="SuggestList"
+                             ItemsSource="{Binding Suggestions}"
+                             SelectedIndex="{Binding SelectedSuggestionIndex}"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.InputBindings>
+                            <MouseBinding MouseAction="LeftDoubleClick" Command="{Binding ValidateCommand}" />
+                            <KeyBinding Key="Enter" Command="{Binding ValidateCommand}" />
+                        </ListBox.InputBindings>
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="10"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Border" 
+                                                    Background="{TemplateBinding Background}" 
+                                                    Padding="{TemplateBinding Padding}"
+                                                    CornerRadius="6"
+                                                    Margin="2">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="#F0F0F0"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="#E3F2FD"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayLabel}" 
+                                          FontSize="13" 
+                                          TextWrapping="Wrap"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    
+                    <!-- Option "Créer patient" (visible si aucun résultat) -->
+                    <Border x:Name="CreatePatientBorder"
+                            Background="#E8F5E9"
+                            BorderBrush="#4CAF50"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12"
+                            Margin="2"
+                            Cursor="Hand"
+                            MouseLeftButtonDown="CreatePatientBorder_Click">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowCreateOption}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="➕" 
+                                      FontSize="16" 
+                                      Margin="0,0,8,0" 
+                                      VerticalAlignment="Center"/>
+                            <TextBlock FontSize="13" VerticalAlignment="Center">
+                                <Run Text="Créer"/>
+                                <Run Text="{Binding SearchText, StringFormat=' &quot;{0}&quot;'}" FontWeight="SemiBold"/>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Border>
+        </Popup>
+        
+        <Button x:Name="ValidateBtn" 
+                Grid.Column="2"
+                Content="Valider" 
+                Height="45"
+                Padding="25,0"
+                FontSize="14"
+                FontWeight="SemiBold"
+                Background="#3498DB"
+                Foreground="White"
+                BorderThickness="0"
+                Cursor="Hand"
+                Command="{Binding ValidateCommand}">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="8"
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="#2980B9"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Background" Value="#BDC3C7"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+    </Grid>
+</UserControl>

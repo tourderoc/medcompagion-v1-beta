@@ -1,0 +1,342 @@
+<UserControl x:Class="MedCompanion.Views.Formulaires.FormulairesControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="700" d:DesignWidth="600">
+
+    <Grid Margin="0,10,0,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- Sélection du formulaire -->
+        <Grid Grid.Row="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="10"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="15"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="10"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0"
+                      Text="📋 Sélectionner un formulaire"
+                      FontSize="13"
+                      FontWeight="SemiBold"
+                      Foreground="#2C3E50"/>
+
+            <ComboBox x:Name="FormulaireTypeCombo"
+                      Grid.Row="2"
+                      Height="40"
+                      FontSize="13"
+                      Padding="10"
+                      Background="White"
+                      BorderBrush="#BDC3C7"
+                      BorderThickness="1"
+                      SelectionChanged="FormulaireTypeCombo_SelectionChanged">
+                <ComboBox.Style>
+                    <Style TargetType="ComboBox">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBox">
+                                    <Grid>
+                                        <ToggleButton x:Name="ToggleButton"
+                                                      Grid.Column="2"
+                                                      Focusable="False"
+                                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                                      ClickMode="Press"
+                                                      Background="{TemplateBinding Background}"
+                                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                                      BorderThickness="{TemplateBinding BorderThickness}">
+                                            <ToggleButton.Style>
+                                                <Style TargetType="ToggleButton">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                <Border x:Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition/>
+                                                                            <ColumnDefinition Width="20"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <ContentPresenter Grid.Column="0" Margin="10,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                                                        <Path x:Name="Arrow" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 4 4 L 8 0 Z" Fill="#666666"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ToggleButton.Style>
+                                        </ToggleButton>
+                                        <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" Margin="10,0,30,0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                        <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                                            <Grid x:Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="200">
+                                                <Border x:Name="DropDownBorder" Background="White" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6"/>
+                                                <ScrollViewer Margin="2" SnapsToDevicePixels="True">
+                                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                                </ScrollViewer>
+                                            </Grid>
+                                        </Popup>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ComboBox.Style>
+                <ComboBoxItem Content="-- Sélectionner un formulaire --" IsSelected="True"/>
+                <ComboBoxItem Content="📋 Dossier MDPH" Tag="MDPH"/>
+                <ComboBoxItem Content="🏫 PAI (Projet d'Accueil Individualisé)" Tag="PAI"/>
+            </ComboBox>
+
+            <!-- Bouton pré-remplir avec IA (MDPH uniquement) -->
+            <Button x:Name="PreremplirFormulaireButton"
+                    Grid.Row="4"
+                    Content="🤖 Pré-remplir avec l'IA"
+                    Height="45"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#3498DB"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    IsEnabled="False"
+                    Visibility="Collapsed"
+                    Click="PreremplirFormulaireButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#2980B9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <!-- Bouton tester remplissage PDF (MDPH uniquement - TEST) -->
+            <Button x:Name="TestRemplirPdfButton"
+                    Grid.Row="6"
+                    Content="🧪 Tester remplissage PDF"
+                    Height="45"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#9B59B6"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    IsEnabled="False"
+                    Visibility="Collapsed"
+                    Click="TestRemplirPdfButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#8E44AD"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <!-- Bouton ouvrir modèle PAI (PAI uniquement) -->
+            <Button x:Name="OuvrirModelePAIButton"
+                    Grid.Row="4"
+                    Content="📄 Ouvrir le modèle PAI"
+                    Height="45"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#27AE60"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    IsEnabled="False"
+                    Visibility="Collapsed"
+                    Click="OuvrirModelePAIButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#229954"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </Grid>
+
+        <!-- Liste des formulaires sauvegardés -->
+        <Grid Grid.Row="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="10"/>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="10"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0"
+                      Text="📋 Formulaires sauvegardés"
+                      FontSize="13"
+                      FontWeight="SemiBold"
+                      Foreground="#2C3E50"/>
+
+            <Border Grid.Row="2" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="6" MaxHeight="200">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ListBox x:Name="FormulairesList"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="FormulairesList_SelectionChanged"
+                             MouseDoubleClick="FormulairesList_MouseDoubleClick">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="8"/>
+                                <Setter Property="Margin" Value="2"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Border"
+                                                    Background="{TemplateBinding Background}"
+                                                    Padding="{TemplateBinding Padding}"
+                                                    BorderBrush="#E0E0E0"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="#F5F5F5"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="#E3F2FD"/>
+                                                    <Setter TargetName="Border" Property="BorderBrush" Value="#90CAF9"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding TypeLabel}" FontSize="10" FontWeight="SemiBold" Foreground="#27AE60"/>
+                                    <TextBlock Text="{Binding DateLabel}" FontSize="9" Foreground="#3498DB" Margin="0,2,0,0"/>
+                                    <TextBlock Text="{Binding FileName}" FontSize="9" Foreground="#7F8C8D" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Boutons actions -->
+            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+                <TextBlock x:Name="FormulairesCountLabel"
+                          Text="0 formulaires"
+                          FontSize="12"
+                          FontWeight="SemiBold"
+                          Foreground="#7F8C8D"
+                          VerticalAlignment="Center"
+                          Margin="0,0,15,0"/>
+
+                <Button x:Name="SupprimerFormulaireButton"
+                        Content="🗑️ Supprimer"
+                        Height="35"
+                        Padding="12,0"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Background="#E74C3C"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        IsEnabled="False"
+                        Click="SupprimerFormulaireButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#C0392B"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Grid>
+
+        <!-- Zone de prévisualisation synthèse PAI -->
+        <Border Grid.Row="4"
+                BorderBrush="#BDC3C7"
+                BorderThickness="1"
+                CornerRadius="6"
+                Background="#FAFAFA"
+                MinHeight="100">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="10">
+                <TextBlock x:Name="FormulaireSynthesisPreview"
+                          Text="Double-cliquez sur un formulaire pour l'ouvrir"
+                          FontSize="13"
+                          Foreground="#95A5A6"
+                          TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

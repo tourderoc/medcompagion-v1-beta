@@ -1,0 +1,224 @@
+<UserControl x:Class="MedCompanion.Views.Patients.PatientListControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="450" d:DesignWidth="300"
+             Background="White">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <TextBlock Grid.Row="0"
+                   Text="📋 PATIENTS"
+                   FontSize="14"
+                   FontWeight="Bold"
+                   Foreground="#2C3E50"/>
+
+        <!-- Compteur -->
+        <TextBlock Grid.Row="2"
+                   x:Name="PatientCountTextBlock"
+                   Text="0 patients"
+                   FontSize="11"
+                   FontWeight="SemiBold"
+                   Foreground="#7F8C8D"/>
+
+        <!-- DataGrid patients -->
+        <Border Grid.Row="4"
+                Background="White"
+                BorderBrush="#E0E0E0"
+                BorderThickness="1"
+                CornerRadius="6">
+            <DataGrid x:Name="PatientsDataGrid"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      BorderThickness="0"
+                      Background="Transparent"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      RowHeight="40"
+                      CanUserResizeRows="False"
+                      CanUserSortColumns="False"
+                      SelectionMode="Single"
+                      AlternationCount="2"
+                      PreviewMouseLeftButtonDown="PatientsDataGrid_PreviewMouseLeftButtonDown"
+                      SelectionChanged="PatientsDataGrid_SelectionChanged"
+                      MouseDoubleClick="PatientsDataGrid_MouseDoubleClick">
+
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#34495E"/>
+                        <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="FontSize" Value="11"/>
+                        <Setter Property="Padding" Value="8,8"/>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Background" Value="White"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="DataGridRow">
+                                    <Border x:Name="DGR_Border"
+                                            Background="{TemplateBinding Background}"
+                                            BorderBrush="#F0F0F0"
+                                            BorderThickness="0,0,0,1"
+                                            SnapsToDevicePixels="True">
+                                        <SelectiveScrollingGrid>
+                                            <SelectiveScrollingGrid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </SelectiveScrollingGrid.ColumnDefinitions>
+                                            <SelectiveScrollingGrid.RowDefinitions>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </SelectiveScrollingGrid.RowDefinitions>
+                                            <DataGridCellsPresenter Grid.Column="1"
+                                                                    ItemsPanel="{TemplateBinding ItemsPanel}"
+                                                                    SnapsToDevicePixels="{TemplateBinding SnapsToDevicePixels}"/>
+                                            <DataGridDetailsPresenter Grid.Column="1" Grid.Row="1"
+                                                                      Visibility="{TemplateBinding DetailsVisibility}"
+                                                                      SelectiveScrollingGrid.SelectiveScrollingOrientation="{Binding AreRowDetailsFrozen, ConverterParameter={x:Static SelectiveScrollingOrientation.Vertical}, Converter={x:Static DataGrid.RowDetailsScrollingConverter}, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"/>
+                                            <DataGridRowHeader Grid.RowSpan="2" SelectiveScrollingGrid.SelectiveScrollingOrientation="Vertical" Visibility="{Binding HeadersVisibility, ConverterParameter={x:Static DataGridHeadersVisibility.Row}, Converter={x:Static DataGrid.HeadersVisibilityConverter}, RelativeSource={RelativeSource AncestorType={x:Type DataGrid}}}"/>
+                                        </SelectiveScrollingGrid>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <!-- Lignes impaires en bleu clair -->
+                            <Trigger Property="AlternationIndex" Value="1">
+                                <Setter Property="Background" Value="#F0F7FF"/>
+                            </Trigger>
+                            <!-- Survol -->
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#E3F2FD"/>
+                            </Trigger>
+                            <!-- Sélection -->
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#BBDEFB"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="Background" Value="Transparent"/>
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Padding" Value="4,8"/>
+                        <Setter Property="VerticalAlignment" Value="Center"/>
+                        <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="Black"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.CellStyle>
+
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Nom"
+                                        Binding="{Binding NomComplet}"
+                                        Width="2*"
+                                        FontWeight="SemiBold"
+                                        FontSize="12"/>
+                    <DataGridTextColumn Header="Âge"
+                                        Binding="{Binding AgeDisplay}"
+                                        Width="*"
+                                        FontSize="11"/>
+                    <DataGridTextColumn Header="Dernière Consult"
+                                        Binding="{Binding LastConsultDisplay}"
+                                        Width="1.5*"
+                                        FontSize="11"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+
+        <!-- Bouton Infos Patient -->
+        <Button x:Name="InfoPatientButton"
+                Grid.Row="6"
+                Content="👤 Infos patient"
+                Height="40"
+                FontSize="13"
+                FontWeight="SemiBold"
+                Background="#3498DB"
+                Foreground="White"
+                BorderThickness="0"
+                Cursor="Hand"
+                IsEnabled="False"
+                Click="InfoPatientButton_Click">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="#2980B9"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Background" Value="#BDC3C7"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+
+        <!-- Bouton Supprimer -->
+        <Button x:Name="DeletePatientButton"
+                Grid.Row="8"
+                Content="🗑️ Supprimer"
+                Height="40"
+                FontSize="13"
+                FontWeight="SemiBold"
+                Background="#E74C3C"
+                Foreground="White"
+                BorderThickness="0"
+                Cursor="Hand"
+                IsEnabled="False"
+                Click="DeletePatientButton_Click">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="#C0392B"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Background" Value="#BDC3C7"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
+    </Grid>
+</UserControl>

@@ -1,0 +1,245 @@
+<Window x:Class="MedCompanion.Dialogs.EditMCCDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="✏️ Éditer le MCC"
+        Width="800" Height="700"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        MinWidth="650"
+        MinHeight="600"
+        Background="#F5F5F5">
+
+    <Window.Resources>
+        <Style TargetType="TextBlock" x:Key="LabelStyle">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Foreground" Value="#2C3E50"/>
+            <Setter Property="Margin" Value="0,0,0,5"/>
+        </Style>
+        
+        <Style TargetType="ComboBox">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+        
+        <Style TargetType="TextBox">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="8,5"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- En-tête -->
+        <Border Grid.Row="0" 
+                Background="#3498DB" 
+                CornerRadius="8" 
+                Padding="15" 
+                Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock FontSize="18" 
+                           FontWeight="Bold" 
+                           Foreground="White"
+                           HorizontalAlignment="Center">
+                    ✏️ Éditer les métadonnées du MCC
+                </TextBlock>
+                <TextBlock x:Name="MCCNameText"
+                           FontSize="12" 
+                           Foreground="White" 
+                           HorizontalAlignment="Center"
+                           Margin="0,5,0,0"
+                           FontStyle="Italic"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Formulaire -->
+        <ScrollViewer Grid.Row="1" 
+                      VerticalScrollBarVisibility="Auto"
+                      Margin="0,0,0,15">
+            <StackPanel>
+                <!-- Template du courrier -->
+                <TextBlock Text="📝 Template du courrier" Style="{StaticResource LabelStyle}"/>
+                <TextBox x:Name="TemplateTextBox"
+                         Height="200"
+                         TextWrapping="Wrap"
+                         AcceptsReturn="True"
+                         VerticalScrollBarVisibility="Auto"
+                         HorizontalScrollBarVisibility="Auto"
+                         FontFamily="Consolas"
+                         FontSize="12"
+                         Padding="10"
+                         Margin="0,0,0,5"
+                         TextChanged="TemplateTextBox_TextChanged"/>
+                <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                    <TextBlock x:Name="TemplateStatsText"
+                               FontSize="11"
+                               Foreground="#7F8C8D"
+                               FontStyle="Italic"/>
+                    <TextBlock x:Name="TemplateVariablesText"
+                               FontSize="11"
+                               Foreground="#3498DB"
+                               FontStyle="Italic"
+                               Margin="15,0,0,0"/>
+                </StackPanel>
+                
+                <!-- Info sur les variables -->
+                <Border Background="#E8F8F5" 
+                        BorderBrush="#27AE60" 
+                        BorderThickness="1" 
+                        CornerRadius="5" 
+                        Padding="10"
+                        Margin="0,0,0,15">
+                    <StackPanel>
+                        <TextBlock Text="💡 Variables disponibles :" 
+                                   FontSize="11" 
+                                   FontWeight="SemiBold" 
+                                   Foreground="#2C3E50"
+                                   Margin="0,0,0,5"/>
+                        <TextBlock FontSize="11" 
+                                   Foreground="#34495E"
+                                   TextWrapping="Wrap">
+                            Utilisez les variables entre doubles accolades : {{Variable}}
+                            <LineBreak/>
+                            <Run Text="Exemples :"/> {{Nom_Prenom_Doctor}}, {{Specialite_Doctor}}, {{Ville}}, {{Date}}, {{Nom_Prenom_Eleve}}, {{Age_Eleve}}, {{Date_Naissance_Eleve}}, {{Classe_Eleve}}, {{Nom_College}}, {{Ville_College}}, {{Symptomes}}, {{Difficultes}}
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <Separator Margin="0,0,0,15" Background="#E0E0E0"/>
+
+                <!-- Type de document -->
+                <TextBlock Text="📄 Type de document" Style="{StaticResource LabelStyle}"/>
+                <ComboBox x:Name="DocTypeCombo" Margin="0,0,0,15">
+                    <ComboBoxItem Content="courrier" Tag="courrier"/>
+                    <ComboBoxItem Content="courrier_admin" Tag="courrier_admin"/>
+                    <ComboBoxItem Content="courrier_ecole" Tag="courrier_ecole"/>
+                    <ComboBoxItem Content="courrier_confrere" Tag="courrier_confrere"/>
+                    <ComboBoxItem Content="certificat" Tag="certificat"/>
+                    <ComboBoxItem Content="compte_rendu" Tag="compte_rendu"/>
+                    <ComboBoxItem Content="attestation" Tag="attestation"/>
+                </ComboBox>
+
+                <!-- Audience -->
+                <TextBlock Text="👥 Audience" Style="{StaticResource LabelStyle}"/>
+                <ComboBox x:Name="AudienceCombo" Margin="0,0,0,15">
+                    <ComboBoxItem Content="École/établissement scolaire" Tag="ecole"/>
+                    <ComboBoxItem Content="Administration/institution" Tag="administration"/>
+                    <ComboBoxItem Content="Médecin/confrère" Tag="medecin"/>
+                    <ComboBoxItem Content="Parents/famille" Tag="parents"/>
+                    <ComboBoxItem Content="Assurance/mutuelle" Tag="assurance"/>
+                    <ComboBoxItem Content="Juge/tribunal" Tag="juge"/>
+                    <ComboBoxItem Content="Mixte" Tag="mixte"/>
+                </ComboBox>
+
+                <!-- Ton -->
+                <TextBlock Text="✍️ Ton" Style="{StaticResource LabelStyle}"/>
+                <ComboBox x:Name="ToneCombo" Margin="0,0,0,15">
+                    <ComboBoxItem Content="Bienveillant/empathique" Tag="bienveillant"/>
+                    <ComboBoxItem Content="Clinique/médical" Tag="clinique"/>
+                    <ComboBoxItem Content="Formel/professionnel" Tag="formel"/>
+                    <ComboBoxItem Content="Administratif/officiel" Tag="administratif"/>
+                    <ComboBoxItem Content="Mixte" Tag="mixte"/>
+                </ComboBox>
+
+                <!-- Tranche d'âge -->
+                <TextBlock Text="👶 Tranche d'âge" Style="{StaticResource LabelStyle}"/>
+                <ComboBox x:Name="AgeGroupCombo" Margin="0,0,0,15">
+                    <ComboBoxItem Content="0-3 ans (Petite enfance)" Tag="0-3"/>
+                    <ComboBoxItem Content="3-6 ans (Maternelle)" Tag="3-6"/>
+                    <ComboBoxItem Content="6-11 ans (Primaire)" Tag="6-11"/>
+                    <ComboBoxItem Content="12-15 ans (Collège)" Tag="12-15"/>
+                    <ComboBoxItem Content="16+ ans (Lycée et plus)" Tag="16+"/>
+                    <ComboBoxItem Content="Tous âges" Tag="tous"/>
+                </ComboBox>
+
+                <!-- Mots-clés -->
+                <TextBlock Text="🔑 Mots-clés (5 attendus, séparés par des virgules)" Style="{StaticResource LabelStyle}"/>
+                <TextBox x:Name="KeywordsTextBox" 
+                         Height="60"
+                         TextWrapping="Wrap"
+                         AcceptsReturn="False"
+                         VerticalScrollBarVisibility="Auto"
+                         Margin="0,0,0,5"/>
+                <TextBlock x:Name="KeywordsHintText"
+                           FontSize="11"
+                           Foreground="#7F8C8D"
+                           FontStyle="Italic"
+                           Margin="0,0,0,15"/>
+
+                <!-- Suggestions de mots-clés -->
+                <Border Background="#EBF5FB" 
+                        BorderBrush="#3498DB" 
+                        BorderThickness="1" 
+                        CornerRadius="5" 
+                        Padding="10"
+                        Margin="0,0,0,15">
+                    <StackPanel>
+                        <TextBlock Text="💡 Suggestions de mots-clés courants :" 
+                                   FontSize="11" 
+                                   FontWeight="SemiBold" 
+                                   Foreground="#2C3E50"
+                                   Margin="0,0,0,5"/>
+                        <TextBlock FontSize="11" 
+                                   Foreground="#34495E"
+                                   TextWrapping="Wrap">
+                            <Run Text="Clinique :"/> adaptation, anxiété, attention, bienveillance, collaboration, communication, développement, diagnostic, évaluation, soutien, suivi
+                            <LineBreak/>
+                            <Run Text="Scolaire :"/> aménagements, scolarité, PAI, PAP, MDPH, école, collège, lycée, classe, enseignant
+                            <LineBreak/>
+                            <Run Text="Administratif :"/> attestation, certificat, rapport, recommandations, justificatif, démarches
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+
+                <!-- Validation visuelle -->
+                <Border x:Name="ValidationBorder"
+                        Background="#FFF3CD"
+                        BorderBrush="#FFC107"
+                        BorderThickness="1"
+                        CornerRadius="5"
+                        Padding="10"
+                        Visibility="Collapsed">
+                    <StackPanel>
+                        <TextBlock x:Name="ValidationText"
+                                   FontSize="11"
+                                   Foreground="#856404"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Boutons -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="CancelButton"
+                    Grid.Column="0"
+                    Content="❌ Annuler"
+                    HorizontalAlignment="Left"
+                    Width="120"
+                    Height="35"
+                    Background="#ECF0F1"
+                    Click="CancelButton_Click"/>
+
+            <Button x:Name="SaveButton"
+                    Grid.Column="1"
+                    Content="✅ Sauvegarder"
+                    Width="150"
+                    Height="35"
+                    Background="#27AE60"
+                    Foreground="White"
+                    FontWeight="SemiBold"
+                    Click="SaveButton_Click"/>
+        </Grid>
+    </Grid>
+</Window>

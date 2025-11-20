@@ -1,0 +1,233 @@
+<Window x:Class="MedCompanion.Dialogs.PatientListDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="📋 Liste des Patients" 
+        Height="650" Width="900"
+        MinHeight="500" MinWidth="700"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Header avec tri -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="15"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="15"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <TextBlock Grid.Column="0" 
+                       Text="Trier par :" 
+                       FontSize="14" 
+                       FontWeight="SemiBold" 
+                       VerticalAlignment="Center"
+                       Foreground="#2C3E50"/>
+            
+            <ComboBox x:Name="SortComboBox"
+                      Grid.Column="2"
+                      Height="40"
+                      FontSize="13"
+                      Padding="10"
+                      Background="White"
+                      BorderBrush="#BDC3C7"
+                      BorderThickness="1"
+                      SelectionChanged="SortComboBox_SelectionChanged">
+                <ComboBoxItem Content="🔤 Nom (A → Z)" IsSelected="True" Tag="NomAsc"/>
+                <ComboBoxItem Content="🔤 Nom (Z → A)" Tag="NomDesc"/>
+                <ComboBoxItem Content="📅 Dernière consultation (récent → ancien)" Tag="ConsultDesc"/>
+                <ComboBoxItem Content="📅 Dernière consultation (ancien → récent)" Tag="ConsultAsc"/>
+                <ComboBoxItem Content="🗂️ Création dossier (récent → ancien)" Tag="CreationDesc"/>
+                <ComboBoxItem Content="🗂️ Création dossier (ancien → récent)" Tag="CreationAsc"/>
+            </ComboBox>
+            
+            <TextBlock x:Name="PatientCountLabel"
+                       Grid.Column="4"
+                       Text="0 patients"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       Foreground="#7F8C8D"/>
+        </Grid>
+        
+        <!-- DataGrid -->
+        <Border Grid.Row="2" 
+                Background="White" 
+                CornerRadius="8" 
+                BorderBrush="#E0E0E0" 
+                BorderThickness="1">
+            <DataGrid x:Name="PatientsDataGrid"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      BorderThickness="0"
+                      Background="Transparent"
+                      HeadersVisibility="Column"
+                      GridLinesVisibility="Horizontal"
+                      RowHeight="45"
+                      CanUserResizeRows="False"
+                      CanUserSortColumns="False"
+                      SelectionMode="Single">
+                
+                <!-- Style du header -->
+                <DataGrid.ColumnHeaderStyle>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#34495E"/>
+                        <Setter Property="Foreground" Value="White"/>
+                        <Setter Property="FontWeight" Value="SemiBold"/>
+                        <Setter Property="FontSize" Value="13"/>
+                        <Setter Property="Padding" Value="12,10"/>
+                        <Setter Property="BorderThickness" Value="0,0,1,0"/>
+                        <Setter Property="BorderBrush" Value="#2C3E50"/>
+                    </Style>
+                </DataGrid.ColumnHeaderStyle>
+                
+                <!-- Style des lignes -->
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Setter Property="Background" Value="White"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#ECF0F1"/>
+                            </Trigger>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="#E3F2FD"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+                
+                <!-- Style des cellules -->
+                <DataGrid.CellStyle>
+                    <Style TargetType="DataGridCell">
+                        <Setter Property="BorderThickness" Value="0"/>
+                        <Setter Property="Padding" Value="12,0"/>
+                        <Setter Property="VerticalAlignment" Value="Center"/>
+                        <Style.Triggers>
+                            <Trigger Property="IsSelected" Value="True">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="Black"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.CellStyle>
+                
+                <DataGrid.Columns>
+                    <!-- Nom complet -->
+                    <DataGridTextColumn Header="Nom Complet" 
+                                        Binding="{Binding NomComplet}" 
+                                        Width="2*"
+                                        FontWeight="SemiBold"
+                                        FontSize="13"/>
+                    
+                    <!-- Âge -->
+                    <DataGridTextColumn Header="Âge" 
+                                        Binding="{Binding AgeDisplay}" 
+                                        Width="*"
+                                        FontSize="13"/>
+                    
+                    <!-- Dernière consultation -->
+                    <DataGridTextColumn Header="Dernière Consultation" 
+                                        Binding="{Binding LastConsultDisplay}" 
+                                        Width="1.5*"
+                                        FontSize="13"/>
+                    
+                    <!-- Date création -->
+                    <DataGridTextColumn Header="Création Dossier" 
+                                        Binding="{Binding CreationDisplay}" 
+                                        Width="1.5*"
+                                        FontSize="13"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </Border>
+        
+        <!-- Boutons -->
+        <StackPanel Grid.Row="4" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right">
+            
+            <Button x:Name="OpenButton" 
+                    Content="📂 Ouvrir" 
+                    Height="45"
+                    Padding="20,0"
+                    Margin="0,0,10,0"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#3498DB"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="OpenButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" 
+                                            CornerRadius="8" 
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" 
+                                                         VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#2980B9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            
+            <Button x:Name="DeleteButton" 
+                    Content="🗑️ Supprimer" 
+                    Height="45"
+                    Padding="20,0"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#E74C3C"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="DeleteButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" 
+                                            CornerRadius="8" 
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" 
+                                                         VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#C0392B"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

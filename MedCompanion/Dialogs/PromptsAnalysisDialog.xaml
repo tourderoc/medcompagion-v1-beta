@@ -1,0 +1,279 @@
+<Window x:Class="MedCompanion.Dialogs.PromptsAnalysisDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="⚙️ Analyse des prompts IA"
+        Height="700" Width="1000"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5">
+    
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </Window.Resources>
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- En-tête avec avertissement -->
+        <Border Grid.Row="0" Background="#FFF3CD" Padding="15" CornerRadius="5" Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock FontWeight="Bold" FontSize="14" Foreground="#856404" Margin="0,0,0,5">
+                    ⚠️ ATTENTION - Zone avancée
+                </TextBlock>
+                <TextBlock TextWrapping="Wrap" Foreground="#856404" FontSize="12">
+                    Vous pouvez consulter et modifier les prompts envoyés à l'IA. Une modification incorrecte peut dégrader les résultats. Testez toujours avant d'activer.
+                </TextBlock>
+            </StackPanel>
+        </Border>
+        
+        <!-- Sélecteur de module -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,15">
+            <TextBlock Text="Module :" VerticalAlignment="Center" Margin="0,0,10,0" FontWeight="Bold"/>
+            <ComboBox x:Name="ModuleFilterCombo" Width="200" 
+                      SelectedValue="{Binding SelectedModuleFilter}"
+                      SelectedValuePath="Content">
+                <ComboBoxItem Content="Tous les modules" IsSelected="True"/>
+                <ComboBoxItem Content="OpenAI"/>
+                <ComboBoxItem Content="Letter"/>
+            </ComboBox>
+        </StackPanel>
+        
+        <!-- Contenu principal -->
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="300"/>
+                <ColumnDefinition Width="5"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            
+            <!-- Liste des prompts -->
+            <Border Grid.Column="0" Background="White" CornerRadius="5" Padding="0">
+                <ListBox x:Name="PromptsListBox" 
+                         ItemsSource="{Binding FilteredPrompts}"
+                         SelectedItem="{Binding SelectedPrompt}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="5">
+                                <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="13"/>
+                                <TextBlock Text="{Binding Module}" FontSize="11" Foreground="Gray" Margin="0,2,0,0"/>
+                                <TextBlock Text="✓ Version personnalisée active" 
+                                          FontSize="10" 
+                                          Foreground="Green" 
+                                          Margin="0,2,0,0"
+                                          Visibility="{Binding IsCustomActive, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+            
+            <!-- Séparateur -->
+            <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#DDD"/>
+            
+            <!-- Détails du prompt -->
+            <Border Grid.Column="2" Background="White" CornerRadius="5" Padding="15">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <!-- Info prompt -->
+                    <StackPanel Grid.Row="0" Margin="0,0,0,15">
+                        <TextBlock Text="{Binding PromptName}" FontSize="16" FontWeight="Bold" Margin="0,0,0,5"/>
+                        <TextBlock Text="{Binding PromptDescription}" TextWrapping="Wrap" Foreground="Gray" FontSize="12"/>
+                    </StackPanel>
+                    
+                    <!-- Onglets -->
+                    <TabControl Grid.Row="1" Grid.RowSpan="2" x:Name="PromptTabControl" Margin="0,0,0,15">
+                        <!-- Onglet Version par défaut -->
+                        <TabItem Header="📄 Version par défaut">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <TextBox Text="{Binding DefaultPromptText, Mode=OneWay}"
+                                        TextWrapping="Wrap" 
+                                        IsReadOnly="True" 
+                                        Background="#F9F9F9" 
+                                        FontFamily="Consolas" 
+                                        FontSize="11"
+                                        Padding="10"
+                                        BorderThickness="0"/>
+                            </ScrollViewer>
+                        </TabItem>
+                        
+                        <!-- Onglet Version personnalisée -->
+                        <TabItem Header="✏️ Version personnalisée">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                
+                                <!-- Info si pas de version custom -->
+                                <Border Grid.Row="0" 
+                                       Background="#E7F3FF" 
+                                       Padding="10" 
+                                       Margin="0,0,0,10"
+                                       CornerRadius="3"
+                                       Visibility="{Binding NoCustomPromptInfoVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#0066CC">
+                                        ℹ️ Aucune version personnalisée. Modifiez le texte ci-dessous puis cliquez sur "Sauvegarder personnalisation".
+                                    </TextBlock>
+                                </Border>
+                                
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <TextBox Text="{Binding CustomPromptText, UpdateSourceTrigger=PropertyChanged}"
+                                            TextWrapping="Wrap" 
+                                            FontFamily="Consolas" 
+                                            FontSize="11"
+                                            Padding="10"
+                                            AcceptsReturn="True"
+                                            VerticalScrollBarVisibility="Auto"/>
+                                </ScrollViewer>
+                            </Grid>
+                        </TabItem>
+                        
+                        <!-- Onglet Assistant IA -->
+                        <TabItem Header="💡 Assistant IA">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                
+                                <!-- En-tête explicatif -->
+                                <Border Grid.Row="0" Background="#E8F5E9" Padding="12" Margin="0,0,0,15" CornerRadius="5">
+                                    <StackPanel>
+                                        <TextBlock FontWeight="Bold" FontSize="13" Foreground="#2E7D32" Margin="0,0,0,5">
+                                            🤖 Assistant de reformulation IA
+                                        </TextBlock>
+                                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#2E7D32">
+                                            Décrivez comment vous voulez améliorer le prompt actuel. L'IA va le reformuler selon votre demande.
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                                
+                                <!-- Zone de saisie -->
+                                <StackPanel Grid.Row="1" Margin="0,0,0,15">
+                                    <TextBlock Text="Votre demande de modification :" FontWeight="Bold" Margin="0,0,0,8"/>
+                                    <TextBox Text="{Binding ReformulationRequest, UpdateSourceTrigger=PropertyChanged}"
+                                            Height="100"
+                                            TextWrapping="Wrap"
+                                            AcceptsReturn="True"
+                                            VerticalScrollBarVisibility="Auto"
+                                            Padding="10"
+                                            FontSize="12"/>
+                                    
+                                    <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="Gray" Margin="0,5,0,0">
+                                        Exemples : "Rends-le plus concis" • "Ajoute une section Objectifs" • "Simplifie le vocabulaire" • "Ajoute plus de détails cliniques"
+                                    </TextBlock>
+                                </StackPanel>
+                                
+                                <!-- Bouton de reformulation -->
+                                <StackPanel Grid.Row="2" Orientation="Horizontal">
+                                    <Button Command="{Binding ReformulateCommand}"
+                                           Padding="15,8"
+                                           Background="#9C27B0"
+                                           Foreground="White"
+                                           BorderThickness="0"
+                                           Cursor="Hand"
+                                           FontSize="13"
+                                           FontWeight="Bold">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="🔄 " FontSize="14" VerticalAlignment="Center"/>
+                                            <TextBlock VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="Reformuler avec IA"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsReformulating}" Value="True">
+                                                                <Setter Property="Text" Value="⏳ Reformulation en cours..."/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Button>
+                                    
+                                    <TextBlock Text="Le résultat sera proposé dans l'onglet 'Version personnalisée'" 
+                                              FontSize="10" 
+                                              Foreground="Gray" 
+                                              VerticalAlignment="Center"
+                                              Margin="15,0,0,0"
+                                              TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Grid>
+                        </TabItem>
+                    </TabControl>
+                    
+                    <!-- Boutons d'action -->
+                    <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="💾 Sauvegarder personnalisation" 
+                               Command="{Binding SaveCustomCommand}"
+                               Padding="12,6"
+                               Margin="0,0,10,0"
+                               Background="#28A745"
+                               Foreground="White"
+                               BorderThickness="0"
+                               Cursor="Hand"/>
+                        
+                        <Button Content="{Binding ActivateButtonText}"
+                               Command="{Binding ActivateCommand}"
+                               Padding="12,6"
+                               Margin="0,0,10,0"
+                               Background="#007BFF"
+                               Foreground="White"
+                               BorderThickness="0"
+                               Cursor="Hand"/>
+                        
+                        <Button Content="⬆️ Promouvoir" 
+                               Command="{Binding PromoteCommand}"
+                               Padding="12,6"
+                               Margin="0,0,10,0"
+                               Background="#9C27B0"
+                               Foreground="White"
+                               BorderThickness="0"
+                               Cursor="Hand"
+                               ToolTip="Promouvoir la version personnalisée comme nouveau défaut"/>
+                        
+                        <Button Content="↺ Restaurer défaut" 
+                               Command="{Binding RestoreCommand}"
+                               Padding="12,6"
+                               Margin="0,0,10,0"
+                               Background="#FFC107"
+                               Foreground="Black"
+                               BorderThickness="0"
+                               Cursor="Hand"/>
+                        
+                        <Button Content="🏭 Original" 
+                               Command="{Binding RestoreOriginalCommand}"
+                               Padding="12,6"
+                               Margin="0,0,10,0"
+                               Background="#DC3545"
+                               Foreground="White"
+                               BorderThickness="0"
+                               Cursor="Hand"
+                               ToolTip="Restaurer le prompt d'usine (reset complet)"/>
+                        
+                        <Button Content="❌ Fermer" 
+                               Command="{Binding CloseCommand}"
+                               Padding="12,6"
+                               Margin="10,0,0,0"
+                               Background="#6C757D"
+                               Foreground="White"
+                               BorderThickness="0"
+                               Cursor="Hand"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+        
+    </Grid>
+</Window>

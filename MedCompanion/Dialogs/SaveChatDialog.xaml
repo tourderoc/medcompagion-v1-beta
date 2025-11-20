@@ -1,0 +1,121 @@
+<Window x:Class="MedCompanion.Dialogs.SaveChatDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Sauvegarder l'échange"
+        Width="450"
+        Height="200"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5"
+        ResizeMode="NoResize">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Titre -->
+        <TextBlock Grid.Row="0"
+                   Text="💾 Sauvegarder cet échange"
+                   FontSize="16"
+                   FontWeight="Bold"
+                   Foreground="#2C3E50"
+                   Margin="0,0,0,15"/>
+        
+        <!-- Description -->
+        <TextBlock Grid.Row="1"
+                   Text="Donnez une étiquette thématique à cet échange pour le retrouver facilement :"
+                   TextWrapping="Wrap"
+                   Foreground="#34495E"
+                   Margin="0,0,0,10"/>
+        
+        <!-- Champ étiquette -->
+        <Border Grid.Row="2"
+                Background="White"
+                BorderBrush="#BDC3C7"
+                BorderThickness="1"
+                CornerRadius="3"
+                Padding="8"
+                Margin="0,0,0,15">
+            <TextBox x:Name="EtiquetteTextBox"
+                     FontSize="13"
+                     BorderThickness="0"
+                     VerticalContentAlignment="Center"
+                     Text="Diagnostic"
+                     SelectionBrush="#3498DB"/>
+        </Border>
+        
+        <!-- Boutons -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button Content="Annuler"
+                    Width="100"
+                    Height="32"
+                    Margin="0,0,10,0"
+                    Background="#95A5A6"
+                    Foreground="White"
+                    BorderThickness="0"
+                    FontSize="13"
+                    Cursor="Hand"
+                    Click="Cancel_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Background" Value="#95A5A6"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}"
+                                            CornerRadius="3"
+                                            Padding="10,5">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#7F8C8D"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            
+            <Button Content="💾 Sauvegarder"
+                    Width="130"
+                    Height="32"
+                    Background="#27AE60"
+                    Foreground="White"
+                    BorderThickness="0"
+                    FontSize="13"
+                    Cursor="Hand"
+                    Click="Save_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Background" Value="#27AE60"/>
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}"
+                                            CornerRadius="3"
+                                            Padding="10,5">
+                                        <ContentPresenter HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#229954"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

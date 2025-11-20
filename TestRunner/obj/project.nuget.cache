@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "dgSpecHash": "QlorOFGeaPA=",
+  "success": true,
+  "projectFilePath": "D:\\Users\\nair\\Bureau\\medcompagnio2\\TestRunner\\TestRunner.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\nair\\.nuget\\packages\\questpdf\\2025.7.2\\questpdf.2025.7.2.nupkg.sha512"
+  ],
+  "logs": []
+}

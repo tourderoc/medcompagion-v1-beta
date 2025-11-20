@@ -1,0 +1,280 @@
+<Window x:Class="MedCompanion.Dialogs.MDPHAssistantDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        Title="Assistant MDPH - Génération Assistée par IA"
+        Height="900" Width="1400" MinHeight="700" MinWidth="1200"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5">
+
+    <Window.Resources>
+        <!-- Style pour les boutons d'action -->
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.8"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Style pour les Expanders de section -->
+        <Style x:Key="SectionExpanderStyle" TargetType="Expander">
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="BorderBrush" Value="#DDD"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Background" Value="White"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="400"/>
+            <ColumnDefinition Width="5"/>
+            <ColumnDefinition Width="*" MinWidth="400"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ========== COLONNE GAUCHE : PROPOSITIONS IA ========== -->
+        <Border Grid.Column="0" Background="White" BorderBrush="#DDD" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <!-- Header -->
+                <Border DockPanel.Dock="Top" Background="#3498DB" Padding="15,10">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <!-- Bloc Prénom -->
+                        <Border Grid.Column="0" Background="#2980B9" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
+                            <StackPanel>
+                                <TextBlock Text="Prénom" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="PatientPrenomText"
+                                               Text="..."
+                                               Foreground="White"
+                                               FontSize="14"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0"/>
+                                    <Button x:Name="CopyPrenomButton"
+                                            Content="📋"
+                                            Padding="6,3"
+                                            FontSize="12"
+                                            Background="#1A5276"
+                                            Foreground="White"
+                                            BorderThickness="0"
+                                            Cursor="Hand"
+                                            ToolTip="Copier le prénom"
+                                            Click="CopyPrenomButton_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Bloc Nom -->
+                        <Border Grid.Column="1" Background="#2980B9" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
+                            <StackPanel>
+                                <TextBlock Text="Nom" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="PatientNomText"
+                                               Text="..."
+                                               Foreground="White"
+                                               FontSize="14"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0"/>
+                                    <Button x:Name="CopyNomButton"
+                                            Content="📋"
+                                            Padding="6,3"
+                                            FontSize="12"
+                                            Background="#1A5276"
+                                            Foreground="White"
+                                            BorderThickness="0"
+                                            Cursor="Hand"
+                                            ToolTip="Copier le nom"
+                                            Click="CopyNomButton_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Bloc Date de naissance -->
+                        <Border Grid.Column="2" Background="#2980B9" Padding="10,8" CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock Text="Date de naissance" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock x:Name="PatientDobText"
+                                               Text="..."
+                                               Foreground="White"
+                                               FontSize="14"
+                                               FontWeight="Bold"
+                                               VerticalAlignment="Center"
+                                               Margin="0,0,8,0"/>
+                                    <Button x:Name="CopyDobButton"
+                                            Content="📋"
+                                            Padding="6,3"
+                                            FontSize="12"
+                                            Background="#1A5276"
+                                            Foreground="White"
+                                            BorderThickness="0"
+                                            Cursor="Hand"
+                                            ToolTip="Copier la date de naissance"
+                                            Click="CopyDobButton_Click"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Status Bar -->
+                <Border DockPanel.Dock="Top" Background="#ECF0F1" Padding="10,8" BorderBrush="#DDD" BorderThickness="0,1">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="StatusText"
+                                   Text="⏳ Génération des sections en cours..."
+                                   FontSize="13"
+                                   VerticalAlignment="Center"/>
+                        <ProgressBar x:Name="GenerationProgressBar"
+                                     Width="150"
+                                     Height="15"
+                                     Margin="15,0,0,0"
+                                     Minimum="0"
+                                     Maximum="11"
+                                     Value="0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Footer Buttons -->
+                <Border DockPanel.Dock="Bottom" Background="#ECF0F1" Padding="15,10" BorderBrush="#DDD" BorderThickness="0,1,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="SaveDocxButton"
+                                Content="💾 Sauvegarder DOCX"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#27AE60"
+                                Foreground="White"
+                                BorderBrush="#229954"
+                                Click="SaveDocxButton_Click"
+                                IsEnabled="False"/>
+                        <Button x:Name="CloseButton"
+                                Content="✖ Fermer"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#95A5A6"
+                                Foreground="White"
+                                BorderBrush="#7F8C8D"
+                                Click="CloseButton_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- ScrollViewer avec sections -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="15">
+                    <StackPanel x:Name="SectionsPanel">
+                        <!-- Les sections seront générées dynamiquement dans le code-behind -->
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- ========== GRIDSPLITTER ========== -->
+        <GridSplitter Grid.Column="1"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="#BDC3C7"
+                      ShowsPreview="False"
+                      Cursor="SizeWE"/>
+
+        <!-- ========== COLONNE DROITE : PDF VIEWER ========== -->
+        <Border Grid.Column="2" Background="White">
+            <DockPanel>
+                <!-- Toolbar PDF -->
+                <Border DockPanel.Dock="Top" Background="#34495E" Padding="10,8">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="📄 Formulaire MDPH Officiel"
+                                   Foreground="White"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,20,0"/>
+
+                        <Button x:Name="PdfPreviousPageButton"
+                                Content="◀ Précédent"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#2C3E50"
+                                Foreground="White"
+                                BorderBrush="#1C2833"
+                                Click="PdfPreviousPageButton_Click"
+                                IsEnabled="False"/>
+
+                        <TextBlock x:Name="PdfPageIndicator"
+                                   Text="Page 1 / 15"
+                                   Foreground="White"
+                                   FontSize="13"
+                                   VerticalAlignment="Center"
+                                   Margin="10,0"/>
+
+                        <Button x:Name="PdfNextPageButton"
+                                Content="Suivant ▶"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#2C3E50"
+                                Foreground="White"
+                                BorderBrush="#1C2833"
+                                Click="PdfNextPageButton_Click"
+                                IsEnabled="False"/>
+
+                        <Separator Margin="15,0" Background="#7F8C8D" Width="1"/>
+
+                        <Button x:Name="PdfZoomInButton"
+                                Content="🔍 +"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#2C3E50"
+                                Foreground="White"
+                                BorderBrush="#1C2833"
+                                Click="PdfZoomInButton_Click"
+                                IsEnabled="False"/>
+
+                        <Button x:Name="PdfZoomOutButton"
+                                Content="🔍 -"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#2C3E50"
+                                Foreground="White"
+                                BorderBrush="#1C2833"
+                                Click="PdfZoomOutButton_Click"
+                                IsEnabled="False"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- WebView2 Container -->
+                <Border Background="#95A5A6" Padding="2">
+                    <Grid x:Name="PdfViewerContainer">
+                        <!-- WebView2 sera ajouté dynamiquement dans le code-behind -->
+                        <TextBlock x:Name="PdfFallbackMessage"
+                                   Text="⚠ Chargement du PDF..."
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="16"
+                                   Foreground="#555"
+                                   Visibility="Visible"/>
+                    </Grid>
+                </Border>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

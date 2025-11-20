@@ -1,0 +1,264 @@
+<Window x:Class="MedCompanion.Dialogs.OrdonnanceIDEDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="🏥 Ordonnance de Soins Infirmiers à Domicile"
+        Height="650" Width="700"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F5F5">
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="20"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Titre -->
+        <Border Grid.Row="0" Background="#16A085" CornerRadius="8" Padding="15">
+            <StackPanel>
+                <TextBlock Text="🏥 Ordonnance IDE" 
+                          FontSize="18" 
+                          FontWeight="Bold" 
+                          Foreground="White"
+                          HorizontalAlignment="Center"/>
+                <TextBlock Text="Soins Infirmiers à Domicile" 
+                          FontSize="12" 
+                          Foreground="White"
+                          HorizontalAlignment="Center"
+                          Margin="0,3,0,0"/>
+            </StackPanel>
+        </Border>
+        
+        <!-- Informations patient (pré-remplies, en lecture seule) -->
+        <Border Grid.Row="2" Background="White" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="8" Padding="15">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="10"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                
+                <TextBlock Grid.Row="0" 
+                          Text="📋 Informations patient (pré-remplies)" 
+                          FontSize="13" 
+                          FontWeight="SemiBold" 
+                          Foreground="#2C3E50"/>
+                
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="8"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="8"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    
+                    <TextBlock Grid.Row="0" Grid.Column="0" Text="Date :" FontSize="12" FontWeight="SemiBold" Foreground="#34495E" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBox x:Name="DateTextBox" 
+                            Grid.Row="0" Grid.Column="1"
+                            Height="32"
+                            IsReadOnly="True"
+                            Background="#ECF0F1"
+                            FontSize="12"
+                            VerticalContentAlignment="Center"
+                            Padding="8,0"/>
+                    
+                    <TextBlock Grid.Row="2" Grid.Column="0" Text="Patient :" FontSize="12" FontWeight="SemiBold" Foreground="#34495E" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBox x:Name="PatientTextBox" 
+                            Grid.Row="2" Grid.Column="1"
+                            Height="32"
+                            IsReadOnly="True"
+                            Background="#ECF0F1"
+                            FontSize="12"
+                            VerticalContentAlignment="Center"
+                            Padding="8,0"/>
+                    
+                    <TextBlock Grid.Row="4" Grid.Column="0" Text="Né(e) le :" FontSize="12" FontWeight="SemiBold" Foreground="#34495E" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <TextBox x:Name="DateNaissanceTextBox" 
+                            Grid.Row="4" Grid.Column="1"
+                            Height="32"
+                            IsReadOnly="True"
+                            Background="#ECF0F1"
+                            FontSize="12"
+                            VerticalContentAlignment="Center"
+                            Padding="8,0"/>
+                </Grid>
+            </Grid>
+        </Border>
+        
+        <!-- Soins prescrits (zone de saisie) -->
+        <Border Grid.Row="4" Background="White" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="8" Padding="15">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="10"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+                
+                <TextBlock Grid.Row="0" 
+                          Text="💊 Soins prescrits" 
+                          FontSize="13" 
+                          FontWeight="SemiBold" 
+                          Foreground="#2C3E50"/>
+                
+                <Border Grid.Row="2" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6">
+                    <TextBox x:Name="SoinsTextBox"
+                            AcceptsReturn="True"
+                            TextWrapping="Wrap"
+                            VerticalScrollBarVisibility="Auto"
+                            FontSize="12"
+                            Padding="10"
+                            BorderThickness="0"
+                            Text="Administration des traitements médicamenteux selon ordonnance médicale en cours, sans modification (médicaments, posologies et voies d'administration selon prescription médicale jointe).
+
+Fréquence des passages : **1 passage quotidien, 7/7 (week-ends et jours fériés compris)**, possibilité d'**adaptation ponctuelle (2 passages/jour)** après accord du médecin prescripteur si besoin clinique.
+
+Surveillance et traçabilité des **constantes hémodynamiques** : à chaque passage, tension artérielle (TA), fréquence cardiaque (FC), fréquence respiratoire (FR).
+
+Observation clinique : état général, hydratation/alimentation, tolérance du traitement, effets indésirables éventuels.
+
+Transmission : **contact avec le médecin prescripteur** en cas d'anomalie, d'aggravation clinique, d'effet indésirable médicamenteux ou d'impossibilité de réaliser le soin. **En cas d'urgence vitale, appeler le 15 (SAMU).**
+
+Coordination : échanges avec le pharmacien, le médecin traitant et autres intervenants si nécessaire."/>
+                </Border>
+            </Grid>
+        </Border>
+        
+        <!-- Durée et Renouvelable -->
+        <Grid Grid.Row="6">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="15"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            
+            <Border Grid.Column="0" Background="White" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="8" Padding="15">
+                <StackPanel>
+                    <TextBlock Text="⏱️ Durée" 
+                              FontSize="13" 
+                              FontWeight="SemiBold" 
+                              Foreground="#2C3E50"
+                              Margin="0,0,0,10"/>
+                    <TextBox x:Name="DureeTextBox"
+                            Height="35"
+                            FontSize="12"
+                            VerticalContentAlignment="Center"
+                            Padding="10,0"
+                            Text="1 mois"/>
+                </StackPanel>
+            </Border>
+            
+            <Border Grid.Column="2" Background="White" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="8" Padding="15">
+                <StackPanel>
+                    <TextBlock Text="🔄 Renouvelable" 
+                              FontSize="13" 
+                              FontWeight="SemiBold" 
+                              Foreground="#2C3E50"
+                              Margin="0,0,0,10"/>
+                    <TextBox x:Name="RenouvelableTextBox"
+                            Height="35"
+                            FontSize="12"
+                            VerticalContentAlignment="Center"
+                            Padding="10,0"
+                            Text="3 fois"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+        
+        <!-- Note d'information -->
+        <Border Grid.Row="8" Background="#FFF3E0" BorderBrush="#FF9800" BorderThickness="1" CornerRadius="6" Padding="12">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="💡" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Top"/>
+                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#E65100">
+                    <Run Text="L'ordonnance sera générée au format DOCX avec vos informations de contact."/>
+                    <LineBreak/>
+                    <Run Text="Vous pourrez la modifier après génération si nécessaire."/>
+                </TextBlock>
+            </StackPanel>
+        </Border>
+        
+        <!-- Boutons -->
+        <Grid Grid.Row="10">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            
+            <Button x:Name="AnnulerButton"
+                    Grid.Column="0"
+                    Content="❌ Annuler"
+                    Height="45"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#95A5A6"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="AnnulerButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="8">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#7F8C8D"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            
+            <Button x:Name="ValiderButton"
+                    Grid.Column="2"
+                    Content="✅ Valider"
+                    Height="45"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#16A085"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="ValiderButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="8">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#138D75"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </Grid>
+    </Grid>
+</Window>

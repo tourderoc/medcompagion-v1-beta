@@ -1,0 +1,406 @@
+<UserControl x:Class="MedCompanion.Views.Notes.NotesControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d" 
+             d:DesignHeight="800" d:DesignWidth="600">
+    
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="3*"/>
+            <RowDefinition Height="2"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="2"/>
+            <RowDefinition Height="2*"/>
+        </Grid.RowDefinitions>
+        
+        <!-- 📊 SYNTHÈSE PATIENT (toujours visible en haut) -->
+        <Border Grid.Row="0" 
+                Background="#FFF8DC" 
+                BorderBrush="#1ABC9C" 
+                BorderThickness="2" 
+                CornerRadius="8" 
+                Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                
+                <!-- Header -->
+                <TextBlock Grid.Row="0" 
+                          Text="📊 SYNTHÈSE PATIENT" 
+                          FontSize="13" 
+                          FontWeight="Bold" 
+                          Foreground="#1ABC9C"
+                          Margin="0,0,0,8"/>
+                
+                <!-- Zone d'affichage (scrollable) -->
+                <Border Grid.Row="1" 
+                        Background="White" 
+                        BorderBrush="#E0E0E0" 
+                        BorderThickness="1" 
+                        CornerRadius="4">
+                    <RichTextBox x:Name="SynthesisPreviewText"
+                                 IsReadOnly="True"
+                                 VerticalScrollBarVisibility="Auto"
+                                 HorizontalScrollBarVisibility="Disabled"
+                                 Background="Transparent"
+                                 FontSize="12"
+                                 Padding="8"
+                                 BorderThickness="0"
+                                 AcceptsTab="False">
+                        <RichTextBox.Resources>
+                            <Style TargetType="{x:Type Paragraph}">
+                                <Setter Property="Margin" Value="0"/>
+                            </Style>
+                        </RichTextBox.Resources>
+                    </RichTextBox>
+                </Border>
+                
+                <!-- Footer avec date et bouton -->
+                <Grid Grid.Row="2" Margin="0,8,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <TextBlock x:Name="LastSynthesisUpdateLabel"
+                              Grid.Column="0"
+                              Text="📅 Dernière mise à jour : Jamais"
+                              FontSize="11"
+                              Foreground="#7F8C8D"
+                              VerticalAlignment="Center"/>
+                    
+                    <!-- Grid avec badge de notification pour mise à jour synthèse -->
+                    <Grid Grid.Column="2">
+                        <Button x:Name="GenerateSynthesisButton"
+                                Content="🔄 Actualiser"
+                                Height="32"
+                                Padding="12,0"
+                                FontSize="12"
+                                FontWeight="SemiBold"
+                                Background="#1ABC9C"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                IsEnabled="False"
+                                Click="GenerateSynthesisButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        CornerRadius="6"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#16A085"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Background" Value="#BDC3C7"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <!-- Badge de notification (affiche le nombre d'items en attente) -->
+                        <Border x:Name="SynthesisUpdateBadge"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Top"
+                                Margin="0,-8,-8,0"
+                                Background="#E74C3C"
+                                BorderBrush="White"
+                                BorderThickness="2"
+                                CornerRadius="12"
+                                Padding="6,2"
+                                Visibility="Collapsed">
+                            <TextBlock x:Name="SynthesisUpdateBadgeText"
+                                       Text="!"
+                                       Foreground="White"
+                                       FontSize="11"
+                                       FontWeight="Bold"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+        
+        <!-- Actions -->
+        <StackPanel Grid.Row="2" Margin="0,0,0,3">
+            <Grid Margin="0,0,0,5">
+                <TextBlock Text="Actions" FontSize="16" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+                <Button x:Name="FermerConsultationButton" 
+                        Content="✖️ Fermer" 
+                        HorizontalAlignment="Right"
+                        Height="35"
+                        Padding="15,0"
+                        FontSize="13"
+                        FontWeight="SemiBold"
+                        Background="#95A5A6"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="Collapsed">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#7F8C8D"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+            
+            <Button x:Name="StructurerButton"
+                    Content="📝 Structurer la note" 
+                    Height="40" 
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Background="#3498DB"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Margin="0,0,0,5"
+                    Visibility="{Binding NoteViewModel.IsStructurerButtonVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                    Command="{Binding NoteViewModel.StructurerCommand}">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#2980B9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            
+            <Grid Margin="0,0,0,5">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                
+                <Button x:Name="AnnulerNoteButton" 
+                        Grid.Column="0"
+                        Content="❌ Annuler" 
+                        Height="38"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Background="#95A5A6"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="{Binding NoteViewModel.IsAnnulerButtonVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                        Command="{Binding NoteViewModel.CancelCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#7F8C8D"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                
+                <Button x:Name="ModifierNoteButton" 
+                        Grid.Column="2"
+                        Content="✏️ Modifier" 
+                        Height="38"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Background="#F39C12"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="{Binding NoteViewModel.IsModifierButtonVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                        Command="{Binding NoteViewModel.EditCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#E67E22"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                
+                <Button x:Name="SupprimerNoteButton" 
+                        Grid.Column="4"
+                        Content="🗑️ Supprimer" 
+                        Height="38"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Background="#E74C3C"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="{Binding NoteViewModel.IsSupprimerButtonVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                        Command="{Binding NoteViewModel.DeleteCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#C0392B"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                
+                <Button x:Name="ValiderSauvegarderButton" 
+                        Grid.Column="2"
+                        Grid.ColumnSpan="3"
+                        Content="💾 Valider &amp; Sauvegarder" 
+                        Height="38"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Background="#27AE60"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="{Binding NoteViewModel.IsSauvegarderButtonVisible, Converter={StaticResource BoolToVisibilityConverter}}"
+                        Command="{Binding NoteViewModel.SaveCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#229954"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+        </StackPanel>
+        
+        <!-- Note brute -->
+        <Grid x:Name="RawNoteGrid" 
+              Grid.Row="3" 
+              MinHeight="80" 
+              MaxHeight="120"
+              Visibility="{Binding NoteViewModel.IsRawNoteVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock x:Name="RawNoteLabel" Grid.Row="0" Text="Note brute" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#2C3E50"/>
+            <Border Grid.Row="1" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6">
+                <TextBox x:Name="RawNoteText" 
+                         Text="{Binding NoteViewModel.RawNoteText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" 
+                         TextWrapping="Wrap" 
+                         VerticalScrollBarVisibility="Visible"
+                         HorizontalScrollBarVisibility="Disabled"
+                         FontSize="13"
+                         Padding="12"
+                         BorderThickness="0"
+                         Background="White"/>
+            </Border>
+        </Grid>
+        
+        <!-- Note structurée -->
+        <Grid Grid.Row="5">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+            <TextBlock x:Name="StructuredNoteLabel" Grid.Row="0" Text="Note structurée" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#2C3E50"/>
+            <Border Grid.Row="1" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6">
+                <RichTextBox x:Name="StructuredNoteText" 
+                             IsReadOnly="{Binding NoteViewModel.IsStructuredNoteReadOnly}"
+                             VerticalScrollBarVisibility="Visible"
+                             HorizontalScrollBarVisibility="Disabled"
+                             Background="#FAFAFA"
+                             FontSize="13"
+                             Padding="12"
+                             BorderThickness="0"
+                             AcceptsTab="False"/>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="MedCompanion.Dialogs.LetterFromChatDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Générer un courrier depuis cette conversation"
+        Width="550"
+        Height="400"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F5F5">
+    
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+        </Style>
+    </Window.Resources>
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- En-tête avec info conversation -->
+        <Border Grid.Row="0"
+                Background="White"
+                BorderBrush="#3498DB"
+                BorderThickness="2"
+                CornerRadius="5"
+                Padding="15"
+                Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock Text="📋 Conversation sélectionnée :"
+                           FontSize="13"
+                           FontWeight="SemiBold"
+                           Foreground="#2C3E50"
+                           Margin="0,0,0,8"/>
+                <TextBlock x:Name="ConversationInfoTextBlock"
+                           Text="Chargement..."
+                           FontSize="12"
+                           Foreground="#7F8C8D"
+                           TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+        
+        <!-- Label demande -->
+        <TextBlock Grid.Row="1"
+                   Text="✏️ Que souhaitez-vous dans le courrier ?"
+                   FontSize="14"
+                   FontWeight="SemiBold"
+                   Foreground="#2C3E50"
+                   Margin="0,0,0,10"/>
+        
+        <!-- Zone de texte libre -->
+        <Border Grid.Row="2"
+                Background="White"
+                BorderBrush="#BDC3C7"
+                BorderThickness="1"
+                CornerRadius="5"
+                Margin="0,0,0,15">
+            <TextBox x:Name="RequestTextBox"
+                     TextWrapping="Wrap"
+                     AcceptsReturn="True"
+                     VerticalScrollBarVisibility="Auto"
+                     BorderThickness="0"
+                     Padding="10"
+                     FontSize="13"
+                     FontFamily="Segoe UI"
+                     Background="Transparent">
+                <TextBox.Style>
+                    <Style TargetType="TextBox">
+                        <Style.Triggers>
+                            <Trigger Property="Text" Value="">
+                                <Setter Property="Background">
+                                    <Setter.Value>
+                                        <VisualBrush Stretch="None" AlignmentX="Left" AlignmentY="Top">
+                                            <VisualBrush.Visual>
+                                                <TextBlock Text="Ex: Demande de PAP à l'école pour trouble diagnostiqué&#x0a;&#x0a;Ex: Courrier au confrère pour avis spécialisé&#x0a;&#x0a;Ex: Certificat pour justifier absences scolaires"
+                                                           FontSize="13"
+                                                           Foreground="#95A5A6"
+                                                           Padding="10"
+                                                           TextWrapping="Wrap"/>
+                                            </VisualBrush.Visual>
+                                        </VisualBrush>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBox.Style>
+            </TextBox>
+        </Border>
+        
+        <!-- Boutons -->
+        <StackPanel Grid.Row="3"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button x:Name="CancelButton"
+                    Content="Annuler"
+                    Background="#95A5A6"
+                    Foreground="White"
+                    Click="CancelButton_Click"/>
+            <Button x:Name="GenerateButton"
+                    Content="📄 Générer courrier"
+                    Background="#27AE60"
+                    Foreground="White"
+                    Click="GenerateButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

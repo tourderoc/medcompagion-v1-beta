@@ -1,0 +1,141 @@
+<Window x:Class="MedCompanion.Dialogs.SelectGenderDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Information manquante - Sexe du patient" 
+        Height="300" Width="450"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F5F5">
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="20"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Titre et explication -->
+        <StackPanel Grid.Row="0">
+            <TextBlock Text="ℹ️ Information manquante" 
+                       FontSize="18" 
+                       FontWeight="Bold" 
+                       Foreground="#2C3E50"
+                       Margin="0,0,0,10"/>
+            <TextBlock Text="Le sexe du patient n'est pas renseigné dans le dossier." 
+                       FontSize="13" 
+                       Foreground="#7F8C8D"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,5"/>
+            <TextBlock Text="Cette information est nécessaire pour l'accord grammatical (né/née) dans l'attestation." 
+                       FontSize="13" 
+                       Foreground="#7F8C8D"
+                       TextWrapping="Wrap"/>
+        </StackPanel>
+
+        <!-- Zone de sélection -->
+        <Border Grid.Row="2" 
+                Background="White" 
+                BorderBrush="#BDC3C7" 
+                BorderThickness="2" 
+                CornerRadius="8" 
+                Padding="20">
+            <StackPanel>
+                <TextBlock Text="Veuillez sélectionner le sexe du patient :" 
+                           FontSize="13" 
+                           FontWeight="SemiBold" 
+                           Foreground="#2C3E50"
+                           Margin="0,0,0,15"/>
+
+                <!-- RadioButtons -->
+                <RadioButton x:Name="MasculinRadio" 
+                             Content="⚪ Masculin (né)" 
+                             FontSize="14"
+                             GroupName="Sexe"
+                             IsChecked="True"
+                             Margin="0,0,0,15"
+                             Foreground="#34495E"/>
+
+                <RadioButton x:Name="FemininRadio" 
+                             Content="⚪ Féminin (née)" 
+                             FontSize="14"
+                             GroupName="Sexe"
+                             Margin="0,0,0,0"
+                             Foreground="#34495E"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Boutons d'action -->
+        <StackPanel Grid.Row="4" 
+                    Orientation="Horizontal" 
+                    HorizontalAlignment="Right">
+            <Button x:Name="CancelButton" 
+                    Content="Annuler" 
+                    Width="100" 
+                    Height="40"
+                    Margin="0,0,10,0"
+                    FontSize="13"
+                    Background="#95A5A6"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="CancelButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" 
+                                            CornerRadius="6" 
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" 
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#7F8C8D"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <Button x:Name="ValidateButton" 
+                    Content="Valider" 
+                    Width="100" 
+                    Height="40"
+                    FontSize="13"
+                    FontWeight="SemiBold"
+                    Background="#3498DB"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Click="ValidateButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" 
+                                            CornerRadius="6" 
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" 
+                                                          VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#2980B9"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

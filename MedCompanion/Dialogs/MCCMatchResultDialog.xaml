@@ -1,0 +1,359 @@
+<Window x:Class="MedCompanion.Dialogs.MCCMatchResultDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="✅ Modèle MCC trouvé"
+        Width="700" Height="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F5F5">
+
+    <Window.Resources>
+        <Style TargetType="Button">
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- En-tête avec icône de succès -->
+        <Border Grid.Row="0" 
+                Background="#27AE60" 
+                CornerRadius="8" 
+                Padding="15" 
+                Margin="0,0,0,15">
+            <StackPanel>
+                <TextBlock FontSize="20" 
+                           FontWeight="Bold" 
+                           Foreground="White"
+                           HorizontalAlignment="Center">
+                    ✅ Modèle MCC trouvé !
+                </TextBlock>
+                <TextBlock FontSize="13" 
+                           Foreground="White" 
+                           HorizontalAlignment="Center"
+                           Margin="0,5,0,0">
+                    L'IA a trouvé un modèle parfaitement adapté à votre demande
+                </TextBlock>
+            </StackPanel>
+        </Border>
+
+        <!-- Contenu principal -->
+        <ScrollViewer Grid.Row="1" 
+                      VerticalScrollBarVisibility="Auto"
+                      Margin="0,0,0,15">
+            <StackPanel>
+                <!-- 📊 NOUVELLE SECTION : Données extraites de la demande -->
+                <Border Background="#FFF9E6" 
+                        BorderBrush="#F39C12" 
+                        BorderThickness="2" 
+                        CornerRadius="8" 
+                        Padding="15"
+                        Margin="0,0,0,15">
+                    <StackPanel>
+                        <TextBlock FontSize="14" 
+                                   FontWeight="Bold" 
+                                   Foreground="#E67E22">
+                            📊 Données extraites de votre demande
+                        </TextBlock>
+                        
+                        <!-- Grille 2 colonnes pour les données -->
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Type demandé -->
+                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,8">
+                                <TextBlock Text="📄 Type demandé" 
+                                           FontWeight="SemiBold" 
+                                           FontSize="11" 
+                                           Foreground="#D35400"/>
+                                <TextBlock x:Name="RequestedDocTypeText" 
+                                           FontSize="11" 
+                                           Foreground="#5D4037" 
+                                           Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Audience détectée -->
+                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="10,0,0,8">
+                                <TextBlock Text="👥 Audience détectée" 
+                                           FontWeight="SemiBold" 
+                                           FontSize="11" 
+                                           Foreground="#D35400"/>
+                                <TextBlock x:Name="RequestedAudienceText" 
+                                           FontSize="11" 
+                                           Foreground="#5D4037" 
+                                           Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Ton souhaité -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,8">
+                                <TextBlock Text="✍️ Ton souhaité" 
+                                           FontWeight="SemiBold" 
+                                           FontSize="11" 
+                                           Foreground="#D35400"/>
+                                <TextBlock x:Name="RequestedToneText" 
+                                           FontSize="11" 
+                                           Foreground="#5D4037" 
+                                           Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Âge patient -->
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,0,0,8">
+                                <TextBlock Text="👶 Âge patient" 
+                                           FontWeight="SemiBold" 
+                                           FontSize="11" 
+                                           Foreground="#D35400"/>
+                                <TextBlock x:Name="RequestedAgeGroupText" 
+                                           FontSize="11" 
+                                           Foreground="#5D4037" 
+                                           Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Mots-clés extraits (span sur 2 colonnes) -->
+                            <StackPanel Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2" Margin="0,0,0,8">
+                                <TextBlock Text="🔑 Mots-clés cliniques extraits" 
+                                           FontWeight="SemiBold" 
+                                           FontSize="11" 
+                                           Foreground="#D35400"/>
+                                <TextBlock x:Name="ExtractedKeywordsText" 
+                                           FontSize="11" 
+                                           Foreground="#5D4037" 
+                                           Margin="0,2,0,0"
+                                           TextWrapping="Wrap"
+                                           FontStyle="Italic"/>
+                            </StackPanel>
+
+                            <!-- Confiance (span sur 2 colonnes) -->
+                            <StackPanel Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2">
+                                <TextBlock Text="🎯 Confiance de l'analyse" 
+                                           FontWeight="SemiBold" 
+                                           FontSize="11" 
+                                           Foreground="#D35400"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                    <ProgressBar x:Name="ConfidenceProgressBar" 
+                                                 Width="150" 
+                                                 Height="14" 
+                                                 Minimum="0" 
+                                                 Maximum="100"
+                                                 Foreground="#F39C12"
+                                                 Margin="0,0,10,0"/>
+                                    <TextBlock x:Name="ConfidenceText" 
+                                               FontSize="11" 
+                                               FontWeight="Bold" 
+                                               Foreground="#E67E22"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Carte MCC -->
+                <Border Background="White" 
+                        BorderBrush="#BDC3C7" 
+                        BorderThickness="1" 
+                        CornerRadius="8" 
+                        Padding="20"
+                        Margin="0,0,0,15">
+                    <StackPanel>
+                        <!-- Nom du MCC -->
+                        <TextBlock x:Name="MCCNameText" 
+                                   FontSize="16" 
+                                   FontWeight="Bold" 
+                                   Foreground="#2C3E50"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- Score de pertinence -->
+                        <StackPanel Orientation="Horizontal" 
+                                    Margin="0,10,0,0">
+                            <TextBlock Text="Pertinence : " 
+                                       FontSize="13" 
+                                       Foreground="#7F8C8D"/>
+                            <ProgressBar x:Name="ScoreProgressBar" 
+                                         Width="200" 
+                                         Height="18" 
+                                         Minimum="0" 
+                                         Maximum="100"
+                                         Margin="5,0,10,0"/>
+                            <TextBlock x:Name="ScoreText" 
+                                       FontSize="13" 
+                                       FontWeight="Bold" 
+                                       Foreground="#27AE60"/>
+                        </StackPanel>
+
+                        <!-- Séparateur -->
+                        <Separator Margin="0,15,0,15"/>
+
+                        <!-- Métadonnées sur 2 colonnes -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Type -->
+                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock Text="📄 Type" 
+                                           FontWeight="SemiBold" 
+                                           Foreground="#34495E" 
+                                           FontSize="12"/>
+                                <TextBlock x:Name="DocTypeText" 
+                                           FontSize="12" 
+                                           Foreground="#7F8C8D" 
+                                           Margin="0,3,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Audience -->
+                            <StackPanel Grid.Row="0" Grid.Column="1" Margin="10,0,0,10">
+                                <TextBlock Text="👥 Audience" 
+                                           FontWeight="SemiBold" 
+                                           Foreground="#34495E" 
+                                           FontSize="12"/>
+                                <TextBlock x:Name="AudienceText" 
+                                           FontSize="12" 
+                                           Foreground="#7F8C8D" 
+                                           Margin="0,3,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Ton -->
+                            <StackPanel Grid.Row="1" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock Text="✍️ Ton" 
+                                           FontWeight="SemiBold" 
+                                           Foreground="#34495E" 
+                                           FontSize="12"/>
+                                <TextBlock x:Name="ToneText" 
+                                           FontSize="12" 
+                                           Foreground="#7F8C8D" 
+                                           Margin="0,3,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Tranche d'âge -->
+                            <StackPanel Grid.Row="1" Grid.Column="1" Margin="10,0,0,10">
+                                <TextBlock Text="👶 Tranche d'âge" 
+                                           FontWeight="SemiBold" 
+                                           Foreground="#34495E" 
+                                           FontSize="12"/>
+                                <TextBlock x:Name="AgeGroupText" 
+                                           FontSize="12" 
+                                           Foreground="#7F8C8D" 
+                                           Margin="0,3,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+
+                            <!-- Statistiques d'utilisation -->
+                            <StackPanel Grid.Row="2" Grid.Column="0" Margin="0,0,10,10">
+                                <TextBlock Text="📊 Utilisations" 
+                                           FontWeight="SemiBold" 
+                                           Foreground="#34495E" 
+                                           FontSize="12"/>
+                                <TextBlock x:Name="UsageText" 
+                                           FontSize="12" 
+                                           Foreground="#7F8C8D" 
+                                           Margin="0,3,0,0"/>
+                            </StackPanel>
+
+                            <!-- Note moyenne -->
+                            <StackPanel Grid.Row="2" Grid.Column="1" Margin="10,0,0,10">
+                                <TextBlock Text="⭐ Note moyenne" 
+                                           FontWeight="SemiBold" 
+                                           Foreground="#34495E" 
+                                           FontSize="12"/>
+                                <TextBlock x:Name="RatingText" 
+                                           FontSize="12" 
+                                           Foreground="#7F8C8D" 
+                                           Margin="0,3,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- Information sur la génération -->
+                <Border Background="#EBF5FB" 
+                        BorderBrush="#3498DB" 
+                        BorderThickness="1" 
+                        CornerRadius="8" 
+                        Padding="15">
+                    <StackPanel>
+                        <TextBlock FontSize="13" 
+                                   FontWeight="SemiBold" 
+                                   Foreground="#2C3E50">
+                            🤖 Prochaine étape
+                        </TextBlock>
+                        <TextBlock FontSize="12" 
+                                   Foreground="#34495E" 
+                                   TextWrapping="Wrap"
+                                   Margin="0,8,0,0">
+                            L'IA va maintenant générer le courrier en utilisant ce modèle et les informations du patient actuel :
+                        </TextBlock>
+                        <TextBlock FontSize="12" 
+                                   Foreground="#7F8C8D" 
+                                   TextWrapping="Wrap"
+                                   Margin="15,8,0,0">
+                            • Contexte médical (notes récentes, diagnostics)
+                            <LineBreak/>
+                            • Informations démographiques (âge, sexe)
+                            <LineBreak/>
+                            • Traitements en cours
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Séparateur -->
+        <Separator Grid.Row="2" Margin="0,0,0,15"/>
+
+        <!-- Boutons d'action -->
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Button x:Name="BackButton"
+                    Grid.Column="0"
+                    Content="← Retour"
+                    HorizontalAlignment="Left"
+                    Width="120"
+                    Background="#ECF0F1"
+                    Click="BackButton_Click"/>
+
+            <Button x:Name="GenerateButton"
+                    Grid.Column="1"
+                    Content="✅ Générer le courrier"
+                    Width="180"
+                    Background="#27AE60"
+                    Foreground="White"
+                    FontWeight="SemiBold"
+                    Click="GenerateButton_Click"/>
+        </Grid>
+    </Grid>
+</Window>

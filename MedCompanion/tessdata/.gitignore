@@ -1,0 +1,5 @@
+# Ignorer les fichiers traineddata (trop volumineux pour Git)
+*.traineddata
+
+# Garder seulement le README
+!README_TESSDATA.md
