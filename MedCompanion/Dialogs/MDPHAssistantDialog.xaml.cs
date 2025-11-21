@@ -443,7 +443,7 @@ public partial class MDPHAssistantDialog : Window
             StatusText.Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0xAE, 0x60));
             GenerationProgressBar.Value = MDPHPageMapping.TotalSections;
 
-            SaveDocxButton.Content = "💾 Sauvegarder DOCX + MD";
+            SaveDocxButton.Content = "💾 Sauvegarder et Terminer";
             SaveDocxButton.IsEnabled = true;
             _hasUnsavedChanges = false; // Reset car c'est la génération initiale
         }
@@ -950,41 +950,70 @@ public partial class MDPHAssistantDialog : Window
 
             _hasUnsavedChanges = false;
 
+            // ---------------------------------------------------------
+            // NOUVEAU : Sauvegarder la synthèse JSON pour l'affichage dans la liste
+            // ---------------------------------------------------------
+            try
+            {
+                var demandes = new List<string>();
+                foreach (var kvp in _ajouterCheckboxes)
+                {
+                    if (kvp.Value.IsChecked == true)
+                    {
+                        demandes.Add(kvp.Value.Content.ToString());
+                    }
+                }
+
+                var synthesis = new MDPHSynthesis
+                {
+                    Patient = _selectedPatient.NomComplet,
+                    DateCreation = DateTime.Now,
+                    Demandes = demandes,
+                    AutresDemandes = _autresDemandesTextBox?.Text ?? "",
+                    FileName = Path.GetFileName(_pdfPath)
+                };
+
+                // Sauvegarder le JSON avec le même nom de base que le PDF
+                // _pdfPath est ex: .../MDPH_20251121_101500.pdf
+                // jsonPath sera: .../MDPH_20251121_101500.json
+                if (!string.IsNullOrEmpty(_pdfPath))
+                {
+                    var jsonPath = Path.ChangeExtension(_pdfPath, ".json");
+                    var jsonOptions = new System.Text.Json.JsonSerializerOptions { WriteIndented = true };
+                    var jsonString = System.Text.Json.JsonSerializer.Serialize(synthesis, jsonOptions);
+                    File.WriteAllText(jsonPath, jsonString);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Erreur sauvegarde synthèse JSON : {ex.Message}");
+                // On ne bloque pas la sauvegarde principale pour ça
+            }
+
             if (success && !string.IsNullOrEmpty(docxPath))
             {
-                string pdfReminder = !string.IsNullOrEmpty(_pdfPath) && File.Exists(_pdfPath)
-                    ? $"\n⚠️ N'oubliez pas de sauvegarder le PDF via la barre d'outils du viewer (icône 💾)\n   Fichier PDF : {Path.GetFileName(_pdfPath)}\n"
-                    : "";
-
+                // Message de succès plus clair pour le flux PDF manuel
                 var result = MessageBox.Show(
-                    $"✅ Réponses IA sauvegardées avec succès !\n\n" +
-                    $"📝 Markdown : {Path.GetFileName(mdFilePath)}\n" +
-                    $"📄 DOCX : {Path.GetFileName(docxPath)}\n" +
-                    pdfReminder +
-                    "\nVoulez-vous ouvrir le document DOCX avec les réponses générées ?",
+                    $"✅ Dossier MDPH sauvegardé !\n\n" +
+                    $"Le fichier PDF a été enregistré dans le dossier du patient.\n" +
+                    $"Les réponses IA ont également été exportées (DOCX/MD).\n\n" +
+                    $"Le formulaire apparaîtra maintenant dans la liste des formulaires sauvegardés.",
                     "Sauvegarde réussie",
-                    MessageBoxButton.YesNo,
+                    MessageBoxButton.OK,
                     MessageBoxImage.Information);
-
-                if (result == MessageBoxResult.Yes && File.Exists(docxPath))
-                {
-                    System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                    {
-                        FileName = docxPath,
-                        UseShellExecute = true
-                    });
-                }
             }
             else
             {
                 MessageBox.Show(
-                    $"⚠️ Formulaire sauvegardé mais erreur lors de l'export DOCX :\n\n{message}",
+                    $"⚠️ Dossier sauvegardé mais erreur lors de l'export DOCX :\n\n{message}",
                     "Avertissement",
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
             }
 
+            // Important : définir le résultat sur true pour que la fenêtre parente rafraîchisse la liste
             DialogResult = true;
+            Close();
         }
         catch (Exception ex)
         {
@@ -996,7 +1025,7 @@ public partial class MDPHAssistantDialog : Window
         }
         finally
         {
-            SaveDocxButton.Content = "💾 Sauvegarder DOCX + MD";
+            SaveDocxButton.Content = "💾 Sauvegarder et Terminer";
             SaveDocxButton.IsEnabled = true;
         }
     }

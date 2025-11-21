@@ -176,6 +176,11 @@ namespace MedCompanion.Views.Formulaires
         /// </summary>
         private void LoadPatientFormulaires()
         {
+            // Réinitialiser l'aperçu de la synthèse
+            FormulaireSynthesisPreview.Text = "Sélectionnez un formulaire pour voir la synthèse.";
+            FormulaireSynthesisPreview.Foreground = new SolidColorBrush(Colors.Gray);
+            FormulaireSynthesisPreview.FontWeight = FontWeights.Normal;
+
             if (_currentPatient == null)
             {
                 FormulairesList.ItemsSource = null;
@@ -185,18 +190,41 @@ namespace MedCompanion.Views.Formulaires
 
             try
             {
-                var formulairesDir = Path.Combine(_currentPatient.DirectoryPath, "formulaires");
+                var directoriesToScan = new List<string>();
 
-                if (!Directory.Exists(formulairesDir))
+                // 1. Dossier "legacy" (à la racine du patient) - utilisé par PAI
+                var legacyDir = Path.Combine(_currentPatient.DirectoryPath, "formulaires");
+                if (Directory.Exists(legacyDir))
+                {
+                    directoriesToScan.Add(legacyDir);
+                }
+
+                // 2. Dossier "nouveau" (par année) - utilisé par MDPH
+                if (_pathService != null)
+                {
+                    var newDir = _pathService.GetFormulairesDirectory(_currentPatient.NomComplet);
+                    // Éviter les doublons si c'est le même dossier
+                    if (Directory.Exists(newDir) && !directoriesToScan.Contains(newDir, StringComparer.OrdinalIgnoreCase))
+                    {
+                        directoriesToScan.Add(newDir);
+                    }
+                }
+
+                if (directoriesToScan.Count == 0)
                 {
                     FormulairesList.ItemsSource = null;
                     FormulairesCountLabel.Text = "0 formulaires";
                     return;
                 }
 
-                // Récupérer tous les fichiers PDF et DOCX
-                var pdfFiles = Directory.GetFiles(formulairesDir, "*.pdf", SearchOption.TopDirectoryOnly);
-                var docxFiles = Directory.GetFiles(formulairesDir, "*.docx", SearchOption.TopDirectoryOnly);
+                var pdfFiles = new List<string>();
+                // var docxFiles = new List<string>(); // DOCX masqués à la demande de l'utilisateur
+
+                foreach (var dir in directoriesToScan)
+                {
+                    pdfFiles.AddRange(Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly));
+                    // docxFiles.AddRange(Directory.GetFiles(dir, "*.docx", SearchOption.TopDirectoryOnly));
+                }
 
                 var formulaires = new List<object>();
 
@@ -231,36 +259,13 @@ namespace MedCompanion.Views.Formulaires
                     });
                 }
 
-                // Traiter les DOCX
+                // DOCX masqués
+                /*
                 foreach (var docxPath in docxFiles)
                 {
-                    var fileName = Path.GetFileName(docxPath);
-                    var fileInfo = new FileInfo(docxPath);
-
-                    // Détecter le type
-                    string typeLabel;
-                    if (fileName.StartsWith("PAI_", StringComparison.OrdinalIgnoreCase))
-                    {
-                        typeLabel = "🏫 PAI";
-                    }
-                    else if (fileName.StartsWith("MDPH_", StringComparison.OrdinalIgnoreCase))
-                    {
-                        typeLabel = "📋 MDPH";
-                    }
-                    else
-                    {
-                        typeLabel = "📄 Autre";
-                    }
-
-                    formulaires.Add(new
-                    {
-                        TypeLabel = typeLabel,
-                        DateLabel = fileInfo.LastWriteTime.ToString("dd/MM/yyyy HH:mm"),
-                        FileName = fileName,
-                        FilePath = docxPath,
-                        Date = fileInfo.LastWriteTime
-                    });
+                    // ... (code masqué)
                 }
+                */
 
                 // Trier par date décroissante
                 var sortedFormulaires = formulaires.OrderByDescending(f =>
@@ -355,28 +360,66 @@ namespace MedCompanion.Views.Formulaires
                         {
                             // Charger et désérialiser le JSON
                             var jsonContent = File.ReadAllText(jsonPath);
-                            var synthesis = System.Text.Json.JsonSerializer.Deserialize<PAISynthesis>(jsonContent);
 
-                            if (synthesis != null)
+                            // Essayer de détecter si c'est un PAI ou MDPH
+                            if (Path.GetFileName(filePath).StartsWith("MDPH_", StringComparison.OrdinalIgnoreCase))
                             {
-                                // Construire la synthèse formatée avec emojis et formatage
-                                var synthesisText = $"📋 SYNTHÈSE PAI\n\n" +
-                                                  $"📄 Fichier : {Path.GetFileName(filePath)}\n" +
-                                                  $"📅 Date de création : {synthesis.DateCreation:dd/MM/yyyy HH:mm}\n" +
-                                                  $"👤 Patient : {synthesis.Patient}\n\n" +
-                                                  $"🎯 Motif du PAI :\n\n" +
-                                                  $"{synthesis.Motif}\n\n" +
-                                                  $"━━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
-                                                  $"💡 Note : Double-cliquez sur le formulaire dans la liste pour l'ouvrir dans votre lecteur PDF.";
+                                var synthesis = System.Text.Json.JsonSerializer.Deserialize<MDPHSynthesis>(jsonContent);
+                                if (synthesis != null)
+                                {
+                                    var demandesStr = synthesis.Demandes != null && synthesis.Demandes.Any() 
+                                        ? string.Join("\n• ", synthesis.Demandes) 
+                                        : "Aucune demande spécifique cochée";
+                                    
+                                    if (!string.IsNullOrWhiteSpace(synthesis.AutresDemandes))
+                                    {
+                                        demandesStr += $"\n\n📝 Autres demandes :\n{synthesis.AutresDemandes}";
+                                    }
 
-                                // Afficher dans le TextBlock d'aperçu
-                                FormulaireSynthesisPreview.Text = synthesisText;
-                                FormulaireSynthesisPreview.Foreground = new SolidColorBrush(Colors.Black);
-                                FormulaireSynthesisPreview.FontWeight = FontWeights.Normal;
+                                    var synthesisText = $"📋 SYNTHÈSE MDPH\n\n" +
+                                                      $"📄 Fichier : {Path.GetFileName(filePath)}\n" +
+                                                      $"📅 Date : {synthesis.DateCreation:dd/MM/yyyy HH:mm}\n" +
+                                                      $"👤 Patient : {synthesis.Patient}\n\n" +
+                                                      $"📌 Demandes formulées :\n" +
+                                                      $"• {demandesStr}\n\n" +
+                                                      $"━━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+                                                      $"💡 Note : Double-cliquez sur le formulaire pour l'ouvrir.";
 
-                                StatusChanged?.Invoke(this, $"✓ Synthèse PAI affichée - Motif : {synthesis.Motif}");
+                                    FormulaireSynthesisPreview.Text = synthesisText;
+                                    FormulaireSynthesisPreview.Foreground = new SolidColorBrush(Colors.Black);
+                                    FormulaireSynthesisPreview.FontWeight = FontWeights.Normal;
+                                    
+                                    StatusChanged?.Invoke(this, $"✓ Synthèse MDPH affichée");
+                                    return;
+                                }
                             }
-                        }
+                            else
+                            {
+                                // Cas PAI existant
+                                var synthesis = System.Text.Json.JsonSerializer.Deserialize<PAISynthesis>(jsonContent);
+
+                                if (synthesis != null)
+                                {
+                                    // Construire la synthèse formatée avec emojis et formatage
+                                    var synthesisText = $"📋 SYNTHÈSE PAI\n\n" +
+                                                      $"📄 Fichier : {Path.GetFileName(filePath)}\n" +
+                                                      $"📅 Date de création : {synthesis.DateCreation:dd/MM/yyyy HH:mm}\n" +
+                                                      $"👤 Patient : {synthesis.Patient}\n\n" +
+                                                      $"🎯 Motif du PAI :\n\n" +
+                                                      $"{synthesis.Motif}\n\n" +
+                                                      $"━━━━━━━━━━━━━━━━━━━━━━━━━\n\n" +
+                                                      $"💡 Note : Double-cliquez sur le formulaire dans la liste pour l'ouvrir dans votre lecteur PDF.";
+
+                                    // Afficher dans le TextBlock d'aperçu
+                                    FormulaireSynthesisPreview.Text = synthesisText;
+                                    FormulaireSynthesisPreview.Foreground = new SolidColorBrush(Colors.Black);
+                                    FormulaireSynthesisPreview.FontWeight = FontWeights.Normal;
+
+                                    StatusChanged?.Invoke(this, $"✓ Synthèse PAI affichée - Motif : {synthesis.Motif}");
+                                    return;
+                                }
+                            }
+                            }
                         catch (Exception ex)
                         {
                             StatusChanged?.Invoke(this, $"⚠️ Erreur lecture synthèse : {ex.Message}");
