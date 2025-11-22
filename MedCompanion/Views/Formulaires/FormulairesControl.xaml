@@ -217,6 +217,8 @@
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="10"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="10"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <TextBlock Grid.Row="0"
@@ -278,18 +280,71 @@
 
             <!-- Boutons actions -->
             <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
-                <TextBlock x:Name="FormulairesCountLabel"
-                          Text="0 formulaires"
-                          FontSize="12"
-                          FontWeight="SemiBold"
-                          Foreground="#7F8C8D"
-                          VerticalAlignment="Center"
-                          Margin="0,0,15,0"/>
+                <Button x:Name="NewFromTemplateButton"
+                        Content="📂 Nouveau depuis Modèle"
+                        Height="35"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Background="#8E44AD"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Margin="0,0,10,0"
+                        Click="NewFromTemplateButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="10,0">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#9B59B6"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
+                <Button x:Name="ImportScannedFormButton"
+                        Content="📄 Importer formulaire scanné"
+                        Height="35"
+                        FontSize="12"
+                        FontWeight="SemiBold"
+                        Background="#3498DB"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Margin="0,0,10,0"
+                        Click="ImportScannedFormButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="10,0">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#2980B9"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+                
                 <Button x:Name="SupprimerFormulaireButton"
                         Content="🗑️ Supprimer"
                         Height="35"
-                        Padding="12,0"
                         FontSize="12"
                         FontWeight="SemiBold"
                         Background="#E74C3C"
@@ -297,13 +352,14 @@
                         BorderThickness="0"
                         Cursor="Hand"
                         IsEnabled="False"
+                        Margin="0,0,10,0"
                         Click="SupprimerFormulaireButton_Click">
                     <Button.Style>
                         <Style TargetType="Button">
                             <Setter Property="Template">
                                 <Setter.Value>
                                     <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="10,0">
                                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                         </Border>
                                     </ControlTemplate>
@@ -320,13 +376,19 @@
                         </Style>
                     </Button.Style>
                 </Button>
+                
+                <TextBlock x:Name="FormulairesCountLabel"
+                          Text="0 formulaires"
+                          FontSize="12"
+                          Foreground="#7F8C8D"
+                          Margin="0,0,0,0"
+                          VerticalAlignment="Center"/>
             </StackPanel>
-        </Grid>
 
-        <!-- Zone de prévisualisation synthèse PAI -->
-        <Border Grid.Row="4"
-                BorderBrush="#BDC3C7"
+            <!-- Aperçu de la synthèse -->
+            <Border Grid.Row="5"
                 BorderThickness="1"
+                BorderBrush="#E0E0E0"
                 CornerRadius="6"
                 Background="#FAFAFA"
                 MinHeight="100">
@@ -338,5 +400,6 @@
                           TextWrapping="Wrap"/>
             </ScrollViewer>
         </Border>
+        </Grid>
     </Grid>
 </UserControl>

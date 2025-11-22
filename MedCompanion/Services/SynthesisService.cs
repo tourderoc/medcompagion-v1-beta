@@ -177,7 +177,7 @@ public class SynthesisService
         if (Directory.Exists(formulairesDir))
         {
             var formulaires = Directory.GetFiles(formulairesDir, "*.*")
-                .Where(f => (f.EndsWith(".md") || f.EndsWith(".docx")) && 
+                .Where(f => (f.EndsWith(".md") || f.EndsWith(".docx") || f.EndsWith(".json")) && 
                            File.GetLastWriteTime(f) > lastSynthesisDate.Value);
             newItems.AddRange(formulaires.Select(f => $"Formulaire: {Path.GetFileName(f)}"));
         }
@@ -306,19 +306,55 @@ public class SynthesisService
             }
         }
 
-        // Formulaires (uniquement .md)
+        // Formulaires (MDPH, PAI, etc.)
         var formulairesDir = _pathService.GetFormulairesDirectory(patientName);
         if (Directory.Exists(formulairesDir))
         {
             content.AppendLine("# FORMULAIRES\n");
-            var formulaires = Directory.GetFiles(formulairesDir, "*.md")
+            var formulaires = Directory.GetFiles(formulairesDir, "*.*")
+                .Where(f => f.EndsWith(".md") || f.EndsWith(".json"))
                 .OrderByDescending(f => File.GetLastWriteTime(f));
 
             foreach (var formulaire in formulaires)
             {
-                content.AppendLine($"## {Path.GetFileName(formulaire)}");
-                content.AppendLine(RemoveYamlFrontMatter(File.ReadAllText(formulaire)));
-                content.AppendLine();
+                if (formulaire.EndsWith(".json"))
+                {
+                    try
+                    {
+                        var jsonContent = File.ReadAllText(formulaire);
+                        var fileName = Path.GetFileName(formulaire);
+
+                        if (fileName.StartsWith("MDPH_", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var synthesis = System.Text.Json.JsonSerializer.Deserialize<MDPHSynthesis>(jsonContent);
+                            if (synthesis != null)
+                            {
+                                content.AppendLine($"## Dossier MDPH du {synthesis.DateCreation:dd/MM/yyyy}");
+                                content.AppendLine($"Demandes : {string.Join(", ", synthesis.Demandes)}");
+                                if (!string.IsNullOrWhiteSpace(synthesis.AutresDemandes))
+                                    content.AppendLine($"Autres : {synthesis.AutresDemandes}");
+                                content.AppendLine();
+                            }
+                        }
+                        else if (fileName.StartsWith("PAI_", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var synthesis = System.Text.Json.JsonSerializer.Deserialize<PAISynthesis>(jsonContent);
+                            if (synthesis != null)
+                            {
+                                content.AppendLine($"## PAI du {synthesis.DateCreation:dd/MM/yyyy}");
+                                content.AppendLine($"Motif : {synthesis.Motif}");
+                                content.AppendLine();
+                            }
+                        }
+                    }
+                    catch { /* Ignorer JSON malformé */ }
+                }
+                else
+                {
+                    content.AppendLine($"## {Path.GetFileName(formulaire)}");
+                    content.AppendLine(RemoveYamlFrontMatter(File.ReadAllText(formulaire)));
+                    content.AppendLine();
+                }
             }
         }
 
@@ -450,13 +486,39 @@ public class SynthesisService
 
                     if (filePath.EndsWith(".json"))
                     {
-                        // Chat JSON
                         var jsonContent = File.ReadAllText(filePath);
-                        var exchange = System.Text.Json.JsonSerializer.Deserialize<ChatExchange>(jsonContent);
-                        if (exchange != null)
+                        
+                        if (type == "Discussion")
                         {
-                            content.AppendLine($"**Question:** {exchange.Question}");
-                            content.AppendLine($"**Réponse:** {exchange.Response}");
+                            var exchange = System.Text.Json.JsonSerializer.Deserialize<ChatExchange>(jsonContent);
+                            if (exchange != null)
+                            {
+                                content.AppendLine($"**Question:** {exchange.Question}");
+                                content.AppendLine($"**Réponse:** {exchange.Response}");
+                            }
+                        }
+                        else if (type == "Formulaire")
+                        {
+                            if (fileName.StartsWith("MDPH_", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var synthesis = System.Text.Json.JsonSerializer.Deserialize<MDPHSynthesis>(jsonContent);
+                                if (synthesis != null)
+                                {
+                                    content.AppendLine($"Dossier MDPH du {synthesis.DateCreation:dd/MM/yyyy}");
+                                    content.AppendLine($"Demandes : {string.Join(", ", synthesis.Demandes)}");
+                                    if (!string.IsNullOrWhiteSpace(synthesis.AutresDemandes))
+                                        content.AppendLine($"Autres : {synthesis.AutresDemandes}");
+                                }
+                            }
+                            else if (fileName.StartsWith("PAI_", StringComparison.OrdinalIgnoreCase))
+                            {
+                                var synthesis = System.Text.Json.JsonSerializer.Deserialize<PAISynthesis>(jsonContent);
+                                if (synthesis != null)
+                                {
+                                    content.AppendLine($"PAI du {synthesis.DateCreation:dd/MM/yyyy}");
+                                    content.AppendLine($"Motif : {synthesis.Motif}");
+                                }
+                            }
                         }
                     }
                     else if (filePath.EndsWith(".md"))

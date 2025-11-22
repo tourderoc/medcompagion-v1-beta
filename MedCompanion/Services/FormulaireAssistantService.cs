@@ -473,6 +473,35 @@ Au regard de la sévérité du handicap et de son retentissement majeur sur tous
             return success ? result : $"Erreur: {result}";
         }
 
+        /// <summary>
+        /// Génère du contenu personnalisé sur demande pour l'assistant PAI.
+        /// </summary>
+        public async Task<string> GenerateCustomContent(PatientMetadata patient, string instruction, string style, string length)
+        {
+            var context = await LoadPatientContext(patient);
+
+            var prompt = $@"Génère une réponse pour le formulaire PAI (Projet d'Accueil Individualisé) basée sur l'instruction suivante.
+
+INSTRUCTION UTILISATEUR :
+""{instruction}""
+
+CONTRAINTES DE FORME :
+- Style : {style}
+- Longueur : {length}
+
+INSTRUCTIONS DE RÉDACTION :
+- Utilise UNIQUEMENT les informations du contexte patient fourni ci-dessous.
+- NE RIEN INVENTER. Si l'information n'est pas dans le contexte, dis-le clairement.
+- Adapte le ton pour un document officiel scolaire/médical.
+- Sois précis et factuel.
+
+CONTEXTE PATIENT :
+{context}";
+
+            var (success, result) = await _openAIService.ChatAvecContexteAsync(context, prompt);
+            return success ? result : $"Erreur lors de la génération : {result}";
+        }
+
         private async Task<string> LoadPatientContext(PatientMetadata patient)
         {
             var patientFolder = Path.Combine(_patientsBasePath, $"{patient.Nom}_{patient.Prenom}");

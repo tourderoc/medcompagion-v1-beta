@@ -1,0 +1,377 @@
+<Window x:Class="MedCompanion.Dialogs.PAIAssistantDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+        mc:Ignorable="d"
+        Title="Assistant PAI - Génération Assistée par IA"
+        Height="900" Width="1400" MinHeight="700" MinWidth="1200"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5">
+
+    <Window.Resources>
+        <!-- Style pour les boutons d'action -->
+        <Style x:Key="ActionButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="5,0"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.8"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="400"/>
+            <ColumnDefinition Width="5"/>
+            <ColumnDefinition Width="*" MinWidth="400"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ========== COLONNE GAUCHE : INTERACTION IA ========== -->
+        <Border Grid.Column="0" Background="White" BorderBrush="#DDD" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <!-- Header Patient Info -->
+                <Border DockPanel.Dock="Top" Background="#8E44AD" Padding="15,10">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Bloc Prénom -->
+                            <Border Grid.Column="0" Background="#7D3C98" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
+                                <StackPanel>
+                                    <TextBlock Text="Prénom" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PatientPrenomText"
+                                                   Text="..."
+                                                   Foreground="White"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                        <Button x:Name="CopyPrenomButton"
+                                                Content="📋"
+                                                Padding="6,3"
+                                                FontSize="12"
+                                                Background="#5B2C6F"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                ToolTip="Copier le prénom"
+                                                Click="CopyPrenomButton_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Bloc Nom -->
+                            <Border Grid.Column="1" Background="#7D3C98" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
+                                <StackPanel>
+                                    <TextBlock Text="Nom" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PatientNomText"
+                                                   Text="..."
+                                                   Foreground="White"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                        <Button x:Name="CopyNomButton"
+                                                Content="📋"
+                                                Padding="6,3"
+                                                FontSize="12"
+                                                Background="#5B2C6F"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                ToolTip="Copier le nom"
+                                                Click="CopyNomButton_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Bloc Date de naissance -->
+                            <Border Grid.Column="2" Background="#7D3C98" Padding="10,8" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="Date de naissance" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PatientDobText"
+                                                   Text="..."
+                                                   Foreground="White"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                        <Button x:Name="CopyDobButton"
+                                                Content="📋"
+                                                Padding="6,3"
+                                                FontSize="12"
+                                                Background="#5B2C6F"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                ToolTip="Copier la date de naissance"
+                                                Click="CopyDobButton_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+
+                        <!-- Bloc Motif PAI -->
+                        <Border Background="#7D3C98" Padding="10,8" CornerRadius="4">
+                            <StackPanel>
+                                <TextBlock Text="Motif du PAI" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,5"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <ComboBox x:Name="MotifComboBox" 
+                                              IsEditable="True"
+                                              FontSize="13"
+                                              Padding="5"
+                                              SelectionChanged="MotifComboBox_SelectionChanged"
+                                              LostFocus="MotifComboBox_LostFocus">
+                                        <ComboBoxItem Content="Administration de médicament à l'école"/>
+                                        <ComboBoxItem Content="Aménagement scolaire"/>
+                                        <ComboBoxItem Content="Allergie alimentaire"/>
+                                        <ComboBoxItem Content="Asthme"/>
+                                        <ComboBoxItem Content="Diabète"/>
+                                        <ComboBoxItem Content="Épilepsie"/>
+                                    </ComboBox>
+                                    
+                                    <Button x:Name="SaveMotifButton"
+                                            Grid.Column="1"
+                                            Content="💾"
+                                            Margin="5,0,0,0"
+                                            Padding="8,5"
+                                            Background="#5B2C6F"
+                                            Foreground="White"
+                                            BorderThickness="0"
+                                            Cursor="Hand"
+                                            ToolTip="Sauvegarder le motif"
+                                            Click="SaveMotifButton_Click"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- Footer Buttons -->
+                <Border DockPanel.Dock="Bottom" Background="#ECF0F1" Padding="15,10" BorderBrush="#DDD" BorderThickness="0,1,0,0">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="CloseButton"
+                                Content="Fermer"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#95A5A6"
+                                Foreground="White"
+                                BorderBrush="#7F8C8D"
+                                Click="CloseButton_Click"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Zone Interaction IA -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20">
+                    <StackPanel>
+                        <TextBlock Text="Assistant IA PAI" FontSize="18" FontWeight="Bold" Margin="0,0,0,15" Foreground="#2C3E50"/>
+                        
+                        <TextBlock Text="Que souhaitez-vous générer ?" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                        <TextBox x:Name="InstructionTextBox"
+                                 Height="80"
+                                 TextWrapping="Wrap"
+                                 AcceptsReturn="True"
+                                 Padding="10"
+                                 FontSize="14"
+                                 BorderBrush="#BDC3C7"
+                                 VerticalScrollBarVisibility="Auto"
+                                 Margin="0,0,0,15">
+                            <TextBox.Resources>
+                                <Style TargetType="{x:Type Border}">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </TextBox.Resources>
+                        </TextBox>
+
+                        <Grid Margin="0,0,0,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="15"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Style -->
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Style de réponse" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                                <ComboBox x:Name="StyleComboBox" Padding="8" SelectedIndex="0">
+                                    <ComboBoxItem Content="Liste à puces (Tirets)"/>
+                                    <ComboBoxItem Content="Paragraphe rédigé"/>
+                                    <ComboBoxItem Content="Concis / Mots-clés"/>
+                                </ComboBox>
+                            </StackPanel>
+
+                            <!-- Longueur -->
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Longueur souhaitée" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,5"/>
+                                <ComboBox x:Name="LengthComboBox" Padding="8" SelectedIndex="1">
+                                    <ComboBoxItem Content="Court (quelques lignes)"/>
+                                    <ComboBoxItem Content="Moyen (standard)"/>
+                                    <ComboBoxItem Content="Détaillé"/>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+
+                        <Button x:Name="GenerateButton"
+                                Content="✨ Générer avec l'IA"
+                                Height="40"
+                                FontSize="14"
+                                FontWeight="Bold"
+                                Background="#8E44AD"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Margin="0,0,0,20"
+                                Click="GenerateButton_Click">
+                            <Button.Resources>
+                                <Style TargetType="{x:Type Border}">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </Button.Resources>
+                        </Button>
+
+                        <Separator Background="#DDD" Margin="0,0,0,20"/>
+
+                        <Grid Margin="0,0,0,5">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Réponse générée" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                            <Button x:Name="CopyResponseButton"
+                                    Grid.Column="1"
+                                    Content="📋 Copier la réponse"
+                                    Padding="10,5"
+                                    Background="#27AE60"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Cursor="Hand"
+                                    IsEnabled="False"
+                                    Click="CopyResponseButton_Click">
+                                <Button.Resources>
+                                    <Style TargetType="{x:Type Border}">
+                                        <Setter Property="CornerRadius" Value="4"/>
+                                    </Style>
+                                </Button.Resources>
+                            </Button>
+                        </Grid>
+
+                        <TextBox x:Name="ResponseTextBox"
+                                 Height="300"
+                                 TextWrapping="Wrap"
+                                 AcceptsReturn="True"
+                                 Padding="10"
+                                 FontSize="14"
+                                 BorderBrush="#BDC3C7"
+                                 VerticalScrollBarVisibility="Auto"
+                                 IsReadOnly="False">
+                            <TextBox.Resources>
+                                <Style TargetType="{x:Type Border}">
+                                    <Setter Property="CornerRadius" Value="4"/>
+                                </Style>
+                            </TextBox.Resources>
+                        </TextBox>
+                        
+                        <TextBlock x:Name="StatusText" 
+                                   Text="" 
+                                   Margin="0,10,0,0" 
+                                   Foreground="#27AE60" 
+                                   FontWeight="SemiBold"
+                                   HorizontalAlignment="Right"/>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
+        <!-- ========== GRIDSPLITTER ========== -->
+        <GridSplitter Grid.Column="1"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Background="#BDC3C7"
+                      ShowsPreview="False"
+                      Cursor="SizeWE"/>
+
+        <!-- ========== COLONNE DROITE : PDF VIEWER ========== -->
+        <Border Grid.Column="2" Background="White">
+            <DockPanel>
+                <!-- Toolbar PDF -->
+                <Border DockPanel.Dock="Top" Background="#34495E" Padding="10,8">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="📄 Formulaire PAI"
+                                   Foreground="White"
+                                   FontSize="14"
+                                   FontWeight="SemiBold"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,20,0"/>
+
+                        <Button x:Name="PdfZoomInButton"
+                                Content="🔍 +"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#2C3E50"
+                                Foreground="White"
+                                BorderBrush="#1C2833"
+                                Click="PdfZoomInButton_Click"
+                                IsEnabled="False"/>
+
+                        <Button x:Name="PdfZoomOutButton"
+                                Content="🔍 -"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#2C3E50"
+                                Foreground="White"
+                                BorderBrush="#1C2833"
+                                Click="PdfZoomOutButton_Click"
+                                IsEnabled="False"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- WebView2 Container -->
+                <Border Background="#95A5A6" Padding="2">
+                    <Grid x:Name="PdfViewerContainer">
+                        <!-- WebView2 sera ajouté dynamiquement dans le code-behind -->
+                        <TextBlock x:Name="PdfFallbackMessage"
+                                   Text="⚠ Chargement du PDF..."
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="16"
+                                   Foreground="#555"
+                                   Visibility="Visible"/>
+                    </Grid>
+                </Border>
+            </DockPanel>
+        </Border>
+    </Grid>
+</Window>

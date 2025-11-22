@@ -1,0 +1,627 @@
+<Window x:Class="MedCompanion.Dialogs.ScannedFormEditorDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Éditeur de formulaire scanné"
+        Height="800" Width="1400"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Maximized">
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="450"/>
+            <ColumnDefinition Width="5"/>
+            <ColumnDefinition Width="*"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- LEFT PANEL: Patient Info + AI Assistant -->
+        <Border Grid.Column="0" Background="#F8F9FA" Padding="20">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <!-- Patient Info Header -->
+                    <TextBlock Text="📋 Informations Patient" FontSize="16" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                    
+                    <Grid Margin="0,0,0,20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="10"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="10"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+                        
+                        <StackPanel Grid.Row="0" Orientation="Horizontal">
+                            <TextBlock Text="Prénom: " FontWeight="SemiBold" Foreground="#34495E"/>
+                            <TextBlock x:Name="PatientPrenomText" Text="..." Foreground="#2C3E50"/>
+                            <Button Content="📋" Width="25" Height="25" Margin="5,0,0,0" Click="CopyPrenomButton_Click" ToolTip="Copier"/>
+                        </StackPanel>
+                        
+                        <StackPanel Grid.Row="2" Orientation="Horizontal">
+                            <TextBlock Text="Nom: " FontWeight="SemiBold" Foreground="#34495E"/>
+                            <TextBlock x:Name="PatientNomText" Text="..." Foreground="#2C3E50"/>
+                            <Button Content="📋" Width="25" Height="25" Margin="5,0,0,0" Click="CopyNomButton_Click" ToolTip="Copier"/>
+                        </StackPanel>
+                        
+                        <StackPanel Grid.Row="4" Orientation="Horizontal">
+                            <TextBlock Text="Date de naissance: " FontWeight="SemiBold" Foreground="#34495E"/>
+                            <TextBlock x:Name="PatientDobText" Text="..." Foreground="#2C3E50"/>
+                            <Button Content="📋" Width="25" Height="25" Margin="5,0,0,0" Click="CopyDobButton_Click" ToolTip="Copier"/>
+                        </StackPanel>
+                    </Grid>
+
+
+                    <!-- Add Zone Button -->
+                    <Button x:Name="AddZoneButton" Content="➕ Ajouter zone texte" Height="40" FontSize="13" FontWeight="SemiBold"
+                            Background="#9B59B6" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,0,10"
+                            Click="AddZoneButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#8E44AD"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Zone Counter -->
+                    <TextBlock x:Name="ZoneCountText" Text="Aucune zone" FontSize="12" Foreground="#7F8C8D" 
+                               HorizontalAlignment="Center" Margin="0,0,0,15"/>
+
+                    <!-- Selected Zone Info Panel -->
+                    <Border x:Name="SelectedZonePanel" Background="#E8F8F5" BorderBrush="#27AE60" BorderThickness="2" 
+                            CornerRadius="8" Padding="15" Margin="0,0,0,20" Visibility="Collapsed">
+                        <StackPanel>
+                            <TextBlock Text="📍 Zone sélectionnée" FontSize="13" FontWeight="Bold" Foreground="#27AE60" Margin="0,0,0,10"/>
+                            
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Position:" FontSize="10" Foreground="#7F8C8D" Margin="0,0,0,2"/>
+                                    <TextBlock x:Name="ZonePositionText" Text="X: 0, Y: 0" FontSize="11" Foreground="#2C3E50" FontWeight="SemiBold"/>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Taille:" FontSize="10" Foreground="#7F8C8D" Margin="0,0,0,2"/>
+                                    <TextBlock x:Name="ZoneSizeText" Text="L: 0, H: 0" FontSize="11" Foreground="#2C3E50" FontWeight="SemiBold"/>
+                                </StackPanel>
+                            </Grid>
+                            
+                            <TextBlock Text="Texte:" FontSize="10" Foreground="#7F8C8D" Margin="0,0,0,2"/>
+                            <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="6" MaxHeight="60" Margin="0,0,0,10">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <TextBlock x:Name="ZoneTextPreview" Text="(vide)" FontSize="11" Foreground="#7F8C8D" TextWrapping="Wrap"/>
+                                </ScrollViewer>
+                            </Border>
+                            
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="5"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <Button Grid.Column="0" Content="✏️ Éditer" Height="32" FontSize="11" FontWeight="SemiBold"
+                                        Background="#3498DB" Foreground="White" BorderThickness="0" Cursor="Hand"
+                                        Click="EditZoneButton_Click">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#2980B9"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                
+                                <Button Grid.Column="2" Content="🗑️ Supprimer" Height="32" FontSize="11" FontWeight="SemiBold"
+                                        Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand"
+                                        Click="DeleteZoneButton_Click">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#C0392B"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- AI Interaction Box -->
+                    <Border Background="White" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="8" Padding="15">
+                        <StackPanel>
+                            <TextBlock Text="🤖 Assistant IA" FontSize="14" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="Instruction:" FontSize="12" Foreground="#7F8C8D" Margin="0,0,0,5"/>
+                            <TextBox x:Name="InstructionTextBox" Height="60" TextWrapping="Wrap" AcceptsReturn="True"
+                                     Padding="8" FontSize="12" Margin="0,0,0,10"
+                                     BorderBrush="#BDC3C7" BorderThickness="1"/>
+                            
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Style:" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,3"/>
+                                    <ComboBox x:Name="StyleComboBox" Height="30" FontSize="11" SelectedIndex="0">
+                                        <ComboBoxItem Content="Standard"/>
+                                        <ComboBoxItem Content="Tirets"/>
+                                        <ComboBoxItem Content="Paragraphe"/>
+                                        <ComboBoxItem Content="Rédactionnel"/>
+                                    </ComboBox>
+                                </StackPanel>
+                                
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Longueur:" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,3"/>
+                                    <ComboBox x:Name="LengthComboBox" Height="30" FontSize="11" SelectedIndex="1">
+                                        <ComboBoxItem Content="Court"/>
+                                        <ComboBoxItem Content="Moyen"/>
+                                        <ComboBoxItem Content="Long"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Grid>
+                            
+                            <Button x:Name="GenerateButton" Content="✨ Générer avec l'IA" Height="35" FontSize="12" FontWeight="SemiBold"
+                                    Background="#3498DB" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,0,10"
+                                    Click="GenerateButton_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#2980B9"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            
+                            <TextBlock Text="Résultat:" FontSize="12" Foreground="#7F8C8D" Margin="0,0,0,5"/>
+                            <Border Background="#F8F9FA" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="8" MinHeight="100">
+                                <TextBox x:Name="ResponseTextBox" TextWrapping="Wrap" AcceptsReturn="True" BorderThickness="0"
+                                         Background="Transparent" FontSize="12" IsReadOnly="True"/>
+                            </Border>
+                            
+                            <Button x:Name="CopyResponseButton" Content="📋 Copier" Height="30" FontSize="11" Margin="0,5,0,0"
+                                    Background="#27AE60" Foreground="White" BorderThickness="0" Cursor="Hand" IsEnabled="False"
+                                    Click="CopyResponseButton_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#229954"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Background" Value="#BDC3C7"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            
+                            <TextBlock x:Name="StatusText" Text="" FontSize="11" Foreground="#27AE60" Margin="0,5,0,0" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Save and Close Buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                        <Button Content="💾 Enregistrer" Height="40" Width="130" FontSize="13" FontWeight="SemiBold"
+                                Background="#27AE60" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"
+                                Click="SaveButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#229954"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        
+                        <Button Content="❌ Fermer" Height="40" Width="130" FontSize="13" FontWeight="SemiBold"
+                                Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand"
+                                Click="CloseButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#C0392B"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- SPLITTER -->
+        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#BDC3C7"/>
+
+        <!-- RIGHT PANEL: PDF Viewer with Canvas Overlay -->
+        <Border Grid.Column="2" Background="White" Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Toolbar at top of PDF viewer -->
+                <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="10,8">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                        <!-- Drawing Mode Toggle -->
+                        <Button x:Name="PdfAddZoneButton" Content="➕ Ajouter zone texte" Height="36" FontSize="12" FontWeight="SemiBold"
+                                Background="#9B59B6" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,15,0"
+                                Click="AddZoneButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="12,0">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#8E44AD"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <!-- Separator -->
+                        <Border Width="1" Background="#BDC3C7" Margin="0,4,15,4"/>
+
+                        <!-- Zoom Controls -->
+                        <Button x:Name="PdfZoomOutButton" Content="🔍−" Width="36" Height="36" FontSize="14" Margin="0,0,5,0"
+                                Background="#95A5A6" Foreground="White" BorderThickness="0" Cursor="Hand" IsEnabled="False"
+                                Click="PdfZoomOutButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#7F8C8D"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Background" Value="#BDC3C7"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        
+                        <Button x:Name="PdfZoomInButton" Content="🔍+" Width="36" Height="36" FontSize="14"
+                                Background="#95A5A6" Foreground="White" BorderThickness="0" Cursor="Hand" IsEnabled="False"
+                                Click="PdfZoomInButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#7F8C8D"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Background" Value="#BDC3C7"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <!-- Zone Counter -->
+                        <TextBlock x:Name="PdfZoneCountText" Text="Aucune zone" FontSize="11" Foreground="#7F8C8D" 
+                                   VerticalAlignment="Center" Margin="15,0,0,0"/>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#2980B9"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            
+                            <TextBlock Text="Résultat:" FontSize="12" Foreground="#7F8C8D" Margin="0,0,0,5"/>
+                            <Border Background="#F8F9FA" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="4" Padding="8" MinHeight="100">
+                                <TextBox x:Name="ResponseTextBox" TextWrapping="Wrap" AcceptsReturn="True" BorderThickness="0"
+                                         Background="Transparent" FontSize="12" IsReadOnly="True"/>
+                            </Border>
+                            
+                            <Button x:Name="CopyResponseButton" Content="📋 Copier" Height="30" FontSize="11" Margin="0,5,0,0"
+                                    Background="#27AE60" Foreground="White" BorderThickness="0" Cursor="Hand" IsEnabled="False"
+                                    Click="CopyResponseButton_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#229954"/>
+                                            </Trigger>
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter Property="Background" Value="#BDC3C7"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            
+                            <TextBlock x:Name="StatusText" Text="" FontSize="11" Foreground="#27AE60" Margin="0,5,0,0" TextAlignment="Center"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Save and Close Buttons -->
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+                        <Button Content="💾 Enregistrer" Height="40" Width="130" FontSize="13" FontWeight="SemiBold"
+                                Background="#27AE60" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"
+                                Click="SaveButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#229954"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        
+                        <Button Content="❌ Fermer" Height="40" Width="130" FontSize="13" FontWeight="SemiBold"
+                                Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand"
+                                Click="CloseButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#C0392B"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- SPLITTER -->
+        <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch" Background="#BDC3C7"/>
+
+        <!-- RIGHT PANEL: PDF Viewer with Canvas Overlay -->
+        <Border Grid.Column="2" Background="White" Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Toolbar at top of PDF viewer -->
+                <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1" Padding="10,8">
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                        <!-- Drawing Mode Toggle -->
+                        <Button x:Name="PdfAddZoneButton" Content="➕ Ajouter zone texte" Height="36" FontSize="12" FontWeight="SemiBold"
+                                Background="#9B59B6" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,15,0"
+                                Click="AddZoneButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="12,0">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#8E44AD"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <!-- Separator -->
+                        <Border Width="1" Background="#BDC3C7" Margin="0,4,15,4"/>
+
+                        <!-- Zoom Controls -->
+                        <Button x:Name="PdfZoomOutButton" Content="🔍−" Width="36" Height="36" FontSize="14" Margin="0,0,5,0"
+                                Background="#95A5A6" Foreground="White" BorderThickness="0" Cursor="Hand" IsEnabled="False"
+                                Click="PdfZoomOutButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#7F8C8D"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Background" Value="#BDC3C7"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                        
+                        <Button x:Name="PdfZoomInButton" Content="🔍+" Width="36" Height="36" FontSize="14"
+                                Background="#95A5A6" Foreground="White" BorderThickness="0" Cursor="Hand" IsEnabled="False"
+                                Click="PdfZoomInButton_Click">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#7F8C8D"/>
+                                        </Trigger>
+                                        <Trigger Property="IsEnabled" Value="False">
+                                            <Setter Property="Background" Value="#BDC3C7"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
+                        <!-- Zone Counter -->
+                        <TextBlock x:Name="PdfZoneCountText" Text="Aucune zone" FontSize="11" Foreground="#7F8C8D" 
+                                   VerticalAlignment="Center" Margin="15,0,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- PDF Viewer Container -->
+                <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="6" Background="#F5F5F5" Margin="0,10,0,0">
+                    <ScrollViewer x:Name="PdfScrollViewer" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Auto">
+                        <Grid x:Name="PdfViewerContainer">
+                            <!-- PDF pages and Canvas overlay will be added here programmatically -->
+                            <TextBlock x:Name="PdfFallbackMessage" 
+                                       Text="📄 Chargement du PDF..." 
+                                       FontSize="14" 
+                                       Foreground="#95A5A6"
+                                       HorizontalAlignment="Center" 
+                                       VerticalAlignment="Center"/>
+                        </Grid>
+                    </ScrollViewer>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

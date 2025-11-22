@@ -68,17 +68,42 @@
                 <!-- Footer avec date et bouton -->
                 <Grid Grid.Row="2" Margin="0,8,0,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="10"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>     <!-- Label date -->
+                        <ColumnDefinition Width="*"/>        <!-- Barre de poids -->
+                        <ColumnDefinition Width="Auto"/>     <!-- Bouton -->
                     </Grid.ColumnDefinitions>
-                    
+
                     <TextBlock x:Name="LastSynthesisUpdateLabel"
                               Grid.Column="0"
                               Text="📅 Dernière mise à jour : Jamais"
                               FontSize="11"
                               Foreground="#7F8C8D"
                               VerticalAlignment="Center"/>
+
+                    <!-- Indicateur de poids de synthèse -->
+                    <StackPanel Grid.Column="1"
+                               Orientation="Horizontal"
+                               Margin="15,0,15,0"
+                               VerticalAlignment="Center">
+                        <Border x:Name="WeightProgressBar"
+                               Width="100"
+                               Height="8"
+                               BorderBrush="#BDC3C7"
+                               BorderThickness="1"
+                               CornerRadius="4"
+                               Margin="0,0,8,0">
+                            <Border x:Name="WeightProgressFill"
+                                   Background="#2ECC71"
+                                   HorizontalAlignment="Left"
+                                   CornerRadius="3"
+                                   Width="0"/>
+                        </Border>
+
+                        <TextBlock x:Name="WeightIndicatorText"
+                                  Text="Poids: 0.0/1.0"
+                                  FontSize="10"
+                                  Foreground="#7F8C8D"/>
+                    </StackPanel>
                     
                     <!-- Grid avec badge de notification pour mise à jour synthèse -->
                     <Grid Grid.Column="2">

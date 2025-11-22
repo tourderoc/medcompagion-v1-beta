@@ -1,5 +1,7 @@
 using System;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -148,6 +150,9 @@ namespace MedCompanion.Views.Notes
 
             // NOUVEAU : Vérifier et afficher le badge de notification si mise à jour recommandée
             UpdateNotificationBadge();
+
+            // NOUVEAU : Mettre à jour l'indicateur de poids (barre de progression)
+            UpdateWeightIndicator();
         }
 
         /// <summary>
@@ -193,6 +198,80 @@ namespace MedCompanion.Views.Notes
             {
                 System.Diagnostics.Debug.WriteLine($"[UpdateNotificationBadge] Erreur: {ex.Message}");
                 SynthesisUpdateBadge.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        /// <summary>
+        /// Met à jour l'indicateur de poids (barre de progression et texte)
+        /// </summary>
+        public void UpdateWeightIndicator()
+        {
+            if (_currentPatient == null || _synthesisWeightTracker == null)
+            {
+                // Réinitialiser à zéro si aucun patient
+                WeightProgressFill.Width = 0;
+                WeightIndicatorText.Text = "Poids: 0.0/1.0";
+                WeightIndicatorText.Foreground = new SolidColorBrush(Color.FromRgb(127, 140, 141)); // #7F8C8D
+                WeightIndicatorText.ToolTip = null;
+                return;
+            }
+
+            try
+            {
+                var (shouldUpdate, currentWeight, items) =
+                    _synthesisWeightTracker.CheckUpdateNeeded(_currentPatient.NomComplet);
+
+                // Mise à jour de la largeur de la barre (max 100px = 1.0)
+                double fillWidth = Math.Min(currentWeight * 100, 100);
+                WeightProgressFill.Width = fillWidth;
+
+                // Couleur selon le poids
+                Color fillColor = currentWeight switch
+                {
+                    >= 1.0 => Color.FromRgb(231, 76, 60),    // Rouge #E74C3C
+                    >= 0.6 => Color.FromRgb(243, 156, 18),   // Orange #F39C12
+                    _ => Color.FromRgb(46, 204, 113)         // Vert #2ECC71
+                };
+                WeightProgressFill.Background = new SolidColorBrush(fillColor);
+
+                // Texte de l'indicateur
+                string text = currentWeight >= 1.0 && items.Count > 0
+                    ? $"Poids: {currentWeight:F1}/1.0 ({items.Count} items)"
+                    : $"Poids: {currentWeight:F1}/1.0";
+
+                WeightIndicatorText.Text = text;
+                WeightIndicatorText.Foreground = new SolidColorBrush(fillColor);
+
+                // Tooltip détaillé avec la liste des items
+                if (items.Count > 0)
+                {
+                    var tooltip = new StringBuilder();
+                    tooltip.AppendLine($"Poids accumulé: {currentWeight:F1}/1.0");
+                    tooltip.AppendLine($"\nÉléments en attente ({items.Count}):");
+
+                    foreach (var item in items.Take(5))
+                    {
+                        tooltip.AppendLine($"• {item.ItemType}: {item.RelevanceWeight:F1}");
+                    }
+
+                    if (items.Count > 5)
+                        tooltip.AppendLine($"... et {items.Count - 5} autre(s)");
+
+                    WeightIndicatorText.ToolTip = tooltip.ToString().Trim();
+                }
+                else
+                {
+                    WeightIndicatorText.ToolTip = "Aucun élément en attente";
+                }
+
+                System.Diagnostics.Debug.WriteLine(
+                    $"[NotesControl] Indicateur de poids: {currentWeight:F1}/1.0 ({items.Count} items)");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[UpdateWeightIndicator] Erreur: {ex.Message}");
+                WeightProgressFill.Width = 0;
+                WeightIndicatorText.Text = "Poids: 0.0/1.0";
             }
         }
 
@@ -314,6 +393,9 @@ namespace MedCompanion.Views.Notes
                             // NOUVEAU : Masquer le badge (la synthèse a été mise à jour)
                             SynthesisUpdateBadge.Visibility = Visibility.Collapsed;
                             GenerateSynthesisButton.ToolTip = "Actualiser la synthèse patient";
+
+                            // NOUVEAU : Mettre à jour l'indicateur de poids (reset à 0)
+                            UpdateWeightIndicator();
 
                             StatusChanged?.Invoke(this, "✅ Synthèse générée avec succès");
 

@@ -1,0 +1,269 @@
+<Window x:Class="MedCompanion.Dialogs.RenewOrdonnanceDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="🔄 Renouveler l'ordonnance"
+        Width="700"
+        Height="600"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResize"
+        Background="#F5F6FA">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="15"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="20"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- En-tête -->
+        <Border Grid.Row="0"
+                Background="White"
+                BorderBrush="#E0E0E0"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="15">
+            <StackPanel>
+                <TextBlock Text="Sélectionnez les médicaments à renouveler"
+                          FontSize="14"
+                          FontWeight="SemiBold"
+                          Foreground="#2C3E50"
+                          Margin="0,0,0,8"/>
+
+                <TextBlock x:Name="InfoTextBlock"
+                          FontSize="11"
+                          Foreground="#7F8C8D"
+                          TextWrapping="Wrap"/>
+
+                <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                    <Button x:Name="SelectAllButton"
+                            Content="✓ Tout cocher"
+                            Padding="10,6"
+                            Background="#27AE60"
+                            Foreground="White"
+                            FontSize="11"
+                            BorderThickness="0"
+                            Margin="0,0,10,0"
+                            Click="SelectAllButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="5"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#229954"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <Button x:Name="UnselectAllButton"
+                            Content="✗ Tout décocher"
+                            Padding="10,6"
+                            Background="#E74C3C"
+                            Foreground="White"
+                            FontSize="11"
+                            BorderThickness="0"
+                            Click="UnselectAllButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="5"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#C0392B"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Liste des médicaments avec checkboxes -->
+        <Border Grid.Row="2"
+                Background="White"
+                BorderBrush="#E0E0E0"
+                BorderThickness="1"
+                CornerRadius="8">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <ListBox x:Name="MedicamentsListBox"
+                        BorderThickness="0"
+                        Background="Transparent"
+                        ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                        Padding="10">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="0,0,0,8"/>
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="ListBoxItem">
+                                        <Border Background="{TemplateBinding Background}"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border BorderBrush="#E0E0E0"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="12"
+                                    Background="#FAFAFA">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="15"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Checkbox -->
+                                    <CheckBox Grid.Column="0"
+                                             IsChecked="{Binding IsSelected}"
+                                             VerticalAlignment="Top"
+                                             Margin="0,2,0,0"/>
+
+                                    <!-- Informations médicament -->
+                                    <StackPanel Grid.Column="2">
+                                        <TextBlock Text="{Binding MedicamentNom, Mode=OneWay}"
+                                                  FontSize="13"
+                                                  FontWeight="SemiBold"
+                                                  Foreground="#2C3E50"
+                                                  TextWrapping="Wrap"/>
+
+                                        <TextBlock Text="{Binding PresentationLibelle, Mode=OneWay}"
+                                                  FontSize="11"
+                                                  Foreground="#16A085"
+                                                  Margin="0,3,0,0"
+                                                  TextWrapping="Wrap"/>
+
+                                        <Grid Margin="0,8,0,0">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock FontSize="10" Foreground="#7F8C8D">
+                                                    <Run Text="Posologie:"/>
+                                                    <Run Text="{Binding Posologie, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                </TextBlock>
+                                                <TextBlock FontSize="10" Foreground="#7F8C8D" Margin="0,2,0,0">
+                                                    <Run Text="Durée:"/>
+                                                    <Run Text="{Binding Duree, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                </TextBlock>
+                                            </StackPanel>
+
+                                            <StackPanel Grid.Column="1">
+                                                <TextBlock FontSize="10" Foreground="#7F8C8D">
+                                                    <Run Text="Quantité:"/>
+                                                    <Run Text="{Binding Quantite, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                    <Run Text="boîte(s)"/>
+                                                </TextBlock>
+                                                <TextBlock FontSize="10" Foreground="#7F8C8D" Margin="0,2,0,0">
+                                                    <Run Text="Renouvelable:"/>
+                                                    <Run Text="{Binding Renouvelable, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                    <Run Text="fois"/>
+                                                </TextBlock>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </ScrollViewer>
+        </Border>
+
+        <!-- Boutons d'action -->
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button x:Name="CancelButton"
+                    Content="Annuler"
+                    Width="120"
+                    Height="38"
+                    Margin="0,0,10,0"
+                    Background="#95A5A6"
+                    Foreground="White"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    BorderThickness="0"
+                    Click="CancelButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#7F8C8D"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <Button x:Name="ValidateButton"
+                    Content="✓ Valider"
+                    Width="120"
+                    Height="38"
+                    Background="#3498DB"
+                    Foreground="White"
+                    FontSize="12"
+                    FontWeight="SemiBold"
+                    BorderThickness="0"
+                    Click="ValidateButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#2980B9"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

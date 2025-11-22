@@ -664,6 +664,10 @@ private void OnNoteStatusChanged(object sender, string message)
 
             // NOUVEAU : Rafraîchir le badge de notification de synthèse
             NotesControlPanel.UpdateNotificationBadge();
+
+            // NOUVEAU : Rafraîchir aussi la barre de progression de poids
+            System.Diagnostics.Debug.WriteLine("[MainWindow.OnNoteSaved] Appel de UpdateWeightIndicator()");
+            NotesControlPanel.UpdateWeightIndicator();
         }
     }
     

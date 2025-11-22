@@ -12,12 +12,14 @@ public class OrdonnanceService
     private readonly LetterService _letterService;
     private readonly StorageService _storageService;
     private readonly AppSettings _settings;
-    
-    public OrdonnanceService(LetterService letterService, StorageService storageService)
+    private readonly SynthesisWeightTracker _weightTracker;
+
+    public OrdonnanceService(LetterService letterService, StorageService storageService, PathService pathService)
     {
         _letterService = letterService;
         _storageService = storageService;
         _settings = new AppSettings();
+        _weightTracker = new SynthesisWeightTracker(pathService);
     }
     
     /// <summary>
@@ -251,7 +253,8 @@ public class OrdonnanceService
     /// </summary>
     public (bool success, string message, string? mdPath, string? docxPath) SaveOrdonnanceMedicaments(
         string patientName,
-        OrdonnanceMedicaments ordonnance)
+        OrdonnanceMedicaments ordonnance,
+        Dictionary<string, object>? metadata = null)
     {
         try
         {
@@ -284,6 +287,22 @@ public class OrdonnanceService
             );
 
             System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] Export DOCX - Success: {exportSuccess}, Message: {exportMessage}, Path: {docxPath ?? "NULL"}");
+
+            // Enregistrer le poids pour la synthèse
+            var weight = ContentWeightRules.GetDefaultWeight("ordonnance", metadata) ?? 0.5;
+            var justification = metadata != null && metadata.ContainsKey("is_renewal") && (bool)metadata["is_renewal"]
+                ? "Renouvellement ordonnance (poids: 0.2)"
+                : $"Nouvelle ordonnance (poids: {weight})";
+
+            _weightTracker.RecordContentWeight(
+                patientName,
+                "ordonnance",
+                mdPath,
+                weight,
+                justification
+            );
+
+            System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] Poids enregistré: {weight} - {justification}");
 
             if (exportSuccess && !string.IsNullOrEmpty(docxPath))
             {
@@ -627,6 +646,168 @@ public class OrdonnanceService
         catch (Exception ex)
         {
             return (false, $"Erreur lors de la suppression: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Parse le contenu Markdown d'une ordonnance pour extraire la liste des médicaments
+    /// </summary>
+    public List<MedicamentPrescrit> ParseMedicamentsFromMarkdown(string markdownContent)
+    {
+        var medicaments = new List<MedicamentPrescrit>();
+
+        try
+        {
+            var lines = markdownContent.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+
+            MedicamentPrescrit? currentMedicament = null;
+            string? currentNom = null;
+            string? currentPresentation = null;
+
+            foreach (var line in lines)
+            {
+                var trimmedLine = line.Trim();
+
+                // Détection du nom du médicament (ligne en gras: **...**)
+                if (trimmedLine.StartsWith("**") && trimmedLine.EndsWith("**") && !trimmedLine.Contains(":"))
+                {
+                    // Sauvegarder le médicament précédent si existe
+                    if (currentMedicament != null && currentNom != null)
+                    {
+                        medicaments.Add(currentMedicament);
+                    }
+
+                    // Commencer un nouveau médicament
+                    currentNom = trimmedLine.Trim('*');
+                    currentPresentation = null;
+                    currentMedicament = new MedicamentPrescrit
+                    {
+                        Medicament = new Medicament
+                        {
+                            Denomination = currentNom
+                        }
+                    };
+                }
+                // Détection de la présentation (ligne en italique: *...*)
+                else if (trimmedLine.StartsWith("*") && trimmedLine.EndsWith("*") && currentMedicament != null)
+                {
+                    currentPresentation = trimmedLine.Trim('*');
+                    currentMedicament.Presentation = new MedicamentPresentation
+                    {
+                        Libelle = currentPresentation
+                    };
+                }
+                // Extraction des propriétés
+                else if (trimmedLine.Contains(":") && currentMedicament != null)
+                {
+                    var parts = trimmedLine.Split(new[] { ':' }, 2);
+                    if (parts.Length == 2)
+                    {
+                        var key = parts[0].Trim().Trim('*').ToLower();
+                        var value = parts[1].Trim();
+
+                        switch (key)
+                        {
+                            case "posologie":
+                                currentMedicament.Posologie = value;
+                                break;
+
+                            case "durée":
+                            case "duree":
+                                currentMedicament.Duree = value;
+                                break;
+
+                            case "quantité":
+                            case "quantite":
+                                // Extraire le nombre (ex: "2 boîte(s)" -> 2)
+                                var qtyParts = value.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                                if (qtyParts.Length > 0 && int.TryParse(qtyParts[0], out int qty))
+                                {
+                                    currentMedicament.Quantite = qty;
+                                }
+                                break;
+
+                            case "renouvelable":
+                                currentMedicament.Renouvelable = true;
+
+                                // Extraire le nombre de renouvellements si spécifié
+                                if (value.Contains("fois"))
+                                {
+                                    var renouvParts = value.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                                    if (renouvParts.Length > 0 && int.TryParse(renouvParts[0], out int renouv))
+                                    {
+                                        currentMedicament.NombreRenouvellements = renouv;
+                                    }
+                                }
+                                break;
+                        }
+                    }
+                }
+            }
+
+            // Ajouter le dernier médicament
+            if (currentMedicament != null && currentNom != null)
+            {
+                medicaments.Add(currentMedicament);
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[OrdonnanceService] Parsed {medicaments.Count} médicaments from markdown");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[OrdonnanceService] Erreur parsing: {ex.Message}");
+        }
+
+        return medicaments;
+    }
+
+    /// <summary>
+    /// Récupère la dernière ordonnance de médicaments pour un patient
+    /// </summary>
+    public (bool found, List<MedicamentPrescrit> medicaments, string error) GetLastOrdonnanceMedicaments(string patientName)
+    {
+        try
+        {
+            // Récupérer toutes les ordonnances du patient
+            var ordonnances = GetOrdonnances(patientName);
+
+            // Filtrer pour ne garder que les ordonnances de médicaments
+            var medicamentsOrdonnances = ordonnances
+                .Where(o => o.type == "Médicaments")
+                .ToList();
+
+            if (medicamentsOrdonnances.Count == 0)
+            {
+                return (false, new List<MedicamentPrescrit>(), "Aucune ordonnance de médicaments trouvée");
+            }
+
+            // Prendre la première (déjà triée par date DESC dans GetOrdonnances)
+            var lastOrdonnance = medicamentsOrdonnances[0];
+
+            // Lire le contenu du fichier markdown
+            if (!File.Exists(lastOrdonnance.mdPath))
+            {
+                return (false, new List<MedicamentPrescrit>(), "Fichier d'ordonnance introuvable");
+            }
+
+            var markdownContent = File.ReadAllText(lastOrdonnance.mdPath, Encoding.UTF8);
+
+            // Parser les médicaments
+            var medicaments = ParseMedicamentsFromMarkdown(markdownContent);
+
+            if (medicaments.Count == 0)
+            {
+                return (false, new List<MedicamentPrescrit>(), "Aucun médicament trouvé dans l'ordonnance");
+            }
+
+            System.Diagnostics.Debug.WriteLine(
+                $"[OrdonnanceService] Dernière ordonnance trouvée: {medicaments.Count} médicaments, date: {lastOrdonnance.date:dd/MM/yyyy}");
+
+            return (true, medicaments, string.Empty);
+        }
+        catch (Exception ex)
+        {
+            return (false, new List<MedicamentPrescrit>(), $"Erreur: {ex.Message}");
         }
     }
 }
