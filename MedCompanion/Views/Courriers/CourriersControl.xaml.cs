@@ -95,6 +95,69 @@ public partial class CourriersControl : UserControl
         LoadCustomTemplates();
     }
 
+    /// <summary>
+    /// Réinitialise complètement le contrôle (appelé lors du changement de patient)
+    /// </summary>
+    public void Reset()
+    {
+        _selectedPatient = null;
+        _currentEditingFilePath = null;
+        _lastGeneratedLetterMCCId = null;
+        _lastGeneratedLetterMCCName = null;
+
+        // Vider la liste des courriers
+        LettersList.SelectedItem = null;
+        LettersList.ItemsSource = null;
+
+        // Réinitialiser l'éditeur
+        LetterEditText.Document = new FlowDocument();
+        LetterEditText.IsReadOnly = true;
+        LetterEditText.Background = new SolidColorBrush(Color.FromRgb(250, 250, 250));
+
+        // Cacher tous les boutons
+        NoterLetterButton.Visibility = Visibility.Collapsed;
+        ModifierLetterButton.Visibility = Visibility.Collapsed;
+        SupprimerLetterButton.Visibility = Visibility.Collapsed;
+        ImprimerLetterButton.Visibility = Visibility.Collapsed;
+        SauvegarderLetterButton.Visibility = Visibility.Collapsed;
+        SauvegarderLetterButton.IsEnabled = false;
+        AnnulerLetterButton.Visibility = Visibility.Collapsed;
+
+        // Réinitialiser le ComboBox
+        TemplateLetterCombo.SelectedIndex = 0;
+    }
+
+    /// <summary>
+    /// Affiche un brouillon de courrier dans l'éditeur (appelé depuis le Chat)
+    /// </summary>
+    public void SetDraft(string markdown, string? mccId = null, string? mccName = null)
+    {
+        // Désélectionner tout courrier existant
+        LettersList.SelectedItem = null;
+        _currentEditingFilePath = null;
+
+        // Stocker les métadonnées MCC si fournies
+        _lastGeneratedLetterMCCId = mccId;
+        _lastGeneratedLetterMCCName = mccName;
+
+        // Convertir le markdown en FlowDocument et l'afficher
+        LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(markdown);
+        LetterEditText.IsReadOnly = false;
+        LetterEditText.Background = new SolidColorBrush(Colors.White);
+
+        // Afficher les boutons appropriés pour un nouveau brouillon
+        NoterLetterButton.Visibility = Visibility.Collapsed;
+        ModifierLetterButton.Visibility = Visibility.Collapsed;
+        SupprimerLetterButton.Visibility = Visibility.Collapsed;
+        ImprimerLetterButton.Visibility = Visibility.Collapsed;
+        SauvegarderLetterButton.Visibility = Visibility.Visible;
+        SauvegarderLetterButton.IsEnabled = true;
+        SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96)); // Vert
+        AnnulerLetterButton.Visibility = Visibility.Visible;
+
+        RaiseStatus("✅ Brouillon généré - Vous pouvez le modifier puis sauvegarder");
+    }
+
     private void RaiseStatus(string message)
     {
         StatusChanged?.Invoke(this, message);

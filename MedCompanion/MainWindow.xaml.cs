@@ -381,6 +381,20 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 msg.StartsWith("⚠️") ? Colors.Orange : Colors.Gray);
         };
 
+        // Initialiser CourriersControl
+        CourriersControlPanel.Initialize(_letterService, _pathService, _patientIndex, _mccLibrary, _letterRatingService, _letterTemplates);
+        CourriersControlPanel.StatusChanged += (s, msg) => {
+            StatusTextBlock.Text = msg;
+            StatusTextBlock.Foreground = new SolidColorBrush(
+                msg.StartsWith("✅") || msg.StartsWith("✓") ? Colors.Green :
+                msg.StartsWith("❌") ? Colors.Red :
+                msg.StartsWith("⏳") ? Colors.Blue :
+                msg.StartsWith("⚠️") ? Colors.Orange : Colors.Gray);
+        };
+        CourriersControlPanel.CreateLetterWithAIRequested += async (s, e) => {
+            await HandleCreateLetterWithAIAsync();
+        };
+
         PatientSearchViewModel.PatientSelected += (s, patient) => {
             if (patient != null) LoadPatientAsync(patient);
         };
@@ -454,8 +468,8 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         // Initialiser l'index patient
         InitializePatientIndex();
         
-        // Charger templates personnalisés et intégrer dans le ComboBox
-        LoadCustomTemplates();
+        // Charger templates personnalisés (géré par CourriersControl)
+        CourriersControlPanel.ReloadTemplates();
         
         // Wire events
         WireSearchEvents();
@@ -500,9 +514,9 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         // OBSOLETE: NotesList.SelectionChanged - Géré par binding SelectedItem sur NoteViewModel.SelectedNote
         // RichTextBox n'a pas besoin de TextChanged pour activer le bouton
         
-        LettersList.SelectionChanged += LettersList_SelectionChanged;
-        LettersList.MouseDoubleClick += LettersList_MouseDoubleClick;
-        
+        // Courriers - MIGRÉ vers CourriersControl (géré en interne par le UserControl)
+        // LettersList.SelectionChanged, ModifierLetterButton.Click, etc. sont maintenant dans CourriersControl.xaml.cs
+
         ChatInput.KeyDown += ChatInput_KeyDown;
         ChatInput.TextChanged += ChatInput_TextChanged;
         ChatSendBtn.Click += ChatSendBtn_Click;
@@ -512,13 +526,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         ViewSavedExchangeBtn.Click += ViewSavedExchangeBtn_Click;
         DeleteSavedExchangeBtn.Click += DeleteSavedExchangeBtn_Click;
         
-        LetterEditText.TextChanged += LetterEditText_TextChanged;
-        ModifierLetterButton.Click += ModifierLetterButton_Click;
-        SupprimerLetterButton.Click += SupprimerLetterButton_Click;
-        SauvegarderLetterButton.Click += SauvegarderLetterButton_Click;
-        ImprimerLetterButton.Click += ImprimerLetterButton_Click;
-        
-        TemplateLetterCombo.SelectionChanged += TemplateLetterCombo_SelectionChanged;
+        // LetterEditText.TextChanged, ModifierLetterButton.Click, etc. - MIGRÉ vers CourriersControl
         
         // Templates personnalisés
         AnalyzeLetterBtn.Click += AnalyzeLetterBtn_Click;
@@ -571,39 +579,10 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         // Remettre zone structurée en readonly
         NotesControlPanel.StructuredNoteTextBox.IsReadOnly = true;
         NotesControlPanel.StructuredNoteTextBox.Background = new SolidColorBrush(Color.FromRgb(250, 250, 250));
-        
-        // Désélectionner tout élément dans la liste des courriers (IMPORTANT: avant de vider)
-        LettersList.SelectedItem = null;
-        LettersList.SelectedIndex = -1;
-        
-        // Vider la liste des courriers
-        LettersList.ItemsSource = null;
-        
-        // IMPORTANT: Réinitialiser complètement la zone courrier ET le ComboBox
-        try
-        {
-            // Créer un tout nouveau FlowDocument vide
-            var emptyDoc = new FlowDocument();
-            LetterEditText.Document = emptyDoc;
-            LetterEditText.IsReadOnly = true;
-            LetterEditText.Background = new SolidColorBrush(Color.FromRgb(250, 250, 250));
-        }
-        catch
-        {
-            // En cas d'erreur, forcer la réinitialisation
-            LetterEditText.Document = null;
-            LetterEditText.Document = new FlowDocument();
-        }
-        
-        // Réinitialiser les boutons courrier
-        ModifierLetterButton.Visibility = Visibility.Collapsed;
-        SupprimerLetterButton.Visibility = Visibility.Collapsed;
-        SauvegarderLetterButton.IsEnabled = false;
-        ImprimerLetterButton.Visibility = Visibility.Collapsed;
-        
-        // Réinitialiser le sélecteur de modèles de courrier
-        TemplateLetterCombo.SelectedIndex = 0;
-        
+
+        // Réinitialiser la section Courriers (migré vers CourriersControl)
+        CourriersControlPanel.Reset();
+
         // ===== RÉINITIALISER LA SECTION ATTESTATIONS =====
         
         // Attestations - Le reset est maintenant géré par AttestationViewModel
@@ -1048,10 +1027,6 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 StatusTextBlock.Text = $"⏳ Génération du courrier depuis MCC '{selectedMCC.Name}'...";
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
 
-                // IMPORTANT: Clear any existing letter selection to prevent overwriting
-                LettersList.SelectedItem = null;
-                _currentEditingFilePath = null;
-
                 // Générer le courrier avec l'IA en utilisant toutes les métadonnées du MCC
                 var (success, markdown, error) = await _letterService.GenerateLetterFromMCCAsync(
                     _selectedPatient.NomComplet,
@@ -1063,44 +1038,29 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                     // Basculer vers l'onglet Courriers
                     AssistantTabControl.SelectedIndex = 1;
 
-                    // IMPORTANT: Réinitialiser pour forcer création nouveau fichier
-                    _currentEditingFilePath = null;
-                    
-                    // Afficher le brouillon dans la zone courrier
-                    LetterEditText.IsReadOnly = false;
-                    LetterEditText.Background = new SolidColorBrush(Colors.White);
-                    LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(markdown);
-                    
-                    // Activer ET rendre visible le bouton sauvegarder
-                    ModifierLetterButton.Visibility = Visibility.Collapsed;
-                    SupprimerLetterButton.Visibility = Visibility.Collapsed;
-                    AnnulerLetterButton.Visibility = Visibility.Collapsed;
-                    SauvegarderLetterButton.Visibility = Visibility.Visible;
-                    SauvegarderLetterButton.IsEnabled = true;
-                    SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96)); // Vert
-                    ImprimerLetterButton.Visibility = Visibility.Collapsed;
-                    
                     // Incrémenter le compteur d'utilisation du MCC
                     _mccLibrary.IncrementUsage(selectedMCC.Id);
-                    
+
                     // Détecter les placeholders manquants
                     var patientMetadata = _patientIndex.GetMetadata(_selectedPatient.Id);
                     var (hasMissing, missingFields, availableInfo) = _letterService.DetectMissingInfo(
                         selectedMCC.Name,
                         markdown,
                         patientMetadata,
-                        selectedMCC.TemplateMarkdown // Passer le template original pour double détection
+                        selectedMCC.TemplateMarkdown
                     );
-                    
-                    // Si des placeholders sont détectés → Ouvrir dialogue (requis OU optionnels)
+
+                    string finalMarkdown = markdown;
+
+                    // Si des placeholders sont détectés → Ouvrir dialogue
                     if (hasMissing)
                     {
                         StatusTextBlock.Text = "❓ Informations requises manquantes...";
                         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
-                        
+
                         var missingDialog = new MissingInfoDialog(missingFields);
                         missingDialog.Owner = this;
-                        
+
                         if (missingDialog.ShowDialog() == true && missingDialog.CollectedInfo != null)
                         {
                             // FUSIONNER infos disponibles + infos collectées
@@ -1109,11 +1069,11 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                             {
                                 allInfo[kvp.Key] = kvp.Value;
                             }
-                            
+
                             // RÉ-ADAPTER LE COURRIER avec l'IA
                             StatusTextBlock.Text = "⏳ Ré-adaptation avec infos complètes...";
                             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-                            
+
                             var (success2, updatedMarkdown, error2) =
                                 await _letterService.AdaptTemplateWithMissingInfoAsync(
                                     _selectedPatient.NomComplet,
@@ -1121,12 +1081,10 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                                     markdown,
                                     allInfo
                                 );
-                            
+
                             if (success2 && !string.IsNullOrEmpty(updatedMarkdown))
                             {
-                                // Mettre à jour l'affichage avec le markdown ré-adapté
-                                LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(updatedMarkdown);
-                                
+                                finalMarkdown = updatedMarkdown;
                                 StatusTextBlock.Text = "✅ Courrier MCC complété - Vous pouvez sauvegarder";
                                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
                             }
@@ -1144,10 +1102,13 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                     }
                     else
                     {
-                        StatusTextBlock.Text = $"✅ Courrier généré depuis MCC '{selectedMCC.Name}' - Type: {selectedMCC.Semantic?.DocType}, Ton: {selectedMCC.Semantic?.Tone}";
+                        StatusTextBlock.Text = $"✅ Courrier généré depuis MCC '{selectedMCC.Name}'";
                         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
                     }
-                    
+
+                    // Afficher dans CourriersControl
+                    CourriersControlPanel.DisplayGeneratedLetter(finalMarkdown, selectedMCC.Id, selectedMCC.Name);
+
                     MessageBox.Show(
                         $"✅ Courrier généré avec succès depuis le MCC !\n\n" +
                         $"Template : {selectedMCC.Name}\n" +
@@ -1169,7 +1130,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                         MessageBoxButton.OK,
                         MessageBoxImage.Error
                     );
-                    
+
                     StatusTextBlock.Text = $"❌ Erreur: {error}";
                     StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
                 }
@@ -1198,79 +1159,10 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
     // Code migré vers Views/Documents/DocumentsControl.xaml.cs
     // Supprimé le 23/11/2025 après validation
 
-    // ===== FORMULAIRES =====
-    
-    /// <summary>
-/// Génère un courrier en mode standard (sans MCC)
-/// </summary>
-private async Task GenerateStandardLetterAsync(string userRequest)
-{
-    var patientContext = await GatherPatientContextAsync();
-    
-    var prompt = $@"Génère un courrier médical selon cette demande : {userRequest}
-
-CONTEXTE PATIENT :
-{patientContext}
-
-INSTRUCTIONS :
-- Ton professionnel et adapté
-- Structure claire avec en-têtes
-- Informations médicales pertinentes du patient
-- Format Markdown";
-
-    var (success, letter, error) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 2000);
-
-    if (success)
-    {
-        // Afficher dans l'éditeur
-        DisplayLetterInEditor(letter);
-        SauvegarderLetterButton.IsEnabled = true;
-    }
-    else
-    {
-        MessageBox.Show($"Erreur de génération :\n{error}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-    }
-}
-
-/// <summary>
-/// Génère un courrier avec un MCC spécifique
-/// </summary>
-private async Task GenerateLetterWithMCCAsync(
-    MCCModel mcc, 
-    string userRequest,
-    LetterAnalysisResult analysis)
-{
-    var patientContext = await GatherPatientContextAsync();
-    
-    var prompt = $@"{mcc.PromptTemplate}
-
-DEMANDE UTILISATEUR : {userRequest}
-
-CONTEXTE PATIENT :
-{patientContext}
-
-MÉTADONNÉES :
-- Public : {analysis.Audience}
-- Ton : {analysis.Tone}
-- Tranche d'âge : {analysis.AgeGroup}
-
-TEMPLATE À SUIVRE :
-{mcc.TemplateMarkdown}
-
-Génère le courrier en suivant le template et en l'adaptant au patient.";
-
-    var (success, letter, error) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 2000);
-
-    if (success)
-    {
-        DisplayLetterInEditor(letter);
-        SauvegarderLetterButton.IsEnabled = true;
-    }
-    else
-    {
-        MessageBox.Show($"Erreur de génération :\n{error}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-    }
-}
+    // ===== BLOC COURRIERS - GÉNÉRATION LEGACY SUPPRIMÉ =====
+    // Code migré vers Views/Courriers/CourriersControl.xaml.cs
+    // Méthodes GenerateStandardLetterAsync et GenerateLetterWithMCCAsync remplacées par GenerateLetterContentAsync
+    // Supprimé le 23/11/2025 après validation
 
 /// <summary>
 /// Rassemble le contexte patient pour la génération
@@ -1303,43 +1195,18 @@ private async Task<string> GatherPatientContextAsync()
     return context.ToString();
 }
 
-/// <summary>
-/// Affiche le courrier dans l'éditeur de texte
-/// </summary>
-private void DisplayLetterInEditor(string letterContent)
-{
-    // IMPORTANT: Clear any existing letter selection to prevent overwriting
-    LettersList.SelectedItem = null;
-    _currentEditingFilePath = null;
-
-    // Convertir Markdown en FlowDocument
-    var flowDoc = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(letterContent);
-    LetterEditText.Document = flowDoc;
-
-    // Passer en mode édition
-    LetterEditText.IsReadOnly = false;
-    LetterEditText.Background = new SolidColorBrush(Colors.White);
-    
-    // 🐛 FIX: Rendre le bouton Sauvegarder visible ET actif
-    ModifierLetterButton.Visibility = Visibility.Collapsed;
-    SupprimerLetterButton.Visibility = Visibility.Collapsed;
-    AnnulerLetterButton.Visibility = Visibility.Visible;
-    SauvegarderLetterButton.Visibility = Visibility.Visible;
-    SauvegarderLetterButton.IsEnabled = true;
-    SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96)); // Vert
-    ImprimerLetterButton.Visibility = Visibility.Collapsed;
-}
+// DisplayLetterInEditor migré vers CourriersControl.DisplayGeneratedLetter()
 
 /// <summary>
-/// Ouvre le dialogue de création de courrier avec IA intelligente
+/// Gère la création de courrier avec IA (appelé depuis CourriersControl)
 /// </summary>
-private async void CreateLetterWithAIButton_Click(object sender, RoutedEventArgs e)
+private async Task HandleCreateLetterWithAIAsync()
 {
     try
     {
         if (_selectedPatient == null)
         {
-            MessageBox.Show("Veuillez d'abord sélectionner un patient.", "Patient requis", 
+            MessageBox.Show("Veuillez d'abord sélectionner un patient.", "Patient requis",
                 MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
@@ -1360,33 +1227,95 @@ private async void CreateLetterWithAIButton_Click(object sender, RoutedEventArgs
             StatusTextBlock.Text = "⏳ Génération du courrier en cours...";
             await Task.Delay(100);
 
+            string? mccId = null;
+            string? mccName = null;
+            string? generatedLetter = null;
+
             if (letterResult.UseStandardGeneration)
             {
                 // Génération standard → Pas de MCC
-                _lastGeneratedLetterMCCId = null;
-                _lastGeneratedLetterMCCName = null;
-                await GenerateStandardLetterAsync(letterResult.UserRequest);
+                generatedLetter = await GenerateLetterContentAsync(letterResult.UserRequest, null, null);
             }
             else if (letterResult.SelectedMCC != null)
             {
-                // 🆕 TRAÇABILITÉ MCC : Stocker les métadonnées pour le matching MCC
-                _lastGeneratedLetterMCCId = letterResult.SelectedMCC.Id;
-                _lastGeneratedLetterMCCName = letterResult.SelectedMCC.Name;
-                System.Diagnostics.Debug.WriteLine($"[MCC Tracking] MCC sélectionné via matching: {letterResult.SelectedMCC.Name} (ID: {letterResult.SelectedMCC.Id})");
-                
-                await GenerateLetterWithMCCAsync(letterResult.SelectedMCC, 
-                    letterResult.UserRequest, letterResult.Analysis);
+                mccId = letterResult.SelectedMCC.Id;
+                mccName = letterResult.SelectedMCC.Name;
+                System.Diagnostics.Debug.WriteLine($"[MCC Tracking] MCC sélectionné via matching: {mccName} (ID: {mccId})");
+
+                generatedLetter = await GenerateLetterContentAsync(
+                    letterResult.UserRequest,
+                    letterResult.SelectedMCC,
+                    letterResult.Analysis);
                 _mccLibrary.IncrementUsage(letterResult.SelectedMCC.Id);
             }
 
-            StatusTextBlock.Text = "✅ Courrier généré avec succès";
+            if (!string.IsNullOrEmpty(generatedLetter))
+            {
+                // Afficher dans CourriersControl
+                CourriersControlPanel.DisplayGeneratedLetter(generatedLetter, mccId, mccName);
+                StatusTextBlock.Text = "✅ Courrier généré avec succès";
+            }
         }
     }
     catch (Exception ex)
     {
-        MessageBox.Show($"Erreur lors de la création du courrier :\n{ex.Message}", 
+        MessageBox.Show($"Erreur lors de la création du courrier :\n{ex.Message}",
             "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
         StatusTextBlock.Text = "❌ Erreur génération courrier";
+    }
+}
+
+/// <summary>
+/// Génère le contenu du courrier et le retourne (sans afficher)
+/// </summary>
+private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCModel? mcc, LetterAnalysisResult? analysis)
+{
+    var patientContext = await GatherPatientContextAsync();
+
+    string prompt;
+    if (mcc != null && analysis != null)
+    {
+        prompt = $@"{mcc.PromptTemplate}
+
+DEMANDE UTILISATEUR : {userRequest}
+
+CONTEXTE PATIENT :
+{patientContext}
+
+MÉTADONNÉES :
+- Public : {analysis.Audience}
+- Ton : {analysis.Tone}
+- Tranche d'âge : {analysis.AgeGroup}
+
+TEMPLATE À SUIVRE :
+{mcc.TemplateMarkdown}
+
+Génère le courrier en suivant le template et en l'adaptant au patient.";
+    }
+    else
+    {
+        prompt = $@"Génère un courrier médical selon cette demande : {userRequest}
+
+CONTEXTE PATIENT :
+{patientContext}
+
+INSTRUCTIONS :
+- Ton professionnel et adapté
+- Structure claire avec en-têtes
+- Informations médicales pertinentes du patient
+- Format Markdown";
+    }
+
+    var (success, letter, error) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 2000);
+
+    if (success)
+    {
+        return letter;
+    }
+    else
+    {
+        MessageBox.Show($"Erreur de génération :\n{error}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+        return null;
     }
 }
 

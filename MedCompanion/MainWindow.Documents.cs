@@ -19,11 +19,20 @@ namespace MedCompanion;
 
 public partial class MainWindow : Window
 {
+    // ===== BLOC COURRIERS SUPPRIMÉ =====
+    // Code migré vers Views/Courriers/CourriersControl.xaml.cs
+    // Supprimé le 23/11/2025 après validation
+    // Méthodes supprimées : TemplateLetterCombo_SelectionChanged, LettersList_SelectionChanged,
+    // LettersList_MouseDoubleClick, ImprimerLetterButton_Click, LetterEditText_TextChanged,
+    // ModifierLetterButton_Click, AnnulerLetterButton_Click, SupprimerLetterButton_Click,
+    // SauvegarderLetterButton_Click, RefreshLettersList, LoadPatientLetters
+
+#if false // COURRIERS - MIGRÉ VERS CourriersControl
     // Métadonnées de génération pour évaluation
     private string? _lastGeneratedLetterMCCId = null;
     private string? _lastGeneratedLetterMCCName = null;
     private string? _lastGeneratedLetterRequest = null;
-    
+
     private async void TemplateLetterCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (TemplateLetterCombo.SelectedIndex <= 0)
@@ -653,12 +662,15 @@ public partial class MainWindow : Window
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
         }
     }
+#endif // FIN BLOC COURRIERS
+
     private void ChatInput_TextChanged(object sender, TextChangedEventArgs e)
     {
         // Fonction de détection automatique supprimée
         // Le chat fonctionne normalement sans détection de mots-clés
     }
-    
+
+#if false // COURRIERS TEMPLATES - MIGRÉ VERS CourriersControl
     /// <summary>
     /// Ouvre le dialogue de sélection de modèle avec TOUS les modèles disponibles
     /// </summary>
@@ -1028,7 +1040,8 @@ public partial class MainWindow : Window
             System.Diagnostics.Debug.WriteLine($"[LoadCustomTemplates] Erreur chargement: {ex.Message}");
         }
     }
-    
+#endif // FIN COURRIERS TEMPLATES
+
     private async void AnalyzeLetterBtn_Click(object sender, RoutedEventArgs e)
     {
         var exampleLetter = ExampleLetterTextBox.Text.Trim();
@@ -1211,8 +1224,8 @@ public partial class MainWindow : Window
             _currentExtractedTemplate = null;
             _currentExtractedVariables.Clear();
             
-            // Recharger les templates (inclut maintenant les MCC)
-            LoadCustomTemplates();
+            // Recharger les templates dans CourriersControl
+            CourriersControlPanel.ReloadTemplates();
             
             MessageBox.Show($"✅ {message}", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
             StatusTextBlock.Text = "✅ MCC sauvegardé avec analyse sémantique complète";
@@ -1234,6 +1247,7 @@ public partial class MainWindow : Window
     // Code migré vers Views/Attestations/AttestationsControl.xaml.cs
     // Supprimé le 23/11/2025 après validation
 
+#if false // COURRIERS REFRESH/RATE - MIGRÉ VERS CourriersControl
     private void RefreshLettersList()
     {
         if (_selectedPatient == null)
@@ -1409,4 +1423,5 @@ public partial class MainWindow : Window
             }
         }
     }
+#endif // FIN COURRIERS REFRESH/RATE
 }

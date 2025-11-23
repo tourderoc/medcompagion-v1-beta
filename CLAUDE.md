@@ -422,6 +422,9 @@ StatusChanged?.Invoke(this, "✅ Operation completed");
 - `a624899` - Supprimer bloc legacy Documents (~661 lines)
 - `f45a870` - Supprimer bloc legacy Attestations (~671 lines)
 
+**Phase 3 - CourriersControl Refactoring (EN COURS):**
+- `861f5d1` - wip: Créer CourriersControl (non intégré) - voir section TODO ci-dessous
+
 When working on UI code, prefer creating new UserControls in `Views/` folder rather than expanding MainWindow.
 
 ## Code Health & Technical Debt (November 2025)
@@ -636,3 +639,40 @@ git commit -m "refactor: Extract NotesControl UserControl"
 8. **Check Recent Docs**: Implementation details in markdown files (INTEGRATION_*, BUGFIX_*, etc.) are authoritative
 
 9. **Backward Compatibility**: Support both old patient folder structure (flat) and new (year-based) via PathService
+
+### CourriersControl Refactoring - TODO (23/11/2025)
+
+**État actuel :**
+- ✅ `Views/Courriers/CourriersControl.xaml` créé (~380 lignes)
+- ✅ `Views/Courriers/CourriersControl.xaml.cs` créé (~785 lignes)  
+- ✅ Compile avec 0 erreurs
+- ⏳ **NON ENCORE INTÉGRÉ** dans MainWindow.xaml
+- Commit: `861f5d1`
+
+**Méthodes migrées :**
+- Liste: `RefreshLettersList`, `LettersList_SelectionChanged`, `LettersList_MouseDoubleClick`
+- CRUD: `SauvegarderLetterButton_Click`, `SupprimerLetterButton_Click`, `ModifierLetterButton_Click`, `AnnulerLetterButton_Click`
+- Templates: `TemplateLetterCombo_SelectionChanged`, `LoadCustomTemplates`
+- Rating: `RateLetterButton_Click`, `ShowRateLetterDialog`, `HandleRatingActions`
+- IA: `CreateLetterWithAIButton_Click` (délègue via event)
+
+**Events du contrôle :**
+- `StatusChanged` - Communication status vers MainWindow
+- `CreateLetterWithAIRequested` - Déléguer création IA au MainWindow
+- `DisplayGeneratedLetter()` - Méthode publique pour afficher un courrier généré
+
+**À faire pour terminer l'intégration :**
+
+1. **MainWindow.xaml** :
+   - Ajouter: `xmlns:courriers="clr-namespace:MedCompanion.Views.Courriers"`
+   - Remplacer onglet Courriers (lignes 703-1118) par: `<courriers:CourriersControl x:Name="CourriersControlPanel"/>`
+
+2. **MainWindow.xaml.cs** :
+   - Initialiser: `CourriersControlPanel.Initialize(_letterService, _pathService, _patientIndex, _mccLibrary, _letterRatingService, _letterTemplates);`
+   - Connecter events StatusChanged et CreateLetterWithAIRequested
+   - Dans LoadPatientAsync(): `CourriersControlPanel.SetCurrentPatient(_selectedPatient);`
+
+3. **MainWindow.Documents.cs** - Supprimer méthodes dupliquées, GARDER:
+   - `AnalyzeLetterBtn_Click`, `SaveTemplateBtn_Click` (onglet Templates)
+   - `GenerateLetterFromTemplate`, `OpenTemplateSelector` (utilisés par chat)
+   - Code `CreateLetterWithAIDialog`

@@ -86,7 +86,7 @@ public partial class MainWindow : Window
 
             // Charger notes via le ViewModel, courriers, documents, formulaires, ordonnances, synthèse et échanges sauvegardés
             NoteViewModel.LoadNotes(patient.NomComplet, _patientIndex);
-            RefreshLettersList();
+            // RefreshLettersList(); // MIGRÉ vers CourriersControl - appelé via SetCurrentPatient
             LoadSavedExchanges();
             // RefreshAttestationsList(); // MIGRÉ vers AttestationsControl - géré par le ViewModel
             // LoadPatientDocuments(); // MIGRÉ vers DocumentsControl - appelé via SetCurrentPatient
@@ -96,6 +96,9 @@ public partial class MainWindow : Window
 
             // MIGRÉ vers FormulairesControl - Charger les formulaires via SetCurrentPatient
             FormulairesControlPanel.SetCurrentPatient(_selectedPatient);
+
+            // MIGRÉ vers CourriersControl - Charger les courriers via SetCurrentPatient
+            CourriersControlPanel.SetCurrentPatient(_selectedPatient);
 
             // Mettre à jour le patient sélectionné dans OrdonnanceViewModel
             OrdonnanceViewModel.SelectedPatient = metadata ?? new PatientMetadata
@@ -113,17 +116,10 @@ public partial class MainWindow : Window
             // Vérifier si le patient a des notes structurées
             bool hasNotes = PatientHasStructuredNotes(patient.NomComplet);
 
-            // Désactiver les contrôles de courrier si pas de notes
-            TemplateLetterCombo.IsEnabled = hasNotes;
-            AutoAdaptAIToggle.IsEnabled = hasNotes;
-
             if (!hasNotes)
             {
-                // Reset sélection ComboBox
-                TemplateLetterCombo.SelectedIndex = 0;
-
                 // Message explicatif
-                StatusTextBlock.Text = "⚠️ Patient sans notes - Fonctionnalité courriers désactivée. Structurez d'abord une note.";
+                StatusTextBlock.Text = "⚠️ Patient sans notes - Structurez d'abord une note.";
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
             }
             else
@@ -483,13 +479,9 @@ private void OnNoteStatusChanged(object sender, string message)
         {
             bool hasNotes = PatientHasStructuredNotes(_selectedPatient.NomComplet);
 
-            // Activer le menu déroulant des courriers si le patient a maintenant des notes
-            TemplateLetterCombo.IsEnabled = hasNotes;
-            AutoAdaptAIToggle.IsEnabled = hasNotes;
-
             if (hasNotes)
             {
-                StatusTextBlock.Text += " - Menu courriers activé";
+                StatusTextBlock.Text += " - Courriers disponibles";
             }
 
             // NOUVEAU : Rafraîchir le badge de notification de synthèse
@@ -716,7 +708,8 @@ private void OnNoteStatusChanged(object sender, string message)
             // ANCIEN SYSTÈME DÉSACTIVÉ - Utiliser le banner de suggestion à la place
             // Le nouveau système détecte automatiquement l'intent pendant la frappe
             // et affiche un banner avec bouton "Générer" pour confirmation
-            if (false && _letterService.IsLetterIntent(question))
+#if false // COURRIERS CHAT - MIGRÉ VERS CourriersControl
+            if (_letterService.IsLetterIntent(question))
             {
                 StatusTextBlock.Text = "⏳ Génération du courrier...";
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
@@ -819,7 +812,8 @@ private void OnNoteStatusChanged(object sender, string message)
                     StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
                 }
             }
-            else
+#endif // COURRIERS CHAT
+            // else clause devient le code principal maintenant
             {
                 // Chat normal
                 StatusTextBlock.Text = "⏳ L'IA réfléchit...";
@@ -1083,16 +1077,121 @@ private void OnNoteStatusChanged(object sender, string message)
     
     /// <summary>
     /// Génère un courrier à partir d'une conversation sauvegardée
+    /// Version refactorisée - utilise CourriersControl.SetDraft()
     /// </summary>
     private async void LetterFromChatBtn_Click(object sender, RoutedEventArgs e)
     {
         if (SavedExchangesList.SelectedItem is not ChatExchange exchange || _selectedPatient == null)
         {
-            MessageBox.Show("Veuillez sélectionner une conversation.", "Information", 
+            MessageBox.Show("Veuillez sélectionner une conversation.", "Information",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
-        
+
+        try
+        {
+            // Ouvrir le dialogue pour récupérer la demande de l'utilisateur
+            var dialog = new Dialogs.LetterFromChatDialog(exchange);
+            dialog.Owner = this;
+
+            if (dialog.ShowDialog() != true || string.IsNullOrEmpty(dialog.UserRequest))
+                return;
+
+            // Désactiver le bouton pendant la génération
+            LetterFromChatBtn.IsEnabled = false;
+            LetterFromChatBtn.Content = "⏳ Génération...";
+
+            StatusTextBlock.Text = "⏳ Génération du courrier depuis la conversation...";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
+
+            // Récupérer le contexte patient
+            var (hasContext, contextText, contextInfo) = _contextLoader.GetContextBundle(
+                _selectedPatient.NomComplet,
+                null
+            );
+
+            // Construire le prompt pour l'IA
+            var conversationContext = $"**Conversation précédente:**\n\n" +
+                                     $"Question: {exchange.Question}\n\n" +
+                                     $"Réponse: {exchange.Response}";
+
+            var fullContext = hasContext
+                ? $"{contextText}\n\n---\n\n{conversationContext}"
+                : conversationContext;
+
+            // Générer le courrier avec l'IA
+            var (success, markdown, error) = await _letterService.GenerateLetterFromChatAsync(
+                _selectedPatient.NomComplet,
+                fullContext,
+                dialog.UserRequest
+            );
+
+            if (success && !string.IsNullOrEmpty(markdown))
+            {
+                // Basculer vers l'onglet Courriers
+                AssistantTabControl.SelectedIndex = 1;
+
+                // Utiliser CourriersControl pour afficher le brouillon
+                CourriersControlPanel.SetDraft(markdown);
+
+                StatusTextBlock.Text = "✅ Courrier généré depuis la conversation - Vous pouvez le modifier puis sauvegarder";
+                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+
+                MessageBox.Show(
+                    "✅ Courrier généré avec succès !\n\n" +
+                    "Le brouillon est maintenant affiché dans l'onglet Courriers.\n" +
+                    "Vous pouvez le modifier puis le sauvegarder.",
+                    "Succès",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information
+                );
+            }
+            else
+            {
+                MessageBox.Show(
+                    $"❌ Erreur lors de la génération:\n\n{error}",
+                    "Erreur",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error
+                );
+
+                StatusTextBlock.Text = $"❌ Erreur: {error}";
+                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Erreur lors de la génération du courrier:\n\n{ex.Message}",
+                "Erreur",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+
+            StatusTextBlock.Text = $"❌ Erreur: {ex.Message}";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+        }
+        finally
+        {
+            // Réactiver le bouton
+            LetterFromChatBtn.IsEnabled = true;
+            LetterFromChatBtn.Content = "📝 Courrier";
+        }
+    }
+
+#if false // ANCIEN CODE - CONSERVÉ POUR RÉFÉRENCE
+    /// <summary>
+    /// Génère un courrier à partir d'une conversation sauvegardée (ANCIEN)
+    /// </summary>
+    private async void LetterFromChatBtn_Click_OLD(object sender, RoutedEventArgs e)
+    {
+        if (SavedExchangesList.SelectedItem is not ChatExchange exchange || _selectedPatient == null)
+        {
+            MessageBox.Show("Veuillez sélectionner une conversation.", "Information",
+                MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
         try
         {
             // Ouvrir le dialogue pour récupérer la demande de l'utilisateur
@@ -1194,6 +1293,8 @@ private void OnNoteStatusChanged(object sender, string message)
             LetterFromChatBtn.Content = "📝 Courrier";
         }
     }
+#endif // COURRIERS FROM CHAT
+
     private void UpdateMemoryIndicator()
     {
         // Pour l'instant, cette méthode est un placeholder
