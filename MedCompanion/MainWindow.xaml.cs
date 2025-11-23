@@ -64,8 +64,6 @@ public partial class MainWindow : Window
 
     private PatientIndexEntry? _selectedPatient;
 
-    private string? _currentEditingFilePath;
-
     // Poids de pertinence de la dernière note structurée (pour mise à jour synthèse)
     private double _lastNoteRelevanceWeight = 0.0;
     
@@ -315,7 +313,6 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         NoteViewModel.NoteStructured += OnNoteStructured;
         NoteViewModel.NoteSaveRequested += OnNoteSaveRequested;
         NoteViewModel.NoteDeleteRequested += OnNoteDeleteRequested;
-        NoteViewModel.NotesListRefreshRequested += OnNotesListRefreshRequested;
         NoteViewModel.NoteClearedAfterSave += OnNoteClearedAfterSave;
         NoteViewModel.PatientListRefreshRequested += OnPatientListRefreshRequested;
         NoteViewModel.NoteSaved += OnNoteSaved;
@@ -554,9 +551,6 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
     
     private void ResetPatientUI()
     {
-        // Réinitialiser le fichier en cours d'édition
-        _currentEditingFilePath = null;
-        
         // RESET MÉMOIRE CHAT
         _chatHistory.Clear();
         _savedChatExchanges.Clear();

@@ -144,7 +144,6 @@ namespace MedCompanion.ViewModels
         // ===== ÉVÉNEMENTS =====
 
         public event EventHandler<string>? StatusMessageChanged;
-        public event EventHandler? NotesListRefreshRequested;
         public event EventHandler? NoteSaved;
         public event EventHandler? PatientListRefreshRequested; // Nouveau: pour rafraîchir liste patients
 

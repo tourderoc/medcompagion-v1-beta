@@ -288,9 +288,6 @@ public partial class MainWindow : Window
 
             if (success)
             {
-                // Réinitialiser le fichier en cours (nouvelle note)
-                _currentEditingFilePath = null;
-
                 // NOUVEAU : Stocker le poids de pertinence pour l'utiliser lors de la sauvegarde
                 _lastNoteRelevanceWeight = relevanceWeight;
 
@@ -427,35 +424,6 @@ private void OnNoteStatusChanged(object sender, string message)
         {
             NoteViewModel.CompleteDelete();
         }
-    }
-    
-    private async void OnNotesListRefreshRequested(object sender, EventArgs e)
-    {
-        // Recharger la liste des notes depuis le ViewModel
-        if (_selectedPatient != null)
-        {
-            // IMPORTANT: Délai plus long pour s'assurer que le fichier est complètement écrit
-            // (certains antivirus peuvent causer des délais)
-            await Task.Delay(300);
-            
-            // Recharger les notes
-            NoteViewModel.LoadNotes(_selectedPatient.NomComplet, _patientIndex);
-            
-            // FORCER une mise à jour complète de l'UI en déclenchant manuellement PropertyChanged
-            // Ceci force WPF à reconstruire complètement le binding
-            await System.Windows.Application.Current.Dispatcher.InvokeAsync(() => 
-            {
-                // Forcer NotesList à se reconstruire en invalidant son ItemsSource
-                if (NotesList != null)
-                {
-                    var currentSource = NotesList.ItemsSource;
-                    NotesList.ItemsSource = null;
-                    NotesList.ItemsSource = currentSource;
-                    NotesList.Items.Refresh();
-                }
-            }, System.Windows.Threading.DispatcherPriority.Render);
-        }
-        // Le binding ItemsSource sur NoteViewModel.Notes se met à jour automatiquement
     }
     
     /// <summary>
@@ -644,9 +612,6 @@ private void OnNoteStatusChanged(object sender, string message)
         NotesControlPanel.StructuredNoteTextBox.Document = new FlowDocument(); // RichTextBox utilise Document
 
         // NE PAS contrôler manuellement la visibilité - le binding MVVM s'en charge !
-
-        // Réinitialiser fichier en cours
-        _currentEditingFilePath = null;
 
         // Désélectionner la note dans la liste
         NotesList.SelectedItem = null;

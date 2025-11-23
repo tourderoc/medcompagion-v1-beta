@@ -35,7 +35,6 @@ public partial class CourriersControl : UserControl
 
     // Events
     public event EventHandler<string>? StatusChanged;
-    public event Action<string, string, Color>? AddChatMessageRequested;
     public event EventHandler? CreateLetterWithAIRequested;
 
     public CourriersControl()

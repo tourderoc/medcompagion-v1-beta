@@ -42,16 +42,16 @@ namespace MedCompanion.Dialogs
             }
         }
         
-    private async void PatientListDialog_Loaded(object sender, RoutedEventArgs e)
+    private void PatientListDialog_Loaded(object sender, RoutedEventArgs e)
     {
-        await LoadPatientsAsync();
-        
+        LoadPatients();
+
         // Forcer le focus sur la fenêtre pour éviter le problème du double-clic
         this.Focus();
         this.Focusable = true;
     }
         
-        private async System.Threading.Tasks.Task LoadPatientsAsync()
+        private void LoadPatients()
         {
             try
             {
@@ -187,7 +187,7 @@ namespace MedCompanion.Dialogs
                         MessageBoxButton.OK, MessageBoxImage.Information);
                     
                     // Recharger la liste
-                    await LoadPatientsAsync();
+                    LoadPatients();
                 }
                 else
                 {

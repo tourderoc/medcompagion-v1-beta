@@ -28,7 +28,7 @@ namespace MedCompanion.Services
                 // Utiliser le converter statique existant du projet
                 return MarkdownFlowDocumentConverter.MarkdownToFlowDocument(markdown);
             }
-            catch (Exception ex)
+            catch
             {
                 // En cas d'erreur, retourner un document avec le texte brut
                 var errorDoc = new FlowDocument();
@@ -123,7 +123,7 @@ namespace MedCompanion.Services
 
                 return flowDocument;
             }
-            catch (Exception ex)
+            catch
             {
                 // En cas d'erreur, retourner un document avec le texte brut
                 var errorDoc = new FlowDocument();
@@ -190,7 +190,7 @@ namespace MedCompanion.Services
                 var flowDocument = ConvertMarkdownToFlowDocument(markdown);
                 richTextBox.Document = flowDocument;
             }
-            catch (Exception ex)
+            catch
             {
                 // En cas d'erreur, afficher le texte brut
                 var doc = new FlowDocument();

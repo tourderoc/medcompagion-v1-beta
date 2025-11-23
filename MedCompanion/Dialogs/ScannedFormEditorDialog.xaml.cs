@@ -105,9 +105,7 @@ namespace MedCompanion.Dialogs
         private readonly PathService _pathService = new PathService();
         private readonly string _pdfPath;
 
-        private WebView2? _webView;
         private Canvas? _zoneCanvas;
-        private bool _webViewInitialized = false;
         private double _currentZoom = 1.0;
         private double _offsetX = 0;
         private double _offsetY = 0;
@@ -287,8 +285,6 @@ namespace MedCompanion.Dialogs
                         _zoneCanvas.MouseLeftButtonUp += ZoneCanvas_MouseLeftButtonUp;
 
                         System.Diagnostics.Debug.WriteLine($"[ScannedFormEditor] {pageCount} pages rendered, Canvas created and attached");
-
-                        _webViewInitialized = true;
 
                         PdfFallbackMessage.Visibility = Visibility.Collapsed;
                         PdfZoomInButton.IsEnabled = true;

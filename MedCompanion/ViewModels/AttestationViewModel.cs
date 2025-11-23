@@ -36,7 +36,6 @@ namespace MedCompanion.ViewModels
         public event EventHandler<(string title, string message, Action onConfirm)>? ConfirmationRequested;
         public event EventHandler<string>? FileOpenRequested;
         public event EventHandler<string>? FilePrintRequested;
-        public event EventHandler<string>? FileDeleteRequested;
         public event EventHandler<string>? ShowInExplorerRequested;
         public event EventHandler<AttestationInfoDialog>? AttestationInfoDialogRequested;
         public event EventHandler<CustomAttestationDialog>? CustomAttestationDialogRequested;
@@ -133,7 +132,7 @@ namespace MedCompanion.ViewModels
         }
 
         private string _statusMessage;
-        public string StatusMessage
+        public new string StatusMessage
         {
             get => _statusMessage;
             set => SetProperty(ref _statusMessage, value);

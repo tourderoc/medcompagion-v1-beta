@@ -19,7 +19,6 @@ namespace MedCompanion.Views.Ordonnances
     {
         // Événements pour communiquer avec MainWindow
         public event EventHandler<string>? StatusChanged;
-        public event EventHandler? OrdonnancesListRefreshRequested;
 
         // Ordonnances temporaires en cours de prévisualisation (avant sauvegarde)
         private OrdonnanceIDE? _pendingOrdonnance;
