@@ -1,0 +1,430 @@
+<UserControl x:Class="MedCompanion.Views.Courriers.CourriersControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="400">
+
+    <Grid Margin="0,10,0,0">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ComboBox Courrier type -->
+        <Grid Grid.Row="0" Margin="0,0,0,15">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="📝 Courrier type" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#2C3E50"/>
+
+            <CheckBox x:Name="AutoAdaptAIToggle"
+                      Grid.Row="1"
+                      Content="⚡ Adapter automatiquement avec l'IA"
+                      IsChecked="True"
+                      FontSize="12"
+                      Foreground="#34495E"
+                      Margin="0,0,0,8"
+                      VerticalContentAlignment="Center"/>
+
+            <!-- Bouton Créer avec IA -->
+            <Button x:Name="CreateLetterWithAIButton"
+                    Grid.Row="2"
+                    Content="✨ Créer avec l'IA"
+                    Height="45"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#3498DB"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Margin="0,0,0,8"
+                    Click="CreateLetterWithAIButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#2980B9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <ComboBox x:Name="TemplateLetterCombo"
+                      Grid.Row="3"
+                      Height="40"
+                      FontSize="13"
+                      Padding="10"
+                      Background="White"
+                      BorderBrush="#BDC3C7"
+                      BorderThickness="1"
+                      SelectionChanged="TemplateLetterCombo_SelectionChanged">
+                <ComboBox.Style>
+                    <Style TargetType="ComboBox">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="ComboBox">
+                                    <Grid>
+                                        <ToggleButton x:Name="ToggleButton"
+                                                      Grid.Column="2"
+                                                      Focusable="False"
+                                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}"
+                                                      ClickMode="Press"
+                                                      Background="{TemplateBinding Background}"
+                                                      BorderBrush="{TemplateBinding BorderBrush}"
+                                                      BorderThickness="{TemplateBinding BorderThickness}">
+                                            <ToggleButton.Style>
+                                                <Style TargetType="ToggleButton">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                <Border x:Name="Border" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition/>
+                                                                            <ColumnDefinition Width="20"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <ContentPresenter Grid.Column="0" Margin="10,0,0,0" HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                                                                        <Path x:Name="Arrow" Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center" Data="M 0 0 L 4 4 L 8 0 Z" Fill="#666666"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ToggleButton.Style>
+                                        </ToggleButton>
+                                        <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False" Content="{TemplateBinding SelectionBoxItem}" ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}" ContentTemplateSelector="{TemplateBinding ItemTemplateSelector}" Margin="10,0,30,0" VerticalAlignment="Center" HorizontalAlignment="Left"/>
+                                        <Popup x:Name="Popup" Placement="Bottom" IsOpen="{TemplateBinding IsDropDownOpen}" AllowsTransparency="True" Focusable="False" PopupAnimation="Slide">
+                                            <Grid x:Name="DropDown" SnapsToDevicePixels="True" MinWidth="{TemplateBinding ActualWidth}" MaxHeight="200">
+                                                <Border x:Name="DropDownBorder" Background="White" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6"/>
+                                                <ScrollViewer Margin="2" SnapsToDevicePixels="True">
+                                                    <StackPanel IsItemsHost="True" KeyboardNavigation.DirectionalNavigation="Contained"/>
+                                                </ScrollViewer>
+                                            </Grid>
+                                        </Popup>
+                                    </Grid>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </ComboBox.Style>
+                <ComboBoxItem Content="-- Sélectionner un modèle --" IsSelected="True"/>
+                <ComboBoxItem Content="Demande de PAP à l'établissement scolaire"/>
+                <ComboBoxItem Content="Feuille de route pour les parents"/>
+                <ComboBoxItem Content="Demande d'évaluation cardio + ECG"/>
+            </ComboBox>
+        </Grid>
+
+        <!-- Liste des courriers -->
+        <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Text="📋 Courriers sauvegardés" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,8" Foreground="#2C3E50"/>
+
+            <Border Grid.Row="1" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="6" MaxHeight="200">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <ListBox x:Name="LettersList"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             SelectionChanged="LettersList_SelectionChanged"
+                             MouseDoubleClick="LettersList_MouseDoubleClick">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="8"/>
+                                <Setter Property="Margin" Value="2"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Border"
+                                                    Background="{TemplateBinding Background}"
+                                                    Padding="{TemplateBinding Padding}"
+                                                    BorderBrush="#E0E0E0"
+                                                    BorderThickness="1"
+                                                    CornerRadius="6">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="#F5F5F5"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Border" Property="Background" Value="#E3F2FD"/>
+                                                    <Setter TargetName="Border" Property="BorderBrush" Value="#90CAF9"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding DateLabel}" FontSize="10" FontWeight="SemiBold" Foreground="#3498DB"/>
+                                    <TextBlock Text="{Binding Preview}" FontSize="9" Foreground="#7F8C8D" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </ScrollViewer>
+            </Border>
+        </Grid>
+
+        <!-- Boutons actions courriers -->
+        <StackPanel Grid.Row="3">
+            <!-- Bouton Sauvegarder (pleine largeur) -->
+            <Button x:Name="SauvegarderLetterButton"
+                    Content="💾 Sauvegarder"
+                    Height="45"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#27AE60"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    IsEnabled="False"
+                    Margin="0,0,0,8"
+                    Click="SauvegarderLetterButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#229954"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <!-- Bouton Annuler (pleine largeur, sous Sauvegarder) -->
+            <Button x:Name="AnnulerLetterButton"
+                    Content="❌ Annuler"
+                    Height="45"
+                    FontSize="14"
+                    FontWeight="SemiBold"
+                    Background="#95A5A6"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand"
+                    Visibility="Collapsed"
+                    Margin="0,0,0,8"
+                    Click="AnnulerLetterButton_Click">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#7F8C8D"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <!-- Les 4 boutons sur la même ligne (visibles quand un courrier est sélectionné) -->
+            <Grid Margin="0,0,0,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="5"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Bouton Noter -->
+                <Button x:Name="NoterLetterButton"
+                        Grid.Column="0"
+                        Content="⭐ Noter"
+                        Height="45"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Background="#FFA500"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="Collapsed"
+                        Click="RateLetterButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#FF8C00"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <!-- Bouton Modifier (mode lecture) -->
+                <Button x:Name="ModifierLetterButton"
+                        Grid.Column="2"
+                        Content="✏️ Modifier"
+                        Height="45"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Background="#F39C12"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="Collapsed"
+                        Click="ModifierLetterButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#E67E22"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="SupprimerLetterButton"
+                        Grid.Column="4"
+                        Content="🗑️ Supprimer"
+                        Height="45"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Background="#E74C3C"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="Collapsed"
+                        Click="SupprimerLetterButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#C0392B"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="ImprimerLetterButton"
+                        Grid.Column="6"
+                        Content="🖨️ Imprimer"
+                        Height="45"
+                        FontSize="14"
+                        FontWeight="SemiBold"
+                        Background="#8E44AD"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Visibility="Collapsed"
+                        Click="ImprimerLetterButton_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#71368A"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+        </StackPanel>
+
+        <!-- Zone édition courrier -->
+        <Border Grid.Row="5" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6">
+            <RichTextBox x:Name="LetterEditText"
+                         IsReadOnly="True"
+                         VerticalScrollBarVisibility="Visible"
+                         HorizontalScrollBarVisibility="Disabled"
+                         Background="#FAFAFA"
+                         FontSize="13"
+                         Padding="12"
+                         BorderThickness="0"
+                         AcceptsTab="False"
+                         TextChanged="LetterEditText_TextChanged"/>
+        </Border>
+    </Grid>
+</UserControl>
