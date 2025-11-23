@@ -174,18 +174,42 @@ namespace MedCompanion.Views.Formulaires
                     pdfFiles.AddRange(Directory.GetFiles(dir, "*.pdf", SearchOption.TopDirectoryOnly));
 
                 var formulaires = new List<object>();
-                foreach (var pdfPath in pdfFiles)
+                
+                // Group files by their "base name" (ignoring _rempli suffix)
+                // Example: "Form.pdf" and "Form._rempli.pdf" -> Base: "Form"
+                var groupedFiles = pdfFiles.GroupBy(f => 
                 {
-                    var fileName = Path.GetFileName(pdfPath);
-                    var fileInfo = new FileInfo(pdfPath);
+                    string name = Path.GetFileNameWithoutExtension(f);
+                    if (name.EndsWith("_rempli", StringComparison.OrdinalIgnoreCase))
+                    {
+                        name = name.Substring(0, name.Length - 7); // Remove _rempli
+                    }
+                    // Also remove trailing dot if present (e.g. "Form." -> "Form")
+                    // This happens if the file was "Form._rempli.pdf"
+                    if (name.EndsWith("."))
+                    {
+                        name = name.Substring(0, name.Length - 1);
+                    }
+                    return name;
+                });
+
+                foreach (var group in groupedFiles)
+                {
+                    // For each group, prefer the _rempli version if it exists
+                    string bestFile = group.FirstOrDefault(f => f.EndsWith("_rempli.pdf", StringComparison.OrdinalIgnoreCase)) 
+                                      ?? group.First();
+
+                    var fileName = Path.GetFileName(bestFile);
+                    var fileInfo = new FileInfo(bestFile);
                     string typeLabel = fileName.StartsWith("PAI_", StringComparison.OrdinalIgnoreCase) ? "🏫 PAI" :
                                        fileName.StartsWith("MDPH_", StringComparison.OrdinalIgnoreCase) ? "📋 MDPH" : "📄 Autre";
+                    
                     formulaires.Add(new
                     {
                         TypeLabel = typeLabel,
                         DateLabel = fileInfo.LastWriteTime.ToString("dd/MM/yyyy HH:mm"),
                         FileName = fileName,
-                        FilePath = pdfPath,
+                        FilePath = bestFile,
                         Date = fileInfo.LastWriteTime
                     });
                 }
@@ -242,7 +266,18 @@ namespace MedCompanion.Views.Formulaires
             var filePath = filePathProp.GetValue(item) as string;
             if (string.IsNullOrEmpty(filePath)) return;
 
-            var jsonPath = Path.ChangeExtension(filePath, ".json");
+            // Handle _rempli.pdf files: look for JSON on the source file
+            string jsonPath;
+            if (filePath.EndsWith("_rempli.pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                string sourcePath = filePath.Replace("_rempli.pdf", ".pdf", StringComparison.OrdinalIgnoreCase);
+                jsonPath = Path.ChangeExtension(sourcePath, ".json");
+            }
+            else
+            {
+                jsonPath = Path.ChangeExtension(filePath, ".json");
+            }
+
             if (!File.Exists(jsonPath))
             {
                 StatusChanged?.Invoke(this, "⚠️ Aucune synthèse disponible pour ce formulaire");
@@ -306,8 +341,45 @@ namespace MedCompanion.Views.Formulaires
                 if (File.Exists(filePath)) File.Delete(filePath);
                 var mdPath = Path.ChangeExtension(filePath, ".md");
                 if (File.Exists(mdPath)) File.Delete(mdPath);
-                var jsonPath = Path.ChangeExtension(filePath, ".json");
+                
+                // Handle JSON deletion properly for both source and _rempli files
+                string jsonPath;
+                if (filePath.EndsWith("_rempli.pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    // For _rempli files, JSON is stored with the source filename
+                    string directory = Path.GetDirectoryName(filePath)!;
+                    string nameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
+                    string sourceName = nameWithoutExtension.Substring(0, nameWithoutExtension.Length - 7); // Remove _rempli
+                    if (sourceName.EndsWith(".")) sourceName = sourceName.Substring(0, sourceName.Length - 1);
+                    jsonPath = Path.Combine(directory, sourceName + ".json");
+                }
+                else
+                {
+                    // For source files, JSON has the same name
+                    jsonPath = Path.ChangeExtension(filePath, ".json");
+                }
+                
                 if (File.Exists(jsonPath)) File.Delete(jsonPath);
+
+                // Also delete the source file if we just deleted a _rempli version
+                if (filePath.EndsWith("_rempli.pdf", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Try to find the source file. 
+                    // Logic must match the grouping logic: remove "_rempli" and potentially trailing dot.
+                    string directory = Path.GetDirectoryName(filePath)!;
+                    string nameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
+                    
+                    string sourceName = nameWithoutExtension.Substring(0, nameWithoutExtension.Length - 7); // Remove _rempli
+                    if (sourceName.EndsWith(".")) sourceName = sourceName.Substring(0, sourceName.Length - 1);
+
+                    string sourcePath = Path.Combine(directory, sourceName + ".pdf");
+                    
+                    if (File.Exists(sourcePath))
+                    {
+                        File.Delete(sourcePath);
+                    }
+                }
+
                 StatusChanged?.Invoke(this, "✅ Formulaire supprimé");
                 LoadPatientFormulaires();
             }
@@ -416,10 +488,32 @@ namespace MedCompanion.Views.Formulaires
                 {
                     var editor = new ScannedFormEditorDialog(_currentPatient, _patientIndex, _formulaireService, destPath);
                     editor.Owner = Window.GetWindow(this);
-                    editor.ShowDialog();
+                    var editorResult = editor.ShowDialog();
+
+                    // If user cancelled (closed without saving), delete the copied PDF
+                    if (editorResult != true)
+                    {
+                        try
+                        {
+                            if (File.Exists(destPath))
+                            {
+                                File.Delete(destPath);
+                            }
+                            // Also delete JSON if it exists
+                            var jsonPath = System.IO.Path.ChangeExtension(destPath, ".json");
+                            if (File.Exists(jsonPath))
+                            {
+                                File.Delete(jsonPath);
+                            }
+                        }
+                        catch (Exception deleteEx)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error deleting cancelled import: {deleteEx.Message}");
+                        }
+                    }
 
                     LoadPatientFormulaires();
-                    StatusChanged?.Invoke(this, "✅ Formulaire scanné importé");
+                    StatusChanged?.Invoke(this, editorResult == true ? "✅ Formulaire scanné importé" : "❌ Import annulé");
                 }
                 else
                 {
@@ -440,97 +534,100 @@ namespace MedCompanion.Views.Formulaires
                 return;
             }
 
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string templatesDir = Path.Combine(appData, "MedCompanion", "Templates");
-
-            if (!Directory.Exists(templatesDir) || !Directory.GetFiles(templatesDir, "*.pdf").Any())
+            // Open template library dialog
+            var libraryDialog = new TemplateLibraryDialog();
+            libraryDialog.Owner = Window.GetWindow(this);
+            
+            if (libraryDialog.ShowDialog() == true && !string.IsNullOrEmpty(libraryDialog.SelectedTemplatePath))
             {
-                MessageBox.Show("Aucun modèle trouvé dans la bibliothèque.\nImportez d'abord un formulaire et choisissez 'Ajouter à la bibliothèque'.", "Bibliothèque vide", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
+                CreateFormFromTemplate(libraryDialog.SelectedTemplatePath);
             }
-
-            var contextMenu = new ContextMenu();
-            var files = Directory.GetFiles(templatesDir, "*.pdf");
-
-            foreach (var file in files)
-            {
-                var menuItem = new MenuItem
-                {
-                    Header = Path.GetFileNameWithoutExtension(file),
-                    Tag = file,
-                    Icon = new TextBlock { Text = "📄" }
-                };
-                menuItem.Click += TemplateMenuItem_Click;
-                contextMenu.Items.Add(menuItem);
-            }
-
-            NewFromTemplateButton.ContextMenu = contextMenu;
-            NewFromTemplateButton.ContextMenu.IsOpen = true;
         }
 
-        private void TemplateMenuItem_Click(object sender, RoutedEventArgs e)
+        private void CreateFormFromTemplate(string sourcePath)
         {
-            if (sender is MenuItem menuItem && menuItem.Tag is string sourcePath && _currentPatient != null)
+            if (_currentPatient == null) return;
+
+            try
             {
-                try
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                
+                // Use PathService if available, otherwise fallback to patient directory
+                string patientDir;
+                if (_pathService != null)
                 {
-                    string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-                    
-                    // Use PathService if available, otherwise fallback to patient directory
-                    string patientDir;
-                    if (_pathService != null)
+                    patientDir = _pathService.GetFormulairesDirectory(_currentPatient.NomComplet);
+                }
+                else
+                {
+                    patientDir = Path.Combine(_currentPatient.DirectoryPath, "formulaires");
+                }
+
+                Directory.CreateDirectory(patientDir);
+
+                string fileName = Path.GetFileName(sourcePath);
+                string destPath = Path.Combine(patientDir, fileName);
+
+                // Ensure unique name
+                if (File.Exists(destPath))
+                {
+                    string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
+                    string ext = Path.GetExtension(fileName);
+                    int counter = 1;
+                    while (File.Exists(destPath))
                     {
-                        patientDir = _pathService.GetFormulairesDirectory(_currentPatient.NomComplet);
+                        destPath = Path.Combine(patientDir, $"{nameWithoutExt}_{counter}{ext}");
+                        counter++;
                     }
-                    else
+                }
+
+                // Copy PDF
+                File.Copy(sourcePath, destPath);
+
+                // Copy JSON metadata if exists (zones)
+                string sourceJson = Path.ChangeExtension(sourcePath, ".json");
+                if (File.Exists(sourceJson))
+                {
+                    string destJson = Path.ChangeExtension(destPath, ".json");
+                    File.Copy(sourceJson, destJson);
+                }
+
+                // Open Editor
+                if (_patientIndex != null && _formulaireService != null)
+                {
+                    var editor = new ScannedFormEditorDialog(_currentPatient, _patientIndex, _formulaireService, destPath);
+                    editor.Owner = Window.GetWindow(this);
+                    var result = editor.ShowDialog();
+
+                    // If user cancelled (closed without saving), delete the copied files
+                    if (result != true)
                     {
-                        patientDir = Path.Combine(_currentPatient.DirectoryPath, "formulaires");
-                    }
-
-                    Directory.CreateDirectory(patientDir);
-
-                    string fileName = Path.GetFileName(sourcePath);
-                    string destPath = Path.Combine(patientDir, fileName);
-
-                    // Ensure unique name
-                    if (File.Exists(destPath))
-                    {
-                        string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName);
-                        string ext = Path.GetExtension(fileName);
-                        int counter = 1;
-                        while (File.Exists(destPath))
+                        try
                         {
-                            destPath = Path.Combine(patientDir, $"{nameWithoutExt}_{counter}{ext}");
-                            counter++;
+                            if (File.Exists(destPath))
+                            {
+                                File.Delete(destPath);
+                            }
+                            // Also delete JSON if it exists
+                            var jsonPath = System.IO.Path.ChangeExtension(destPath, ".json");
+                            if (File.Exists(jsonPath))
+                            {
+                                File.Delete(jsonPath);
+                            }
+                        }
+                        catch (Exception deleteEx)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Error deleting cancelled template: {deleteEx.Message}");
                         }
                     }
 
-                    // Copy PDF
-                    File.Copy(sourcePath, destPath);
-
-                    // Copy JSON metadata if exists (zones)
-                    string sourceJson = Path.ChangeExtension(sourcePath, ".json");
-                    if (File.Exists(sourceJson))
-                    {
-                        string destJson = Path.ChangeExtension(destPath, ".json");
-                        File.Copy(sourceJson, destJson);
-                    }
-
-                    // Open Editor
-                    if (_patientIndex != null && _formulaireService != null)
-                    {
-                        var editor = new ScannedFormEditorDialog(_currentPatient, _patientIndex, _formulaireService, destPath);
-                        editor.Owner = Window.GetWindow(this);
-                        editor.ShowDialog();
-
-                        LoadPatientFormulaires();
-                        StatusChanged?.Invoke(this, "✅ Formulaire créé depuis le modèle");
-                    }
+                    LoadPatientFormulaires();
+                    StatusChanged?.Invoke(this, result == true ? "✅ Formulaire créé depuis le modèle" : "❌ Création annulée");
                 }
-                catch (Exception ex)
-                {
-                    MessageBox.Show($"Erreur lors de la création depuis le modèle : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors de la création depuis le modèle : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 

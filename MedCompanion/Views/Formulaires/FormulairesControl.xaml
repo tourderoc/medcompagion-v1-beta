@@ -386,7 +386,7 @@
             </StackPanel>
 
             <!-- Aperçu de la synthèse -->
-            <Border Grid.Row="5"
+            <Border Grid.Row="6"
                 BorderThickness="1"
                 BorderBrush="#E0E0E0"
                 CornerRadius="6"

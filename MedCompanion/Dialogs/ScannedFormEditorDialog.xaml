@@ -77,6 +77,34 @@
                     <TextBlock x:Name="ZoneCountText" Text="Aucune zone" FontSize="12" Foreground="#7F8C8D" 
                                HorizontalAlignment="Center" Margin="0,0,0,15"/>
 
+                    <!-- Offset Calibration Section -->
+                    <Border Background="#F8F9FA" CornerRadius="6" Padding="15" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="📐 Calibration du PDF" FontWeight="Bold" FontSize="13" Margin="0,0,0,10"/>
+                            
+                            <TextBlock Text="Décalage X (horizontal):" FontSize="11" Margin="0,0,0,5"/>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                <TextBox x:Name="OffsetXTextBox" Text="0" Width="80" Height="28" 
+                                         VerticalContentAlignment="Center" TextAlignment="Right"
+                                         PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                         TextChanged="OffsetXTextBox_TextChanged"/>
+                                <TextBlock Text=" cm" VerticalAlignment="Center" Margin="5,0,0,0" FontSize="11"/>
+                            </StackPanel>
+                            
+                            <TextBlock Text="Décalage Y (vertical):" FontSize="11" Margin="0,0,0,5"/>
+                            <StackPanel Orientation="Horizontal">
+                                <TextBox x:Name="OffsetYTextBox" Text="0" Width="80" Height="28"
+                                         VerticalContentAlignment="Center" TextAlignment="Right"
+                                         PreviewTextInput="NumericTextBox_PreviewTextInput"
+                                         TextChanged="OffsetYTextBox_TextChanged"/>
+                                <TextBlock Text=" cm" VerticalAlignment="Center" Margin="5,0,0,0" FontSize="11"/>
+                            </StackPanel>
+                            
+                            <TextBlock Text="💡 Ajustez si le texte est décalé dans le PDF" 
+                                       FontSize="10" Foreground="#7F8C8D" Margin="0,10,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+                    </Border>
+
                     <!-- Selected Zone Info Panel -->
                     <Border x:Name="SelectedZonePanel" Background="#E8F8F5" BorderBrush="#27AE60" BorderThickness="2" 
                             CornerRadius="8" Padding="15" Margin="0,0,0,20" Visibility="Collapsed">

@@ -32,7 +32,7 @@ namespace MedCompanion.Models
         /// <summary>
         /// Font size for the text in this zone
         /// </summary>
-        public double FontSize { get; set; } = 24.0;
+        public double FontSize { get; set; } = 36.0;
     }
 
     /// <summary>
@@ -44,5 +44,15 @@ namespace MedCompanion.Models
         /// List of all defined text zones
         /// </summary>
         public List<ScannedFormMetadata> Zones { get; set; } = new List<ScannedFormMetadata>();
+        
+        /// <summary>
+        /// Horizontal offset in pixels for calibration (compensates for PDF coordinate misalignment)
+        /// </summary>
+        public double OffsetX { get; set; } = 0;
+        
+        /// <summary>
+        /// Vertical offset in pixels for calibration (compensates for PDF coordinate misalignment)
+        /// </summary>
+        public double OffsetY { get; set; } = 0;
     }
 }

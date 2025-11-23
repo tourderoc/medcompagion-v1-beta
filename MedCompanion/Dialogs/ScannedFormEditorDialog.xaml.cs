@@ -33,6 +33,10 @@ namespace MedCompanion.Dialogs
             public TextBlock TextDisplay { get; set; }
             public List<Rectangle> ResizeHandles { get; set; } = new List<Rectangle>();
             public bool IsSelected { get; set; }
+            
+            // In-place editing support
+            public TextBox? EditTextBox { get; set; }
+            public bool IsEditing { get; set; }
 
             public EditableZone(ScannedFormMetadata metadata, Rectangle rectangle, TextBlock textBlock)
             {
@@ -105,6 +109,8 @@ namespace MedCompanion.Dialogs
         private Canvas? _zoneCanvas;
         private bool _webViewInitialized = false;
         private double _currentZoom = 1.0;
+        private double _offsetX = 0;
+        private double _offsetY = 0;
 
         // Drawing mode
         private bool _isDrawingMode = false;
@@ -373,6 +379,23 @@ namespace MedCompanion.Dialogs
                     {
                         CreateEditableZone(zone);
                     }
+                    
+                    // Load offsets and update TextBoxes
+                    _offsetX = container.OffsetX;
+                    _offsetY = container.OffsetY;
+                    
+                    if (OffsetXTextBox != null)
+                    {
+                        // Convert pixels to cm for display
+                        double cmX = _offsetX / 37.8;
+                        OffsetXTextBox.Text = cmX.ToString("F2");
+                    }
+                    if (OffsetYTextBox != null)
+                    {
+                        // Convert pixels to cm for display
+                        double cmY = _offsetY / 37.8;
+                        OffsetYTextBox.Text = cmY.ToString("F2");
+                    }
                 }
             }
             catch (Exception ex)
@@ -428,10 +451,72 @@ namespace MedCompanion.Dialogs
             // Add event handlers
             rect.MouseLeftButtonDown += (s, e) => Zone_MouseLeftButtonDown(editableZone, e);
             rect.MouseEnter += (s, e) => { if (!_isDrawingMode) rect.Cursor = Cursors.Hand; };
+            
+            // Add context menu
+            rect.ContextMenu = CreateZoneContextMenu(editableZone);
 
             _editableZones.Add(editableZone);
 
             return editableZone;
+        }
+        
+        private ContextMenu CreateZoneContextMenu(EditableZone zone)
+        {
+            var menu = new ContextMenu();
+            
+            // Font size submenu
+            var fontSizeMenu = new MenuItem { Header = "📏 Taille de police" };
+            foreach (var size in new[] { 12, 18, 24, 36, 48 })
+            {
+                var item = new MenuItem { Header = $"{size} pt" };
+                item.Click += (s, e) =>
+                {
+                    zone.Metadata.FontSize = size;
+                    if (zone.TextDisplay != null)
+                    {
+                        zone.TextDisplay.FontSize = size;
+                    }
+                    UpdateSelectedZoneInfo();
+                };
+                fontSizeMenu.Items.Add(item);
+            }
+            menu.Items.Add(fontSizeMenu);
+            
+            menu.Items.Add(new Separator());
+            
+            // Edit text
+            var editItem = new MenuItem { Header = "✏️ Éditer le texte" };
+            editItem.Click += (s, e) => EditZoneText(zone);
+            menu.Items.Add(editItem);
+            
+            // Paste
+            var pasteItem = new MenuItem { Header = "📋 Coller (Ctrl+V)" };
+            pasteItem.Click += (s, e) => PasteIntoZone(zone);
+            menu.Items.Add(pasteItem);
+            
+            menu.Items.Add(new Separator());
+            
+            // Delete zone
+            var deleteItem = new MenuItem { Header = "🗑️ Supprimer" };
+            deleteItem.Click += (s, e) =>
+            {
+                _selectedZone = zone;
+                DeleteSelectedZone();
+            };
+            menu.Items.Add(deleteItem);
+            
+            return menu;
+        }
+        
+        private void PasteIntoZone(EditableZone zone)
+        {
+            if (Clipboard.ContainsText())
+            {
+                var text = Clipboard.GetText();
+                zone.Metadata.FilledText = text;
+                zone.UpdateText();
+                UpdateSelectedZoneInfo();
+            }
         }
 
         private void CreateResizeHandles(EditableZone zone)
@@ -915,80 +1000,79 @@ namespace MedCompanion.Dialogs
 
         private void EditZoneText(EditableZone zone)
         {
-            var inputDialog = new Window
-            {
-                Title = "Éditer la zone de texte",
-                Width = 450,
-                Height = 300,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Owner = this
-            };
+            if (_zoneCanvas == null || zone.IsEditing) return;
 
-            var stack = new StackPanel { Margin = new Thickness(20) };
-            
-            stack.Children.Add(new TextBlock 
-            { 
-                Text = "Texte de la zone:", 
-                FontWeight = FontWeights.Bold, 
-                Margin = new Thickness(0, 0, 0, 5) 
-            });
-            
-            var textBox = new TextBox
+            // Enter edit mode
+            zone.IsEditing = true;
+
+            // Create TextBox overlay
+            var editBox = new TextBox
             {
                 Text = zone.Metadata.FilledText,
-                Height = 120,
+                FontSize = zone.Metadata.FontSize,
                 TextWrapping = TextWrapping.Wrap,
                 AcceptsReturn = true,
-                Margin = new Thickness(0, 0, 0, 15),
-                VerticalScrollBarVisibility = ScrollBarVisibility.Auto
-            };
-            stack.Children.Add(textBox);
-
-            var buttonPanel = new StackPanel 
-            { 
-                Orientation = Orientation.Horizontal, 
-                HorizontalAlignment = HorizontalAlignment.Right 
-            };
-            
-            var okButton = new Button 
-            { 
-                Content = "✅ OK", 
-                Width = 100, 
-                Height = 35, 
-                Margin = new Thickness(0, 0, 10, 0),
-                Background = new SolidColorBrush(Color.FromRgb(39, 174, 96)),
-                Foreground = Brushes.White,
-                BorderThickness = new Thickness(0),
-                Cursor = Cursors.Hand
-            };
-            
-            var cancelButton = new Button 
-            { 
-                Content = "❌ Annuler", 
-                Width = 100, 
-                Height = 35,
-                Background = new SolidColorBrush(Color.FromRgb(231, 76, 60)),
-                Foreground = Brushes.White,
-                BorderThickness = new Thickness(0),
-                Cursor = Cursors.Hand
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Background = Brushes.White,
+                BorderBrush = Brushes.Blue,
+                BorderThickness = new Thickness(2),
+                Padding = new Thickness(2)
             };
 
-            okButton.Click += (s, e) =>
+            // Position and size to match zone
+            Canvas.SetLeft(editBox, Canvas.GetLeft(zone.MainRectangle));
+            Canvas.SetTop(editBox, Canvas.GetTop(zone.MainRectangle));
+            editBox.Width = zone.MainRectangle.Width;
+            editBox.Height = zone.MainRectangle.Height;
+
+            // Store reference
+            zone.EditTextBox = editBox;
+
+            // Hide TextBlock, show TextBox
+            zone.TextDisplay.Visibility = Visibility.Collapsed;
+            _zoneCanvas.Children.Add(editBox);
+
+            // Focus and select all
+            editBox.Focus();
+            editBox.SelectAll();
+
+            // Handle exit edit mode
+            editBox.LostFocus += (s, e) => ExitEditMode(zone);
+            editBox.KeyDown += (s, e) =>
             {
-                zone.Metadata.FilledText = textBox.Text;
-                zone.UpdateText(); // Update the TextBlock display
-                UpdateSelectedZoneInfo();
-                inputDialog.DialogResult = true;
+                if (e.Key == Key.Escape)
+                {
+                    // Cancel editing
+                    zone.Metadata.FilledText = zone.Metadata.FilledText; // Keep original
+                    ExitEditMode(zone);
+                    e.Handled = true;
+                }
+                else if (e.Key == Key.Enter && (Keyboard.Modifiers & ModifierKeys.Shift) == 0)
+                {
+                    // Save and exit (Shift+Enter for new line)
+                    zone.Metadata.FilledText = editBox.Text;
+                    ExitEditMode(zone);
+                    e.Handled = true;
+                }
             };
-            
-            cancelButton.Click += (s, e) => inputDialog.Close();
+        }
 
-            buttonPanel.Children.Add(okButton);
-            buttonPanel.Children.Add(cancelButton);
-            stack.Children.Add(buttonPanel);
+        private void ExitEditMode(EditableZone zone)
+        {
+            if (!zone.IsEditing || zone.EditTextBox == null || _zoneCanvas == null) return;
 
-            inputDialog.Content = stack;
-            inputDialog.ShowDialog();
+            // Save text
+            zone.Metadata.FilledText = zone.EditTextBox.Text;
+
+            // Remove TextBox
+            _zoneCanvas.Children.Remove(zone.EditTextBox);
+            zone.EditTextBox = null;
+            zone.IsEditing = false;
+
+            // Show TextBlock
+            zone.TextDisplay.Visibility = Visibility.Visible;
+            zone.UpdateText();
+            UpdateSelectedZoneInfo();
         }
 
         #endregion
@@ -1005,6 +1089,12 @@ namespace MedCompanion.Dialogs
             else if (e.Key == Key.Escape && _selectedZone != null)
             {
                 DeselectZone();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.V && (Keyboard.Modifiers & ModifierKeys.Control) != 0 && _selectedZone != null)
+            {
+                // Ctrl+V to paste into selected zone
+                PasteIntoZone(_selectedZone);
                 e.Handled = true;
             }
         }
@@ -1137,7 +1227,12 @@ namespace MedCompanion.Dialogs
                 // 1. Save JSON (Metadata)
                 var jsonPath = System.IO.Path.ChangeExtension(_pdfPath, ".json");
                 var zones = _editableZones.Select(z => z.Metadata).ToList();
-                var container = new ScannedFormMetadataContainer { Zones = zones };
+                var container = new ScannedFormMetadataContainer 
+                { 
+                    Zones = zones,
+                    OffsetX = _offsetX,
+                    OffsetY = _offsetY
+                };
                 var json = System.Text.Json.JsonSerializer.Serialize(container, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                 await File.WriteAllTextAsync(jsonPath, json);
 
@@ -1202,6 +1297,16 @@ namespace MedCompanion.Dialogs
                             // Calculate relative position
                             double relX = zone.Rectangle.X;
                             double relY = zone.Rectangle.Y - pageOffsetY;
+                            
+                            // Apply automatic default offset (12.7 cm = ~480 pixels)
+                            // This compensates for the systematic offset observed in PDF rendering
+                            const double DEFAULT_OFFSET_CM = 12.7;
+                            const double PIXELS_PER_CM = 37.8; // 96 DPI standard
+                            double defaultOffsetPixels = DEFAULT_OFFSET_CM * PIXELS_PER_CM;
+                            
+                            // Apply default offset + user adjustments
+                            relX -= (defaultOffsetPixels + _offsetX);
+                            relY -= _offsetY;
 
                             // Scale to image coordinates
                             float imgX = (float)(relX * scaleX);
@@ -1293,6 +1398,54 @@ namespace MedCompanion.Dialogs
             // Apply scale transform
             var scaleTransform = new ScaleTransform(_currentZoom, _currentZoom);
             PdfViewerContainer.LayoutTransform = scaleTransform;
+        }
+        
+        private void OffsetXTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (double.TryParse(OffsetXTextBox.Text, out double cm))
+            {
+                // Convert cm to pixels (37.8 pixels per cm at 96 DPI)
+                _offsetX = cm * 37.8;
+            }
+        }
+        
+        private void OffsetYTextBox_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (double.TryParse(OffsetYTextBox.Text, out double cm))
+            {
+                // Convert cm to pixels (37.8 pixels per cm at 96 DPI)
+                _offsetY = cm * 37.8;
+            }
+        }
+        
+        private void NumericTextBox_PreviewTextInput(object sender, TextCompositionEventArgs e)
+        {
+            // Allow digits, minus sign, and decimal point
+            var textBox = sender as TextBox;
+            if (textBox == null) return;
+            
+            // Check if input is valid
+            string newText = textBox.Text.Insert(textBox.SelectionStart, e.Text);
+            
+            // Allow minus only at the beginning
+            if (e.Text == "-" && textBox.SelectionStart != 0)
+            {
+                e.Handled = true;
+                return;
+            }
+            
+            // Allow only one decimal point
+            if (e.Text == "." && textBox.Text.Contains("."))
+            {
+                e.Handled = true;
+                return;
+            }
+            
+            // Check if it's a valid number character
+            if (!char.IsDigit(e.Text, 0) && e.Text != "." && e.Text != "-")
+            {
+                e.Handled = true;
+            }
         }
 
         #endregion
