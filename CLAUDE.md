@@ -342,34 +342,38 @@ public event EventHandler<string>? StatusChanged;
 StatusChanged?.Invoke(this, "✅ Operation completed");
 ```
 
-### Current State After Refactoring
+### Current State After Refactoring & Cleanup (23/11/2025)
 
 **MainWindow.xaml:**
 - Original: ~3112 lines
 - After refactoring: Much lighter (6 major sections extracted)
 - Each section replaced with: `<namespace:ControlName x:Name="..."/>`
 
-**Code Organization:**
-- MainWindow.xaml.cs: Initialization, service setup, coordination
-- MainWindow.Patient.cs: Patient loading, context (with legacy code disabled)
-- MainWindow.Documents.cs: **Courriers/MCC matching (INTENTIONALLY left in legacy - most complex)**
-- MainWindow.Formulaires.cs: Legacy code disabled with `#if false`
+**Code Organization (after cleanup):**
+- MainWindow.xaml.cs: Initialization, service setup, coordination (~1570 lines)
+- MainWindow.Patient.cs: Patient loading, context (~1379 lines)
+- MainWindow.Documents.cs: **Courriers/MCC matching** (~1235 lines)
+- MainWindow.Formulaires.cs: Minimal stub (~12 lines)
 - MainWindow.LLM.cs: LLM provider switching
 
-**Legacy Code Management:**
-- All migrated code wrapped in `#if false` blocks
-- Can be safely deleted later after thorough testing (1-2 weeks validation)
-- Keeps code available for reference during transition period
-- ~1500+ lines disabled across multiple files
+**Legacy Code Cleanup COMPLETED:**
+- ✅ **All `#if false` blocks deleted** after successful validation
+- ✅ **~2490 lines of legacy code removed** across 4 files:
+  - MainWindow.Formulaires.cs: ~733 lines removed
+  - MainWindow.Patient.cs (PatientListControl): ~173 lines removed
+  - MainWindow.Patient.cs (NotesControl/Synthèse): ~252 lines removed
+  - MainWindow.xaml.cs (Documents): ~661 lines removed
+  - MainWindow.Documents.cs (Attestations): ~671 lines removed
+- ✅ Application tested and validated with **no regressions**
 
 **Compilation Status:**
-- ✅ **0 errors** after all refactoring
-- ~206-210 warnings (pre-existing, mostly nullable references)
+- ✅ **0 errors** after all refactoring and cleanup
+- ~231 warnings (pre-existing, mostly nullable references)
 
 ### What Remains INTENTIONALLY in Legacy (Strategic Decision)
 
 **Courriers/MCC Section (NOT refactored - DECISION: Keep as-is):**
-- Location: `MainWindow.Documents.cs` (~2400 lines)
+- Location: `MainWindow.Documents.cs` (~1235 lines after cleanup)
 - Functionality: Letter generation with AI, MCC template matching, semantic analysis
 - Complexity: Very high (OpenAI integration, scoring algorithms, template management)
 - **Decision rationale (November 2025):**
@@ -377,29 +381,23 @@ StatusChanged?.Invoke(this, "✅ Operation completed");
   - ✅ **Already 6 sections refactored successfully** - diminishing returns
   - ✅ **Code works well** - no pressing need to refactor
   - ✅ **Can be done later** if truly needed with more preparation
-  - ✅ **Focus on consolidation** - better to validate existing refactoring first
-
-**Future Cleanup Tasks (Short-term: 1-2 weeks):**
-1. **Test intensively** all 6 refactored sections in production
-2. **Delete `#if false` blocks** after validation period
-3. Monitor for any regressions or bugs
 
 **Future Refactoring (Long-term: Only if necessary):**
 - Courriers/MCC section could be refactored in 6+ months if needed
 - Would require careful planning with step-by-step approach
 - Not a priority given current architecture stability
 
-### Testing Recommendations
+### Testing Validated (23/11/2025)
 
-**Before deleting legacy code, test:**
-1. Patient list: search, select, delete
-2. Notes: structure, save, edit, delete
-3. Synthèse: generate complete, incremental update
-4. Ordonnances: create, modify, delete, print, **renew from previous prescription**
-5. Attestations: create with placeholders, gender selection, delete
-6. Formulaires: MDPH AI generation, PAI model opening, delete
-7. Documents: import (browse), view, delete, synthesis generation/save
-8. All cross-section workflows (e.g., select patient → generate attestation → view in documents)
+**All sections tested after legacy code cleanup:**
+1. ✅ Patient list: search, select, delete
+2. ✅ Notes: structure, save, edit, delete
+3. ✅ Synthèse: generate complete, incremental update
+4. ✅ Ordonnances: create, modify, delete, print, renew from previous prescription
+5. ✅ Attestations: create with placeholders, gender selection, delete
+6. ✅ Formulaires: MDPH AI generation, PAI model opening, delete
+7. ✅ Documents: import (browse), view, delete, synthesis generation/save
+8. ✅ All cross-section workflows validated
 
 ### Key Learnings & Decisions
 
@@ -412,34 +410,43 @@ StatusChanged?.Invoke(this, "✅ Operation completed");
 
 ### Git Commits Created
 
+**Phase 1 - Refactoring into UserControls:**
 - `c4c4d90` - PatientListControl refactoring
 - `966e688` - Synthèse and FormulairesControl refactoring
-- `cd6697b` - DocumentsControl refactoring (latest)
+- `cd6697b` - DocumentsControl refactoring
+
+**Phase 2 - Legacy Code Cleanup (23/11/2025):**
+- `ad72d94` - Supprimer bloc legacy MainWindow.Formulaires.cs (~733 lines)
+- `dd959d9` - Supprimer bloc legacy PatientListControl (~173 lines)
+- `e8c72d8` - Supprimer bloc legacy NotesControl/Synthèse (~252 lines)
+- `a624899` - Supprimer bloc legacy Documents (~661 lines)
+- `f45a870` - Supprimer bloc legacy Attestations (~671 lines)
 
 When working on UI code, prefer creating new UserControls in `Views/` folder rather than expanding MainWindow.
 
 ## Code Health & Technical Debt (November 2025)
 
-### Current State: 8/10 (upgraded from 7/10 after Documents refactoring)
+### Current State: 9/10 (upgraded from 8/10 after legacy cleanup 23/11/2025)
 
 **Compilation Status:**
 - ✅ **0 errors** - Application compiles successfully
-- ⚠️ **~206-210 warnings** - Mostly nullable reference types (CS8618), inoffensive
+- ⚠️ **~231 warnings** - Mostly nullable reference types (CS8618), inoffensive
 - ✅ **Functionality** - All features working in production
 
 **Architecture:**
 - ✅ Services well structured (Factory pattern, tuple returns, PathService)
 - ✅ **6 major sections refactored** into clean UserControls
 - ✅ Consistent pattern across all UserControls (Initialize, SetCurrentPatient, StatusChanged)
-- ⚠️ 1 complex section intentionally left in legacy (Courriers/MCC)
+- ✅ **All legacy `#if false` blocks removed** (~2490 lines cleaned up)
+- ⚠️ 1 complex section intentionally kept as-is (Courriers/MCC)
 - ⚠️ Hybrid MVVM + code-behind (partial classes remain)
 
 ### Known Technical Debt
 
 **High Priority:**
-1. **MainWindow.Documents.cs** - 2400 lines of complex logic (letter generation, MCC matching, templates)
+1. **MainWindow.Documents.cs** - ~1235 lines of complex logic (letter generation, MCC matching, templates)
    - Risk: Hard to maintain, difficult to test, regression-prone
-   - **Decision (November 2025): INTENTIONALLY kept in legacy** - strategic choice after 6 successful refactorings
+   - **Decision (November 2025): INTENTIONALLY kept as-is** - strategic choice after 6 successful refactorings
    - Rationale: Critical feature, high risk, low immediate benefit, can be done later if needed
 
 2. **Zero automated tests** - No unit tests, integration tests, or UI tests
@@ -451,25 +458,21 @@ When working on UI code, prefer creating new UserControls in `Views/` folder rat
    - Impact: No telemetry for user problems
 
 **Medium Priority:**
-4. **206-210 nullable warnings** - Non-nullable properties without initialization
+4. **~231 nullable warnings** - Non-nullable properties without initialization
    - Impact: Noise in build logs, masks real issues
    - Fix: Progressive cleanup (variables unused first, then nullable)
 
-5. **~1500+ lines in `#if false`** - Legacy code disabled but still in files
-   - Risk: Git merge conflicts, confusion
-   - Action: Delete after thorough testing (1-2 weeks validation in production)
-
-6. **State management** - `_selectedPatient` shared across MainWindow
+5. **State management** - `_selectedPatient` shared across MainWindow
    - Risk: Order-dependent initialization, potential bugs
    - Future: Consider centralized state management
 
 ### Priorities Roadmap
 
-**Short Term (1-2 weeks) - CURRENT FOCUS:**
+**Completed (23/11/2025):**
 - ✅ Test 6 refactored sections intensively in production
 - ✅ Monitor for bugs related to refactoring
-- ✅ Document any issues found
-- 🔜 Delete `#if false` blocks after validation period
+- ✅ **Delete all `#if false` blocks** - ~2490 lines removed
+- ✅ No regressions detected
 
 **Medium Term (1-2 months):**
 - Fix easy warnings (unused variables, async without await)
