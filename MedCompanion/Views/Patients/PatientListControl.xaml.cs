@@ -40,6 +40,7 @@ namespace MedCompanion.Views.Patients
         /// <summary>
         /// Charge et affiche la liste des patients
         /// Tri: Patients récemment ouverts en haut → Autres en ordre alphabétique
+        /// Limite: 60 patients maximum pour performance
         /// </summary>
         public void LoadPatients()
         {
@@ -47,6 +48,8 @@ namespace MedCompanion.Views.Patients
                 return;
 
             var patients = _patientIndex.GetAllPatients();
+            var totalCount = patients.Count;
+            
             var displayList = patients.Select(p =>
             {
                 var lastConsult = _patientIndex.GetLastConsultationDate(p.Id);
@@ -67,10 +70,20 @@ namespace MedCompanion.Views.Patients
             // Tri intelligent: Patients récemment ouverts en priorité, puis alphabétique
             .OrderBy(p => p.RecentOrder == -1 ? int.MaxValue : p.RecentOrder) // Récents en premier (0, 1, 2...), puis autres (MaxValue)
             .ThenBy(p => p.NomComplet) // Ordre alphabétique pour les non-récents
+            .Take(60) // Limiter à 60 patients pour performance
             .ToList();
 
             PatientsDataGrid.ItemsSource = displayList;
-            PatientCountTextBlock.Text = $"{displayList.Count} patient{(displayList.Count > 1 ? "s" : "")}";
+            
+            // Afficher le compteur avec indication si limité
+            if (displayList.Count < totalCount)
+            {
+                PatientCountTextBlock.Text = $"{displayList.Count} / {totalCount} patients (récents)";
+            }
+            else
+            {
+                PatientCountTextBlock.Text = $"{displayList.Count} patient{(displayList.Count > 1 ? "s" : "")}";
+            }
         }
 
         #region Gestionnaires d'événements

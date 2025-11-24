@@ -1,0 +1,274 @@
+<Window x:Class="MedCompanion.Dialogs.ParametresDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:converters="clr-namespace:MedCompanion.Converters"
+        Title="⚙️ Paramètres"
+        Height="600" Width="700"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F5F5"
+        ResizeMode="NoResize">
+    
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <converters:RadioButtonConverter x:Key="RadioButtonConverter"/>
+        
+        <!-- Style pour les boutons modernes -->
+        <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Opacity" Value="0.9"/>
+                </Trigger>
+                <Trigger Property="IsEnabled" Value="False">
+                    <Setter Property="Opacity" Value="0.5"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+    
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+        
+        <!-- Contenu principal avec onglets -->
+        <TabControl Grid.Row="0" Margin="0,0,0,20">
+            
+            <!-- Onglet API -->
+            <TabItem Header="🔑 API">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="20">
+                        
+                        <!-- En-tête explicatif -->
+                        <Border Background="#E7F3FF" Padding="15" CornerRadius="5" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#0066CC" Margin="0,0,0,5">
+                                    🔐 Stockage sécurisé
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#0066CC">
+                                    Les clés API sont chiffrées avec DPAPI et stockées localement sur votre ordinateur.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+                        
+                        <!-- OpenAI API Key -->
+                        <TextBlock Text="OpenAI API Key" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,15">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            
+                            <!-- PasswordBox ou TextBox selon IsPasswordVisible -->
+                            <PasswordBox x:Name="OpenAIPasswordBox" 
+                                        Grid.Column="0"
+                                        Height="35"
+                                        Padding="10,8"
+                                        FontSize="12"
+                                        PasswordChar="●"
+                                        Visibility="{Binding IsPasswordVisible, Converter={StaticResource InverseBoolToVisibilityConverter}}"/>
+                            
+                            <TextBox x:Name="OpenAITextBox"
+                                    Grid.Column="0"
+                                    Text="{Binding OpenAIApiKey, UpdateSourceTrigger=PropertyChanged}"
+                                    Height="35"
+                                    Padding="10,8"
+                                    FontSize="12"
+                                    FontFamily="Consolas"
+                                    Visibility="{Binding IsPasswordVisible, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            
+                            <!-- Bouton toggle visibilité -->
+                            <Button Grid.Column="1" 
+                                   Content="👁️"
+                                   Width="40"
+                                   Height="35"
+                                   Margin="5,0,0,0"
+                                   Command="{Binding TogglePasswordVisibilityCommand}"
+                                   ToolTip="Afficher/Masquer la clé"
+                                   Style="{StaticResource ModernButtonStyle}"
+                                   Background="#6C757D"
+                                   Foreground="White"/>
+                        </Grid>
+                        
+                        <!-- Bouton tester connexion -->
+                        <Button Command="{Binding TestConnectionCommand}"
+                               HorizontalAlignment="Left"
+                               Margin="0,0,0,10"
+                               Style="{StaticResource ModernButtonStyle}"
+                               Background="#007BFF"
+                               Foreground="White">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="🔄 " FontSize="14" VerticalAlignment="Center"/>
+                                <TextBlock VerticalAlignment="Center">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="Tester la connexion"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsTestingConnection}" Value="True">
+                                                    <Setter Property="Text" Value="Test en cours..."/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Button>
+                        
+                        <!-- Statut de connexion -->
+                        <Border Padding="12" 
+                               CornerRadius="5" 
+                               Margin="0,0,0,20"
+                               Visibility="{Binding ConnectionStatus, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="#D4EDDA"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding ConnectionSuccess}" Value="False">
+                                            <Setter Property="Background" Value="#F8D7DA"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <TextBlock Text="{Binding ConnectionStatus}" 
+                                      TextWrapping="Wrap" 
+                                      FontSize="12">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Foreground" Value="#155724"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ConnectionSuccess}" Value="False">
+                                                <Setter Property="Foreground" Value="#721C24"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Border>
+                        
+                        <!-- Séparateur -->
+                        <Separator Margin="0,10,0,20"/>
+                        
+                        <!-- OpenRouter API Key (à venir) -->
+                        <TextBlock Text="OpenRouter API Key" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <TextBox Height="35"
+                                Padding="10,8"
+                                FontSize="12"
+                                IsEnabled="False"
+                                Text="À venir..."
+                                Foreground="Gray"
+                                Margin="0,0,0,10"/>
+                        
+                        <TextBlock TextWrapping="Wrap" 
+                                  FontSize="11" 
+                                  Foreground="Gray"
+                                  Margin="0,0,0,10">
+                            Support OpenRouter sera ajouté prochainement.
+                        </TextBlock>
+                        
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+            
+            <!-- Onglet Affichage -->
+            <TabItem Header="🖥️ Affichage">
+                <StackPanel Margin="20">
+                    
+                    <!-- En-tête explicatif -->
+                    <Border Background="#FFF3CD" Padding="15" CornerRadius="5" Margin="0,0,0,20">
+                        <StackPanel>
+                            <TextBlock FontWeight="Bold" FontSize="13" Foreground="#856404" Margin="0,0,0,5">
+                                💡 Préférences d'affichage
+                            </TextBlock>
+                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#856404">
+                                Configurez comment la fenêtre principale s'affiche au démarrage de l'application.
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                    
+                    <!-- Options de démarrage -->
+                    <TextBlock Text="Au démarrage de l'application :" FontWeight="Bold" FontSize="13" Margin="0,0,0,15"/>
+                    
+                    <RadioButton GroupName="StartupMode" 
+                                Content="Se souvenir du dernier état"
+                                IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Remember}"
+                                Margin="0,0,0,12"
+                                FontSize="12">
+                        <RadioButton.ToolTip>
+                            <ToolTip>
+                                <TextBlock TextWrapping="Wrap" MaxWidth="300">
+                                    L'application se souviendra de la position, taille et état (normal/maximisé) de la dernière session.
+                                </TextBlock>
+                            </ToolTip>
+                        </RadioButton.ToolTip>
+                    </RadioButton>
+                    
+                    <RadioButton GroupName="StartupMode" 
+                                Content="Toujours démarrer en mode fenêtré"
+                                IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Windowed}"
+                                Margin="0,0,0,12"
+                                FontSize="12">
+                        <RadioButton.ToolTip>
+                            <ToolTip>
+                                <TextBlock TextWrapping="Wrap" MaxWidth="300">
+                                    L'application démarrera toujours en mode fenêtré (non maximisé).
+                                </TextBlock>
+                            </ToolTip>
+                        </RadioButton.ToolTip>
+                    </RadioButton>
+                    
+                    <RadioButton GroupName="StartupMode" 
+                                Content="Toujours démarrer maximisé"
+                                IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Maximized}"
+                                Margin="0,0,0,12"
+                                FontSize="12">
+                        <RadioButton.ToolTip>
+                            <ToolTip>
+                                <TextBlock TextWrapping="Wrap" MaxWidth="300">
+                                    L'application démarrera toujours en plein écran (maximisé).
+                                </TextBlock>
+                            </ToolTip>
+                        </RadioButton.ToolTip>
+                    </RadioButton>
+                    
+                </StackPanel>
+            </TabItem>
+            
+        </TabControl>
+        
+        <!-- Boutons d'action -->
+        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="Annuler"
+                   Click="BtnCancel_Click"
+                   Margin="0,0,10,0"
+                   Style="{StaticResource ModernButtonStyle}"
+                   Background="#6C757D"
+                   Foreground="White"
+                   Width="100"/>
+            
+            <Button Content="Enregistrer"
+                   Click="BtnSave_Click"
+                   Style="{StaticResource ModernButtonStyle}"
+                   Background="#28A745"
+                   Foreground="White"
+                   Width="120"/>
+        </StackPanel>
+        
+    </Grid>
+</Window>

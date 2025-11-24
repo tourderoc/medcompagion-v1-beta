@@ -24,7 +24,9 @@ namespace MedCompanion.Services.LLM
             _currentModel = defaultModel;
             _httpClient = new HttpClient
             {
-                Timeout = TimeSpan.FromSeconds(60)
+                // Timeout de 3 minutes pour supporter les modèles 8B/12B
+                // Au-delà, le modèle est probablement trop lent pour l'usage interactif
+                Timeout = TimeSpan.FromMinutes(3)
             };
         }
 

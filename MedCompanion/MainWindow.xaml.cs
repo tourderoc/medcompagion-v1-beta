@@ -179,8 +179,17 @@ Je vous remercie par avance pour votre collaboration et reste à votre dispositi
         // NOUVEAU : Initialiser le tracker de poids pour la synthèse
         _synthesisWeightTracker = new SynthesisWeightTracker(_pathService);
 
+        // Initialiser les services de paramètres
+        _secureStorageService = new SecureStorageService();
+        _windowStateService = new WindowStateService();
+
         // IMPORTANT: Initialiser le système LLM de manière synchrone d'abord
-        _llmFactory = new LLMServiceFactory(_settings);
+        _llmFactory = new LLMServiceFactory(_settings, _secureStorageService);
+        _llmFactory.ApiKeyMigrationDetected += (s, envKey) => {
+            // Proposer la migration au prochain cycle UI
+            Dispatcher.InvokeAsync(() => HandleApiKeyMigration(envKey));
+        };
+        
         _warmupService = new LLMWarmupService(_llmFactory, _settings);
         
         // Initialisation synchrone minimale pour éviter le null

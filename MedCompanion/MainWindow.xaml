@@ -12,7 +12,9 @@
         Title="MedCompanion - Assistant Pédopsychiatrie"
         Height="900" Width="1600"
         MinHeight="700" MinWidth="1200"
-        Background="#F5F5F5">
+        Background="#F5F5F5"
+        Loaded="Window_Loaded"
+        Closing="Window_Closing">
     
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -177,15 +179,59 @@
                             </Setter>
                             <Style.Triggers>
                                 <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#2980B9"/>
+                                    <Setter Property="Background" Value="#7D3C98"/>
                                 </Trigger>
                             </Style.Triggers>
                         </Style>
                     </Button.Style>
                 </Button>
                 
-                <!-- Search Bar -->
-                <patient:PatientSearchControl Grid.Column="6" DataContext="{Binding PatientSearchViewModel}"/>
+                <!-- Zone de recherche avec bouton Paramètres -->
+                <Grid Grid.Column="6">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="10"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    
+                    <!-- Search Bar -->
+                    <patient:PatientSearchControl Grid.Column="0" DataContext="{Binding PatientSearchViewModel}"/>
+                    
+                    <!-- Bouton Paramètres -->
+                    <Button x:Name="ParametresBtn"
+                            Grid.Column="2"
+                            Content="⚙️"
+                            Width="45"
+                            Height="45"
+                            FontSize="18"
+                            Background="#34495E"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            VerticalAlignment="Center"
+                            ToolTip="Paramètres"
+                            Click="ParametresBtn_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#2C3E50"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+
             </Grid>
         </Border>
         

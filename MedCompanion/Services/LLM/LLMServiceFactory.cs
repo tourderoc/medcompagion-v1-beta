@@ -14,10 +14,13 @@ namespace MedCompanion.Services.LLM
         private OpenAILLMProvider? _openAIProvider;
         
         private readonly AppSettings _settings;
+        private readonly SecureStorageService? _secureStorage;
+        public event EventHandler<string>? ApiKeyMigrationDetected;
 
-        public LLMServiceFactory(AppSettings settings)
+        public LLMServiceFactory(AppSettings settings, SecureStorageService? secureStorage = null)
         {
             _settings = settings;
+            _secureStorage = secureStorage;
         }
 
         /// <summary>
@@ -45,9 +48,12 @@ namespace MedCompanion.Services.LLM
                 _settings.LLMProvider = "OpenAI";
             }
 
+            // Charger la clé OpenAI depuis le stockage sécurisé ou variable d'environnement
+            string? apiKey = GetOpenAIApiKey();
+
             // Initialiser OpenAI (par défaut ou fallback)
             _openAIProvider = new OpenAILLMProvider(
-                apiKey: null, // Utilise la variable d'environnement
+                apiKey: apiKey,
                 model: _settings.OpenAIModel
             );
 
@@ -113,11 +119,14 @@ namespace MedCompanion.Services.LLM
                 }
                 else if (providerName == "OpenAI")
                 {
+                    // Charger la clé OpenAI
+                    string? apiKey = GetOpenAIApiKey();
+
                     // Créer ou réutiliser le provider OpenAI
                     if (_openAIProvider == null)
                     {
                         _openAIProvider = new OpenAILLMProvider(
-                            apiKey: null,
+                            apiKey: apiKey,
                             model: modelName ?? _settings.OpenAIModel
                         );
                     }
@@ -199,6 +208,31 @@ namespace MedCompanion.Services.LLM
         public string GetActiveModelName()
         {
             return _currentProvider?.GetModelName() ?? "Aucun";
+        }
+
+        /// <summary>
+        /// Récupère la clé API OpenAI depuis le stockage sécurisé ou variable d'environnement
+        /// Gère aussi la migration depuis les variables d'environnement
+        /// </summary>
+        private string? GetOpenAIApiKey()
+        {
+            // 1. Essayer de charger depuis le stockage sécurisé
+            if (_secureStorage != null && _secureStorage.HasApiKey("OpenAI"))
+            {
+                return _secureStorage.GetApiKey("OpenAI");
+            }
+
+            // 2. Fallback vers variable d'environnement
+            var envKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+            
+            if (!string.IsNullOrEmpty(envKey))
+            {
+                // Migration détectée : notifier pour proposer l'import
+                ApiKeyMigrationDetected?.Invoke(this, envKey);
+                return envKey;
+            }
+
+            return null;
         }
     }
 }
