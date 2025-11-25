@@ -1,13 +1,13 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "C:\\Users\\nair\\Desktop\\medcompa1, avant refactoring\\",
+  "WorkspaceRootPath": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\nair\\Desktop\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\nair\\Desktop\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
@@ -28,11 +28,11 @@
               "$type": "Document",
               "DocumentIndex": 0,
               "Title": "PatientInfoDialog.xaml.cs",
-              "DocumentMoniker": "C:\\Users\\nair\\Desktop\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
+              "DocumentMoniker": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
               "RelativeDocumentMoniker": "MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
-              "ToolTip": "C:\\Users\\nair\\Desktop\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
+              "ToolTip": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
               "RelativeToolTip": "MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
-              "ViewState": "AgIAAA8AAAAAAAAAAAAtwBYAAAAIAAAAAAAAAA==",
+              "ViewState": "AgIAABgAAAAAAAAAAAAtwBYAAAAIAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2025-11-12T10:16:03.911Z",
               "EditorCaption": ""
@@ -41,14 +41,13 @@
               "$type": "Document",
               "DocumentIndex": 1,
               "Title": "FormulairesControl.xaml.cs",
-              "DocumentMoniker": "C:\\Users\\nair\\Desktop\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
+              "DocumentMoniker": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
               "RelativeDocumentMoniker": "MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
-              "ToolTip": "C:\\Users\\nair\\Desktop\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
+              "ToolTip": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
               "RelativeToolTip": "MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
               "ViewState": "AgIAAEUAAAAAAAAAAAAAwEYAAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-10T05:49:18.75Z",
-              "EditorCaption": ""
+              "WhenOpened": "2025-11-10T05:49:18.75Z"
             }
           ]
         }

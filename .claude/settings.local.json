@@ -1,26 +1,14 @@
 {
   "permissions": {
     "allow": [
+      "Bash(dir:*)",
+      "Bash(git cat-file:*)",
+      "Bash(git add:*)",
       "Bash(git commit:*)",
       "Bash(dotnet build:*)",
-      "Bash(Select-Object -First 100)",
-      "Bash(git add:*)",
-      "Bash(git log:*)",
-      "Bash(git config:*)",
-      "Bash(Select-Object -Last 20)",
-      "Bash(dotnet add:*)",
       "Bash(mkdir:*)",
-      "Bash(tee:*)",
-      "Bash(git reset:*)",
-      "Bash(Select-String -Pattern \"error|warning\")",
-      "Bash(Select-Object -First 5)",
-      "Bash(git restore:*)",
-      "WebFetch(domain:base-donnees-publique.medicaments.gouv.fr)",
-      "WebSearch",
-      "Bash(powershell -Command:*)",
-      "Bash(cat:*)",
-      "Bash(Select-Object -First 50)",
-      "Bash(build_output.txt)"
+      "Bash(git checkout:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

@@ -27,6 +27,8 @@ public partial class MainWindow : Window
     private readonly ContextLoader _contextLoader;
     private readonly ParsingService _parsingService;
     private readonly PatientIndexService _patientIndex;
+    private readonly PatientContextService _patientContextService; // ✅ NOUVEAU
+    private readonly LetterReAdaptationService _reAdaptationService; // ✅ NOUVEAU
     private readonly LetterService _letterService;
     private readonly TemplateExtractorService _templateExtractor;
     private readonly TemplateManagerService _templateManager;
@@ -40,6 +42,7 @@ public partial class MainWindow : Window
     private readonly AppSettings _settings;
     private readonly LetterRatingService _letterRatingService;
     private readonly PromptConfigService _promptConfigService;
+    private readonly PromptTrackerService _promptTracker;
     
     // Services LLM
     private LLMServiceFactory _llmFactory;
@@ -203,7 +206,15 @@ Je vous remercie par avance pour votre collaboration et reste à votre dispositi
         _parsingService = new ParsingService();
         _patientIndex = new PatientIndexService(_pathService);
         _promptConfigService = new PromptConfigService(); // Initialiser AVANT les services qui en dépendent
-        _letterService = new LetterService(_openAIService, _contextLoader, _storageService);
+        _promptTracker = new PromptTrackerService(); // Service de tracking des prompts
+        
+        // ✅ NOUVEAU : Initialiser PatientContextService
+        _patientContextService = new PatientContextService(_storageService, _patientIndex);
+        
+        // ✅ NOUVEAU : Initialiser LetterReAdaptationService
+        _reAdaptationService = new LetterReAdaptationService(_patientContextService, _openAIService);
+        
+        _letterService = new LetterService(_openAIService, _contextLoader, _storageService, _patientContextService); // ✅ MODIFIÉ
         _templateExtractor = new TemplateExtractorService(_openAIService);
         _templateManager = new TemplateManagerService();
         _mccLibrary = new MCCLibraryService();
@@ -388,7 +399,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         };
 
         // Initialiser CourriersControl
-        CourriersControlPanel.Initialize(_letterService, _pathService, _patientIndex, _mccLibrary, _letterRatingService, _letterTemplates);
+        CourriersControlPanel.Initialize(_letterService, _pathService, _patientIndex, _mccLibrary, _letterRatingService, _letterTemplates, _reAdaptationService);
         CourriersControlPanel.StatusChanged += (s, msg) => {
             StatusTextBlock.Text = msg;
             StatusTextBlock.Foreground = new SolidColorBrush(
@@ -665,6 +676,15 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         }
         
         return content;
+    }
+    
+    /// <summary>
+    /// Estime le nombre de tokens dans un texte (approximation : 1 token ≈ 4 caractères)
+    /// </summary>
+    private int EstimateTokens(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return 0;
+        return text.Length / 4;
     }
     
    
@@ -1044,69 +1064,59 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                     // Incrémenter le compteur d'utilisation du MCC
                     _mccLibrary.IncrementUsage(selectedMCC.Id);
 
-                    // Détecter les placeholders manquants
-                    var patientMetadata = _patientIndex.GetMetadata(_selectedPatient.Id);
-                    var (hasMissing, missingFields, availableInfo) = _letterService.DetectMissingInfo(
-                        selectedMCC.Name,
-                        markdown,
-                        patientMetadata,
-                        selectedMCC.TemplateMarkdown
-                    );
-
+                    // ✅ NOUVEAU : Réadaptation avec le service universel
                     string finalMarkdown = markdown;
-
-                    // Si des placeholders sont détectés → Ouvrir dialogue
-                    if (hasMissing)
+                    
+                    if (_reAdaptationService != null)
                     {
-                        StatusTextBlock.Text = "❓ Informations requises manquantes...";
-                        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+                        var reAdaptResult = await _reAdaptationService.ReAdaptLetterAsync(
+                            markdown,
+                            _selectedPatient.NomComplet,
+                            selectedMCC.Name
+                        );
 
-                        var missingDialog = new MissingInfoDialog(missingFields);
-                        missingDialog.Owner = this;
-
-                        if (missingDialog.ShowDialog() == true && missingDialog.CollectedInfo != null)
+                        if (reAdaptResult.NeedsMissingInfo)
                         {
-                            // FUSIONNER infos disponibles + infos collectées
-                            var allInfo = new Dictionary<string, string>(availableInfo);
-                            foreach (var kvp in missingDialog.CollectedInfo)
+                            StatusTextBlock.Text = "❓ Informations requises manquantes...";
+                            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+
+                            var missingDialog = new MissingInfoDialog(reAdaptResult.MissingFields);
+                            missingDialog.Owner = this;
+
+                            if (missingDialog.ShowDialog() == true && missingDialog.CollectedInfo != null)
                             {
-                                allInfo[kvp.Key] = kvp.Value;
-                            }
+                                StatusTextBlock.Text = "⏳ Ré-adaptation avec infos complètes...";
+                                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
 
-                            // RÉ-ADAPTER LE COURRIER avec l'IA
-                            StatusTextBlock.Text = "⏳ Ré-adaptation avec infos complètes...";
-                            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-
-                            var (success2, updatedMarkdown, error2) =
-                                await _letterService.AdaptTemplateWithMissingInfoAsync(
-                                    _selectedPatient.NomComplet,
-                                    selectedMCC.Name,
-                                    markdown,
-                                    allInfo
+                                var finalResult = await _reAdaptationService.CompleteReAdaptationAsync(
+                                    reAdaptResult,
+                                    missingDialog.CollectedInfo
                                 );
 
-                            if (success2 && !string.IsNullOrEmpty(updatedMarkdown))
-                            {
-                                finalMarkdown = updatedMarkdown;
-                                StatusTextBlock.Text = "✅ Courrier MCC complété - Vous pouvez sauvegarder";
-                                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+                                if (finalResult.Success)
+                                {
+                                    finalMarkdown = finalResult.ReAdaptedMarkdown ?? markdown;
+                                    StatusTextBlock.Text = "✅ Courrier MCC complété - Vous pouvez sauvegarder";
+                                    StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+                                }
+                                else
+                                {
+                                    StatusTextBlock.Text = $"⚠️ Erreur ré-adaptation : {finalResult.Error}";
+                                    StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+                                }
                             }
                             else
                             {
-                                StatusTextBlock.Text = $"⚠️ Erreur ré-adaptation: {error2}";
+                                StatusTextBlock.Text = "⚠️ Réadaptation annulée";
                                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
                             }
                         }
                         else
                         {
-                            StatusTextBlock.Text = "⚠️ Complétez les placeholders manuellement";
-                            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+                            finalMarkdown = reAdaptResult.ReAdaptedMarkdown ?? markdown;
+                            StatusTextBlock.Text = $"✅ Courrier généré depuis MCC '{selectedMCC.Name}'";
+                            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
                         }
-                    }
-                    else
-                    {
-                        StatusTextBlock.Text = $"✅ Courrier généré depuis MCC '{selectedMCC.Name}'";
-                        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
                     }
 
                     // Afficher dans CourriersControl
@@ -1167,37 +1177,6 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
     // Méthodes GenerateStandardLetterAsync et GenerateLetterWithMCCAsync remplacées par GenerateLetterContentAsync
     // Supprimé le 23/11/2025 après validation
 
-/// <summary>
-/// Rassemble le contexte patient pour la génération
-/// </summary>
-private async Task<string> GatherPatientContextAsync()
-{
-    var context = new StringBuilder();
-    
-    if (_selectedPatient == null) return string.Empty;
-    
-    var metadata = _patientIndex.GetMetadata(_selectedPatient.Id);
-    
-    context.AppendLine($"NOM : {metadata.Nom} {metadata.Prenom}");
-    if (metadata.Age.HasValue)
-        context.AppendLine($"ÂGE : {metadata.Age} ans");
-    if (!string.IsNullOrEmpty(metadata.Sexe))
-        context.AppendLine($"SEXE : {metadata.Sexe}");
-    
-    // Ajouter notes récentes
-    var recentNotes = NoteViewModel.Notes.Take(3);
-    if (recentNotes.Any())
-    {
-        context.AppendLine("\nNOTES RÉCENTES :");
-        foreach (var note in recentNotes)
-        {
-            context.AppendLine($"- {note.DateLabel} : {note.Preview}");
-        }
-    }
-    
-    return context.ToString();
-}
-
 // DisplayLetterInEditor migré vers CourriersControl.DisplayGeneratedLetter()
 
 /// <summary>
@@ -1252,6 +1231,47 @@ private async Task HandleCreateLetterWithAIAsync()
                 _mccLibrary.IncrementUsage(letterResult.SelectedMCC.Id);
             }
 
+            // ✅ NOUVEAU : Réadaptation avec le service universel
+            if (!string.IsNullOrEmpty(generatedLetter) && _reAdaptationService != null)
+            {
+                StatusTextBlock.Text = "⏳ Vérification des informations manquantes...";
+                await Task.Delay(100);
+
+                var reAdaptResult = await _reAdaptationService.ReAdaptLetterAsync(
+                    generatedLetter,
+                    _selectedPatient.NomComplet,
+                    mccName ?? "Courrier généré par IA",
+                    letterResult.UserRequest
+                );
+
+                if (reAdaptResult.NeedsMissingInfo)
+                {
+                    var missingDialog = new MissingInfoDialog(reAdaptResult.MissingFields);
+                    missingDialog.Owner = this;
+
+                    if (missingDialog.ShowDialog() == true && missingDialog.CollectedInfo != null)
+                    {
+                        StatusTextBlock.Text = "⏳ Réadaptation avec les nouvelles informations...";
+                        await Task.Delay(100);
+
+                        var finalResult = await _reAdaptationService.CompleteReAdaptationAsync(
+                            reAdaptResult,
+                            missingDialog.CollectedInfo
+                        );
+                        
+                        if (finalResult.Success)
+                        {
+                            generatedLetter = finalResult.ReAdaptedMarkdown;
+                        }
+                    }
+                    // Si annulé, on garde generatedLetter tel quel
+                }
+                else
+                {
+                    generatedLetter = reAdaptResult.ReAdaptedMarkdown ?? generatedLetter;
+                }
+            }
+
             if (!string.IsNullOrEmpty(generatedLetter))
             {
                 // Afficher dans CourriersControl
@@ -1273,43 +1293,58 @@ private async Task HandleCreateLetterWithAIAsync()
 /// </summary>
 private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCModel? mcc, LetterAnalysisResult? analysis)
 {
-    var patientContext = await GatherPatientContextAsync();
+    // ✅ NOUVEAU : Utiliser PatientContextService pour le contexte complet
+    var contextBundle = _patientContextService.GetCompleteContext(_selectedPatient.NomComplet, userRequest);
+    var patientContext = contextBundle.ToPromptText();
+    
+    System.Diagnostics.Debug.WriteLine($"[GenerateLetterContentAsync] {contextBundle.ToDebugText()}");
 
-    string prompt;
+    // ✅ Utiliser le système de prompts configurables
+    var systemPrompt = _promptConfigService.GetActivePrompt("system_global")
+        .Replace("{{Medecin}}", _settings.Medecin);
+
+    string userPrompt;
     if (mcc != null && analysis != null)
     {
-        prompt = $@"{mcc.PromptTemplate}
-
-DEMANDE UTILISATEUR : {userRequest}
-
-CONTEXTE PATIENT :
-{patientContext}
-
-MÉTADONNÉES :
-- Public : {analysis.Audience}
-- Ton : {analysis.Tone}
-- Tranche d'âge : {analysis.AgeGroup}
-
-TEMPLATE À SUIVRE :
-{mcc.TemplateMarkdown}
-
-Génère le courrier en suivant le template et en l'adaptant au patient.";
+        // Utiliser le prompt d'adaptation de template
+        userPrompt = _promptConfigService.GetActivePrompt("template_adaptation")
+            .Replace("{{Contexte}}", patientContext)
+            .Replace("{{Template_Name}}", mcc.Name)
+            .Replace("{{Template_Markdown}}", mcc.TemplateMarkdown);
+        
+        // Ajouter la demande utilisateur enrichie
+        userPrompt += $"\n\nDEMANDE UTILISATEUR :\n{userRequest}";
     }
     else
     {
-        prompt = $@"Génère un courrier médical selon cette demande : {userRequest}
-
-CONTEXTE PATIENT :
-{patientContext}
-
-INSTRUCTIONS :
-- Ton professionnel et adapté
-- Structure claire avec en-têtes
-- Informations médicales pertinentes du patient
-- Format Markdown";
+        // Utiliser le prompt de génération avec contexte
+        userPrompt = _promptConfigService.GetActivePrompt("letter_generation_with_context")
+            .Replace("{{Contexte}}", patientContext)
+            .Replace("{{User_Request}}", userRequest);
     }
 
-    var (success, letter, error) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 2000);
+    // ✅ Utiliser ChatAsync avec les prompts configurables
+    var messages = new List<(string role, string content)>
+    {
+        ("user", userPrompt)
+    };
+
+    var (success, letter, error) = await _currentLLMService.ChatAsync(systemPrompt, messages, maxTokens: 2000);
+
+    // ✅ Logger le prompt dans le tracker
+    _promptTracker.LogPrompt(new Models.PromptLogEntry
+    {
+        Timestamp = DateTime.Now,
+        Module = "Courrier",
+        SystemPrompt = systemPrompt,
+        UserPrompt = userPrompt,
+        AIResponse = letter ?? error ?? "",
+        TokensUsed = EstimateTokens(systemPrompt + userPrompt + (letter ?? "")),
+        LLMProvider = _currentLLMService?.GetType().Name ?? "Unknown",
+        ModelName = "gpt-4o-mini", // TODO: récupérer dynamiquement
+        Success = success,
+        Error = error
+    });
 
     if (success)
     {
@@ -1389,16 +1424,12 @@ private PatientContext BuildPatientContext(PatientIndexEntry patient)
                     }
                 }
 
-                // Tronquer intelligemment (max 1000 mots)
-                var words = cleanContent.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                var truncated = words.Length > 1000
-                    ? string.Join(" ", words.Take(1000)) + "..."
-                    : cleanContent;
-
-                context.NotesRecentes.Add($"📋 SYNTHÈSE PATIENT:\n{truncated}");
+                // ✅ CORRECTION : Injecter TOUTE la synthèse sans limitation
+                // Pas de troncature - utiliser le contenu complet pour un contexte maximal
+                context.NotesRecentes.Add($"📋 SYNTHÈSE PATIENT COMPLÈTE :\n{cleanContent}");
                 allNotesContent.AppendLine(cleanContent); // Pour détection diagnostics
 
-                System.Diagnostics.Debug.WriteLine("[PatientContext] Utilisation de la synthèse patient");
+                System.Diagnostics.Debug.WriteLine($"[PatientContext] Utilisation de la synthèse patient complète ({cleanContent.Length} caractères)");
             }
             catch (Exception ex)
             {
@@ -1434,6 +1465,12 @@ private PatientContext BuildPatientContext(PatientIndexEntry patient)
             System.Diagnostics.Debug.WriteLine("[PatientContext] Fallback: 3 dernières notes");
         }
 
+        // ⚠️ DÉSACTIVÉ : Extraction automatique de diagnostics (trop de faux positifs)
+        // L'IA utilisera uniquement les diagnostics explicites de la synthèse patient
+        // Si besoin, les diagnostics peuvent être ajoutés manuellement dans la synthèse
+        
+        // Ancienne logique commentée :
+        /*
         // Extraire diagnostics/troubles mentionnés dans TOUTES les notes (contenu complet)
         // Recherche de mots-clés cliniques courants
         var clinicalKeywords = new[]
@@ -1458,6 +1495,11 @@ private PatientContext BuildPatientContext(PatientIndexEntry patient)
         }
 
         context.DiagnosticsConnus = diagsFound.ToList();
+        */
+        
+        // ✅ Laisser la liste vide - l'IA utilisera la synthèse patient
+        context.DiagnosticsConnus = new List<string>();
+        
         
         System.Diagnostics.Debug.WriteLine($"[PatientContext] Construit pour {context.NomComplet}");
         System.Diagnostics.Debug.WriteLine($"[PatientContext] - Notes: {context.NotesRecentes.Count}");

@@ -52,13 +52,11 @@ namespace MedCompanion.Models
             
             if (NotesRecentes != null && NotesRecentes.Count > 0)
             {
-                lines.Add("\nNotes récentes (contexte) :");
-                for (int i = 0; i < NotesRecentes.Count && i < 3; i++)
+                lines.Add("\nContexte clinique complet :");
+                // ✅ Afficher le contenu complet sans limitation (synthèse ou notes)
+                foreach (var note in NotesRecentes)
                 {
-                    var preview = NotesRecentes[i].Length > 150 
-                        ? NotesRecentes[i].Substring(0, 150) + "..." 
-                        : NotesRecentes[i];
-                    lines.Add($"{i + 1}. {preview}");
+                    lines.Add(note);
                 }
             }
             

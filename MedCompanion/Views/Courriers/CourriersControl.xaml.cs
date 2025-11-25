@@ -23,6 +23,7 @@ public partial class CourriersControl : UserControl
     private PatientIndexService? _patientIndex;
     private MCCLibraryService? _mccLibrary;
     private LetterRatingService? _letterRatingService;
+    private LetterReAdaptationService? _reAdaptationService; // ✅ NOUVEAU
 
     // État
     private PatientIndexEntry? _selectedPatient;
@@ -51,7 +52,8 @@ public partial class CourriersControl : UserControl
         PatientIndexService patientIndex,
         MCCLibraryService mccLibrary,
         LetterRatingService letterRatingService,
-        Dictionary<string, string> letterTemplates)
+        Dictionary<string, string> letterTemplates,
+        LetterReAdaptationService reAdaptationService) // ✅ NOUVEAU
     {
         _letterService = letterService;
         _pathService = pathService;
@@ -59,6 +61,7 @@ public partial class CourriersControl : UserControl
         _mccLibrary = mccLibrary;
         _letterRatingService = letterRatingService;
         _letterTemplates = letterTemplates;
+        _reAdaptationService = reAdaptationService; // ✅ NOUVEAU
 
         // Charger les templates MCC dans le ComboBox
         LoadCustomTemplates();
@@ -224,8 +227,7 @@ public partial class CourriersControl : UserControl
 
                 try
                 {
-                    var patientMetadata = _patientIndex?.GetMetadata(_selectedPatient.Id);
-
+                    // 1. Adaptation initiale du template
                     var (success, adaptedMarkdown, error) = await _letterService.AdaptTemplateWithAIAsync(
                         _selectedPatient.NomComplet,
                         templateName,
@@ -234,83 +236,69 @@ public partial class CourriersControl : UserControl
 
                     if (success && !string.IsNullOrEmpty(adaptedMarkdown))
                     {
-                        try
+                        // 2. Réadaptation avec le service universel (détection + dialogue + complétion)
+                        if (_reAdaptationService != null)
                         {
-                            var newDocument = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(adaptedMarkdown);
-                            LetterEditText.Document = newDocument;
-                        }
-                        catch
-                        {
-                            var fallbackDoc = new FlowDocument();
-                            fallbackDoc.Blocks.Add(new Paragraph(new Run(adaptedMarkdown)));
-                            LetterEditText.Document = fallbackDoc;
-                        }
+                            var reAdaptResult = await _reAdaptationService.ReAdaptLetterAsync(
+                                adaptedMarkdown,
+                                _selectedPatient.NomComplet,
+                                templateName
+                            );
 
-                        // Détecter les informations manquantes
-                        var (hasMissing, missingFields, availableInfo) = _letterService.DetectMissingInfo(
-                            templateName,
-                            adaptedMarkdown,
-                            patientMetadata
-                        );
-
-                        if (hasMissing)
-                        {
-                            RaiseStatus("❓ Informations manquantes...");
-
-                            var dialog = new MissingInfoDialog(missingFields);
-                            dialog.Owner = Window.GetWindow(this);
-
-                            if (dialog.ShowDialog() == true && dialog.CollectedInfo != null)
+                            if (reAdaptResult.NeedsMissingInfo)
                             {
-                                var allInfo = new Dictionary<string, string>(availableInfo);
-                                foreach (var kvp in dialog.CollectedInfo)
+                                RaiseStatus("❓ Informations manquantes...");
+
+                                var dialog = new MissingInfoDialog(reAdaptResult.MissingFields);
+                                dialog.Owner = Window.GetWindow(this);
+
+                                if (dialog.ShowDialog() == true && dialog.CollectedInfo != null)
                                 {
-                                    allInfo[kvp.Key] = kvp.Value;
-                                }
+                                    RaiseStatus("⏳ Ré-adaptation avec infos complètes...");
 
-                                RaiseStatus("⏳ Ré-adaptation avec infos complètes...");
-
-                                var (success2, updatedMarkdown, error2) =
-                                    await _letterService.AdaptTemplateWithMissingInfoAsync(
-                                        _selectedPatient.NomComplet,
-                                        templateName,
-                                        templateMarkdown,
-                                        allInfo
+                                    var finalResult = await _reAdaptationService.CompleteReAdaptationAsync(
+                                        reAdaptResult,
+                                        dialog.CollectedInfo
                                     );
 
-                                if (success2 && !string.IsNullOrEmpty(updatedMarkdown))
-                                {
-                                    LetterEditText.Document = MarkdownFlowDocumentConverter
-                                        .MarkdownToFlowDocument(updatedMarkdown);
-
-                                    SauvegarderLetterButton.IsEnabled = true;
-                                    SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96));
-
-                                    RaiseStatus("✅ Courrier complété avec toutes les informations");
+                                    if (finalResult.Success && !string.IsNullOrEmpty(finalResult.ReAdaptedMarkdown))
+                                    {
+                                        LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(finalResult.ReAdaptedMarkdown);
+                                        RaiseStatus("✅ Courrier complété avec toutes les informations");
+                                    }
+                                    else
+                                    {
+                                        LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(adaptedMarkdown);
+                                        RaiseStatus($"⚠️ Erreur ré-adaptation : {finalResult.Error}");
+                                    }
                                 }
                                 else
                                 {
-                                    SauvegarderLetterButton.IsEnabled = true;
-                                    SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96));
-                                    RaiseStatus($"⚠️ Erreur ré-adaptation : {error2}");
+                                    // Annulation dialogue -> garder version initiale
+                                    LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(adaptedMarkdown);
+                                    RaiseStatus("⚠️ Réadaptation annulée, courrier initial conservé");
                                 }
                             }
                             else
                             {
-                                SauvegarderLetterButton.IsEnabled = true;
-                                SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96));
-                                RaiseStatus("⚠️ Infos manquantes - Complétez manuellement les placeholders");
+                                // Pas d'infos manquantes -> utiliser le résultat (qui peut être identique ou nettoyé)
+                                LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(reAdaptResult.ReAdaptedMarkdown ?? adaptedMarkdown);
+                                RaiseStatus("✅ Courrier adapté avec succès");
                             }
                         }
                         else
                         {
-                            SauvegarderLetterButton.IsEnabled = true;
-                            SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96));
-                            RaiseStatus("✅ Adaptation IA terminée - Vous pouvez modifier puis sauvegarder");
+                            // Fallback si service non dispo (ne devrait pas arriver)
+                            LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(adaptedMarkdown);
+                            RaiseStatus("✅ Courrier adapté (Service de réadaptation non disponible)");
                         }
+
+                        SauvegarderLetterButton.IsEnabled = true;
+                        SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96));
                     }
                     else
                     {
+                        RaiseStatus($"❌ Erreur adaptation : {error}");
                         SauvegarderLetterButton.IsEnabled = true;
                         SauvegarderLetterButton.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96));
                         RaiseStatus($"⚠️ Adaptation échouée - Modèle brut affiché : {error}");
@@ -391,6 +379,7 @@ public partial class CourriersControl : UserControl
                 ModifierLetterButton.Visibility = Visibility.Visible;
                 SupprimerLetterButton.Visibility = Visibility.Visible;
                 ImprimerLetterButton.Visibility = Visibility.Visible;
+                ViewLetterButton.Visibility = Visibility.Visible; // Afficher le bouton 👁️
                 SauvegarderLetterButton.Visibility = Visibility.Collapsed;
                 AnnulerLetterButton.Visibility = Visibility.Collapsed;
 
@@ -407,6 +396,7 @@ public partial class CourriersControl : UserControl
             ModifierLetterButton.Visibility = Visibility.Collapsed;
             SupprimerLetterButton.Visibility = Visibility.Collapsed;
             ImprimerLetterButton.Visibility = Visibility.Collapsed;
+            ViewLetterButton.Visibility = Visibility.Collapsed; // Cacher le bouton 👁️
             SauvegarderLetterButton.Visibility = Visibility.Visible;
         }
     }
@@ -881,4 +871,88 @@ public partial class CourriersControl : UserControl
             System.Diagnostics.Debug.WriteLine($"[LoadCustomTemplates] Erreur: {ex.Message}");
         }
     }
+
+    #region Vue Détaillée
+
+    /// <summary>
+    /// Ouvre le courrier en vue détaillée (plein écran)
+    /// </summary>
+    private void ViewLetterButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_currentEditingFilePath == null)
+            return;
+
+        if (!File.Exists(_currentEditingFilePath))
+        {
+            MessageBox.Show(
+                "Le fichier du courrier n'existe plus.",
+                "Erreur",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+            return;
+        }
+
+        OpenDetailedView(_currentEditingFilePath);
+    }
+
+    /// <summary>
+    /// Double-clic sur l'aperçu du courrier pour ouvrir en vue détaillée
+    /// </summary>
+    private void LetterEditText_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        // Seulement si un courrier est chargé et en mode lecture
+        if (_currentEditingFilePath != null && LetterEditText.IsReadOnly)
+        {
+            ViewLetterButton_Click(sender, new RoutedEventArgs());
+        }
+    }
+
+    /// <summary>
+    /// Ouvre un courrier dans le dialogue de vue détaillée
+    /// </summary>
+    private void OpenDetailedView(string filePath)
+    {
+        try
+        {
+            var dialog = new DetailedViewDialog();
+            dialog.LoadContent(filePath, ContentType.Letter, _selectedPatient?.NomComplet ?? "Patient");
+
+            // S'abonner à l'événement de sauvegarde pour rafraîchir l'affichage
+            dialog.ContentSaved += (s, args) =>
+            {
+                // Recharger le courrier dans l'aperçu
+                if (_currentEditingFilePath == filePath && File.Exists(filePath))
+                {
+                    try
+                    {
+                        var markdown = File.ReadAllText(filePath);
+                        LetterEditText.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(markdown);
+                        RaiseStatus("✅ Courrier mis à jour");
+                    }
+                    catch (Exception ex)
+                    {
+                        RaiseStatus($"⚠️ Erreur rechargement: {ex.Message}");
+                    }
+                }
+
+                // Rafraîchir la liste
+                RefreshLettersList();
+            };
+
+            dialog.Owner = Window.GetWindow(this);
+            dialog.ShowDialog();
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Erreur lors de l'ouverture de la vue détaillée :\n{ex.Message}",
+                "Erreur",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error
+            );
+        }
+    }
+
+    #endregion
 }

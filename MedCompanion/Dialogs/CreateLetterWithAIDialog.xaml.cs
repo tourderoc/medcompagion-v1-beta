@@ -17,6 +17,7 @@ namespace MedCompanion.Dialogs
         public string UserRequest { get; set; }
         public LetterAnalysisResult Analysis { get; set; }
         public bool UseStandardGeneration { get; set; }
+        public LetterGenerationOptions Options { get; set; }
     }
 
     public partial class CreateLetterWithAIDialog : Window
@@ -76,6 +77,73 @@ namespace MedCompanion.Dialogs
         }
 
         /// <summary>
+        /// Toggle pour afficher/masquer les options avancées
+        /// </summary>
+        private void AdvancedOptionsToggle_Click(object sender, RoutedEventArgs e)
+        {
+            if (AdvancedOptionsPanel.Visibility == Visibility.Collapsed)
+            {
+                AdvancedOptionsPanel.Visibility = Visibility.Visible;
+                AdvancedOptionsToggle.Content = "⚙️ Options avancées ▲";
+                RequestLabel.Margin = new Thickness(0, 220, 0, 8);
+            }
+            else
+            {
+                AdvancedOptionsPanel.Visibility = Visibility.Collapsed;
+                AdvancedOptionsToggle.Content = "⚙️ Options avancées ▼";
+                RequestLabel.Margin = new Thickness(0, 56, 0, 8);
+            }
+        }
+
+        /// <summary>
+        /// Récupère les options sélectionnées dans les ComboBox
+        /// </summary>
+        private LetterGenerationOptions GetSelectedOptions()
+        {
+            var options = new LetterGenerationOptions();
+
+            // Extraire le texte sans les emojis
+            if (RecipientCombo.SelectedItem is System.Windows.Controls.ComboBoxItem recipientItem)
+            {
+                var text = recipientItem.Content.ToString();
+                // Enlever l'emoji (premier caractère + espace)
+                options.Recipient = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
+            }
+
+            if (ToneCombo.SelectedItem is System.Windows.Controls.ComboBoxItem toneItem)
+            {
+                var text = toneItem.Content.ToString();
+                options.Tone = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
+            }
+
+            if (LengthCombo.SelectedItem is System.Windows.Controls.ComboBoxItem lengthItem)
+            {
+                var text = lengthItem.Content.ToString();
+                options.Length = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
+            }
+
+            if (FormatCombo.SelectedItem is System.Windows.Controls.ComboBoxItem formatItem)
+            {
+                var text = formatItem.Content.ToString();
+                options.Format = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
+            }
+
+            if (PrudenceCombo.SelectedItem is System.Windows.Controls.ComboBoxItem prudenceItem)
+            {
+                var text = prudenceItem.Content.ToString();
+                options.PrudenceLevel = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
+            }
+
+            if (UrgencyCombo.SelectedItem is System.Windows.Controls.ComboBoxItem urgencyItem)
+            {
+                var text = urgencyItem.Content.ToString();
+                options.Urgency = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
+            }
+
+            return options;
+        }
+
+        /// <summary>
         /// Annulation du dialogue
         /// </summary>
         private void CancelButton_Click(object sender, RoutedEventArgs e)
@@ -103,6 +171,36 @@ namespace MedCompanion.Dialogs
                 return;
             }
 
+            // Récupérer les options avancées
+            var options = GetSelectedOptions();
+            System.Diagnostics.Debug.WriteLine($"[CreateLetter] Options: {options}");
+
+            // Enrichir la demande avec les options
+            string enrichedRequest = userRequest + options.ToPromptEnrichment();
+
+            // Vérifier si l'utilisateur veut utiliser la bibliothèque MCC
+            bool useMCCLibrary = UseMCCLibraryCheckBox.IsChecked == true;
+
+            if (!useMCCLibrary)
+            {
+                // Génération directe sans bibliothèque MCC
+                System.Diagnostics.Debug.WriteLine("[CreateLetter] 📝 Génération sans bibliothèque MCC (choix utilisateur)");
+
+                Result = new CreateLetterResult
+                {
+                    Success = true,
+                    SelectedMCC = null,
+                    UserRequest = enrichedRequest,
+                    Analysis = null,
+                    UseStandardGeneration = true,
+                    Options = options
+                };
+
+                DialogResult = true;
+                Close();
+                return;
+            }
+
             // Désactiver l'interface pendant le traitement
             SetUIBusy(true, "🚀 Analyse et matching MCC en cours...");
 
@@ -112,7 +210,7 @@ namespace MedCompanion.Dialogs
                 ProgressText.Text = "🔍 Analyse et recherche du meilleur MCC...";
                 
                 var (success, matchResult, error) = await _matchingService.AnalyzeAndMatchAsync(
-                    userRequest,
+                    enrichedRequest,
                     _patientContext
                 );
 
@@ -156,9 +254,10 @@ namespace MedCompanion.Dialogs
                         {
                             Success = true,
                             SelectedMCC = matchResult.SelectedMCC,
-                            UserRequest = userRequest,
+                            UserRequest = enrichedRequest,
                             Analysis = matchResult.Analysis,
-                            UseStandardGeneration = false
+                            UseStandardGeneration = false,
+                            Options = options
                         };
 
                         DialogResult = true;
@@ -190,9 +289,10 @@ namespace MedCompanion.Dialogs
                         {
                             Success = true,
                             SelectedMCC = null,
-                            UserRequest = userRequest,
+                            UserRequest = enrichedRequest,
                             Analysis = matchResult.Analysis,
-                            UseStandardGeneration = true
+                            UseStandardGeneration = true,
+                            Options = options
                         };
 
                         DialogResult = true;

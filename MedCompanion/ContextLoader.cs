@@ -202,16 +202,16 @@ namespace MedCompanion
 
                 if (File.Exists(synthesisPath))
                 {
-                    // ✅ SYNTHÈSE DISPONIBLE → Utiliser comme contexte prioritaire
+                    // ✅ SYNTHÈSE DISPONIBLE → Utiliser comme contexte prioritaire (SANS LIMITE)
                     try
                     {
                         var synthesisContent = File.ReadAllText(synthesisPath, Encoding.UTF8);
                         var cleanContent = ExtractContentAfterYaml(synthesisContent);
-                        var truncated = TruncateMarkdown(cleanContent, 800); // Max 800 mots
+                        // ✅ MODIFICATION : Pas de troncature, envoyer la synthèse COMPLÈTE
 
                         var synthesisContext = new StringBuilder();
-                        synthesisContext.AppendLine("📋 SYNTHÈSE PATIENT (≤ 800 mots)");
-                        synthesisContext.AppendLine(truncated);
+                        synthesisContext.AppendLine("📋 SYNTHÈSE PATIENT COMPLÈTE");
+                        synthesisContext.AppendLine(cleanContent);
 
                         return (true, synthesisContext.ToString(), "synthèse complète");
                     }
@@ -233,17 +233,17 @@ namespace MedCompanion
                 var context = new StringBuilder();
                 int notesCount = 0;
 
-                // NOTE FONDATRICE
+                // NOTE FONDATRICE (COMPLÈTE)
                 if (first.HasValue)
                 {
-                    var firstTrunc = TruncateMarkdown(first.Value.text, 500);
-                    context.AppendLine("NOTE FONDATRICE (≤ 500 mots)");
-                    context.AppendLine($"{first.Value.date:yyyy-MM-dd} — {firstTrunc}");
+                    // ✅ MODIFICATION : Pas de troncature, envoyer la note COMPLÈTE
+                    context.AppendLine("NOTE FONDATRICE COMPLÈTE");
+                    context.AppendLine($"{first.Value.date:yyyy-MM-dd} — {first.Value.text}");
                     context.AppendLine();
                     notesCount++;
                 }
 
-                // DERNIÈRES NOTES (avec déduplication)
+                // DERNIÈRES NOTES COMPLÈTES (avec déduplication)
                 var lastNotes = last.Where(l =>
                     !first.HasValue ||
                     Math.Abs((l.date - first.Value.date).TotalMinutes) > 1 // Différence > 1 minute
@@ -251,11 +251,11 @@ namespace MedCompanion
 
                 if (lastNotes.Count > 0)
                 {
-                    context.AppendLine("DERNIÈRES NOTES (≤ 220 mots chacune)");
+                    context.AppendLine("DERNIÈRES NOTES COMPLÈTES");
                     foreach (var note in lastNotes)
                     {
-                        var noteTrunc = TruncateMarkdown(note.text, 220);
-                        context.AppendLine($"- {note.date:yyyy-MM-dd}: {noteTrunc}");
+                        // ✅ MODIFICATION : Pas de troncature, envoyer les notes COMPLÈTES
+                        context.AppendLine($"- {note.date:yyyy-MM-dd}: {note.text}");
                         context.AppendLine();
                         notesCount++;
                     }

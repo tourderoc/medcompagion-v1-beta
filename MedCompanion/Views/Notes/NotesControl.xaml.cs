@@ -8,6 +8,7 @@ using System.Windows.Documents;
 using System.Windows.Media;
 using MedCompanion.Models;
 using MedCompanion.Services;
+using MedCompanion.ViewModels;
 
 namespace MedCompanion.Views.Notes
 {
@@ -453,6 +454,118 @@ namespace MedCompanion.Views.Notes
                 // Réactiver le bouton
                 GenerateSynthesisButton.IsEnabled = true;
                 GenerateSynthesisButton.Content = "🔄 Générer/Actualiser Synthèse";
+            }
+        }
+
+        #endregion
+
+        #region Vue Détaillée
+
+        /// <summary>
+        /// Ouvre la synthèse en vue détaillée (plein écran)
+        /// </summary>
+        private void ViewSynthesisButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPatient == null)
+                return;
+
+            var synthesisPath = Path.Combine(_currentPatient.DirectoryPath, "synthese", "synthese.md");
+            
+            if (!File.Exists(synthesisPath))
+            {
+                MessageBox.Show(
+                    "Aucune synthèse disponible.\n\nCliquez sur 'Actualiser' pour générer une synthèse.",
+                    "Information",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information
+                );
+                return;
+            }
+
+            OpenDetailedView(synthesisPath, Dialogs.ContentType.Synthesis);
+        }
+
+        /// <summary>
+        /// Ouvre la note structurée en vue détaillée (plein écran)
+        /// </summary>
+        private void ViewNoteButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPatient == null)
+                return;
+
+            // Récupérer le NoteViewModel depuis MainWindow
+            var mainWindow = Window.GetWindow(this) as MainWindow;
+            if (mainWindow?.NoteViewModel?.SelectedNote == null)
+            {
+                MessageBox.Show(
+                    "Aucune note sélectionnée.",
+                    "Information",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information
+                );
+                return;
+            }
+
+            string notePath = mainWindow.NoteViewModel.SelectedNote.FilePath;
+            if (!File.Exists(notePath))
+            {
+                MessageBox.Show(
+                    "Le fichier de la note n'existe plus.",
+                    "Erreur",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error
+                );
+                return;
+            }
+
+            OpenDetailedView(notePath, Dialogs.ContentType.Note);
+        }
+
+        /// <summary>
+        /// Double-clic sur la note structurée pour ouvrir en vue détaillée
+        /// </summary>
+        private void StructuredNoteText_MouseDoubleClick(object sender, System.Windows.Input.MouseButtonEventArgs e)
+        {
+            ViewNoteButton_Click(sender, new RoutedEventArgs());
+        }
+
+        /// <summary>
+        /// Ouvre un fichier dans le dialogue de vue détaillée
+        /// </summary>
+        private void OpenDetailedView(string filePath, Dialogs.ContentType contentType)
+        {
+            try
+            {
+                var dialog = new Dialogs.DetailedViewDialog();
+                dialog.LoadContent(filePath, contentType, _currentPatient?.NomComplet ?? "Patient");
+                
+                // S'abonner à l'événement de sauvegarde pour rafraîchir l'affichage
+                dialog.ContentSaved += (s, args) =>
+                {
+                    // Recharger le contenu selon le type
+                    if (contentType == Dialogs.ContentType.Synthesis)
+                    {
+                        LoadPatientSynthesis();
+                        StatusChanged?.Invoke(this, "✅ Synthèse mise à jour");
+                    }
+                    else if (contentType == Dialogs.ContentType.Note)
+                    {
+                        // Le ViewModel gérera le rechargement de la note
+                        StatusChanged?.Invoke(this, "✅ Note mise à jour");
+                    }
+                };
+
+                dialog.Owner = Window.GetWindow(this);
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"Erreur lors de l'ouverture de la vue détaillée :\n{ex.Message}",
+                    "Erreur",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error
+                );
             }
         }
 

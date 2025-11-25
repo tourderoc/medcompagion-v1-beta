@@ -62,7 +62,7 @@ namespace MedCompanion.Views.Ordonnances
             if (DataContext is OrdonnanceViewModel viewModel)
             {
                 // Initialiser le MedicamentsControl avec les services nécessaires
-                var letterService = new MedCompanion.LetterService(null!, null!, null!);
+                var letterService = new MedCompanion.LetterService(null!, null!, null!, null!);
                 var pathService = new MedCompanion.Services.PathService();
                 var storageService = new MedCompanion.StorageService(pathService);
                 var ordonnanceService = new MedCompanion.Services.OrdonnanceService(letterService, storageService, pathService);
@@ -803,7 +803,8 @@ namespace MedCompanion.Views.Ordonnances
                         var letterService = new MedCompanion.LetterService(
                             null!,  // OpenAIService non nécessaire pour export
                             null!,  // ContextLoader non nécessaire pour export
-                            null!   // StorageService non nécessaire pour export
+                            null!,  // StorageService non nécessaire pour export
+                            null!   // PatientContextService non nécessaire pour export
                         );
 
                         var (exportSuccess, exportMessage, docxPath) = letterService.ExportToDocx(

@@ -21,8 +21,8 @@ public partial class MainWindow : Window
             _secureStorageService ??= new SecureStorageService();
             _windowStateService ??= new WindowStateService();
 
-            // Ouvrir le dialogue de paramètres
-            var dialog = new ParametresDialog(_secureStorageService, _windowStateService, _llmFactory);
+            // Ouvrir le dialogue de paramètres (✅ AVEC PromptTracker)
+            var dialog = new ParametresDialog(_secureStorageService, _windowStateService, _llmFactory, _promptTracker);
             dialog.Owner = this;
             
             if (dialog.ShowDialog() == true && dialog.SettingsSaved)

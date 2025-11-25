@@ -35,12 +35,51 @@
                 </Grid.RowDefinitions>
                 
                 <!-- Header -->
-                <TextBlock Grid.Row="0" 
-                          Text="📊 SYNTHÈSE PATIENT" 
-                          FontSize="13" 
-                          FontWeight="Bold" 
-                          Foreground="#1ABC9C"
-                          Margin="0,0,0,8"/>
+                <Grid Grid.Row="0" Margin="0,0,0,8">
+                    <TextBlock Text="📊 SYNTHÈSE PATIENT" 
+                              FontSize="13" 
+                              FontWeight="Bold" 
+                              Foreground="#1ABC9C"
+                              VerticalAlignment="Center"/>
+                    
+                    <!-- Bouton Vue Détaillée -->
+                    <Button x:Name="ViewSynthesisButton"
+                            Content="👁️"
+                            Width="28"
+                            Height="28"
+                            FontSize="14"
+                            Background="#1ABC9C"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            HorizontalAlignment="Right"
+                            VerticalAlignment="Center"
+                            ToolTip="Ouvrir en plein écran (lecture/édition)"
+                            Click="ViewSynthesisButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" 
+                                                    CornerRadius="4" 
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" 
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#16A085"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid>
+                
                 
                 <!-- Zone d'affichage (scrollable) -->
                 <Border Grid.Row="1" 
@@ -414,7 +453,55 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock x:Name="StructuredNoteLabel" Grid.Row="0" Text="Note structurée" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#2C3E50"/>
+            
+            <!-- Header avec bouton Vue Détaillée -->
+            <Grid Grid.Row="0" Margin="0,0,0,4">
+                <TextBlock x:Name="StructuredNoteLabel" 
+                          Text="Note structurée" 
+                          FontSize="14" 
+                          FontWeight="SemiBold" 
+                          Foreground="#2C3E50"
+                          VerticalAlignment="Center"/>
+                
+                <!-- Bouton Vue Détaillée -->
+                <Button x:Name="ViewNoteButton"
+                        Content="👁️"
+                        Width="28"
+                        Height="28"
+                        FontSize="14"
+                        Background="#3498DB"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        HorizontalAlignment="Right"
+                        VerticalAlignment="Center"
+                        ToolTip="Ouvrir en plein écran (lecture/édition)"
+                        Click="ViewNoteButton_Click"
+                        Visibility="{Binding NoteViewModel.IsStructuredNoteVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" 
+                                                CornerRadius="4" 
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" 
+                                                            VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#2980B9"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+            
             <Border Grid.Row="1" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6">
                 <RichTextBox x:Name="StructuredNoteText" 
                              IsReadOnly="{Binding NoteViewModel.IsStructuredNoteReadOnly}"
@@ -424,8 +511,10 @@
                              FontSize="13"
                              Padding="12"
                              BorderThickness="0"
-                             AcceptsTab="False"/>
+                             AcceptsTab="False"
+                             MouseDoubleClick="StructuredNoteText_MouseDoubleClick"/>
             </Border>
         </Grid>
     </Grid>
 </UserControl>
+
