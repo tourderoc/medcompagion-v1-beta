@@ -1,4 +1,5 @@
 using MedCompanion.Dialogs;
+using MedCompanion.Services;
 
 namespace MedCompanion.Models;
 
@@ -58,4 +59,8 @@ public class ReAdaptationState
     public string? DocumentTitle { get; set; }
     public string? UserRequest { get; set; }
     public PatientContextBundle? PatientContext { get; set; }
+
+    // ✅ Ajout pour l'anonymisation
+    public string? Pseudonym { get; set; }
+    public AnonymizationContext? AnonContext { get; set; }
 }

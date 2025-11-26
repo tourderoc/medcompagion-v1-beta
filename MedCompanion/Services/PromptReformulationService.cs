@@ -106,7 +106,9 @@ Reformule le prompt selon la demande. Retourne UNIQUEMENT le nouveau prompt, san
         /// </summary>
         public async Task<(bool success, LetterAnalysisResult result, string? error)> AnalyzeLetterRequestAsync(
             string userRequest,
-            Models.PatientContext patientContext = null)
+            Models.PatientContext patientContext = null,
+            string? pseudonym = null,
+            AnonymizationContext? anonContext = null)
         {
             if (string.IsNullOrWhiteSpace(userRequest))
                 return (false, null, "La demande est vide");
@@ -168,12 +170,12 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans backticks) :
                 // Construire le prompt avec contexte patient si disponible
                 var userPrompt = new System.Text.StringBuilder();
                 userPrompt.AppendLine($"Demande utilisateur : {userRequest}");
-                
+
                 if (patientContext != null)
                 {
                     userPrompt.AppendLine();
                     userPrompt.AppendLine("CONTEXTE PATIENT :");
-                    userPrompt.AppendLine(patientContext.ToPromptText());
+                    userPrompt.AppendLine(patientContext.ToPromptText(pseudonym, anonContext));  // ✅ Passer les paramètres d'anonymisation
                     userPrompt.AppendLine();
                     userPrompt.AppendLine("IMPORTANT : Utilise ce contexte patient pour :");
                     userPrompt.AppendLine("1. Extraire des mots-clés plus précis (diagnostics, troubles mentionnés)");

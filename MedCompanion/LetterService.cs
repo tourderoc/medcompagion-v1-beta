@@ -25,6 +25,7 @@ namespace MedCompanion
         private readonly AppSettings _settings;
         private readonly PromptConfigService _promptConfig;
         private readonly PatientContextService _patientContextService; // ✅ NOUVEAU
+        private readonly AnonymizationService _anonymizationService; // ✅ NOUVEAU
         
         // Cache des prompts pour éviter les appels répétés
         private string _cachedSystemPrompt;
@@ -36,12 +37,14 @@ namespace MedCompanion
             OpenAIService openAIService, 
             ContextLoader contextLoader, 
             StorageService storageService,
-            PatientContextService patientContextService) // ✅ NOUVEAU
+            PatientContextService patientContextService, // ✅ NOUVEAU
+            AnonymizationService anonymizationService) // ✅ NOUVEAU
         {
             _openAIService = openAIService;
             _contextLoader = contextLoader;
             _storageService = storageService;
             _patientContextService = patientContextService; // ✅ NOUVEAU
+            _anonymizationService = anonymizationService; // ✅ NOUVEAU
             _settings = new AppSettings();
             _promptConfig = new PromptConfigService();
             
@@ -161,10 +164,34 @@ namespace MedCompanion
         {
             try
             {
-                // ✅ NOUVEAU : Utiliser PatientContextService pour le contexte complet
-                var contextBundle = _patientContextService.GetCompleteContext(nomComplet);
-                var contextText = contextBundle.ToPromptText();
-                var metadata = contextBundle.Metadata;
+                // ✅ ÉTAPE 1 : Charger les métadonnées pour obtenir le sexe
+                var patientDir = _storageService.GetPatientDirectory(nomComplet);
+                var patientJsonPath = Path.Combine(patientDir, "patient.json");
+                PatientMetadata? metadata = null;
+                
+                if (File.Exists(patientJsonPath))
+                {
+                    try
+                    {
+                        var json = File.ReadAllText(patientJsonPath);
+                        metadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(json);
+                    }
+                    catch { }
+                }
+
+                // ✅ ÉTAPE 2 : Générer le pseudonyme AVANT de créer le contexte
+                var sexe = metadata?.Sexe ?? "M";
+                var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", nomComplet, sexe);
+
+                // ✅ ÉTAPE 3 : Créer le contexte avec le pseudonyme (le vrai nom n'apparaîtra jamais)
+                var contextBundle = _patientContextService.GetCompleteContext(
+                    nomComplet,
+                    userRequest: null,
+                    pseudonym: nomAnonymise
+                );
+
+                var contextText = contextBundle.ToPromptText(nomAnonymise, anonContext);  // ✅ Passer le contexte d'anonymisation
+                metadata = contextBundle.Metadata;  // Utiliser les métadonnées du bundle
                 
                 System.Diagnostics.Debug.WriteLine($"[AdaptTemplateWithAIAsync] {contextBundle.ToDebugText()}");
                 
@@ -173,11 +200,14 @@ namespace MedCompanion
                 // Détecter si c'est une Feuille de route pour adapter le style
                 bool isFeuilleRoute = templateName.Contains("Feuille de route", StringComparison.OrdinalIgnoreCase);
                 
+                // Utiliser le prénom anonymisé si disponible, sinon le nom anonymisé
+                var prenomAnonymise = anonContext.Pseudonym.Split(' ').FirstOrDefault() ?? "l'enfant";
+                
                 var systemPrompt = isFeuilleRoute
                     ? $@"Tu es l'assistant du {medecin}, pédopsychiatre.
 Tu rédiges un document chaleureux et bienveillant DESTINÉ AUX PARENTS.
 - Ton : empathique, pratique, non médical, rassurant
-- Tu t'adresses AUX PARENTS mais parles DE L'ENFANT en 3ᵉ personne (il/elle, {metadata?.Prenom ?? "l'enfant"})
+- Tu t'adresses AUX PARENTS mais parles DE L'ENFANT en 3ᵉ personne (il/elle, {prenomAnonymise})
 - Style : guidance parentale simple et concrète, pas de jargon clinique"
                     : $@"Tu es l'assistant du {medecin}, pédopsychiatre.
 - L'UTILISATEUR est le clinicien. Tu rédiges EN PREMIÈRE PERSONNE au nom du {medecin}.
@@ -206,7 +236,7 @@ INTERDICTIONS :
 
 CONSIGNE SPECIALE FEUILLE DE ROUTE
 ----
-Génère une feuille de route CHALEUREUSE et PRATIQUE pour les parents de {metadata?.Prenom ?? "l'enfant"}.
+Génère une feuille de route CHALEUREUSE et PRATIQUE pour les parents de {prenomAnonymise}.
 
 1. **Motif principal** : Identifie en 1-2 phrases le motif de consultation principal depuis le contexte (ex: ""difficultés de sommeil"", ""anxiété importante"", ""opposition"", ""trop d'écrans"", etc.)
 
@@ -221,7 +251,7 @@ Génère une feuille de route CHALEUREUSE et PRATIQUE pour les parents de {metad
 
 Structure Markdown :
 ```
-# Feuille de route pour les parents de {metadata?.Prenom ?? "[Prénom]"}
+# Feuille de route pour les parents de {prenomAnonymise}
 
 **Motif principal :**
 [Texte ici]
@@ -244,7 +274,7 @@ Structure Markdown :
 ```
 
 ⚠️ IMPORTANT : 
-- Personnalise avec le prénom {metadata?.Prenom ?? "l'enfant"} partout
+- Personnalise avec le prénom {prenomAnonymise} partout
 - Ton chaleureux, NON médical
 - Conseils concrets et applicables"
                     : $@"CONTEXTE PATIENT COMPLET
@@ -264,6 +294,7 @@ REGLE : Remplace UNIQUEMENT les informations trouvees EXPLICITEMENT dans le cont
 CONSIGNE
 ----
 Redige en 12-15 lignes maximum, ton professionnel.
+- Le patient s'appelle : {nomAnonymise}
 - Adapte les amenagements selon le motif principal
 - Format Markdown avec titre et corps uniquement
 - NE PAS inclure en-tete, date, signature, pied de page
@@ -274,7 +305,9 @@ Redige en 12-15 lignes maximum, ton professionnel.
 
                 if (success)
                 {
-                    return (true, result, string.Empty);
+                    // ✅ DÉSANONYMISATION
+                    var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
+                    return (true, deanonymizedResult, string.Empty);
                 }
                 else
                 {
@@ -296,8 +329,33 @@ Redige en 12-15 lignes maximum, ton professionnel.
         {
             try
             {
-                // Construire le contexte
-                var (hasContext, contextText, _) = _contextLoader.GetContextBundle(nomComplet, null);
+                // ✅ ÉTAPE 1 : Charger les métadonnées pour obtenir le sexe
+                var patientDir = _storageService.GetPatientDirectory(nomComplet);
+                var patientJsonPath = Path.Combine(patientDir, "patient.json");
+                PatientMetadata? metadata = null;
+                
+                if (File.Exists(patientJsonPath))
+                {
+                    try
+                    {
+                        var json = File.ReadAllText(patientJsonPath);
+                        metadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(json);
+                    }
+                    catch { }
+                }
+
+                // ✅ ÉTAPE 2 : Générer le pseudonyme AVANT de créer le contexte
+                var sexe = metadata?.Sexe ?? "M";
+                var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", nomComplet, sexe);
+
+                // ✅ ÉTAPE 3 : Créer le contexte avec le pseudonyme
+                var contextBundle = _patientContextService.GetCompleteContext(
+                    nomComplet,
+                    userRequest: null,
+                    pseudonym: nomAnonymise
+                );
+
+                var contextText = contextBundle.ToPromptText(nomAnonymise, anonContext);  // ✅ Passer le contexte d'anonymisation
 
                 var medecin = _settings.Medecin;
                 
@@ -305,18 +363,23 @@ Redige en 12-15 lignes maximum, ton professionnel.
                 var systemPrompt = _cachedSystemPrompt.Replace("{{Medecin}}", medecin);
                 
                 // Utiliser le prompt en cache (rechargé automatiquement via événement)
-                var userPromptTemplate = hasContext ? _cachedLetterWithContextPrompt : _cachedLetterNoContextPrompt;
+                var userPromptTemplate = !string.IsNullOrEmpty(contextText) ? _cachedLetterWithContextPrompt : _cachedLetterNoContextPrompt;
                 
                 // Remplacer les variables
                 var userPrompt = userPromptTemplate
                     .Replace("{{Contexte}}", contextText)
                     .Replace("{{User_Request}}", userRequest);
 
+                // Ajouter l'instruction sur le nom anonymisé
+                userPrompt += $"\n\nIMPORTANT : Le patient s'appelle {nomAnonymise}.";
+
                 var (success, result) = await _openAIService.ChatAvecContexteAsync(string.Empty, userPrompt, null, systemPrompt);
 
                 if (success)
                 {
-                    return (true, result, string.Empty);
+                    // ✅ DÉSANONYMISATION
+                    var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
+                    return (true, deanonymizedResult, string.Empty);
                 }
                 else
                 {
@@ -339,13 +402,43 @@ Redige en 12-15 lignes maximum, ton professionnel.
         {
             try
             {
+                // ✅ ÉTAPE 1 : Charger les métadonnées pour obtenir le sexe
+                var patientDir = _storageService.GetPatientDirectory(nomComplet);
+                var patientJsonPath = Path.Combine(patientDir, "patient.json");
+                PatientMetadata? metadata = null;
+                
+                if (File.Exists(patientJsonPath))
+                {
+                    try
+                    {
+                        var json = File.ReadAllText(patientJsonPath);
+                        metadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(json);
+                    }
+                    catch { }
+                }
+
+                // ✅ ÉTAPE 2 : Générer le pseudonyme AVANT de créer le contexte
+                var sexe = metadata?.Sexe ?? "M";
+                var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", nomComplet, sexe);
+                
+                // ✅ ÉTAPE 3 : Anonymiser le contexte de conversation et la requête
+                if (conversationContext.Contains(nomComplet))
+                {
+                    conversationContext = conversationContext.Replace(nomComplet, nomAnonymise);
+                }
+                
+                if (userRequest.Contains(nomComplet))
+                {
+                    userRequest = userRequest.Replace(nomComplet, nomAnonymise);
+                }
+
                 var medecin = _settings.Medecin;
                 
                 // Utiliser le prompt système en cache (rechargé automatiquement via événement)
                 var systemPrompt = _cachedSystemPrompt.Replace("{{Medecin}}", medecin);
                 
                 // Construire le prompt utilisateur enrichi avec la conversation
-                var userPrompt = $@"CONTEXTE ENRICHI
+                var userPrompt = $@"CONTEXTE DE LA CONVERSATION
 ----
 {conversationContext}
 
@@ -360,6 +453,8 @@ Rédige un courrier professionnel en te basant sur :
 2. La conversation précédente (échange sauvegardé)
 3. La demande spécifique de l'utilisateur
 
+IMPORTANT : Le patient s'appelle {nomAnonymise}.
+
 FORMAT ATTENDU :
 - Titre avec # Objet : [titre du courrier]
 - Corps du courrier (12-15 lignes maximum, ton professionnel)
@@ -372,7 +467,9 @@ FORMAT ATTENDU :
 
                 if (success)
                 {
-                    return (true, result, string.Empty);
+                    // ✅ DÉSANONYMISATION
+                    var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
+                    return (true, deanonymizedResult, string.Empty);
                 }
                 else
                 {
@@ -412,13 +509,17 @@ FORMAT ATTENDU :
                     catch { }
                 }
                 
+                // ✅ ANONYMISATION : Générer le pseudonyme AVANT de construire le contexte
+                var sexe = metadata?.Sexe ?? "M";
+                var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", nomComplet, sexe);
+                
                 // Enrichir le contexte avec les infos patient calculées (âge, etc.)
                 var enrichedContext = new StringBuilder();
                 if (metadata != null)
                 {
                     enrichedContext.AppendLine("INFORMATIONS PATIENT");
                     enrichedContext.AppendLine("----");
-                    enrichedContext.AppendLine($"- Nom complet : {metadata.NomComplet}");
+                    enrichedContext.AppendLine($"- Nom complet : {nomAnonymise}");  // ✅ Utiliser le pseudonyme
                     
                     if (metadata.Age.HasValue)
                     {
@@ -452,7 +553,15 @@ FORMAT ATTENDU :
                 {
                     enrichedContext.AppendLine("NOTES CLINIQUES RÉCENTES");
                     enrichedContext.AppendLine("----");
-                    enrichedContext.AppendLine(contextText);
+                    
+                    // ✅ Anonymiser aussi le contexte des notes
+                    var anonymizedContextText = contextText;
+                    if (anonymizedContextText.Contains(nomComplet))
+                    {
+                        anonymizedContextText = anonymizedContextText.Replace(nomComplet, nomAnonymise);
+                    }
+                    
+                    enrichedContext.AppendLine(anonymizedContextText);
                     enrichedContext.AppendLine();
                 }
                 
@@ -485,20 +594,40 @@ FORMAT ATTENDU :
                     semanticInfo.AppendLine();
                 }
                 
+                // ✅ Le contexte est déjà anonymisé, pas besoin de remplacement
+                var enrichedContextStr = enrichedContext.ToString();
+                
                 // Utiliser le prompt système en cache (rechargé automatiquement via événement)
                 var systemPrompt = _cachedSystemPrompt.Replace("{{Medecin}}", medecin);
                 
                 // Construire le prompt enrichi avec toutes les métadonnées MCC
-                var userPrompt = $@"CONTEXTE PATIENT
+                // ✅ UTILISER LE NOM ANONYMISÉ DANS LE PROMPT
+                var userPrompt = $@"🎯 TEMPLATE MCC OPTIMISÉ : ""{mcc.Name}""
+
+{ExplainTemplateNotation()}
+
+---
+CONTEXTE PATIENT
 ----
-{enrichedContext}
+{enrichedContextStr}
 
-{semanticInfo}
+---
+MÉTADONNÉES SÉMANTIQUES DU MCC
+----
+Type de document : {mcc.Semantic?.DocType ?? "Non spécifié"}
+Audience cible : {mcc.Semantic?.Audience ?? "Non spécifiée"}
+Ton requis : {mcc.Semantic?.Tone ?? "professionnel"}
+Tranche d'âge : {mcc.Semantic?.AgeGroup ?? "Non spécifiée"}
+{GenerateKeywordsDirective(mcc.Semantic?.ClinicalKeywords)}
 
-TEMPLATE MCC : {mcc.Name}
+{GenerateSectionsDirective(mcc.Semantic?.Sections)}
+
+---
+TEMPLATE MCC (avec notation [GÉNÉRER:]) :
 ----
 {mcc.TemplateMarkdown}
 
+---
 🚨 RÈGLE ABSOLUE - GESTION DES VARIABLES {{{{Variable}}}} 🚨
 ----
 Pour CHAQUE variable {{{{Variable}}}} du template :
@@ -507,7 +636,7 @@ Pour CHAQUE variable {{{{Variable}}}} du template :
 ❌ SI l'information N'EST PAS dans le contexte → GARDE le placeholder {{{{Variable}}}} INTACT
 
 EXEMPLES CONCRETS :
-- {{{{Nom_Prenom}}}} → TOUJOURS disponible dans contexte → Remplacer
+- {{{{Nom_Prenom}}}} → TOUJOURS disponible dans contexte → Remplacer par ""{nomAnonymise}""
 - {{{{Age}}}} → TOUJOURS disponible dans contexte → Remplacer  
 - {{{{Ecole}}}} → SI présent dans contexte → Remplacer, SINON garder {{{{Ecole}}}}
 - {{{{Etablissement}}}} → SI présent dans contexte → Remplacer, SINON garder {{{{Etablissement}}}}
@@ -522,21 +651,16 @@ EXEMPLES CONCRETS :
 
 FORMAT OBLIGATOIRE pour variables manquantes : {{{{Variable}}}} (doubles accolades)
 
-CONSIGNE PRINCIPALE
+---
+⚠️ RÈGLES CRITIQUES :
 ----
-Adapte ce template MCC en respectant :
+1. Ton résultat final NE DOIT PAS contenir de marqueurs [GÉNÉRER:]
+2. Chaque zone doit être remplacée par du contenu médical réel et personnalisé
+3. Respecte la logique narrative des sections (ordre et objectifs)
+4. Omets les sections [OPTIONNELLE] non pertinentes pour CE patient (pas de contenu creux)
+5. N'invente pas d'informations manquantes → Garde les placeholders {{{{Variable}}}}
 
-1. **Ton et style** : {mcc.Semantic?.Tone ?? "professionnel"}
-2. **Audience** : {mcc.Semantic?.Audience ?? "le destinataire"}  
-3. **Structure** : Conserve la structure du template MCC
-4. **Variables** : Applique la règle ABSOLUE ci-dessus pour CHAQUE {{{{Variable}}}}
-5. **Concision** : 12-15 lignes maximum, évite la redondance
-
-RÈGLES DE FORMATAGE :
-- Format Markdown avec titre # Objet : [titre]
-- Respecte les mots-clés cliniques : {string.Join(", ", mcc.Semantic?.ClinicalKeywords ?? new List<string>())}
-- Adapte l'âge du patient ({metadata?.Age ?? 0} ans) au template
-
+---
 🚫 EXCLUSIONS ABSOLUES - À NE JAMAIS INCLURE 🚫
 ----
 NE GÉNÈRE JAMAIS les éléments suivants (ils sont gérés automatiquement par le système) :
@@ -555,13 +679,22 @@ NE GÉNÈRE JAMAIS les éléments suivants (ils sont gérés automatiquement par
 [Corps du courrier - contenu médical uniquement]
 [FIN - ne rien ajouter après]
 
-⚠️ IMPORTANT : Respecte le TON et la STRUCTURE du MCC original !";
+---
+🎯 MISSION : Crée un courrier INSPIRÉ de ce MCC, adapté à la situation unique de ce patient.
+- Le patient s'appelle : {nomAnonymise}
+- Respecte le TON ({mcc.Semantic?.Tone ?? "professionnel"})
+- Adapte à l'AUDIENCE ({mcc.Semantic?.Audience ?? "destinataire"})
+- Personnalise selon l'ÂGE du patient ({metadata?.Age ?? 0} ans)
+- Format Markdown avec titre # Objet : [titre]
+- Concision : 12-15 lignes maximum, évite la redondance";
 
                 var (success, result) = await _openAIService.ChatAvecContexteAsync(string.Empty, userPrompt, null, systemPrompt);
 
                 if (success)
                 {
-                    return (true, result, string.Empty);
+                    // ✅ DÉSANONYMISATION
+                    var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
+                    return (true, deanonymizedResult, string.Empty);
                 }
                 else
                 {
@@ -573,6 +706,125 @@ NE GÉNÈRE JAMAIS les éléments suivants (ils sont gérés automatiquement par
                 return (false, string.Empty, $"Erreur lors de la génération depuis MCC: {ex.Message}");
             }
         }
+
+        #region MCC Generation Helper Functions
+
+        /// <summary>
+        /// Génère l'explication de la notation du template MCC
+        /// </summary>
+        private string ExplainTemplateNotation()
+        {
+            return @"Le template ci-dessous est un MODÈLE optimisé pour génération.
+Il utilise une notation spéciale que tu DOIS interpréter :
+
+📋 NOTATION DU TEMPLATE :
+1. Les titres ""## Section"" définissent la STRUCTURE à respecter
+2. Les blocs ""[GÉNÉRER: instruction]"" sont des ZONES À GÉNÉRER
+   → Remplace chaque ""[GÉNÉRER: ...]"" par du contenu médical réel
+   → L'instruction entre crochets t'indique QUOI écrire dans cette zone
+
+🎨 MODE GÉNÉRATION : INSPIRATION (pas copie stricte)
+- Respecte la STRUCTURE (titres ##)
+- GÉNÈRE du contenu ORIGINAL pour chaque zone [GÉNÉRER: ...]
+- ADAPTE au contexte SPÉCIFIQUE de CE patient
+- Ne COPIE PAS les marqueurs [GÉNÉRER:] dans le résultat final
+
+EXEMPLE DE TRANSFORMATION :
+
+❌ MAUVAIS (copie le template) :
+## Objet
+[GÉNÉRER: Objet précis du courrier...]
+
+✅ BON (génère du contenu) :
+## Objet
+Courrier concernant l'accompagnement scolaire de Lucas Dupont, 8 ans,
+suivi pour trouble déficit de l'attention avec hyperactivité (TDAH)";
+        }
+
+        /// <summary>
+        /// Génère les directives pour les mots-clés cliniques
+        /// </summary>
+        private string GenerateKeywordsDirective(List<string>? keywords)
+        {
+            if (keywords == null || !keywords.Any())
+                return "";
+
+            return $@"
+🔑 THÉMATIQUES CLINIQUES OBLIGATOIRES
+----
+Ce courrier DOIT aborder ces concepts cliniques :
+{string.Join("\n", keywords.Select(k => $"- {k}"))}
+
+⚠️ IMPORTANT :
+- Intègre naturellement ces mots-clés dans le contenu médical
+- Ne force pas leur présence si non pertinent pour CE patient
+- Utilise-les pour guider le ton clinique du courrier
+";
+        }
+
+        /// <summary>
+        /// Génère les directives pour les sections avec indication essentielle/optionnelle
+        /// </summary>
+        private string GenerateSectionsDirective(Dictionary<string, string>? sections)
+        {
+            if (sections == null || !sections.Any())
+                return "Aucune structure spécifique définie.";
+
+            var directive = new StringBuilder();
+            directive.AppendLine("🎯 STRUCTURE CIBLE (adapter selon pertinence clinique) :");
+            directive.AppendLine();
+
+            int i = 1;
+            foreach (var section in sections)
+            {
+                // Déterminer si section est essentielle
+                var isEssential = IsEssentialSection(section.Key);
+                var marker = isEssential ? "[ESSENTIELLE]" : "[OPTIONNELLE]";
+
+                directive.AppendLine($"{i}. ## {section.Key} {marker}");
+                directive.AppendLine($"   → Objectif : {section.Value}");
+
+                if (isEssential)
+                {
+                    directive.AppendLine($"   → Cette section est CRUCIALE, toujours l'inclure si possible");
+                }
+                else
+                {
+                    directive.AppendLine($"   → Omettre si non pertinent pour ce patient");
+                }
+
+                directive.AppendLine();
+                i++;
+            }
+
+            directive.AppendLine("⚠️ RÈGLE D'ADAPTATION :");
+            directive.AppendLine("- Sections [ESSENTIELLE] = toujours inclure si possible");
+            directive.AppendLine("- Sections [OPTIONNELLE] = omettre si redondant ou non pertinent");
+            directive.AppendLine("- Garde l'ORDRE des sections conservées");
+
+            return directive.ToString();
+        }
+
+        /// <summary>
+        /// Détermine si une section est essentielle (doit toujours être incluse)
+        /// </summary>
+        private bool IsEssentialSection(string sectionName)
+        {
+            // Sections toujours essentielles
+            var essential = new[] {
+                "objet",
+                "recommandations",
+                "recommandation",
+                "aménagements",
+                "aménagement",
+                "conclusion"
+            };
+
+            return essential.Any(e =>
+                sectionName.Contains(e, StringComparison.OrdinalIgnoreCase));
+        }
+
+        #endregion
 
         /// <summary>
         /// Sauvegarde un brouillon de courrier

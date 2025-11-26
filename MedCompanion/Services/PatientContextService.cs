@@ -33,14 +33,17 @@ namespace MedCompanion.Services
         /// </summary>
         /// <param name="nomComplet">Nom complet du patient</param>
         /// <param name="userRequest">Demande utilisateur optionnelle</param>
+        /// <param name="pseudonym">Pseudonyme optionnel pour anonymisation</param>
         /// <returns>Bundle contenant tout le contexte</returns>
         public PatientContextBundle GetCompleteContext(
             string nomComplet,
-            string? userRequest = null)
+            string? userRequest = null,
+            string? pseudonym = null)
         {
             var bundle = new PatientContextBundle
             {
                 UserRequest = userRequest,
+                Pseudonym = pseudonym,  // ✅ Stocker le pseudonyme pour anonymisation
                 GeneratedAt = DateTime.Now
             };
 

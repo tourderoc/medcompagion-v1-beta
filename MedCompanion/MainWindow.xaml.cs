@@ -29,6 +29,7 @@ public partial class MainWindow : Window
     private readonly PatientIndexService _patientIndex;
     private readonly PatientContextService _patientContextService; // ✅ NOUVEAU
     private readonly LetterReAdaptationService _reAdaptationService; // ✅ NOUVEAU
+    private readonly AnonymizationService _anonymizationService; // ✅ NOUVEAU
     private readonly LetterService _letterService;
     private readonly TemplateExtractorService _templateExtractor;
     private readonly TemplateManagerService _templateManager;
@@ -214,7 +215,10 @@ Je vous remercie par avance pour votre collaboration et reste à votre dispositi
         // ✅ NOUVEAU : Initialiser LetterReAdaptationService
         _reAdaptationService = new LetterReAdaptationService(_patientContextService, _openAIService);
         
-        _letterService = new LetterService(_openAIService, _contextLoader, _storageService, _patientContextService); // ✅ MODIFIÉ
+        // ✅ NOUVEAU : Initialiser AnonymizationService
+        _anonymizationService = new AnonymizationService();
+
+        _letterService = new LetterService(_openAIService, _contextLoader, _storageService, _patientContextService, _anonymizationService); // ✅ MODIFIÉ
         _templateExtractor = new TemplateExtractorService(_openAIService);
         _templateManager = new TemplateManagerService();
         _mccLibrary = new MCCLibraryService();
@@ -1293,10 +1297,14 @@ private async Task HandleCreateLetterWithAIAsync()
 /// </summary>
 private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCModel? mcc, LetterAnalysisResult? analysis)
 {
+    // ✅ ANONYMISATION : Générer le pseudonyme
+    var sexe = _selectedPatient.Sexe ?? "M";
+    var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", _selectedPatient.NomComplet, sexe);
+
     // ✅ NOUVEAU : Utiliser PatientContextService pour le contexte complet
     var contextBundle = _patientContextService.GetCompleteContext(_selectedPatient.NomComplet, userRequest);
-    var patientContext = contextBundle.ToPromptText();
-    
+    var patientContext = contextBundle.ToPromptText(nomAnonymise, anonContext);  // ✅ Passer le contexte d'anonymisation
+
     System.Diagnostics.Debug.WriteLine($"[GenerateLetterContentAsync] {contextBundle.ToDebugText()}");
 
     // ✅ Utiliser le système de prompts configurables
@@ -1306,14 +1314,87 @@ private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCMo
     string userPrompt;
     if (mcc != null && analysis != null)
     {
-        // Utiliser le prompt d'adaptation de template
-        userPrompt = _promptConfigService.GetActivePrompt("template_adaptation")
+        // ✅ Exploiter TOUTES les métadonnées du MCC et de l'analyse
+        // Si le MCC a un PromptTemplate personnalisé, l'utiliser en priorité
+        var basePrompt = !string.IsNullOrWhiteSpace(mcc.PromptTemplate)
+            ? mcc.PromptTemplate
+            : _promptConfigService.GetActivePrompt("template_adaptation");
+
+        // Construire les informations sémantiques du MCC
+        var mccSemanticInfo = "";
+        if (mcc.Semantic != null)
+        {
+            mccSemanticInfo = $@"
+📋 CARACTÉRISTIQUES DU MODÈLE MCC ""{mcc.Name}"":
+- Type de document: {mcc.Semantic.DocType ?? "non spécifié"}
+- Public cible: {mcc.Semantic.Audience ?? "non spécifié"}
+- Ton recommandé: {mcc.Semantic.Tone ?? "professionnel"}
+- Tranche d'âge: {mcc.Semantic.AgeGroup ?? "tout âge"}
+- Niveau de détail: {mcc.Semantic.DetailLevel ?? "standard"}";
+
+            // Ajouter les thèmes cliniques si disponibles
+            if (mcc.Semantic.Themes != null && mcc.Semantic.Themes.Any())
+            {
+                mccSemanticInfo += $"\n- Thèmes cliniques: {string.Join(", ", mcc.Semantic.Themes)}";
+            }
+
+            // Ajouter les mots-clés à utiliser/éviter
+            if (mcc.Semantic.Keywords != null)
+            {
+                if (mcc.Semantic.Keywords.AUtiliser != null && mcc.Semantic.Keywords.AUtiliser.Any())
+                {
+                    mccSemanticInfo += $"\n- ✅ Mots-clés à utiliser: {string.Join(", ", mcc.Semantic.Keywords.AUtiliser)}";
+                }
+                if (mcc.Semantic.Keywords.AEviter != null && mcc.Semantic.Keywords.AEviter.Any())
+                {
+                    mccSemanticInfo += $"\n- ❌ Mots-clés à éviter: {string.Join(", ", mcc.Semantic.Keywords.AEviter)}";
+                }
+            }
+        }
+
+        // Ajouter les keywords du MCC si disponibles
+        var mccKeywordsInfo = "";
+        if (mcc.Keywords != null && mcc.Keywords.Any())
+        {
+            mccKeywordsInfo = $"\n- Mots-clés contextuels: {string.Join(", ", mcc.Keywords)}";
+        }
+
+        // Construire les informations de l'analyse de la demande utilisateur
+        var requestAnalysisInfo = $@"
+
+🎯 ANALYSE DE LA DEMANDE UTILISATEUR:
+- Mots-clés identifiés: {string.Join(", ", analysis.Keywords ?? new List<string>())}
+- Type de document demandé: {analysis.DocType ?? "non spécifié"}
+- Public cible: {analysis.Audience ?? "non spécifié"}
+- Ton souhaité: {analysis.Tone ?? "professionnel"}
+- Tranche d'âge: {analysis.AgeGroup ?? "non spécifié"}
+- Confiance de l'analyse: {analysis.ConfidenceScore:P0}";
+
+        // Construire le prompt enrichi
+        userPrompt = basePrompt
             .Replace("{{Contexte}}", patientContext)
             .Replace("{{Template_Name}}", mcc.Name)
             .Replace("{{Template_Markdown}}", mcc.TemplateMarkdown);
-        
-        // Ajouter la demande utilisateur enrichie
-        userPrompt += $"\n\nDEMANDE UTILISATEUR :\n{userRequest}";
+
+        // Ajouter les métadonnées enrichies
+        userPrompt += mccSemanticInfo;
+        userPrompt += mccKeywordsInfo;
+        userPrompt += requestAnalysisInfo;
+
+        // Ajouter la demande utilisateur originale
+        userPrompt += $"\n\n📝 DEMANDE UTILISATEUR ORIGINALE:\n{userRequest}";
+
+        // Instructions finales pour l'IA
+        var tone = mcc.Semantic?.Tone ?? "professionnel";
+        var audience = mcc.Semantic?.Audience ?? analysis.Audience;
+        var ageGroup = mcc.Semantic?.AgeGroup ?? analysis.AgeGroup;
+
+        userPrompt += $"\n\n⚠️ INSTRUCTIONS IMPORTANTES:\n";
+        userPrompt += $"1. Respecte le ton \"{tone}\" et adapte-le au public \"{audience}\"\n";
+        userPrompt += $"2. Utilise le template comme structure de base mais adapte-le à la demande utilisateur\n";
+        userPrompt += $"3. Intègre les mots-clés pertinents naturellement dans le texte\n";
+        userPrompt += $"4. Assure-toi que le document est approprié pour la tranche d'âge {ageGroup}\n";
+        userPrompt += $"5. Conserve le format Markdown du template";
     }
     else
     {
@@ -1348,7 +1429,9 @@ private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCMo
 
     if (success)
     {
-        return letter;
+        // ✅ Désanonymiser : remplacer le pseudonyme par le vrai nom
+        var deanonymizedLetter = _anonymizationService.Deanonymize(letter, anonContext);
+        return deanonymizedLetter;
     }
     else
     {
@@ -1529,6 +1612,31 @@ private PatientContext BuildPatientContext(PatientIndexEntry patient)
     public ILLMService? GetCurrentLLMService()
     {
         return _currentLLMService;
+    }
+
+    /// <summary>
+    /// Rafraîchit la liste des templates MCC dans la combobox Courriers
+    /// Appelé depuis MCCLibraryDialog après ajout/retrait d'un MCC
+    /// </summary>
+    public void RefreshCourriersTemplates()
+    {
+        try
+        {
+            if (CourriersControlPanel != null)
+            {
+                CourriersControlPanel.ReloadTemplates();
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Templates Courriers rafraîchis");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[MainWindow] CourriersControlPanel n'est pas initialisé");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Erreur rafraîchissement templates: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Stack trace: {ex.StackTrace}");
+        }
     }
 }
 

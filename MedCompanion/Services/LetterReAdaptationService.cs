@@ -17,13 +17,15 @@ public class LetterReAdaptationService
 {
     private readonly PatientContextService _patientContextService;
     private readonly OpenAIService _openAIService;
-    
+    private readonly AnonymizationService _anonymizationService;
+
     public LetterReAdaptationService(
         PatientContextService patientContextService,
         OpenAIService openAIService)
     {
         _patientContextService = patientContextService ?? throw new ArgumentNullException(nameof(patientContextService));
         _openAIService = openAIService ?? throw new ArgumentNullException(nameof(openAIService));
+        _anonymizationService = new AnonymizationService();  // ✅ Initialiser le service d'anonymisation
     }
     
     /// <summary>
@@ -60,14 +62,18 @@ public class LetterReAdaptationService
                 };
             }
             
-            // Étape 2 : Charger le contexte patient
+            // Étape 2 : Charger le contexte patient et générer l'anonymisation
             var patientContext = _patientContextService.GetCompleteContext(patientName, userRequest);
             System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] {patientContext.ToDebugText()}");
-            
+
+            // ✅ Générer le pseudonyme pour anonymisation
+            var sexe = patientContext.Metadata?.Sexe ?? "M";
+            var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", patientName, sexe);
+
             // Étape 3 : Rechercher les variables dans le contexte patient
             var (availableInfo, missingFields) = SearchInPatientContext(detectedVariables, patientContext, documentTitle);
             System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Infos disponibles : {availableInfo.Count}, Manquantes : {missingFields.Count}");
-            
+
             if (missingFields.Count > 0)
             {
                 // Des infos manquent → Retourner pour collecte
@@ -84,13 +90,15 @@ public class LetterReAdaptationService
                         PatientName = patientName,
                         DocumentTitle = documentTitle,
                         UserRequest = userRequest,
-                        PatientContext = patientContext
+                        PatientContext = patientContext,
+                        Pseudonym = nomAnonymise,  // ✅ Sauvegarder pour réutilisation
+                        AnonContext = anonContext   // ✅ Sauvegarder pour réutilisation
                     }
                 };
             }
-            
-            // Étape 4 : Réadapter avec toutes les infos disponibles
-            var reAdaptedMarkdown = await ReAdaptWithInfoAsync(markdown, availableInfo, patientContext);
+
+            // Étape 4 : Réadapter avec toutes les infos disponibles (✅ avec anonymisation)
+            var reAdaptedMarkdown = await ReAdaptWithInfoAsync(markdown, availableInfo, patientContext, nomAnonymise, anonContext);
             
             return new ReAdaptationResult
             {
@@ -135,12 +143,14 @@ public class LetterReAdaptationService
             {
                 allInfo[kvp.Key] = kvp.Value;
             }
-            
-            // Réadapter avec toutes les infos
+
+            // Réadapter avec toutes les infos (✅ avec anonymisation)
             var reAdaptedMarkdown = await ReAdaptWithInfoAsync(
                 previousResult.State.OriginalMarkdown,
                 allInfo,
-                previousResult.State.PatientContext!
+                previousResult.State.PatientContext!,
+                previousResult.State.Pseudonym,      // ✅ Utiliser le pseudonyme sauvegardé
+                previousResult.State.AnonContext     // ✅ Utiliser le contexte d'anonymisation sauvegardé
             );
             
             return new ReAdaptationResult
@@ -301,7 +311,9 @@ public class LetterReAdaptationService
     private async Task<string> ReAdaptWithInfoAsync(
         string markdown,
         Dictionary<string, string> allInfo,
-        PatientContextBundle patientContext)
+        PatientContextBundle patientContext,
+        string? pseudonym = null,
+        AnonymizationContext? anonContext = null)
     {
         System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Réadaptation avec {allInfo.Count} informations");
         
@@ -322,7 +334,7 @@ RÈGLES STRICTES :
         // Prompt utilisateur
         var userPrompt = $@"CONTEXTE PATIENT COMPLET
 ----
-{patientContext.ToPromptText()}
+{patientContext.ToPromptText(pseudonym, anonContext)}  // ✅ Passer les paramètres d'anonymisation
 
 COURRIER À RÉADAPTER
 ----
@@ -340,15 +352,23 @@ Retourne uniquement le courrier réadapté, sans commentaire.";
 
         // Appel à l'IA
         var (success, result) = await _openAIService.ChatAvecContexteAsync(
-            string.Empty, 
-            userPrompt, 
-            null, 
+            string.Empty,
+            userPrompt,
+            null,
             systemPrompt
         );
-        
+
         if (success)
         {
             System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Réadaptation réussie");
+
+            // ✅ Désanonymiser si contexte fourni
+            if (anonContext != null && !string.IsNullOrEmpty(anonContext.Pseudonym))
+            {
+                var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
+                return deanonymizedResult;
+            }
+
             return result;
         }
         else
