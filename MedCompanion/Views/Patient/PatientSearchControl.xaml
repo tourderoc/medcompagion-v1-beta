@@ -6,6 +6,10 @@
              mc:Ignorable="d" 
              d:DesignHeight="45" d:DesignWidth="800">
     
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+    </UserControl.Resources>
+    
     <Grid VerticalAlignment="Center">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="*" MaxWidth="600"/>
@@ -17,6 +21,7 @@
             <Grid>
                 <TextBox x:Name="SearchBox" 
                          Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                         GotFocus="SearchBox_GotFocus"
                          Height="45" 
                          FontSize="15"
                          Padding="45,0,15,0"
@@ -116,9 +121,18 @@
                         </ListBox.ItemContainerStyle>
                         <ListBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding DisplayLabel}" 
-                                          FontSize="13" 
-                                          TextWrapping="Wrap"/>
+                                <StackPanel Orientation="Horizontal">
+                                    <!-- Icône pour patients récents -->
+                                    <TextBlock Text="🕒 " 
+                                               FontSize="14"
+                                               Margin="0,0,5,0"
+                                               Visibility="{Binding DataContext.ShowingRecentPatients, 
+                                                            RelativeSource={RelativeSource AncestorType=UserControl},
+                                                            Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                    <TextBlock Text="{Binding DisplayLabel}" 
+                                               FontSize="13" 
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
                             </DataTemplate>
                         </ListBox.ItemTemplate>
                     </ListBox>

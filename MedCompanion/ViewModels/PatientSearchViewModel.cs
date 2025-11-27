@@ -18,6 +18,7 @@ public class PatientSearchViewModel : ViewModelBase
     private PatientIndexEntry? _selectedPatient;
     private int _selectedSuggestionIndex = -1;
     private bool _showCreateOption;
+    private bool _showingRecentPatients;
 
     /// <summary>
     /// Texte de recherche saisi par l'utilisateur
@@ -102,6 +103,15 @@ public class PatientSearchViewModel : ViewModelBase
     }
 
     /// <summary>
+    /// Indique si on affiche les patients récents (mode initial au focus)
+    /// </summary>
+    public bool ShowingRecentPatients
+    {
+        get => _showingRecentPatients;
+        set => SetProperty(ref _showingRecentPatients, value);
+    }
+
+    /// <summary>
     /// Commande pour valider la sélection
     /// </summary>
     public ICommand ValidateCommand { get; }
@@ -174,8 +184,18 @@ public class PatientSearchViewModel : ViewModelBase
             ? string.Empty
             : System.Text.RegularExpressions.Regex.Replace(SearchText, @"[\s\u00A0\u200B\u200C\u200D\uFEFF]+", " ").Trim();
 
+        // Si texte vide → Afficher patients récents
+        if (string.IsNullOrWhiteSpace(cleanedText))
+        {
+            ShowRecentPatients();
+            return;
+        }
+
+        // Sinon, mode recherche normale
+        ShowingRecentPatients = false;
+
         // Moins de 3 caractères → Fermer le popup
-        if (string.IsNullOrWhiteSpace(cleanedText) || cleanedText.Length < 3)
+        if (cleanedText.Length < 3)
         {
             IsPopupOpen = false;
             Suggestions.Clear();
@@ -314,6 +334,46 @@ public class PatientSearchViewModel : ViewModelBase
     public void ClosePopup()
     {
         IsPopupOpen = false;
+    }
+
+    /// <summary>
+    /// Affiche les 5 derniers patients consultés
+    /// </summary>
+    private void ShowRecentPatients()
+    {
+        var recentPatients = _patientIndex.GetRecentPatients()
+            .Take(5)
+            .ToList();
+
+        Suggestions.Clear();
+        foreach (var patient in recentPatients)
+        {
+            Suggestions.Add(patient);
+        }
+
+        ShowingRecentPatients = true;
+        ShowCreateOption = false;
+        
+        if (Suggestions.Count > 0)
+        {
+            IsPopupOpen = true;
+        }
+        else
+        {
+            IsPopupOpen = false;
+        }
+    }
+
+    /// <summary>
+    /// Appelé quand la barre de recherche reçoit le focus
+    /// </summary>
+    public void OnSearchBoxGotFocus()
+    {
+        // Si texte vide, afficher les patients récents
+        if (string.IsNullOrWhiteSpace(SearchText))
+        {
+            ShowRecentPatients();
+        }
     }
 
     /// <summary>

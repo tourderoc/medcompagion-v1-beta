@@ -15,6 +15,9 @@ namespace MedCompanion.Views.Patient
 
             // Intercepter le Paste (Ctrl+V) pour nettoyer le clipboard
             DataObject.AddPastingHandler(SearchBox, OnPaste);
+            
+            // ✅ NOUVEAU : Gérer le simple clic sur les suggestions
+            SuggestList.SelectionChanged += SuggestList_SelectionChanged;
         }
 
         /// <summary>
@@ -22,8 +25,46 @@ namespace MedCompanion.Views.Patient
         /// </summary>
         private void CreatePatientBorder_Click(object sender, MouseButtonEventArgs e)
         {
-            // Cette logique sera gérée par le ViewModel via Command
-            // mais on garde le handler pour la compatibilité
+            // Exécuter la commande de validation pour ouvrir le dialog de création
+            var viewModel = DataContext as ViewModels.PatientSearchViewModel;
+            if (viewModel?.ValidateCommand?.CanExecute(null) == true)
+            {
+                viewModel.ValidateCommand.Execute(null);
+            }
+        }
+
+        /// <summary>
+        /// Validation automatique lors de la sélection d'une suggestion (simple clic)
+        /// </summary>
+        private void SuggestList_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            // Ignorer si pas de nouvelle sélection
+            if (e.AddedItems.Count == 0)
+                return;
+            
+            var viewModel = DataContext as ViewModels.PatientSearchViewModel;
+            if (viewModel == null)
+                return;
+            
+            // Vérifier si c'est un clic souris (pas navigation clavier)
+            // On veut valider au clic, pas au survol avec les flèches ↑/↓
+            if (Mouse.LeftButton == MouseButtonState.Pressed)
+            {
+                // Exécuter la validation immédiatement
+                if (viewModel.ValidateCommand?.CanExecute(null) == true)
+                {
+                    viewModel.ValidateCommand.Execute(null);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Affiche les patients récents quand la barre de recherche reçoit le focus
+        /// </summary>
+        private void SearchBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            var viewModel = DataContext as ViewModels.PatientSearchViewModel;
+            viewModel?.OnSearchBoxGotFocus();
         }
 
         /// <summary>
