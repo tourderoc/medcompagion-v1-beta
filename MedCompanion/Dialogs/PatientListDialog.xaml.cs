@@ -3,7 +3,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Media;
 using MedCompanion.Models;
 using MedCompanion.Services;
 
@@ -13,9 +15,13 @@ namespace MedCompanion.Dialogs
     {
         private readonly PatientIndexService _patientIndex;
         private List<PatientDisplayInfo> _allPatients = new();
-        
+        private bool _showingDuplicatesOnly = false;
+
         public PatientIndexEntry? SelectedPatient { get; private set; }
-        
+
+        // Événement pour notifier le chargement d'un patient
+        public event EventHandler<PatientIndexEntry>? PatientDoubleClicked;
+
         public PatientListDialog(PatientIndexService patientIndex)
         {
             InitializeComponent();
@@ -66,7 +72,10 @@ namespace MedCompanion.Dialogs
                     var metadata = _patientIndex.GetMetadata(patient.Id);
                     var lastConsult = _patientIndex.GetLastConsultationDate(patient.Id);
                     var creationDate = _patientIndex.GetCreationDate(patient.Id);
-                    
+
+                    // Vérifier les doublons
+                    var (hasDuplicates, duplicatePatient, score) = _patientIndex.CheckForDuplicates(patient.Id);
+
                     _allPatients.Add(new PatientDisplayInfo
                     {
                         Patient = patient,
@@ -74,7 +83,10 @@ namespace MedCompanion.Dialogs
                         LastConsultDisplay = lastConsult.HasValue ? lastConsult.Value.ToString("dd/MM/yyyy") : "Jamais",
                         CreationDisplay = creationDate.ToString("dd/MM/yyyy"),
                         LastConsultDate = lastConsult,
-                        CreationDate = creationDate
+                        CreationDate = creationDate,
+                        HasDuplicates = hasDuplicates,
+                        DuplicatePatient = duplicatePatient,
+                        DuplicateScore = score
                     });
                 }
                 
@@ -258,19 +270,124 @@ namespace MedCompanion.Dialogs
         {
             DialogResult = false;
         }
+
+        private void PatientsDataGrid_PreviewMouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            // Trouver la ligne DataGridRow sous le curseur
+            var row = FindVisualParent<DataGridRow>(e.OriginalSource as DependencyObject);
+
+            if (row != null && row.Item != null)
+            {
+                // Forcer la sélection de la ligne
+                PatientsDataGrid.SelectedItem = row.Item;
+                row.IsSelected = true;
+
+                // Donner le focus au DataGrid
+                PatientsDataGrid.Focus();
+            }
+        }
+
+        private void PatientsDataGrid_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            // Double-clic : ouvrir le patient sans fermer la dialog
+            if (PatientsDataGrid.SelectedItem is PatientDisplayInfo displayInfo)
+            {
+                SelectedPatient = displayInfo.Patient;
+                // Déclencher l'événement pour que le parent charge le patient
+                PatientDoubleClicked?.Invoke(this, displayInfo.Patient);
+                // Ne pas fermer la dialog pour permettre de consulter d'autres patients
+            }
+        }
+
+        private T? FindVisualParent<T>(DependencyObject? child) where T : DependencyObject
+        {
+            while (child != null)
+            {
+                if (child is T parent)
+                    return parent;
+                child = VisualTreeHelper.GetParent(child);
+            }
+            return null;
+        }
+
+        private void DuplicateIndicator_Click(object sender, MouseButtonEventArgs e)
+        {
+            // Récupérer le PatientDisplayInfo de la ligne cliquée
+            if (sender is FrameworkElement element && element.DataContext is PatientDisplayInfo displayInfo)
+            {
+                if (!displayInfo.HasDuplicates || displayInfo.DuplicatePatient == null)
+                    return;
+
+                // Charger directement le patient doublon dans MainWindow
+                PatientDoubleClicked?.Invoke(this, displayInfo.DuplicatePatient);
+
+                // Message informatif discret
+                var message = $"✓ Patient doublon chargé :\n\n" +
+                             $"{displayInfo.DuplicatePatient.Nom} {displayInfo.DuplicatePatient.Prenom}\n\n" +
+                             $"Score de similarité : {displayInfo.DuplicateScore}/100\n\n" +
+                             $"Vous pouvez maintenant comparer les deux dossiers.";
+
+                MessageBox.Show(message, "Doublon Chargé",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+
+                e.Handled = true;
+            }
+        }
+
+        private void DuplicateHeader_Click(object sender, RoutedEventArgs e)
+        {
+            _showingDuplicatesOnly = !_showingDuplicatesOnly;
+
+            if (_showingDuplicatesOnly)
+            {
+                // Afficher uniquement les patients avec doublons
+                var duplicatesOnly = _allPatients.Where(p => p.HasDuplicates).ToList();
+                PatientsDataGrid.ItemsSource = duplicatesOnly;
+
+                // Message informatif
+                var count = duplicatesOnly.Count;
+                MessageBox.Show($"Affichage des doublons uniquement :\n{count} patient(s) avec doublons détectés.",
+                    "Filtre Doublons Activé", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                // Réafficher tous les patients
+                ApplySorting(GetCurrentSortMode());
+                MessageBox.Show("Affichage de tous les patients.",
+                    "Filtre Désactivé", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+
+            UpdatePatientCount();
+        }
+
+        private string GetCurrentSortMode()
+        {
+            // Retourner le mode de tri actuel (par défaut NomAsc)
+            if (SortComboBox?.SelectedItem is ComboBoxItem item)
+            {
+                return item.Tag?.ToString() ?? "NomAsc";
+            }
+            return "NomAsc";
+        }
     }
-    
+
     /// <summary>
     /// Classe pour l'affichage dans le DataGrid
     /// </summary>
     public class PatientDisplayInfo
     {
         public PatientIndexEntry Patient { get; set; } = null!;
-        public string NomComplet => Patient.NomComplet;
+        public string NomComplet => $"{Patient.Nom} {Patient.Prenom}";
         public string AgeDisplay { get; set; } = string.Empty;
         public string LastConsultDisplay { get; set; } = string.Empty;
         public string CreationDisplay { get; set; } = string.Empty;
         public DateTime? LastConsultDate { get; set; }
         public DateTime CreationDate { get; set; }
+
+        // Propriétés pour la détection de doublons
+        public bool HasDuplicates { get; set; }
+        public PatientIndexEntry? DuplicatePatient { get; set; }
+        public int DuplicateScore { get; set; }
+        public string DuplicateIndicator => HasDuplicates ? "⚠️" : "";
     }
 }

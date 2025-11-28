@@ -67,6 +67,8 @@ public partial class MainWindow : Window
     // Note: AssistantTabControl est déjà public via x:Name dans le XAML
 
     private PatientIndexEntry? _selectedPatient;
+    private PatientIndexEntry? _currentPatientDuplicate;
+    private int _currentPatientDuplicateScore;
 
     // Poids de pertinence de la dernière note structurée (pour mise à jour synthèse)
     private double _lastNoteRelevanceWeight = 0.0;
@@ -199,15 +201,18 @@ Je vous remercie par avance pour votre collaboration et reste à votre dispositi
         // Initialisation synchrone minimale pour éviter le null
         _llmFactory.InitializeAsync().Wait();
         _currentLLMService = _llmFactory.GetCurrentProvider();
-        _openAIService = new OpenAIService(_llmFactory); // Passer la factory pour changement dynamique
-        
+
+        // ✅ Initialiser PromptConfigService AVANT tous les services qui en dépendent
+        _promptConfigService = new PromptConfigService();
+        _promptTracker = new PromptTrackerService(); // Service de tracking des prompts
+
+        _openAIService = new OpenAIService(_llmFactory, _promptConfigService); // ✅ Passer l'instance partagée
+
         // Maintenant on peut initialiser les services qui dépendent de _openAIService
         _storageService = new StorageService(_pathService);
         _contextLoader = new ContextLoader(_storageService);
         _parsingService = new ParsingService();
         _patientIndex = new PatientIndexService(_pathService);
-        _promptConfigService = new PromptConfigService(); // Initialiser AVANT les services qui en dépendent
-        _promptTracker = new PromptTrackerService(); // Service de tracking des prompts
         
         // ✅ NOUVEAU : Initialiser PatientContextService
         _patientContextService = new PatientContextService(_storageService, _patientIndex);
@@ -218,7 +223,7 @@ Je vous remercie par avance pour votre collaboration et reste à votre dispositi
         // ✅ NOUVEAU : Initialiser AnonymizationService
         _anonymizationService = new AnonymizationService();
 
-        _letterService = new LetterService(_openAIService, _contextLoader, _storageService, _patientContextService, _anonymizationService); // ✅ MODIFIÉ
+        _letterService = new LetterService(_openAIService, _contextLoader, _storageService, _patientContextService, _anonymizationService, _promptConfigService); // ✅ Passer l'instance partagée
         _templateExtractor = new TemplateExtractorService(_openAIService);
         _templateManager = new TemplateManagerService();
         _mccLibrary = new MCCLibraryService();
@@ -419,7 +424,25 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         PatientSearchViewModel.PatientSelected += (s, patient) => {
             if (patient != null) LoadPatientAsync(patient);
         };
+        
+        PatientSearchViewModel.OpenPatientListRequested += (s, e) => {
+            var dialog = new Dialogs.PatientListDialog(_patientIndex);
+            dialog.Owner = this;
+
+            // Écouter le double-clic pour charger le patient sans fermer la dialog
+            dialog.PatientDoubleClicked += (sender, patient) => {
+                LoadPatientAsync(patient);
+            };
+
+            if (dialog.ShowDialog() == true && dialog.SelectedPatient != null)
+            {
+                LoadPatientAsync(dialog.SelectedPatient);
+            }
+        };
         PatientSearchViewModel.CreatePatientRequested += (s, query) => {
+            // 🐛 DEBUG: Logger l'appel
+            System.Diagnostics.Debug.WriteLine($"[CreatePatientRequested] Query='{query}'");
+
             // Parser le texte avec Doctolib
             var parseResult = _parsingService.ParseDoctolibBlock(query);
             
@@ -452,7 +475,63 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             if (dialog.ShowDialog() == true && dialog.Result != null)
             {
                 var (success, message, id, path) = _patientIndex.Upsert(dialog.Result);
-                
+
+                // ✅ NOUVEAU: Gérer les doublons détectés
+                if (!success && message.StartsWith("DUPLICATE_DETECTED"))
+                {
+                    // Parser le message: DUPLICATE_DETECTED|ID|NomComplet|Date
+                    var parts = message.Split('|');
+                    var existingId = parts.Length > 1 ? parts[1] : "";
+                    var existingName = parts.Length > 2 ? parts[2] : "";
+                    var existingDob = parts.Length > 3 ? parts[3] : "";
+
+                    // Créer l'ID du nouveau patient pour comparaison
+                    var newId = $"{dialog.Result.Nom}_{dialog.Result.Prenom.Replace(" ", "_")}";
+                    var newName = $"{dialog.Result.Prenom} {dialog.Result.Nom}";
+                    var newDob = "";
+                    if (!string.IsNullOrEmpty(dialog.Result.Dob) && DateTime.TryParse(dialog.Result.Dob, out var dob))
+                    {
+                        newDob = dob.ToString("dd/MM/yyyy");
+                    }
+
+                    // Afficher le dialogue de confirmation
+                    var duplicateDialog = new Dialogs.DuplicatePatientDialog(
+                        existingId,
+                        existingName,
+                        existingDob,
+                        newName,
+                        newDob,
+                        newId
+                    );
+                    duplicateDialog.Owner = this;
+
+                    if (duplicateDialog.ShowDialog() == true)
+                    {
+                        if (duplicateDialog.Result == Dialogs.DuplicateDialogResult.UseExisting)
+                        {
+                            // Utiliser le patient existant → Charger le patient
+                            var existingPatient = _patientIndex.GetAllPatients()
+                                .FirstOrDefault(p => p.Id == existingId);
+
+                            if (existingPatient != null)
+                            {
+                                LoadPatientAsync(existingPatient);
+                                StatusTextBlock.Text = $"✓ Patient existant chargé: {existingName}";
+                                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+                            }
+                        }
+                        else if (duplicateDialog.Result == Dialogs.DuplicateDialogResult.CreateAnyway)
+                        {
+                            // Créer quand même → Message à l'utilisateur
+                            StatusTextBlock.Text = "⚠️ Création annulée - Doublon détecté. Modifiez le nom pour créer un nouveau dossier.";
+                            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+                        }
+                        // Sinon Cancel → Ne rien faire
+                    }
+
+                    return;
+                }
+
                 if (success && id != null && path != null)
                 {
                     // Créer PatientIndexEntry et charger immédiatement
@@ -465,9 +544,9 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                         Sexe = dialog.Result.Sexe,
                         DirectoryPath = path
                     };
-                    
+
                     LoadPatientAsync(newPatient);
-                    
+
                     // Rafraîchir la liste des patients pour afficher le nouveau patient
                     LoadPatientsInPanel();
                 }

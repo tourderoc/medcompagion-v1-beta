@@ -117,6 +117,16 @@ public class PatientSearchViewModel : ViewModelBase
     public ICommand ValidateCommand { get; }
 
     /// <summary>
+    /// Commande pour ouvrir la liste des patients
+    /// </summary>
+    public ICommand OpenPatientListCommand { get; }
+
+    /// <summary>
+    /// Événement déclenché quand l'utilisateur veut ouvrir la liste des patients
+    /// </summary>
+    public event EventHandler? OpenPatientListRequested;
+
+    /// <summary>
     /// Commande pour créer un nouveau patient
     /// </summary>
     public ICommand CreatePatientCommand { get; }
@@ -172,6 +182,13 @@ public class PatientSearchViewModel : ViewModelBase
         ClosePopupCommand = new RelayCommand(
             execute: () => ClosePopup()
         );
+
+        OpenPatientListCommand = new RelayCommand(OpenPatientList);
+    }
+
+    private void OpenPatientList()
+    {
+        OpenPatientListRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>

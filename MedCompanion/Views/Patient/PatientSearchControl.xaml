@@ -172,18 +172,18 @@
             </Border>
         </Popup>
         
-        <Button x:Name="ValidateBtn" 
+        <Button x:Name="PatientListBtn" 
                 Grid.Column="2"
-                Content="Valider" 
+                Content="📋 Liste patients" 
                 Height="45"
-                Padding="25,0"
+                Padding="15,0"
                 FontSize="14"
                 FontWeight="SemiBold"
                 Background="#3498DB"
                 Foreground="White"
                 BorderThickness="0"
                 Cursor="Hand"
-                Command="{Binding ValidateCommand}">
+                Command="{Binding OpenPatientListCommand}">
             <Button.Style>
                 <Style TargetType="Button">
                     <Setter Property="Template">
