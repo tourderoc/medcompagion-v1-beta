@@ -3,12 +3,22 @@
   "WorkspaceRootPath": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\nair\\AppData\\Local\\Temp\\.vsdbgsrc\\1b77cb146b3dc6f60ca3b7de619b68fc3904b4f03155b255fa425d7d7bd36ae9\\PropertyPathWorker.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\ScanDocumentDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:MedCompanion\\Dialogs\\ScanDocumentDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:MedCompanion\\MainWindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|C:\\Users\\nair\\AppData\\Local\\Temp\\.vsdbgsrc\\d14c4f3b8337bf74d0a8d54fff611fd0dc5d87db35d45e5565de0355772f7bc2\\ItemCollection.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\MCCLibraryDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A2FE74E1-B743-11D0-AE1A-00A0C90FFFC3}|\u003CMiscFiles\u003E|solutionrelative:MedCompanion\\Dialogs\\MCCLibraryDialog.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -18,36 +28,69 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 1,
+          "SelectedChildIndex": 3,
           "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
+              "Title": "MCCLibraryDialog.xaml.cs",
+              "DocumentMoniker": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\MCCLibraryDialog.xaml.cs",
+              "RelativeDocumentMoniker": "MedCompanion\\Dialogs\\MCCLibraryDialog.xaml.cs",
+              "ToolTip": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\MCCLibraryDialog.xaml.cs",
+              "RelativeToolTip": "MedCompanion\\Dialogs\\MCCLibraryDialog.xaml.cs",
+              "ViewState": "AgIAAEsCAAAAAAAAAAD4v1QCAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-25T15:01:17.122Z",
+              "IsPinned": true
+            },
             {
               "$type": "Bookmark",
               "Name": "ST:0:0:{34e76e81-ee4a-11d0-ae2e-00a0c90fffc3}"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
-              "Title": "PatientInfoDialog.xaml.cs",
-              "DocumentMoniker": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
-              "RelativeDocumentMoniker": "MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
-              "ToolTip": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
-              "RelativeToolTip": "MedCompanion\\Dialogs\\PatientInfoDialog.xaml.cs",
-              "ViewState": "AgIAAA8AAAAAAAAAAAAtwBYAAAAIAAAAAAAAAA==",
+              "DocumentIndex": 1,
+              "Title": "ScanDocumentDialog.xaml.cs",
+              "DocumentMoniker": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\ScanDocumentDialog.xaml.cs",
+              "RelativeDocumentMoniker": "MedCompanion\\Dialogs\\ScanDocumentDialog.xaml.cs",
+              "ToolTip": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Dialogs\\ScanDocumentDialog.xaml.cs",
+              "RelativeToolTip": "MedCompanion\\Dialogs\\ScanDocumentDialog.xaml.cs",
+              "ViewState": "AgIAAHQAAAAAAAAAAAAAAHwAAABuAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-12T10:16:03.911Z",
+              "WhenOpened": "2025-12-06T12:13:24.716Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "PropertyPathWorker.cs",
+              "DocumentMoniker": "C:\\Users\\nair\\AppData\\Local\\Temp\\.vsdbgsrc\\1b77cb146b3dc6f60ca3b7de619b68fc3904b4f03155b255fa425d7d7bd36ae9\\PropertyPathWorker.cs",
+              "ToolTip": "C:\\Users\\nair\\AppData\\Local\\Temp\\.vsdbgsrc\\1b77cb146b3dc6f60ca3b7de619b68fc3904b4f03155b255fa425d7d7bd36ae9\\PropertyPathWorker.cs",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-12-03T09:43:42.242Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
-              "Title": "FormulairesControl.xaml.cs",
-              "DocumentMoniker": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
-              "RelativeDocumentMoniker": "MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
-              "ToolTip": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
-              "RelativeToolTip": "MedCompanion\\Views\\Formulaires\\FormulairesControl.xaml.cs",
-              "ViewState": "AgIAAEUAAAAAAAAAAAAAwEYAAAAAAAAAAAAAAA==",
+              "DocumentIndex": 3,
+              "Title": "ItemCollection.cs",
+              "DocumentMoniker": "C:\\Users\\nair\\AppData\\Local\\Temp\\.vsdbgsrc\\d14c4f3b8337bf74d0a8d54fff611fd0dc5d87db35d45e5565de0355772f7bc2\\ItemCollection.cs",
+              "ToolTip": "C:\\Users\\nair\\AppData\\Local\\Temp\\.vsdbgsrc\\d14c4f3b8337bf74d0a8d54fff611fd0dc5d87db35d45e5565de0355772f7bc2\\ItemCollection.cs",
+              "ViewState": "AgIAAG8GAAAAAAAAAAAjwLYGAAADAAAAAQAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2025-11-10T05:49:18.75Z"
+              "WhenOpened": "2025-11-30T13:37:33.492Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "MainWindow.xaml.cs",
+              "DocumentMoniker": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\MainWindow.xaml.cs",
+              "RelativeDocumentMoniker": "MedCompanion\\MainWindow.xaml.cs",
+              "ToolTip": "D:\\Users\\nair\\Bureau\\medcompa1, avant refactoring\\MedCompanion\\MainWindow.xaml.cs",
+              "RelativeToolTip": "MedCompanion\\MainWindow.xaml.cs",
+              "ViewState": "AgIAADkAAAAAAAAAAAAAALEAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2025-11-27T13:06:14.494Z"
             }
           ]
         }

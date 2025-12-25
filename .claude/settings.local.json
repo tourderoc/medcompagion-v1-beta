@@ -33,7 +33,8 @@
       "Bash(start \"\" \"MedCompanion\\\\bin\\\\Debug\\\\net8.0-windows\\\\MedCompanion.exe\")",
       "Bash(cat:*)",
       "Bash(tee:*)",
-      "Bash(git remote set-url:*)"
+      "Bash(git remote set-url:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
