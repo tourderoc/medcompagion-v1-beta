@@ -1,0 +1,9 @@
+  Identification des projets à restaurer...
+  Tous les projets sont à jour pour la restauration.
+  MedCompanion -> D:\Users\nair\Bureau\MedCompagion V1 béta\MedCompanion\bin\Debug\net8.0-windows\MedCompanion.dll
+
+La génération a réussi.
+    0 Avertissement(s)
+    0 Erreur(s)
+
+Temps écoulé 00:00:01.14

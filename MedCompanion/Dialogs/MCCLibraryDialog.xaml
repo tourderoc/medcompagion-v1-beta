@@ -7,6 +7,9 @@
         Background="#F5F5F5">
     
     <Window.Resources>
+        <!-- Convertisseur Boolean to Visibility -->
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
+
         <!-- Style pour les cartes MCC -->
         <Style x:Key="MCCCardStyle" TargetType="Border">
             <Setter Property="Background" Value="White"/>
@@ -66,15 +69,15 @@
                 </Grid.RowDefinitions>
                 
                 <!-- Barre de recherche -->
-                <TextBox Grid.Row="0" x:Name="SearchBox" 
-                         Height="35" 
+                <TextBox Grid.Row="0"
+                         Text="{Binding SearchQuery, UpdateSourceTrigger=PropertyChanged}"
+                         Height="35"
                          Padding="10,8"
                          FontSize="13"
                          Background="White"
                          BorderBrush="#DDD"
                          BorderThickness="1"
-                         Margin="0,0,0,10"
-                         TextChanged="SearchBox_TextChanged">
+                         Margin="0,0,0,10">
                     <TextBox.Style>
                         <Style TargetType="TextBox">
                             <Setter Property="Foreground" Value="Black"/>
@@ -84,8 +87,8 @@
                                         <Setter.Value>
                                             <VisualBrush Stretch="None" AlignmentX="Left">
                                                 <VisualBrush.Visual>
-                                                    <TextBlock Text="🔍 Rechercher par nom ou mots-clés..." 
-                                                               Foreground="#999" 
+                                                    <TextBlock Text="🔍 Rechercher par nom ou mots-clés..."
+                                                               Foreground="#999"
                                                                Margin="10,0,0,0"
                                                                VerticalAlignment="Center"/>
                                                 </VisualBrush.Visual>
@@ -99,18 +102,18 @@
                 </TextBox>
                 
                 <!-- Compteur -->
-                <TextBlock Grid.Row="1" x:Name="CountLabel" 
-                           Text="0 MCC disponibles" 
-                           FontSize="12" 
+                <TextBlock Grid.Row="1"
+                           Text="{Binding CounterText}"
+                           FontSize="12"
                            Foreground="Gray"
                            Margin="0,0,0,10"/>
                 
                 <!-- Liste des MCC -->
                 <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
-                    <ListBox x:Name="MCCListBox" 
+                    <ListBox ItemsSource="{Binding FilteredMCCs}"
+                             SelectedItem="{Binding SelectedMCCItem}"
                              BorderThickness="0"
-                             Background="Transparent"
-                             SelectionChanged="MCCListBox_SelectionChanged">
+                             Background="Transparent">
                         <ListBox.ItemTemplate>
                             <DataTemplate>
                                 <Border Style="{StaticResource MCCCardStyle}">
@@ -187,14 +190,13 @@
                 
                 <!-- Actions bas de liste -->
                 <StackPanel Grid.Row="3" Orientation="Horizontal" Margin="0,10,0,0">
-                    <Button x:Name="RefreshButton" 
-                            Content="🔄 Actualiser" 
+                    <Button Command="{Binding RefreshCommand}"
+                            Content="🔄 Actualiser"
                             Padding="10,5"
                             Background="#3498DB"
                             Foreground="White"
                             BorderThickness="0"
-                            Cursor="Hand"
-                            Click="RefreshButton_Click"/>
+                            Cursor="Hand"/>
                 </StackPanel>
             </Grid>
         </Border>
@@ -217,26 +219,24 @@
                     </Grid.ColumnDefinitions>
                     
                     <StackPanel Grid.Column="0">
-                        <TextBlock x:Name="PreviewTitle" 
-                                   Text="Sélectionnez un MCC" 
-                                   FontSize="18" 
+                        <TextBlock Text="{Binding PreviewTitle}"
+                                   FontSize="18"
                                    FontWeight="Bold"
                                    TextWrapping="Wrap"/>
-                        <TextBlock x:Name="PreviewSubtitle" 
-                                   FontSize="12" 
+                        <TextBlock Text="{Binding PreviewSubtitle}"
+                                   FontSize="12"
                                    Foreground="Gray"
                                    Margin="0,5,0,0"/>
                     </StackPanel>
-                    
+
                     <!-- Stats -->
                     <StackPanel Grid.Column="1" Orientation="Vertical" HorizontalAlignment="Right">
-                        <TextBlock x:Name="UsageStats" 
-                                   Text="📊 0 utilisations" 
-                                   FontSize="11" 
+                        <TextBlock Text="{Binding UsageStats}"
+                                   FontSize="11"
                                    Foreground="Gray"
                                    HorizontalAlignment="Right"/>
-                        <TextBlock x:Name="DateStats" 
-                                   FontSize="11" 
+                        <TextBlock Text="{Binding DateStats}"
+                                   FontSize="11"
                                    Foreground="Gray"
                                    HorizontalAlignment="Right"
                                    Margin="0,3,0,0"/>
@@ -245,32 +245,30 @@
                 
                 <!-- Aperçu Template -->
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                    <TextBox x:Name="TemplatePreview"
+                    <TextBox Text="{Binding TemplatePreview}"
                              IsReadOnly="True"
                              TextWrapping="Wrap"
                              BorderThickness="0"
                              Background="Transparent"
                              FontFamily="Consolas"
                              FontSize="12"
-                             Padding="10"
-                             Text="Sélectionnez un MCC dans la liste pour voir son aperçu..."/>
+                             Padding="10"/>
                 </ScrollViewer>
-                
+
                 <!-- Variables détectées -->
-                <Border Grid.Row="2" 
-                        Background="#F8F9FA" 
+                <Border Grid.Row="2"
+                        Background="#F8F9FA"
                         BorderBrush="#E0E0E0"
                         BorderThickness="1"
                         CornerRadius="5"
                         Padding="10"
                         Margin="0,15,0,0">
                     <StackPanel>
-                        <TextBlock Text="🔤 Variables détectées :" 
-                                   FontSize="12" 
+                        <TextBlock Text="🔤 Variables détectées :"
+                                   FontSize="12"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,5"/>
-                        <TextBlock x:Name="VariablesText" 
-                                   Text="Aucune"
+                        <TextBlock Text="{Binding VariablesText}"
                                    FontSize="11"
                                    Foreground="#666"
                                    TextWrapping="Wrap"/>
@@ -290,97 +288,88 @@
                                Margin="0,0,0,15"/>
                     
                     <!-- 🆕 Section Évaluations -->
-                    <StackPanel x:Name="RatingSection" Visibility="Collapsed" Margin="0,0,0,15">
-                        <TextBlock Text="⭐ Évaluations" 
-                                   FontSize="14" 
+                    <StackPanel Visibility="{Binding ShowRatingSection, Converter={StaticResource BooleanToVisibilityConverter}}" Margin="0,0,0,15">
+                        <TextBlock Text="⭐ Évaluations"
+                                   FontSize="14"
                                    FontWeight="Bold"
                                    Margin="0,0,0,10"/>
-                        
+
                         <!-- Étoiles + Note moyenne -->
                         <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                            <TextBlock x:Name="RatingStarsText" 
-                                       Text="★★★★★" 
+                            <TextBlock Text="{Binding RatingStarsText}"
                                        FontSize="16"
                                        Foreground="#FFD700"
                                        VerticalAlignment="Center"/>
-                            <TextBlock x:Name="RatingAverageText" 
-                                       Text="4.5/5" 
+                            <TextBlock Text="{Binding RatingAverageText}"
                                        FontSize="13"
                                        FontWeight="SemiBold"
                                        Margin="8,0,0,0"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
-                        
+
                         <!-- Nombre d'évaluations -->
-                        <TextBlock x:Name="RatingCountText" 
-                                   Text="(12 évaluations)" 
+                        <TextBlock Text="{Binding RatingCountText}"
                                    FontSize="11"
                                    Foreground="Gray"
                                    Margin="0,0,0,5"/>
-                        
+
                         <!-- Taux de satisfaction -->
-                        <TextBlock x:Name="RatingSatisfactionText" 
-                                   Text="Satisfaction : 92%" 
+                        <TextBlock Text="{Binding RatingSatisfactionText}"
                                    FontSize="11"
                                    Foreground="#27AE60"
                                    FontWeight="SemiBold"
                                    Margin="0,0,0,5"/>
-                        
+
                         <!-- Distribution -->
-                        <TextBlock x:Name="RatingDistributionText" 
-                                   Text="5★ (8) • 4★ (3) • 3★ (1)" 
+                        <TextBlock Text="{Binding RatingDistributionText}"
                                    FontSize="10"
                                    Foreground="#666"
                                    TextWrapping="Wrap"
                                    Margin="0,5,0,0"/>
-                        
+
                         <Separator Margin="0,15,0,0" Background="#E0E0E0"/>
                     </StackPanel>
                     
                     <!-- Type de document -->
                     <StackPanel Margin="0,0,0,12">
-                        <TextBlock Text="🏷️ Type de document" 
-                                   FontSize="11" 
+                        <TextBlock Text="🏷️ Type de document"
+                                   FontSize="11"
                                    Foreground="Gray"
                                    Margin="0,0,0,3"/>
-                        <TextBlock x:Name="SemanticType" 
-                                   Text="-" 
+                        <TextBlock Text="{Binding SemanticType}"
                                    FontSize="13"
                                    FontWeight="SemiBold"/>
                     </StackPanel>
-                    
+
                     <!-- Audience -->
                     <StackPanel Margin="0,0,0,12">
-                        <TextBlock Text="👥 Audience cible" 
-                                   FontSize="11" 
+                        <TextBlock Text="👥 Audience cible"
+                                   FontSize="11"
                                    Foreground="Gray"
                                    Margin="0,0,0,3"/>
-                        <TextBlock x:Name="SemanticAudience" 
-                                   Text="-" 
+                        <TextBlock Text="{Binding SemanticAudience}"
                                    FontSize="13"
                                    FontWeight="SemiBold"/>
                     </StackPanel>
-                    
+
                     <!-- Tranche d'âge -->
                     <StackPanel Margin="0,0,0,12">
-                        <TextBlock Text="👶 Tranche d'âge" 
-                                   FontSize="11" 
+                        <TextBlock Text="👶 Tranche d'âge"
+                                   FontSize="11"
                                    Foreground="Gray"
                                    Margin="0,0,0,3"/>
-                        <TextBlock x:Name="SemanticAge" 
-                                   Text="-" 
+                        <TextBlock Text="{Binding SemanticAge}"
                                    FontSize="13"
                                    FontWeight="SemiBold"/>
                     </StackPanel>
-                    
+
                     <!-- Ton -->
                     <StackPanel Margin="0,0,0,12">
-                        <TextBlock Text="🎵 Tonalité" 
-                                   FontSize="11" 
+                        <TextBlock Text="🎵 Tonalité"
+                                   FontSize="11"
                                    Foreground="Gray"
                                    Margin="0,0,0,3"/>
-                        <TextBlock x:Name="SemanticTone" 
-                                   Text="-" 
+                        <TextBlock Text="{Binding SemanticTone}"
                                    FontSize="13"
                                    FontWeight="SemiBold"/>
                     </StackPanel>
@@ -388,20 +377,20 @@
                     <Separator Margin="0,10,0,15" Background="#E0E0E0"/>
                     
                     <!-- Mots-clés cliniques -->
-                    <TextBlock Text="🔑 Mots-clés cliniques" 
-                               FontSize="12" 
+                    <TextBlock Text="🔑 Mots-clés cliniques"
+                               FontSize="12"
                                FontWeight="SemiBold"
                                Margin="0,0,0,8"/>
-                    <ItemsControl x:Name="KeywordsList">
+                    <ItemsControl ItemsSource="{Binding ClinicalKeywords}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="#E3F2FD" 
-                                        CornerRadius="10" 
-                                        Padding="8,4" 
+                                <Border Background="#E3F2FD"
+                                        CornerRadius="10"
+                                        Padding="8,4"
                                         Margin="0,0,5,5"
                                         HorizontalAlignment="Left">
-                                    <TextBlock Text="{Binding}" 
-                                               FontSize="11" 
+                                    <TextBlock Text="{Binding}"
+                                               FontSize="11"
                                                Foreground="#1976D2"/>
                                 </Border>
                             </DataTemplate>
@@ -412,15 +401,15 @@
                             </ItemsPanelTemplate>
                         </ItemsControl.ItemsPanel>
                     </ItemsControl>
-                    
+
                     <Separator Margin="0,15,0,15" Background="#E0E0E0"/>
-                    
+
                     <!-- Structure -->
-                    <TextBlock Text="📐 Structure détectée" 
-                               FontSize="12" 
+                    <TextBlock Text="📐 Structure détectée"
+                               FontSize="12"
                                FontWeight="SemiBold"
                                Margin="0,0,0,8"/>
-                    <ItemsControl x:Name="StructureList">
+                    <ItemsControl ItemsSource="{Binding StructureSections}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
                                 <StackPanel Margin="0,0,0,5">
@@ -429,8 +418,8 @@
                                         <Run Text=" "/>
                                         <Run Text="{Binding Key, Mode=OneWay}" FontWeight="SemiBold"/>
                                     </TextBlock>
-                                    <TextBlock Text="{Binding Value, Mode=OneWay}" 
-                                               FontSize="10" 
+                                    <TextBlock Text="{Binding Value, Mode=OneWay}"
+                                               FontSize="10"
                                                Foreground="Gray"
                                                Margin="15,2,0,0"
                                                TextWrapping="Wrap"/>
@@ -457,7 +446,7 @@
                 
                 <!-- Boutons gauche -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal">
-                    <Button x:Name="EditButton"
+                    <Button Command="{Binding EditCommand}"
                             Content="✏️ Éditer"
                             Padding="15,8"
                             Background="#3498DB"
@@ -465,10 +454,8 @@
                             BorderThickness="0"
                             FontSize="13"
                             Cursor="Hand"
-                            IsEnabled="False"
-                            Click="EditButton_Click"
                             Margin="0,0,10,0"/>
-                    <Button x:Name="OptimizeButton"
+                    <Button Command="{Binding OptimizeCommand}"
                             Content="🧠 Optimiser le MCC"
                             Padding="15,8"
                             Background="#9B59B6"
@@ -476,35 +463,50 @@
                             BorderThickness="0"
                             FontSize="13"
                             Cursor="Hand"
-                            IsEnabled="False"
-                            Click="OptimizeButton_Click"
                             Margin="0,0,10,0"/>
-                    <Button x:Name="DeleteButton"
+                    <!-- Bouton Ajouter à la liste Courriers -->
+                    <Button Command="{Binding AddToCourriersCommand}"
+                            Content="➕ Ajouter à Courriers"
+                            Padding="15,8"
+                            Background="#16A085"
+                            Foreground="White"
+                            BorderThickness="0"
+                            FontSize="13"
+                            Cursor="Hand"
+                            Margin="0,0,10,0"/>
+                    <!-- Bouton Retirer de la liste Courriers -->
+                    <Button Command="{Binding RemoveFromCourriersCommand}"
+                            Visibility="{Binding ShowRemoveFromCourriers, Converter={StaticResource BooleanToVisibilityConverter}}"
+                            Content="➖ Retirer de Courriers"
+                            Padding="15,8"
+                            Background="#E67E22"
+                            Foreground="White"
+                            BorderThickness="0"
+                            FontSize="13"
+                            Cursor="Hand"
+                            Margin="0,0,10,0"/>
+                    <Button Command="{Binding DeleteCommand}"
                             Content="🗑️ Supprimer"
                             Padding="15,8"
                             Background="#E74C3C"
                             Foreground="White"
                             BorderThickness="0"
                             FontSize="13"
-                            Cursor="Hand"
-                            IsEnabled="False"
-                            Click="DeleteButton_Click"/>
+                            Cursor="Hand"/>
                 </StackPanel>
-                
+
                 <!-- Boutons droite -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <Button x:Name="GenerateButton" 
-                            Content="✨ Générer avec ce MCC" 
+                    <Button Command="{Binding GenerateCommand}"
+                            Content="✨ Générer avec ce MCC"
                             Padding="15,8"
                             Background="#27AE60"
                             Foreground="White"
                             BorderThickness="0"
                             FontSize="13"
                             Cursor="Hand"
-                            IsEnabled="False"
-                            Click="GenerateButton_Click"
                             Margin="0,0,10,0"/>
-                    <Button Content="Fermer" 
+                    <Button Content="Fermer"
                             Padding="15,8"
                             Background="White"
                             Foreground="#333"

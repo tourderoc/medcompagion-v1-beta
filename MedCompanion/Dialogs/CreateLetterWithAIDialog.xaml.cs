@@ -98,47 +98,54 @@ namespace MedCompanion.Dialogs
         /// <summary>
         /// Récupère les options sélectionnées dans les ComboBox
         /// </summary>
+        /// <summary>
+        /// Récupère les options sélectionnées dans les ComboBox
+        /// </summary>
         private LetterGenerationOptions GetSelectedOptions()
         {
             var options = new LetterGenerationOptions();
 
-            // Extraire le texte sans les emojis
-            if (RecipientCombo.SelectedItem is System.Windows.Controls.ComboBoxItem recipientItem)
+            // Fonction locale pour extraire le texte (sans emoji) ou retourner null si "Automatique"
+            string? ExtractValue(object selectedItem)
             {
-                var text = recipientItem.Content.ToString();
-                // Enlever l'emoji (premier caractère + espace)
-                options.Recipient = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
+                if (selectedItem is not System.Windows.Controls.ComboBoxItem item) return null;
+                
+                var text = item.Content.ToString();
+                if (string.IsNullOrEmpty(text) || text == "Automatique") return null;
+
+                // Enlever l'emoji (premier caractère + espace) s'il y en a un
+                // On suppose qu'il y a un emoji si on trouve un espace dans les 4 premiers caractères
+                int spaceIndex = text.IndexOf(' ');
+                if (spaceIndex > 0 && spaceIndex <= 4)
+                {
+                    return text.Substring(spaceIndex + 1).Trim();
+                }
+                
+                return text;
             }
 
-            if (ToneCombo.SelectedItem is System.Windows.Controls.ComboBoxItem toneItem)
+            // Traitement spécifique pour le destinataire (support du texte libre)
+            string recipient = null;
+            if (RecipientCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
             {
-                var text = toneItem.Content.ToString();
-                options.Tone = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
+                recipient = ExtractValue(item);
             }
+            else
+            {
+                // Texte libre saisi par l'utilisateur
+                recipient = RecipientCombo.Text.Trim();
+                if (string.IsNullOrEmpty(recipient) || recipient == "Automatique")
+                {
+                    recipient = null;
+                }
+            }
+            options.Recipient = recipient;
 
-            if (LengthCombo.SelectedItem is System.Windows.Controls.ComboBoxItem lengthItem)
-            {
-                var text = lengthItem.Content.ToString();
-                options.Length = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
-            }
-
-            if (FormatCombo.SelectedItem is System.Windows.Controls.ComboBoxItem formatItem)
-            {
-                var text = formatItem.Content.ToString();
-                options.Format = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
-            }
-
-            if (PrudenceCombo.SelectedItem is System.Windows.Controls.ComboBoxItem prudenceItem)
-            {
-                var text = prudenceItem.Content.ToString();
-                options.PrudenceLevel = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
-            }
-
-            if (UrgencyCombo.SelectedItem is System.Windows.Controls.ComboBoxItem urgencyItem)
-            {
-                var text = urgencyItem.Content.ToString();
-                options.Urgency = text.Length > 2 ? text.Substring(text.IndexOf(' ') + 1).Trim() : text;
-            }
+            options.Tone = ExtractValue(ToneCombo.SelectedItem);
+            options.Length = ExtractValue(LengthCombo.SelectedItem);
+            options.Format = ExtractValue(FormatCombo.SelectedItem);
+            options.PrudenceLevel = ExtractValue(PrudenceCombo.SelectedItem);
+            options.Urgency = ExtractValue(UrgencyCombo.SelectedItem);
 
             return options;
         }
@@ -211,7 +218,8 @@ namespace MedCompanion.Dialogs
                 
                 var (success, matchResult, error) = await _matchingService.AnalyzeAndMatchAsync(
                     enrichedRequest,
-                    _patientContext
+                    _patientContext,
+                    options
                 );
 
                 if (!success)
@@ -234,26 +242,67 @@ namespace MedCompanion.Dialogs
                 // Vérifier si un match a été trouvé
                 if (matchResult.HasMatch)
                 {
-                    // MCC trouvé → Afficher la preview
-                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ MCC trouvé : {matchResult.SelectedMCC.Name} (score: {matchResult.NormalizedScore:F1}%)");
+                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ {matchResult.TopMatches.Count} MCC(s) trouvé(s)");
 
-                    var previewDialog = new MCCMatchResultDialog(
-                        matchResult.SelectedMCC, 
-                        matchResult.NormalizedScore,  // Déjà en pourcentage
-                        matchResult.Analysis)
+                    MCCModel selectedMCC = null;
+
+                    // Si plusieurs MCCs sont disponibles, afficher le dialogue de sélection
+                    if (matchResult.TopMatches != null && matchResult.TopMatches.Count > 1)
                     {
-                        Owner = this
-                    };
+                        System.Diagnostics.Debug.WriteLine($"[CreateLetter] 🎯 Affichage du dialogue de sélection ({matchResult.TopMatches.Count} MCCs)");
 
-                    var previewResult = previewDialog.ShowDialog();
+                        var selectionDialog = new MCCSelectionDialog(
+                            matchResult.TopMatches,
+                            matchResult.Analysis)
+                        {
+                            Owner = this
+                        };
 
-                    if (previewResult == true)
+                        var selectionResult = selectionDialog.ShowDialog();
+
+                        if (selectionResult == true)
+                        {
+                            selectedMCC = selectionDialog.SelectedMCC;
+                            System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ Utilisateur a choisi : {selectedMCC.Name}");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[CreateLetter] ⚠️ Utilisateur a annulé la sélection");
+                            return;
+                        }
+                    }
+                    else
                     {
-                        // Utilisateur a confirmé → retourner avec le MCC
+                        // Un seul MCC trouvé → Afficher la preview classique
+                        System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ MCC unique trouvé : {matchResult.SelectedMCC.Name} (score: {matchResult.NormalizedScore:F1}%)");
+
+                        var previewDialog = new MCCMatchResultDialog(
+                            matchResult.SelectedMCC,
+                            matchResult.NormalizedScore,
+                            matchResult.Analysis)
+                        {
+                            Owner = this
+                        };
+
+                        var previewResult = previewDialog.ShowDialog();
+
+                        if (previewResult == true)
+                        {
+                            selectedMCC = matchResult.SelectedMCC;
+                        }
+                        else
+                        {
+                            return;
+                        }
+                    }
+
+                    // Utilisateur a sélectionné un MCC → retourner avec le MCC
+                    if (selectedMCC != null)
+                    {
                         Result = new CreateLetterResult
                         {
                             Success = true,
-                            SelectedMCC = matchResult.SelectedMCC,
+                            SelectedMCC = selectedMCC,
                             UserRequest = enrichedRequest,
                             Analysis = matchResult.Analysis,
                             UseStandardGeneration = false,
@@ -264,40 +313,21 @@ namespace MedCompanion.Dialogs
                         Close();
                     }
                 }
+                else if (matchResult.NormalizedScore >= 30.0 && matchResult.SelectedMCC != null)
+                {
+                    // Match partiel (30% ≤ score < 50%) → Proposer choix utilisateur
+                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ⚠️ Match partiel : {matchResult.SelectedMCC.Name} (score: {matchResult.NormalizedScore:F1}%)");
+                    
+                    SetUIBusy(false);
+                    ShowPartialMatchDialog(matchResult, enrichedRequest, options);
+                }
                 else
                 {
-                    // Pas de match → Proposer génération standard
-                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ⚠️ Pas de match : {matchResult.FailureReason}");
-
-                    var response = MessageBox.Show(
-                        $"⚠️ Aucun modèle MCC pertinent trouvé\n\n" +
-                        $"📚 Bibliothèque consultée : {matchResult.TotalMCCsChecked} templates\n" +
-                        $"🎯 Meilleur score : {matchResult.RawScore:F1} pts ({matchResult.NormalizedScore:F1}%)\n" +
-                        $"❌ Raison : {matchResult.FailureReason}\n\n" +
-                        $"💡 L'IA va générer un courrier STANDARD en se basant uniquement sur votre demande et le contexte patient.\n\n" +
-                        $"⚙️ Mode : Génération libre (sans template MCC)\n\n" +
-                        $"Voulez-vous continuer avec la génération standard ?",
-                        "Génération standard",
-                        MessageBoxButton.YesNo,
-                        MessageBoxImage.Question
-                    );
-
-                    if (response == MessageBoxResult.Yes)
-                    {
-                        // Génération standard acceptée
-                        Result = new CreateLetterResult
-                        {
-                            Success = true,
-                            SelectedMCC = null,
-                            UserRequest = enrichedRequest,
-                            Analysis = matchResult.Analysis,
-                            UseStandardGeneration = true,
-                            Options = options
-                        };
-
-                        DialogResult = true;
-                        Close();
-                    }
+                    // Score < 30% ou aucun MCC → Génération standard
+                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ⚠️ Pas de match pertinent : {matchResult.FailureReason}");
+                    
+                    SetUIBusy(false);
+                    ShowStandardGenerationDialog(matchResult, enrichedRequest, options);
                 }
             }
             catch (Exception ex)
@@ -334,6 +364,117 @@ namespace MedCompanion.Dialogs
             {
                 ProgressPanel.Visibility = Visibility.Collapsed;
                 ProgressBar.IsIndeterminate = false;
+            }
+        }
+
+        /// <summary>
+        /// Affiche une popup pour les matchs partiels (30% ≤ score < 50%)
+        /// </summary>
+        private void ShowPartialMatchDialog(
+            MCCMatchResult matchResult,
+            string enrichedRequest,
+            LetterGenerationOptions options)
+        {
+            var message =
+                $"⚠️ MCC trouvé avec score partiel\n\n" +
+                $"📚 Bibliothèque consultée : {matchResult.TotalMCCsChecked} templates\n" +
+                $"🎯 Meilleur MCC : \"{matchResult.SelectedMCC.Name}\"\n" +
+                $"📊 Score : {matchResult.RawScore:F1} pts ({matchResult.NormalizedScore:F1}%)\n" +
+                $"⚠️ Raison : {matchResult.FailureReason}\n\n" +
+                $"💡 Ce MCC peut servir d'inspiration mais nécessitera adaptation.\n\n" +
+                $"Que souhaitez-vous faire ?";
+
+            var dialog = new CustomChoiceDialog(
+                "MCC trouvé avec score partiel",
+                message,
+                "Utiliser ce MCC",
+                "Génération standard",
+                "Annuler"
+            )
+            {
+                Owner = this
+            };
+
+            dialog.ShowDialog();
+
+            switch (dialog.UserChoice)
+            {
+                case CustomChoiceDialog.Choice.Option1: // Utiliser ce MCC
+                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ Utilisateur a choisi d'utiliser le MCC partiel : {matchResult.SelectedMCC.Name}");
+                    Result = new CreateLetterResult
+                    {
+                        Success = true,
+                        SelectedMCC = matchResult.SelectedMCC,
+                        UserRequest = enrichedRequest,
+                        Analysis = matchResult.Analysis,
+                        UseStandardGeneration = false,
+                        Options = options
+                    };
+                    DialogResult = true;
+                    Close();
+                    break;
+
+                case CustomChoiceDialog.Choice.Option2: // Génération standard
+                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ℹ️ Utilisateur a choisi la génération standard");
+                    Result = new CreateLetterResult
+                    {
+                        Success = true,
+                        SelectedMCC = null,
+                        UserRequest = enrichedRequest,
+                        Analysis = matchResult.Analysis,
+                        UseStandardGeneration = true,
+                        Options = options
+                    };
+                    DialogResult = true;
+                    Close();
+                    break;
+
+                case CustomChoiceDialog.Choice.Cancel: // Annuler
+                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ⚠️ Utilisateur a annulé (match partiel)");
+                    // Ne rien faire, rester sur le dialogue
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Affiche la popup de génération standard (score < 30% ou aucun MCC)
+        /// </summary>
+        private void ShowStandardGenerationDialog(
+            MCCMatchResult matchResult,
+            string enrichedRequest,
+            LetterGenerationOptions options)
+        {
+            var response = MessageBox.Show(
+                $"⚠️ Aucun modèle MCC pertinent trouvé\n\n" +
+                $"📚 Bibliothèque consultée : {matchResult.TotalMCCsChecked} templates\n" +
+                $"🎯 Meilleur score : {matchResult.RawScore:F1} pts ({matchResult.NormalizedScore:F1}%)\n" +
+                $"❌ Raison : {matchResult.FailureReason}\n\n" +
+                $"💡 L'IA va générer un courrier STANDARD en se basant uniquement sur votre demande et le contexte patient.\n\n" +
+                $"⚙️ Mode : Génération libre (sans template MCC)\n\n" +
+                $"Voulez-vous continuer avec la génération standard ?",
+                "Génération standard",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question
+            );
+
+            if (response == MessageBoxResult.Yes)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ Génération standard acceptée");
+                Result = new CreateLetterResult
+                {
+                    Success = true,
+                    SelectedMCC = null,
+                    UserRequest = enrichedRequest,
+                    Analysis = matchResult.Analysis,
+                    UseStandardGeneration = true,
+                    Options = options
+                };
+                DialogResult = true;
+                Close();
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[CreateLetter] ⚠️ Génération standard refusée");
             }
         }
     }

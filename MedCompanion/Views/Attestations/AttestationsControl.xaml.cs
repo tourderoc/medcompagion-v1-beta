@@ -342,11 +342,12 @@ namespace MedCompanion.Views.Attestations
             if (DataContext is not AttestationViewModel viewModel)
                 return;
 
-            // Récupérer le contenu modifié du RichTextBox
+            // ✅ CORRECTION : Récupérer le contenu modifié et mettre à jour le ViewModel
             var markdown = MarkdownFlowDocumentConverter.FlowDocumentToMarkdown(AttestationPreviewText.Document);
+            viewModel.AttestationMarkdown = markdown; // Mettre à jour la propriété avant de sauvegarder
 
             // Déclencher la sauvegarde via le ViewModel
-            viewModel.SaveModifiedCommand?.Execute(markdown);
+            viewModel.SaveModifiedCommand?.Execute(null);
 
             // Masquer les boutons d'édition, afficher les boutons de lecture
             AttestationEditButtonsGrid.Visibility = Visibility.Collapsed;

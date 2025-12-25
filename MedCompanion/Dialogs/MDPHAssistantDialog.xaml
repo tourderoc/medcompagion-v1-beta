@@ -59,113 +59,224 @@
             <DockPanel>
                 <!-- Header -->
                 <Border DockPanel.Dock="Top" Background="#3498DB" Padding="15,10">
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <!-- Ligne 1 : Prénom, Nom, Date de naissance -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
 
-                        <!-- Bloc Prénom -->
-                        <Border Grid.Column="0" Background="#2980B9" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
-                            <StackPanel>
-                                <TextBlock Text="Prénom" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="PatientPrenomText"
-                                               Text="..."
-                                               Foreground="White"
-                                               FontSize="14"
-                                               FontWeight="Bold"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,8,0"/>
-                                    <Button x:Name="CopyPrenomButton"
-                                            Content="📋"
-                                            Padding="6,3"
-                                            FontSize="12"
-                                            Background="#1A5276"
-                                            Foreground="White"
-                                            BorderThickness="0"
-                                            Cursor="Hand"
-                                            ToolTip="Copier le prénom"
-                                            Click="CopyPrenomButton_Click"/>
+                            <!-- Bloc Prénom -->
+                            <Border Grid.Column="0" Background="#2980B9" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
+                                <StackPanel>
+                                    <TextBlock Text="Prénom" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PatientPrenomText"
+                                                   Text="..."
+                                                   Foreground="White"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                        <Button x:Name="CopyPrenomButton"
+                                                Content="📋"
+                                                Padding="6,3"
+                                                FontSize="12"
+                                                Background="#1A5276"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                ToolTip="Copier le prénom"
+                                                Click="CopyPrenomButton_Click"/>
+                                    </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
-                        </Border>
+                            </Border>
 
-                        <!-- Bloc Nom -->
-                        <Border Grid.Column="1" Background="#2980B9" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
-                            <StackPanel>
-                                <TextBlock Text="Nom" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="PatientNomText"
-                                               Text="..."
-                                               Foreground="White"
-                                               FontSize="14"
-                                               FontWeight="Bold"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,8,0"/>
-                                    <Button x:Name="CopyNomButton"
-                                            Content="📋"
-                                            Padding="6,3"
-                                            FontSize="12"
-                                            Background="#1A5276"
-                                            Foreground="White"
-                                            BorderThickness="0"
-                                            Cursor="Hand"
-                                            ToolTip="Copier le nom"
-                                            Click="CopyNomButton_Click"/>
+                            <!-- Bloc Nom -->
+                            <Border Grid.Column="1" Background="#2980B9" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
+                                <StackPanel>
+                                    <TextBlock Text="Nom" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PatientNomText"
+                                                   Text="..."
+                                                   Foreground="White"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                        <Button x:Name="CopyNomButton"
+                                                Content="📋"
+                                                Padding="6,3"
+                                                FontSize="12"
+                                                Background="#1A5276"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                ToolTip="Copier le nom"
+                                                Click="CopyNomButton_Click"/>
+                                    </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
-                        </Border>
+                            </Border>
 
-                        <!-- Bloc Date de naissance -->
-                        <Border Grid.Column="2" Background="#2980B9" Padding="10,8" CornerRadius="4">
-                            <StackPanel>
-                                <TextBlock Text="Date de naissance" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock x:Name="PatientDobText"
-                                               Text="..."
-                                               Foreground="White"
-                                               FontSize="14"
-                                               FontWeight="Bold"
-                                               VerticalAlignment="Center"
-                                               Margin="0,0,8,0"/>
-                                    <Button x:Name="CopyDobButton"
-                                            Content="📋"
-                                            Padding="6,3"
-                                            FontSize="12"
-                                            Background="#1A5276"
-                                            Foreground="White"
-                                            BorderThickness="0"
-                                            Cursor="Hand"
-                                            ToolTip="Copier la date de naissance"
-                                            Click="CopyDobButton_Click"/>
+                            <!-- Bloc Date de naissance -->
+                            <Border Grid.Column="2" Background="#2980B9" Padding="10,8" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="Date de naissance" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PatientDobText"
+                                                   Text="..."
+                                                   Foreground="White"
+                                                   FontSize="14"
+                                                   FontWeight="Bold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                        <Button x:Name="CopyDobButton"
+                                                Content="📋"
+                                                Padding="6,3"
+                                                FontSize="12"
+                                                Background="#1A5276"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                ToolTip="Copier la date de naissance"
+                                                Click="CopyDobButton_Click"/>
+                                    </StackPanel>
                                 </StackPanel>
-                            </StackPanel>
-                        </Border>
-                    </Grid>
+                            </Border>
+                        </Grid>
+
+                        <!-- Ligne 2 : Adresse et N° Sécurité Sociale -->
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- Bloc Adresse -->
+                            <Border Grid.Column="0" Background="#2980B9" Padding="10,8" CornerRadius="4" Margin="0,0,10,0">
+                                <StackPanel>
+                                    <TextBlock Text="Adresse" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PatientAdresseText"
+                                                   Text="Non renseignée"
+                                                   Foreground="White"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   MaxWidth="350"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}"
+                                                   Margin="0,0,8,0"/>
+                                        <Button x:Name="CopyAdresseButton"
+                                                Content="📋"
+                                                Padding="6,3"
+                                                FontSize="12"
+                                                Background="#1A5276"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                ToolTip="Copier l'adresse"
+                                                Click="CopyAdresseButton_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Bloc N° Sécurité Sociale -->
+                            <Border Grid.Column="1" Background="#2980B9" Padding="10,8" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="N° Sécurité Sociale" Foreground="White" FontSize="11" Opacity="0.8" Margin="0,0,0,3"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock x:Name="PatientNumSecuText"
+                                                   Text="Non renseigné"
+                                                   Foreground="White"
+                                                   FontSize="13"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center"
+                                                   Margin="0,0,8,0"/>
+                                        <Button x:Name="CopyNumSecuButton"
+                                                Content="📋"
+                                                Padding="6,3"
+                                                FontSize="12"
+                                                Background="#1A5276"
+                                                Foreground="White"
+                                                BorderThickness="0"
+                                                Cursor="Hand"
+                                                ToolTip="Copier le numéro de sécurité sociale"
+                                                Click="CopyNumSecuButton_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+                        </Grid>
+                    </StackPanel>
                 </Border>
 
                 <!-- Status Bar -->
                 <Border DockPanel.Dock="Top" Background="#ECF0F1" Padding="10,8" BorderBrush="#DDD" BorderThickness="0,1">
                     <StackPanel Orientation="Horizontal">
+                        <!-- Bouton pour démarrer la génération -->
+                        <Button x:Name="StartGenerationButton"
+                                Content="🚀 Commencer la génération du formulaire"
+                                Padding="15,8"
+                                FontSize="14"
+                                FontWeight="SemiBold"
+                                Background="#27AE60"
+                                Foreground="White"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                Click="StartGenerationButton_Click"
+                                Margin="0,0,15,0">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}"
+                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                            CornerRadius="5"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#229954"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+
                         <TextBlock x:Name="StatusText"
-                                   Text="⏳ Génération des sections en cours..."
+                                   Text="Cochez les demandes ci-dessous, puis cliquez sur 'Commencer la génération'"
                                    FontSize="13"
-                                   VerticalAlignment="Center"/>
+                                   VerticalAlignment="Center"
+                                   Visibility="Visible"/>
                         <ProgressBar x:Name="GenerationProgressBar"
                                      Width="150"
                                      Height="15"
                                      Margin="15,0,0,0"
                                      Minimum="0"
-                                     Maximum="11"
-                                     Value="0"/>
+                                     Maximum="100"
+                                     Value="0"
+                                     Visibility="Collapsed"/>
                     </StackPanel>
                 </Border>
 
                 <!-- Footer Buttons -->
                 <Border DockPanel.Dock="Bottom" Background="#ECF0F1" Padding="15,10" BorderBrush="#DDD" BorderThickness="0,1,0,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="FillPdfButton"
+                                Content="📄 Remplir PDF automatiquement"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#3498DB"
+                                Foreground="White"
+                                BorderBrush="#2980B9"
+                                Click="FillPdfButton_Click"
+                                IsEnabled="False"
+                                Margin="0,0,10,0"/>
                         <Button x:Name="SaveDocxButton"
                                 Content="💾 Sauvegarder DOCX"
                                 Style="{StaticResource ActionButtonStyle}"

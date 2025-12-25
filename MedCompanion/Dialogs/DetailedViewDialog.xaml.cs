@@ -3,12 +3,14 @@ using System.IO;
 using System.Windows;
 using System.Windows.Documents;
 using System.Windows.Media;
+using MedCompanion.Models;
 using MedCompanion.Services;
 
 namespace MedCompanion.Dialogs
 {
     /// <summary>
     /// Dialogue pour afficher et éditer du contenu en plein écran
+    /// Supporte la régénération via IA avec le RegenerationService
     /// </summary>
     public partial class DetailedViewDialog : Window
     {
@@ -21,9 +23,22 @@ namespace MedCompanion.Dialogs
         private bool _isModified = false;
         private bool _isEditMode = false;
 
+        // Services pour la régénération
+        private RegenerationService? _regenerationService;
+        private PatientMetadata? _patientMetadata;
+
         public DetailedViewDialog()
         {
             InitializeComponent();
+        }
+
+        /// <summary>
+        /// Initialise le service de régénération (doit être appelé avant d'utiliser Régénérer)
+        /// </summary>
+        public void InitializeRegenerationService(RegenerationService regenerationService, PatientMetadata? patientMetadata = null)
+        {
+            _regenerationService = regenerationService;
+            _patientMetadata = patientMetadata;
         }
 
         /// <summary>
@@ -73,8 +88,9 @@ namespace MedCompanion.Dialogs
         {
             try
             {
-                // Convertir Markdown en FlowDocument
-                var flowDocument = MarkdownToFlowDocument(markdownContent);
+                // Convertir Markdown en FlowDocument via le convertisseur centralisé
+                // Cela gère le nettoyage du YAML et le formatage
+                var flowDocument = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(markdownContent);
                 ReadOnlyContent.Document = flowDocument;
             }
             catch
@@ -86,113 +102,6 @@ namespace MedCompanion.Dialogs
         }
 
         /// <summary>
-        /// Convertit Markdown simple en FlowDocument
-        /// </summary>
-        private FlowDocument MarkdownToFlowDocument(string markdown)
-        {
-            var flowDoc = new FlowDocument();
-            flowDoc.PagePadding = new Thickness(0);
-
-            var lines = markdown.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-            Paragraph? currentParagraph = null;
-
-            foreach (var line in lines)
-            {
-                if (string.IsNullOrWhiteSpace(line))
-                {
-                    if (currentParagraph != null)
-                    {
-                        flowDoc.Blocks.Add(currentParagraph);
-                        currentParagraph = null;
-                    }
-                    continue;
-                }
-
-                // Headers
-                if (line.StartsWith("### "))
-                {
-                    if (currentParagraph != null)
-                    {
-                        flowDoc.Blocks.Add(currentParagraph);
-                        currentParagraph = null;
-                    }
-                    var para = new Paragraph(new Run(line.Substring(4)))
-                    {
-                        FontSize = 16,
-                        FontWeight = FontWeights.SemiBold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(44, 62, 80)),
-                        Margin = new Thickness(0, 10, 0, 5)
-                    };
-                    flowDoc.Blocks.Add(para);
-                }
-                else if (line.StartsWith("## "))
-                {
-                    if (currentParagraph != null)
-                    {
-                        flowDoc.Blocks.Add(currentParagraph);
-                        currentParagraph = null;
-                    }
-                    var para = new Paragraph(new Run(line.Substring(3)))
-                    {
-                        FontSize = 18,
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(26, 188, 156)),
-                        Margin = new Thickness(0, 15, 0, 8)
-                    };
-                    flowDoc.Blocks.Add(para);
-                }
-                else if (line.StartsWith("# "))
-                {
-                    if (currentParagraph != null)
-                    {
-                        flowDoc.Blocks.Add(currentParagraph);
-                        currentParagraph = null;
-                    }
-                    var para = new Paragraph(new Run(line.Substring(2)))
-                    {
-                        FontSize = 20,
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(52, 73, 94)),
-                        Margin = new Thickness(0, 20, 0, 10)
-                    };
-                    flowDoc.Blocks.Add(para);
-                }
-                // Liste à puces
-                else if (line.TrimStart().StartsWith("• ") || line.TrimStart().StartsWith("- "))
-                {
-                    if (currentParagraph != null)
-                    {
-                        flowDoc.Blocks.Add(currentParagraph);
-                        currentParagraph = null;
-                    }
-                    var text = line.TrimStart().Substring(2);
-                    var para = new Paragraph(new Run("  • " + text))
-                    {
-                        Margin = new Thickness(20, 2, 0, 2)
-                    };
-                    flowDoc.Blocks.Add(para);
-                }
-                // Texte normal
-                else
-                {
-                    if (currentParagraph == null)
-                    {
-                        currentParagraph = new Paragraph();
-                        currentParagraph.Margin = new Thickness(0, 0, 0, 10);
-                    }
-                    currentParagraph.Inlines.Add(new Run(line + " "));
-                }
-            }
-
-            if (currentParagraph != null)
-            {
-                flowDoc.Blocks.Add(currentParagraph);
-            }
-
-            return flowDoc;
-        }
-
-        /// <summary>
         /// Bascule en mode édition
         /// </summary>
         private void EditButton_Click(object sender, RoutedEventArgs e)
@@ -200,30 +109,102 @@ namespace MedCompanion.Dialogs
             SwitchToEditMode();
         }
 
+        /// <summary>
+        /// Ouvre le dialogue de régénération
+        /// </summary>
+        private void RegenerateButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_regenerationService == null)
+            {
+                MessageBox.Show(
+                    "Le service de régénération n'est pas initialisé.\nVeuillez contacter le support.",
+                    "Erreur",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(_originalContent))
+            {
+                MessageBox.Show(
+                    "Aucun contenu à régénérer.",
+                    "Information",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            // Convertir ContentType en string pour le service
+            string contentTypeStr = _contentType switch
+            {
+                ContentType.Note => "Note",
+                ContentType.Synthesis => "Synthesis",
+                ContentType.Letter => "Letter",
+                _ => "Document"
+            };
+
+            // Ouvrir le dialogue de régénération
+            var dialog = new RegenerationDialog(
+                _regenerationService,
+                _originalContent,
+                contentTypeStr,
+                _patientMetadata);
+
+            dialog.Owner = this;
+
+            if (dialog.ShowDialog() == true && dialog.IsSuccess && !string.IsNullOrEmpty(dialog.RegeneratedContent))
+            {
+                // Mettre à jour le contenu avec la version régénérée
+                _originalContent = dialog.RegeneratedContent;
+                _isModified = true;
+
+                // Afficher le nouveau contenu
+                DisplayContent(_originalContent);
+
+                // Sauvegarder automatiquement le fichier
+                try
+                {
+                    File.WriteAllText(_filePath, _originalContent);
+                    _isModified = false;
+
+                    StatusTextBlock.Text = "✅ Contenu régénéré et sauvegardé";
+                    StatusTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(39, 174, 96));
+
+                    // Notifier la MainWindow
+                    ContentSaved?.Invoke(this, EventArgs.Empty);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(
+                        $"Le contenu a été régénéré mais n'a pas pu être sauvegardé:\n{ex.Message}",
+                        "Avertissement",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            }
+        }
+
         private void SwitchToEditMode()
         {
             _isEditMode = true;
 
-            // Copier le contenu en mode édition
-            var textRange = new TextRange(ReadOnlyContent.Document.ContentStart, ReadOnlyContent.Document.ContentEnd);
+            // En mode édition, on affiche le contenu brut (Markdown + YAML)
+            // pour permettre l'édition de la structure et des métadonnées
             var editDoc = new FlowDocument();
-            using (var stream = new MemoryStream())
-            {
-                textRange.Save(stream, DataFormats.Xaml);
-                stream.Position = 0;
-                var editRange = new TextRange(editDoc.ContentStart, editDoc.ContentEnd);
-                editRange.Load(stream, DataFormats.Xaml);
-            }
+            var para = new Paragraph(new Run(_originalContent));
+            // Utiliser une police à chasse fixe pour l'édition de code/markdown
+            para.FontFamily = new FontFamily("Consolas, Courier New");
+            editDoc.Blocks.Add(para);
 
             EditableContent.Document = editDoc;
 
             // Basculer l'affichage
             ReadOnlyContent.Visibility = Visibility.Collapsed;
             EditableContent.Visibility = Visibility.Visible;
-            EditButton.Visibility = Visibility.Collapsed;
+            ReadModeButtonsPanel.Visibility = Visibility.Collapsed;
             EditButtonsPanel.Visibility = Visibility.Visible;
 
-            StatusTextBlock.Text = "Mode édition";
+            StatusTextBlock.Text = "Mode édition (Markdown brut)";
             StatusTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(231, 76, 60));
 
             EditableContent.Focus();
@@ -261,7 +242,7 @@ namespace MedCompanion.Dialogs
             // Basculer l'affichage
             ReadOnlyContent.Visibility = Visibility.Visible;
             EditableContent.Visibility = Visibility.Collapsed;
-            EditButton.Visibility = Visibility.Visible;
+            ReadModeButtonsPanel.Visibility = Visibility.Visible;
             EditButtonsPanel.Visibility = Visibility.Collapsed;
 
             StatusTextBlock.Text = "Mode lecture";
@@ -275,7 +256,7 @@ namespace MedCompanion.Dialogs
         {
             try
             {
-                // Extraire le texte du RichTextBox
+                // Extraire le texte brut du RichTextBox (Markdown)
                 var textRange = new TextRange(EditableContent.Document.ContentStart, EditableContent.Document.ContentEnd);
                 var content = textRange.Text;
 

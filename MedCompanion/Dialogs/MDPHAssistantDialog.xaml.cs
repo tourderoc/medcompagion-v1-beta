@@ -23,6 +23,7 @@ public partial class MDPHAssistantDialog : Window
     private readonly PatientIndexService _patientIndex;
     private readonly FormulaireAssistantService _formulaireService;
     private readonly LetterService _letterService;
+    private readonly SynthesisWeightTracker _synthesisWeightTracker;
     private readonly PathService _pathService = new PathService();
 
     // WebView2 pour afficher le PDF
@@ -43,12 +44,14 @@ public partial class MDPHAssistantDialog : Window
     // État de génération
     private bool _isGenerating = false;
     private bool _hasUnsavedChanges = false;
+    private MDPHFormData? _generatedFormData = null; // Stockage des données générées pour remplissage PDF
 
     public MDPHAssistantDialog(
         PatientIndexEntry selectedPatient,
         PatientIndexService patientIndex,
         FormulaireAssistantService formulaireService,
-        LetterService letterService)
+        LetterService letterService,
+        SynthesisWeightTracker synthesisWeightTracker)
     {
         InitializeComponent();
 
@@ -56,6 +59,7 @@ public partial class MDPHAssistantDialog : Window
         _patientIndex = patientIndex;
         _formulaireService = formulaireService;
         _letterService = letterService;
+        _synthesisWeightTracker = synthesisWeightTracker;
 
         // Configuration de la fenêtre
         Loaded += MDPHAssistantDialog_Loaded;
@@ -80,12 +84,54 @@ public partial class MDPHAssistantDialog : Window
             {
                 PatientDobText.Text = "Non renseignée";
             }
+
+            // Adresse complète
+            var adresseParts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(metadata.AdresseRue))
+                adresseParts.Add(metadata.AdresseRue);
+            if (!string.IsNullOrWhiteSpace(metadata.AdresseCodePostal) || !string.IsNullOrWhiteSpace(metadata.AdresseVille))
+                adresseParts.Add($"{metadata.AdresseCodePostal} {metadata.AdresseVille}".Trim());
+
+            if (adresseParts.Count > 0)
+            {
+                PatientAdresseText.Text = string.Join(", ", adresseParts);
+            }
+            else
+            {
+                PatientAdresseText.Text = "Non renseignée";
+                PatientAdresseText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xA5, 0x00)); // Orange pour signaler
+            }
+
+            // Numéro de sécurité sociale
+            if (!string.IsNullOrWhiteSpace(metadata.NumeroSecuriteSociale))
+            {
+                // Formater le NIR avec espaces : X XX XX XX XXX XXX XX
+                var nir = metadata.NumeroSecuriteSociale;
+                if (nir.Length >= 13)
+                {
+                    PatientNumSecuText.Text = $"{nir.Substring(0, 1)} {nir.Substring(1, 2)} {nir.Substring(3, 2)} {nir.Substring(5, 2)} {nir.Substring(7, 3)} {nir.Substring(10, 3)}" +
+                        (nir.Length >= 15 ? $" {nir.Substring(13, 2)}" : "");
+                }
+                else
+                {
+                    PatientNumSecuText.Text = nir;
+                }
+            }
+            else
+            {
+                PatientNumSecuText.Text = "Non renseigné";
+                PatientNumSecuText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xA5, 0x00)); // Orange pour signaler
+            }
         }
         else
         {
             PatientPrenomText.Text = _selectedPatient.Prenom;
             PatientNomText.Text = _selectedPatient.Nom;
             PatientDobText.Text = "Non renseignée";
+            PatientAdresseText.Text = "Non renseignée";
+            PatientAdresseText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xA5, 0x00));
+            PatientNumSecuText.Text = "Non renseigné";
+            PatientNumSecuText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0xA5, 0x00));
         }
 
         // Créer les sections (vides pour l'instant)
@@ -94,8 +140,8 @@ public partial class MDPHAssistantDialog : Window
         // Initialiser WebView2
         await InitializeWebView2Async();
 
-        // Lancer la génération des sections
-        await GenerateAllSectionsAsync();
+        // ✅ NE PLUS lancer automatiquement - attendre que l'utilisateur clique sur le bouton
+        // await GenerateAllSectionsAsync();
     }
 
     /// <summary>
@@ -127,7 +173,7 @@ public partial class MDPHAssistantDialog : Window
             // TextBox pour le contenu de la section
             var textBox = new TextBox
             {
-                Text = "⏳ Génération en cours...",
+                Text = "⏸ En attente de génération...",
                 TextWrapping = TextWrapping.Wrap,
                 AcceptsReturn = true,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
@@ -137,7 +183,8 @@ public partial class MDPHAssistantDialog : Window
                 FontSize = 13,
                 IsReadOnly = false,
                 Margin = new Thickness(0, 0, 0, 10),
-                BorderBrush = new SolidColorBrush(Color.FromRgb(0xDD, 0xDD, 0xDD))
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0xDD, 0xDD, 0xDD)),
+                Foreground = new SolidColorBrush(Color.FromRgb(0x95, 0xA5, 0xA6))
             };
             textBox.TextChanged += (s, e) =>
             {
@@ -165,6 +212,8 @@ public partial class MDPHAssistantDialog : Window
             copyButton.Click += (s, e) => CopyToClipboard(sectionIndex);
             buttonPanel.Children.Add(copyButton);
 
+            // ❌ DÉSACTIVÉ : Boutons "Régénérer" supprimés (architecture old MDPH commentée)
+            /*
             // Bouton "Régénérer" (ou "Générer" pour la section Remarques)
             var regenerateButton = new Button
             {
@@ -192,6 +241,7 @@ public partial class MDPHAssistantDialog : Window
 
             _regenerateButtons[sectionIndex] = regenerateButton;
             buttonPanel.Children.Add(regenerateButton);
+            */
 
             contentPanel.Children.Add(buttonPanel);
             expander.Content = contentPanel;
@@ -319,13 +369,13 @@ public partial class MDPHAssistantDialog : Window
         {
             // Trouver le template PDF MDPH dans Assets
             var assetsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Formulaires");
-            var pdfCandidates = new[]
-            {
-                Path.Combine(assetsPath, "Dossier MDPH.pdf"),
-                Path.Combine(assetsPath, "cerfa_15695-01.pdf")
-            };
-
-            var templatePath = pdfCandidates.FirstOrDefault(File.Exists);
+            
+            // ✅ UTILISER UNIQUEMENT LE TEMPLATE 8 PAGES
+            var templatePath = Path.Combine(assetsPath, "MDPH_Template_8pages.pdf");
+            
+            // Log pour debug
+            System.Diagnostics.Debug.WriteLine($"[MDPHAssistantDialog] Template path: {templatePath}");
+            System.Diagnostics.Debug.WriteLine($"[MDPHAssistantDialog] Exists: {File.Exists(templatePath)}");
 
             if (string.IsNullOrEmpty(templatePath))
             {
@@ -346,6 +396,10 @@ public partial class MDPHAssistantDialog : Window
             // Copier le template vers le dossier patient
             File.Copy(templatePath, _pdfPath, overwrite: true);
             System.Diagnostics.Debug.WriteLine($"[MDPHAssistantDialog] PDF copié vers: {_pdfPath}");
+
+            // 🟢 PATCH: Activer le mode Multi-ligne sur tous les champs
+            var filler = new PDFFormFillerService();
+            filler.EnableMultilineOnAllFields(_pdfPath);
 
             // Créer WebView2
             _webView = new WebView2();
@@ -392,59 +446,123 @@ public partial class MDPHAssistantDialog : Window
     }
 
     /// <summary>
-    /// Génère toutes les sections MDPH avec l'IA.
+    /// Handler du bouton "Commencer la génération"
+    /// </summary>
+    private async void StartGenerationButton_Click(object sender, RoutedEventArgs e)
+    {
+        // Masquer le bouton et afficher la barre de progression
+        StartGenerationButton.Visibility = Visibility.Collapsed;
+        GenerationProgressBar.Visibility = Visibility.Visible;
+
+        // Lancer la génération
+        await GenerateAllSectionsAsync();
+    }
+
+    /// <summary>
+    /// Génère toutes les sections MDPH avec l'IA en UN SEUL appel.
+    /// NOUVELLE ARCHITECTURE : 1 prompt → 19 sections en JSON → Parsing
     /// </summary>
     private async Task GenerateAllSectionsAsync()
     {
         _isGenerating = true;
-        StatusText.Text = "⏳ Génération des sections en cours...";
+        StatusText.Text = "⏳ Génération du formulaire complet en cours...";
         GenerationProgressBar.Value = 0;
 
         try
         {
-            var metadata = _patientIndex.GetMetadata(_selectedPatient.Id);
-            if (metadata == null)
+            // 1. Construire la liste des demandes cochées
+            var demandesList = new List<string>();
+            foreach (var kvp in _ajouterCheckboxes)
             {
-                MessageBox.Show(
-                    "Impossible de charger les métadonnées du patient.",
-                    "Erreur",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error);
-                Close();
-                return;
-            }
-
-            // Générer les 11 sections
-            for (int i = 0; i < MDPHPageMapping.TotalSections; i++)
-            {
-                StatusText.Text = $"⏳ Génération section {i + 1}/{MDPHPageMapping.TotalSections}...";
-                GenerationProgressBar.Value = i;
-
-                string content = await GenerateSectionContentAsync(i, metadata);
-                _generatedSections[i] = content;
-
-                // Mettre à jour l'UI
-                if (_sectionTextBoxes.TryGetValue(i, out var textBox))
+                if (kvp.Value.IsChecked == true)
                 {
-                    textBox.Text = content;
-                    textBox.IsReadOnly = false;
-                    AdjustTextBoxHeight(textBox);
-
-                    // Activer les boutons
-                    var copyButton = ((textBox.Parent as StackPanel)?.Children[1] as StackPanel)?.Children[0] as Button;
-                    if (copyButton != null) copyButton.IsEnabled = true;
-
-                    if (_regenerateButtons.TryGetValue(i, out var regenButton))
-                        regenButton.IsEnabled = true;
+                    demandesList.Add(kvp.Value.Content?.ToString() ?? "");
                 }
             }
 
-            StatusText.Text = "✅ Toutes les sections ont été générées avec succès !";
+            // Ajouter les autres demandes (texte libre)
+            string autresDemandes = _autresDemandesTextBox?.Text ?? "";
+            if (!string.IsNullOrWhiteSpace(autresDemandes))
+            {
+                demandesList.Add($"Autres demandes : {autresDemandes}");
+            }
+
+            string demandes = string.Join("\n- ", demandesList);
+            if (!string.IsNullOrWhiteSpace(demandes))
+            {
+                demandes = "- " + demandes; // Ajouter le premier tiret
+            }
+
+            // Vérifier qu'au moins une demande est cochée
+            if (string.IsNullOrWhiteSpace(demandes))
+            {
+                var result = MessageBox.Show(
+                    "Aucune demande n'a été cochée dans la section 'À joindre à ce document'.\n\n" +
+                    "Voulez-vous continuer quand même ?",
+                    "Demandes manquantes",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Warning);
+
+                if (result == MessageBoxResult.No)
+                {
+                    return;
+                }
+
+                demandes = "Aucune demande spécifique";
+            }
+
+            StatusText.Text = "⏳ Appel au LLM pour générer toutes les sections...";
+            GenerationProgressBar.Value = 10;
+
+            // 2. Appel unique au service (18x plus rapide !)
+            var formData = await _formulaireService.GenerateCompleteFormAsync(
+                _selectedPatient.NomComplet,
+                demandes
+            );
+
+            // Stocker les données pour le remplissage PDF ultérieur
+            _generatedFormData = formData;
+
+            StatusText.Text = "⏳ Remplissage des sections...";
+            GenerationProgressBar.Value = 50;
+
+            // 3. Remplir les TextBoxes avec les données parsées
+            FillSectionFromFormData(0, formData.PathologiePrincipale);
+            FillSectionFromFormData(1, formData.AutresPathologies);
+            FillSectionFromFormData(2, string.Join("\n", formData.ElementsEssentiels.Select(e => $"- {e}")));
+            FillSectionFromFormData(3, string.Join("\n", formData.AntecedentsMedicaux.Select(a => $"- {a}")));
+            FillSectionFromFormData(4, string.Join("\n", formData.RetardsDeveloppementaux.Select(r => $"- {r}")));
+
+            // Description clinique (3 lignes)
+            for (int i = 0; i < Math.Min(3, formData.DescriptionClinique.Count); i++)
+            {
+                FillSectionFromFormData(5 + i, formData.DescriptionClinique[i]);
+            }
+
+            // Traitements
+            FillSectionFromFormData(8, formData.Traitements.Medicaments);
+            FillSectionFromFormData(9, formData.Traitements.EffetsIndesirables);
+            FillSectionFromFormData(10, formData.Traitements.AutresPrisesEnCharge);
+
+            // Retentissements
+            FillSectionFromFormData(11, formData.Retentissements.Mobilite);
+            FillSectionFromFormData(12, formData.Retentissements.Communication);
+            FillSectionFromFormData(13, string.Join("\n", formData.Retentissements.Cognition.Select(c => $"- {c}")));
+            FillSectionFromFormData(14, string.Join("\n", formData.Retentissements.ConduiteEmotionnelle.Select(c => $"- {c}")));
+            FillSectionFromFormData(15, formData.Retentissements.Autonomie);
+            FillSectionFromFormData(16, formData.Retentissements.VieQuotidienne);
+            FillSectionFromFormData(17, formData.Retentissements.SocialScolaire);
+
+            // Remarques complémentaires
+            FillSectionFromFormData(18, formData.RemarquesComplementaires);
+
+            StatusText.Text = "✅ Formulaire complet généré avec succès ! (1 appel LLM au lieu de 19)";
             StatusText.Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0xAE, 0x60));
-            GenerationProgressBar.Value = MDPHPageMapping.TotalSections;
+            GenerationProgressBar.Value = 100;
 
             SaveDocxButton.Content = "💾 Sauvegarder et Terminer";
             SaveDocxButton.IsEnabled = true;
+            FillPdfButton.IsEnabled = true; // Activer le bouton de remplissage PDF
             _hasUnsavedChanges = false; // Reset car c'est la génération initiale
         }
         catch (Exception ex)
@@ -463,6 +581,32 @@ public partial class MDPHAssistantDialog : Window
         }
     }
 
+    /// <summary>
+    /// Remplit une section avec le contenu généré et active les boutons
+    /// </summary>
+    private void FillSectionFromFormData(int sectionIndex, string content)
+    {
+        _generatedSections[sectionIndex] = content;
+
+        // Mettre à jour l'UI
+        if (_sectionTextBoxes.TryGetValue(sectionIndex, out var textBox))
+        {
+            textBox.Text = content;
+            textBox.IsReadOnly = false;
+            textBox.Foreground = Brushes.Black; // Remettre la couleur normale
+            AdjustTextBoxHeight(textBox);
+
+            // Activer les boutons
+            var copyButton = ((textBox.Parent as StackPanel)?.Children[1] as StackPanel)?.Children[0] as Button;
+            if (copyButton != null) copyButton.IsEnabled = true;
+
+            // ❌ DÉSACTIVÉ : Plus de boutons "Régénérer"
+            // if (_regenerateButtons.TryGetValue(sectionIndex, out var regenButton))
+            //     regenButton.IsEnabled = true;
+        }
+    }
+
+    /*❌ DÉSACTIVÉ : Méthodes old architecture MDPH (commentées dans FormulaireAssistantService)
     /// <summary>
     /// Génère le contenu d'une section spécifique.
     /// </summary>
@@ -492,8 +636,9 @@ public partial class MDPHAssistantDialog : Window
             18 => await _formulaireService.GenerateRemarquesComplementairesSection(metadata),
             _ => "Section invalide"
         };
-    }
+    }*/
 
+    /*❌ DÉSACTIVÉ : Old architecture MDPH (boutons Régénérer supprimés)
     /// <summary>
     /// Régénère une section spécifique.
     /// </summary>
@@ -539,8 +684,9 @@ public partial class MDPHAssistantDialog : Window
             button.Content = originalContent;
             button.IsEnabled = true;
         }
-    }
+    }*/
 
+    /*❌ DÉSACTIVÉ : Old architecture MDPH (bouton Générer remarques supprimé)
     /// <summary>
     /// Génère la section "Remarques complémentaires" (section 18) avec les demandes cochées.
     /// </summary>
@@ -615,7 +761,7 @@ public partial class MDPHAssistantDialog : Window
             button.Content = originalContent;
             button.IsEnabled = true;
         }
-    }
+    }*/
 
     /// <summary>
     /// Copie le contenu d'une section dans le presse-papier.
@@ -707,6 +853,54 @@ public partial class MDPHAssistantDialog : Window
     }
 
     /// <summary>
+    /// Copie l'adresse du patient dans le presse-papier.
+    /// </summary>
+    private void CopyAdresseButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (PatientAdresseText.Text != "Non renseignée")
+            {
+                Clipboard.SetText(PatientAdresseText.Text);
+                ShowCopyConfirmation("Adresse copiée !");
+            }
+            else
+            {
+                MessageBox.Show("L'adresse n'est pas renseignée.\n\nVeuillez compléter les informations du patient.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur lors de la copie : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
+    /// Copie le numéro de sécurité sociale du patient dans le presse-papier.
+    /// </summary>
+    private void CopyNumSecuButton_Click(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            if (PatientNumSecuText.Text != "Non renseigné")
+            {
+                // Copier sans espaces pour le NIR
+                var nirClean = PatientNumSecuText.Text.Replace(" ", "");
+                Clipboard.SetText(nirClean);
+                ShowCopyConfirmation("N° Sécurité Sociale copié !");
+            }
+            else
+            {
+                MessageBox.Show("Le numéro de sécurité sociale n'est pas renseigné.\n\nVeuillez compléter les informations du patient.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur lors de la copie : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    /// <summary>
     /// Copie la liste des demandes cochées dans le presse-papier.
     /// </summary>
     private void CopyAjouterListeButton_Click(object sender, RoutedEventArgs e)
@@ -781,9 +975,8 @@ public partial class MDPHAssistantDialog : Window
     /// </summary>
     private void UpdatePdfPageIndicator()
     {
-        // Note : WebView2 ne permet pas facilement d'obtenir le numéro de page actuel d'un PDF
-        // On affiche juste un message générique
-        PdfPageIndicator.Text = "PDF MDPH CERFA 15695*01";
+        // Affiche le nom du fichier PDF chargé
+        PdfPageIndicator.Text = !string.IsNullOrEmpty(_pdfPath) ? Path.GetFileName(_pdfPath) : "PDF non chargé";
     }
 
     // ========== GESTION NAVIGATION PDF ==========
@@ -950,6 +1143,17 @@ public partial class MDPHAssistantDialog : Window
 
             _hasUnsavedChanges = false;
 
+            // Ajout du poids au système de synthèse
+            if (!string.IsNullOrEmpty(_pdfPath)) 
+            {
+                _synthesisWeightTracker.RecordContentWeight(
+                    _selectedPatient.NomComplet,
+                    "formulaire_mdph",
+                    _pdfPath,
+                    0.8
+                );
+            }
+
             // ---------------------------------------------------------
             // NOUVEAU : Sauvegarder la synthèse JSON pour l'affichage dans la liste
             // ---------------------------------------------------------
@@ -1030,6 +1234,224 @@ public partial class MDPHAssistantDialog : Window
         }
     }
 
+    /// <summary>
+    /// Remplit automatiquement le PDF MDPH avec les données générées par l'IA
+    /// </summary>
+    private async void FillPdfButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_generatedFormData == null)
+        {
+            MessageBox.Show(
+                "Aucune donnée générée disponible.\n\nVeuillez d'abord générer le formulaire.",
+                "Données manquantes",
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            FillPdfButton.IsEnabled = false;
+            FillPdfButton.Content = "⏳ Remplissage du PDF en cours...";
+
+            // Trouver le template PDF MDPH dans Assets
+            var assetsPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "Formulaires");
+            
+            // ✅ UTILISER UNIQUEMENT LE TEMPLATE 8 PAGES
+            // On retire les fallbacks pour éviter toute confusion
+            var templatePath = Path.Combine(assetsPath, "MDPH_Template_8pages.pdf");
+
+            if (!File.Exists(templatePath))
+            {
+                MessageBox.Show(
+                    $"Template MDPH introuvable !\n\nChemin attendu:\n{templatePath}\n\n" +
+                    "Veuillez placer votre PDF avec champs AcroForm dans ce dossier.",
+                    "Template manquant",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+                return;
+            }
+
+            // 2. Récupérer les métadonnées du patient
+            var metadata = _patientIndex.GetMetadata(_selectedPatient.Id);
+            if (metadata == null)
+            {
+                MessageBox.Show("Impossible de charger les métadonnées du patient.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            // DEBUG: Afficher les données chargées pour le diagnostic
+            System.Diagnostics.Debug.WriteLine($"=== DEBUG METADATA ===");
+            System.Diagnostics.Debug.WriteLine($"  AdresseRue: '{metadata.AdresseRue ?? "NULL"}'");
+            System.Diagnostics.Debug.WriteLine($"  AdresseCodePostal: '{metadata.AdresseCodePostal ?? "NULL"}'");
+            System.Diagnostics.Debug.WriteLine($"  AdresseVille: '{metadata.AdresseVille ?? "NULL"}'");
+            System.Diagnostics.Debug.WriteLine($"  NumeroSecuriteSociale: '{metadata.NumeroSecuriteSociale ?? "NULL"}'");
+
+            // 3. Préparer le chemin de sortie
+            var formulairesDir = _pathService.GetFormulairesDirectory(_selectedPatient.NomComplet);
+            Directory.CreateDirectory(formulairesDir);
+
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var outputPath = Path.Combine(formulairesDir, $"MDPH_Rempli_{timestamp}.pdf");
+
+            // 4. Construire la liste des demandes
+            var demandesList = new List<string>();
+            foreach (var kvp in _ajouterCheckboxes)
+            {
+                if (kvp.Value.IsChecked == true)
+                {
+                    demandesList.Add(kvp.Value.Content?.ToString() ?? "");
+                }
+            }
+
+            string autresDemandes = _autresDemandesTextBox?.Text ?? "";
+            if (!string.IsNullOrWhiteSpace(autresDemandes))
+            {
+                demandesList.Add($"Autres demandes : {autresDemandes}");
+            }
+
+            string demandes = string.Join("\n", demandesList.Select(d => $"☑ {d}"));
+
+            // 5. D'abord, lister tous les champs disponibles dans le PDF pour diagnostic
+            var pdfFiller = new PDFFormFillerService();
+            var (listSuccess, fieldNames, listError) = pdfFiller.ListFormFields(templatePath);
+
+            if (listSuccess)
+            {
+                // Écrire dans le Debug
+                System.Diagnostics.Debug.WriteLine($"========== CHAMPS DISPONIBLES DANS LE PDF ==========");
+                System.Diagnostics.Debug.WriteLine($"Total : {fieldNames.Length} champs");
+
+                // Écrire aussi dans un fichier texte pour que l'utilisateur puisse le voir facilement
+                var logPath = Path.Combine(formulairesDir, "MDPH_Champs_PDF.txt");
+                var logContent = new StringBuilder();
+                logContent.AppendLine($"========== CHAMPS DISPONIBLES DANS LE PDF ==========");
+                logContent.AppendLine($"Template : {templatePath}");
+                logContent.AppendLine($"Date : {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+                logContent.AppendLine($"Total : {fieldNames.Length} champs");
+                logContent.AppendLine();
+
+                foreach (var fieldName in fieldNames)
+                {
+                    // Afficher la longueur pour détecter espaces invisibles
+                    System.Diagnostics.Debug.WriteLine($"  - '{fieldName}' (len={fieldName.Length})");
+                    logContent.AppendLine($"  - {fieldName}");
+                }
+
+                // Chercher spécifiquement les champs patient_num_secu et patient_adresse
+                var numSecuField = fieldNames.FirstOrDefault(f => f.Contains("num_secu"));
+                var adresseField = fieldNames.FirstOrDefault(f => f.Contains("adresse"));
+                System.Diagnostics.Debug.WriteLine($"  🔍 Champ num_secu trouvé: '{numSecuField}' (len={numSecuField?.Length ?? 0})");
+                System.Diagnostics.Debug.WriteLine($"  🔍 Champ adresse trouvé: '{adresseField}' (len={adresseField?.Length ?? 0})");
+
+                System.Diagnostics.Debug.WriteLine($"====================================================");
+                logContent.AppendLine($"====================================================");
+
+                File.WriteAllText(logPath, logContent.ToString(), Encoding.UTF8);
+                System.Diagnostics.Debug.WriteLine($"Liste des champs sauvegardée dans : {logPath}");
+            }
+
+            // 6. Appeler le service de remplissage PDF
+            StatusText.Text = "⏳ Remplissage du PDF avec les données générées...";
+
+            var (success, filledPath, error) = pdfFiller.FillMDPHComplete(
+                metadata,
+                _generatedFormData,
+                demandes,
+                templatePath,
+                outputPath
+            );
+
+            if (success)
+            {
+                StatusText.Text = "✅ PDF rempli avec succès !";
+                StatusText.Foreground = new SolidColorBrush(Color.FromRgb(0x27, 0xAE, 0x60));
+
+                // -------------------------------------------------------------
+                // 🔄 SWAP: Remplacer le PDF vide par le PDF rempli dans la vue
+                // -------------------------------------------------------------
+                try
+                {
+                    // 1. Sauvegarder l'ancien chemin pour suppression
+                    var oldPath = _pdfPath;
+
+                    // 2. Mettre à jour le chemin officiel
+                    _pdfPath = filledPath;
+
+                    // 3. Afficher le PDF rempli dans WebView2
+                    if (_webView != null && _webView.CoreWebView2 != null)
+                    {
+                        _webView.CoreWebView2.Navigate(_pdfPath);
+                    }
+
+                    // 4. Supprimer l'ancien fichier (le "blank")
+                    // On attend un peu que WebView2 libère le fichier (si nécessaire)
+                    await Task.Delay(500);
+                    if (File.Exists(oldPath) && oldPath != filledPath)
+                    {
+                        try 
+                        { 
+                            File.Delete(oldPath);
+                            System.Diagnostics.Debug.WriteLine($"[MDPHAssistantDialog] Ancien PDF supprimé: {oldPath}");
+                            
+                            // Supprimer aussi le JSON associé s'il existe (celui du blank)
+                            var oldJson = Path.ChangeExtension(oldPath, ".json");
+                            if (File.Exists(oldJson)) File.Delete(oldJson);
+                        } 
+                        catch (Exception exDelete)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[MDPHAssistantDialog] Impossible de supprimer l'ancien PDF (lock?): {exDelete.Message}");
+                        }
+                    }
+
+                    // 5. Mettre à jour l'indicateur
+                    UpdatePdfPageIndicator();
+
+                    // Notification non-intrusive
+                    MessageBox.Show(
+                        "Le PDF a été rempli et chargé dans la visionneuse ci-contre.\n\n" +
+                        "L'ancien fichier vide a été supprimé.",
+                        "Remplissage Effectué",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+
+                }
+                catch (Exception exSwap)
+                {
+                    MessageBox.Show($"Le PDF est rempli mais impossible de l'afficher : {exSwap.Message}", "Info", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            else
+            {
+                StatusText.Text = $"❌ Erreur lors du remplissage du PDF";
+                StatusText.Foreground = Brushes.Red;
+
+                MessageBox.Show(
+                    $"❌ Erreur lors du remplissage du PDF:\n\n{error}\n\n" +
+                    "Vérifiez que les noms des champs AcroForm correspondent au mapping attendu.",
+                    "Erreur",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusText.Text = "❌ Erreur inattendue";
+            StatusText.Foreground = Brushes.Red;
+
+            MessageBox.Show(
+                $"Erreur inattendue:\n\n{ex.Message}",
+                "Erreur",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+        finally
+        {
+            FillPdfButton.Content = "📄 Remplir PDF automatiquement";
+            FillPdfButton.IsEnabled = true;
+        }
+    }
+
     private void CloseButton_Click(object sender, RoutedEventArgs e)
     {
         Close();
@@ -1048,6 +1470,34 @@ public partial class MDPHAssistantDialog : Window
             if (result == MessageBoxResult.No)
             {
                 e.Cancel = true;
+                return; // Ne pas continuer si l'utilisateur annule
+            }
+        }
+
+        // ✅ Si le formulaire n'a pas été sauvegardé, supprimer le PDF et JSON temporaires
+        if (DialogResult != true && !string.IsNullOrEmpty(_pdfPath))
+        {
+            try
+            {
+                // Supprimer le PDF
+                if (File.Exists(_pdfPath))
+                {
+                    File.Delete(_pdfPath);
+                    System.Diagnostics.Debug.WriteLine($"[MDPHAssistantDialog] PDF temporaire supprimé: {_pdfPath}");
+                }
+
+                // Supprimer le JSON associé s'il existe
+                var jsonPath = Path.ChangeExtension(_pdfPath, ".json");
+                if (File.Exists(jsonPath))
+                {
+                    File.Delete(jsonPath);
+                    System.Diagnostics.Debug.WriteLine($"[MDPHAssistantDialog] JSON temporaire supprimé: {jsonPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MDPHAssistantDialog] Erreur suppression fichiers temporaires: {ex.Message}");
+                // Ne pas propager l'erreur - c'est un nettoyage, pas critique
             }
         }
 

@@ -164,34 +164,85 @@
                                                   TextWrapping="Wrap"/>
 
                                         <Grid Margin="0,8,0,0">
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="8"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="8"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
                                             <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="10"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock FontSize="10" Foreground="#7F8C8D">
-                                                    <Run Text="Posologie:"/>
-                                                    <Run Text="{Binding Posologie, Mode=OneWay}" FontWeight="SemiBold"/>
-                                                </TextBlock>
-                                                <TextBlock FontSize="10" Foreground="#7F8C8D" Margin="0,2,0,0">
-                                                    <Run Text="Durée:"/>
-                                                    <Run Text="{Binding Duree, Mode=OneWay}" FontWeight="SemiBold"/>
-                                                </TextBlock>
-                                            </StackPanel>
+                                            <!-- Posologie -->
+                                            <TextBlock Grid.Row="0" Grid.Column="0"
+                                                      Text="Posologie :"
+                                                      FontSize="10"
+                                                      Foreground="#5D6D7E"
+                                                      VerticalAlignment="Center"/>
+                                            <TextBox Grid.Row="0" Grid.Column="2"
+                                                    Text="{Binding Posologie, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    FontSize="11"
+                                                    Padding="6,4"
+                                                    BorderBrush="#BDC3C7"
+                                                    BorderThickness="1"
+                                                    Background="White"/>
 
-                                            <StackPanel Grid.Column="1">
-                                                <TextBlock FontSize="10" Foreground="#7F8C8D">
-                                                    <Run Text="Quantité:"/>
-                                                    <Run Text="{Binding Quantite, Mode=OneWay}" FontWeight="SemiBold"/>
-                                                    <Run Text="boîte(s)"/>
-                                                </TextBlock>
-                                                <TextBlock FontSize="10" Foreground="#7F8C8D" Margin="0,2,0,0">
-                                                    <Run Text="Renouvelable:"/>
-                                                    <Run Text="{Binding Renouvelable, Mode=OneWay}" FontWeight="SemiBold"/>
-                                                    <Run Text="fois"/>
-                                                </TextBlock>
-                                            </StackPanel>
+                                            <!-- Durée -->
+                                            <TextBlock Grid.Row="2" Grid.Column="0"
+                                                      Text="Durée :"
+                                                      FontSize="10"
+                                                      Foreground="#5D6D7E"
+                                                      VerticalAlignment="Center"/>
+                                            <TextBox Grid.Row="2" Grid.Column="2"
+                                                    Text="{Binding Duree, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    FontSize="11"
+                                                    Padding="6,4"
+                                                    BorderBrush="#BDC3C7"
+                                                    BorderThickness="1"
+                                                    Background="White"/>
+
+                                            <!-- Quantité et Renouvellement sur la même ligne -->
+                                            <Grid Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="10"/>
+                                                    <ColumnDefinition Width="80"/>
+                                                    <ColumnDefinition Width="20"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="10"/>
+                                                    <ColumnDefinition Width="80"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <TextBlock Grid.Column="0"
+                                                          Text="Quantité :"
+                                                          FontSize="10"
+                                                          Foreground="#5D6D7E"
+                                                          VerticalAlignment="Center"/>
+                                                <TextBox Grid.Column="2"
+                                                        Text="{Binding Quantite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        FontSize="11"
+                                                        Padding="6,4"
+                                                        BorderBrush="#BDC3C7"
+                                                        BorderThickness="1"
+                                                        Background="White"/>
+
+                                                <TextBlock Grid.Column="4"
+                                                          Text="Renouvelable :"
+                                                          FontSize="10"
+                                                          Foreground="#5D6D7E"
+                                                          VerticalAlignment="Center"/>
+                                                <TextBox Grid.Column="6"
+                                                        Text="{Binding NombreRenouvellements, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                        FontSize="11"
+                                                        Padding="6,4"
+                                                        BorderBrush="#BDC3C7"
+                                                        BorderThickness="1"
+                                                        Background="White"/>
+                                            </Grid>
                                         </Grid>
                                     </StackPanel>
                                 </Grid>

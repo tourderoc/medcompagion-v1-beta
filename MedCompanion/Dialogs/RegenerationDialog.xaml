@@ -1,0 +1,143 @@
+<Window x:Class="MedCompanion.Dialogs.RegenerationDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Régénérer le contenu"
+        Height="400" Width="550"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F5F5">
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Titre -->
+        <TextBlock Grid.Row="0"
+                   Text="Régénérer avec l'IA"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   Foreground="#2C3E50"
+                   Margin="0,0,0,15"/>
+
+        <!-- Sélection du modèle LLM -->
+        <StackPanel Grid.Row="1" Margin="0,0,0,15">
+            <TextBlock Text="Modèle LLM"
+                       FontWeight="SemiBold"
+                       Foreground="#34495E"
+                       Margin="0,0,0,5"/>
+            <ComboBox x:Name="ModelComboBox"
+                      Height="35"
+                      Padding="10,5"
+                      FontSize="13"
+                      IsEnabled="False">
+                <ComboBox.ItemTemplate>
+                    <DataTemplate>
+                        <TextBlock Text="{Binding DisplayName}"/>
+                    </DataTemplate>
+                </ComboBox.ItemTemplate>
+            </ComboBox>
+            <TextBlock x:Name="LoadingModelsText"
+                       Text="Chargement des modèles..."
+                       FontStyle="Italic"
+                       Foreground="#7F8C8D"
+                       FontSize="11"
+                       Margin="0,3,0,0"/>
+        </StackPanel>
+
+        <!-- Instructions de modification -->
+        <StackPanel Grid.Row="2">
+            <TextBlock Text="Instructions de modification"
+                       FontWeight="SemiBold"
+                       Foreground="#34495E"
+                       Margin="0,0,0,5"/>
+            <TextBox x:Name="InstructionsTextBox"
+                     AcceptsReturn="True"
+                     TextWrapping="Wrap"
+                     VerticalScrollBarVisibility="Auto"
+                     Height="150"
+                     Padding="10"
+                     FontSize="13"
+                     BorderBrush="#BDC3C7"
+                     BorderThickness="1">
+                <TextBox.Style>
+                    <Style TargetType="TextBox">
+                        <Style.Triggers>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter Property="BorderBrush" Value="#3498DB"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </TextBox.Style>
+            </TextBox>
+            <TextBlock Text="Décrivez les modifications souhaitées (ex: 'Raccourcir le texte', 'Ajouter plus de détails sur le traitement', 'Corriger le ton')"
+                       FontStyle="Italic"
+                       Foreground="#7F8C8D"
+                       FontSize="11"
+                       TextWrapping="Wrap"
+                       Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <!-- Status -->
+        <TextBlock x:Name="StatusText"
+                   Grid.Row="3"
+                   Foreground="#E74C3C"
+                   FontSize="12"
+                   Margin="0,10,0,10"
+                   TextWrapping="Wrap"/>
+
+        <!-- Boutons -->
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right">
+            <Button x:Name="CancelButton"
+                    Content="Annuler"
+                    Width="100"
+                    Height="35"
+                    Margin="0,0,10,0"
+                    Click="CancelButton_Click"
+                    Background="#95A5A6"
+                    Foreground="White"
+                    BorderThickness="0"
+                    Cursor="Hand">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#7F8C8D"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+            <Button x:Name="RegenerateButton"
+                    Content="Régénérer"
+                    Width="120"
+                    Height="35"
+                    Click="RegenerateButton_Click"
+                    IsEnabled="False"
+                    Background="#27AE60"
+                    Foreground="White"
+                    BorderThickness="0"
+                    FontWeight="SemiBold"
+                    Cursor="Hand">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Style.Triggers>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Background" Value="#BDC3C7"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#229954"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
+    </Grid>
+</Window>

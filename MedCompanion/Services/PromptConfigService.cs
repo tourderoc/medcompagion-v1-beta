@@ -14,14 +14,20 @@ namespace MedCompanion.Services
     {
         private readonly string _configFilePath;
         private PromptsConfiguration _config;
+        private readonly AnonymizationService? _anonymizationService;
         
         /// <summary>
         /// Événement déclenché quand les prompts sont modifiés et rechargés
         /// </summary>
         public event EventHandler? PromptsReloaded;
         
-        public PromptConfigService()
+        /// <summary>
+        /// Constructeur avec injection optionnelle d'AnonymizationService
+        /// </summary>
+        public PromptConfigService(AnonymizationService? anonymizationService = null)
         {
+            _anonymizationService = anonymizationService;
+            
             var appDataPath = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "MedCompanion"
@@ -515,6 +521,153 @@ Retourne la synthèse COMPLÈTE mise à jour.";
                 IsCustomActive = false
             };
 
+            // PROMPT FORMULAIRE MDPH COMPLET
+            var mdphCompleteFormPrompt = @"Génère un dossier MDPH complet au format JSON pour le CERFA 15695*01.
+
+CONTEXTE PATIENT :
+{{CONTEXTE}}
+
+DEMANDES FORMULÉES PAR LE MÉDECIN :
+{{DEMANDES}}
+
+INSTRUCTIONS STRICTES :
+1. Retourne un objet JSON valide avec TOUTES les sections ci-dessous
+2. Style : télégraphique, factuel, professionnel
+3. UNIQUEMENT basé sur le contexte patient fourni - NE RIEN INVENTER
+4. Si information manquante : ""Non renseigné"" ou tableau vide []
+5. Les remarques complémentaires doivent JUSTIFIER les demandes formulées
+
+FORMAT JSON OBLIGATOIRE :
+{
+  ""pathologie_principale"": ""Diagnostic principal + code CIM-10 (ex: Trouble du spectre autistique F84.0)"",
+  ""autres_pathologies"": ""Liste séparée par virgules avec codes CIM-10, ou 'Aucune'"",
+  ""elements_essentiels"": [
+    ""Ligne 1: retentissement principal"",
+    ""Ligne 2: gravité et facteurs"",
+    ""Ligne 3: besoins urgents""
+  ],
+  ""antecedents_medicaux"": [
+    ""Antécédent 1 (ex: Prématurité 32 SA)"",
+    ""Antécédent 2""
+  ],
+  ""retards_developpementaux"": [
+    ""Retard 1 (ex: Retard langage oral: premiers mots 24 mois)"",
+    ""Retard 2"",
+    ""Retard 3""
+  ],
+  ""description_clinique"": [
+    ""Signes groupe 1 (max 20 mots)"",
+    ""Signes groupe 2 (max 20 mots)"",
+    ""Signes groupe 3 (max 20 mots)""
+  ],
+  ""traitements"": {
+    ""medicaments"": ""Liste avec posologie (ex: Méthylphénidate 18mg/jour, Sertraline 50mg/jour) ou 'Aucun traitement médicamenteux'"",
+    ""effets_indesirables"": ""Liste effets avec intensité ou 'Aucun effet indésirable signalé'"",
+    ""autres_prises_en_charge"": ""Psychologue, orthophoniste, etc. avec fréquence ou 'Aucune autre prise en charge'""
+  },
+  ""retentissements"": {
+    ""mobilite"": ""1 ligne max 25 mots: marche, déplacement, motricité"",
+    ""communication"": ""1 ligne max 25 mots: expression, compréhension, téléphone"",
+    ""cognition"": [
+      ""Ligne 1: attention, concentration, mémoire"",
+      ""Ligne 2: raisonnement, orientation, sécurité"",
+      ""Ligne 3: capacités scolaires comparé âge""
+    ],
+    ""conduite_emotionnelle"": [
+      ""Ligne 1: relation autrui, empathie"",
+      ""Ligne 2: gestion émotions, colères, anxiété"",
+      ""Ligne 3: troubles comportement spécifiques""
+    ],
+    ""autonomie"": ""1 ligne max 25 mots: toilette, habillage, alimentation, continence"",
+    ""vie_quotidienne"": ""1 ligne max 25 mots: repas, courses, budget, démarches"",
+    ""social_scolaire"": ""1 ligne max 25 mots: scolarité, aménagements, vie sociale, relations""
+  },
+  ""remarques_complementaires"": ""Courrier de justification (max 15 lignes) expliquant pourquoi les demandes formulées (AESH, AEEH, etc.) sont nécessaires. Justifier CHAQUE demande avec arguments du contexte. Ton professionnel mais humain.""
+}
+
+RÈGLES CRITIQUES :
+- Format JSON strict et valide
+- Respecter EXACTEMENT les noms de propriétés ci-dessus
+- Tableaux vides [] si pas d'information
+- Pas de texte avant ou après le JSON
+- Les remarques doivent être un texte fluide (pas de tirets), justifiant les demandes";
+
+            config.Prompts["mdph_complete_form"] = new PromptConfig
+            {
+                Id = "mdph_complete_form",
+                Name = "MDPH - Formulaire complet",
+                Description = "Génère les 19 sections du formulaire MDPH en une seule fois au format JSON",
+                Module = "Formulaire",
+                OriginalPrompt = mdphCompleteFormPrompt,
+                DefaultPrompt = mdphCompleteFormPrompt,
+                IsCustomActive = false
+            };
+
+            // PROMPT PAI GENERATION
+            var paiGenerationPrompt = @"Génère une réponse pour le formulaire PAI (Projet d'Accueil Individualisé) basée sur l'instruction suivante.
+
+INSTRUCTION UTILISATEUR :
+""{{INSTRUCTION}}""
+
+CONTRAINTES DE FORME :
+- Style : {{STYLE}}
+- Longueur : {{LENGTH}}
+
+INSTRUCTIONS DE RÉDACTION :
+- Utilise UNIQUEMENT les informations du contexte patient fourni ci-dessous.
+- NE RIEN INVENTER. Si l'information n'est pas dans le contexte, dis-le clairement.
+- Adapte le ton pour un document officiel scolaire/médical.
+- Sois précis et factuel.
+
+CONTEXTE PATIENT :
+{{CONTEXTE}}";
+
+            config.Prompts["pai_generation"] = new PromptConfig
+            {
+                Id = "pai_generation",
+                Name = "Génération PAI",
+                Description = "Prompt pour générer le contenu du formulaire PAI",
+                Module = "Formulaire",
+                OriginalPrompt = paiGenerationPrompt,
+                DefaultPrompt = paiGenerationPrompt,
+                IsCustomActive = false
+            };
+            
+            // PROMPT PAI GENERATION V2 (Avec contraintes de longueur strictes)
+            var paiGenerationPromptV2 = @"Génère une réponse pour le formulaire PAI (Projet d'Accueil Individualisé) basée sur l'instruction suivante.
+
+INSTRUCTION UTILISATEUR :
+""{{INSTRUCTION}}""
+
+CONTRAINTES DE FORME :
+- Style : {{STYLE}}
+- Longueur : {{LENGTH}}
+
+INSTRUCTIONS DE RÉDACTION :
+- Utilise UNIQUEMENT les informations du contexte patient fourni ci-dessous.
+- NE RIEN INVENTER. Si l'information n'est pas dans le contexte, dis-le clairement.
+- Adapte le ton pour un document officiel scolaire/médical.
+- Sois précis et factuel.
+
+⚠️ RÈGLE DE LONGUEUR STRICTE :
+Si la Longueur est ""1 ligne"", ""2 lignes"" ou ""3 lignes"", tu dois impérativement respecter cette limite.
+- 1 ligne = 1 phrase concise.
+- 2 lignes = 2 phrases maximum.
+
+CONTEXTE PATIENT :
+{{CONTEXTE}}";
+
+            config.Prompts["pai_generation_v2"] = new PromptConfig
+            {
+                Id = "pai_generation_v2",
+                Name = "Génération PAI (V2 Strict)",
+                Description = "Prompt pour générer le contenu du formulaire PAI avec contrôle strict de la longueur",
+                Module = "Formulaire",
+                OriginalPrompt = paiGenerationPromptV2,
+                DefaultPrompt = paiGenerationPromptV2,
+                IsCustomActive = false
+            };
+
             return config;
         }
         
@@ -541,6 +694,77 @@ Retourne la synthèse COMPLÈTE mise à jour.";
         {
             var prompt = GetPrompt(promptId);
             return prompt?.ActivePrompt ?? string.Empty;
+        }
+        
+        /// <summary>
+        /// Retourne le prompt actif avec anonymisation automatique si nécessaire.
+        /// Délègue la décision d'anonymisation à AnonymizationService (qui vérifie si LLM local ou cloud).
+        /// Architecture centralisée : Functionality → PromptConfigService → AnonymizationService → LLM
+        /// </summary>
+        /// <param name="promptId">ID du prompt à récupérer</param>
+        /// <param name="patientData">Métadonnées patient pour l'anonymisation (optionnel)</param>
+        /// <param name="replacements">Dictionnaire de remplacements pour les placeholders du template (ex: {{CONTEXTE}}, {{DEMANDES}})</param>
+        /// <param name="skipAnonymization">Si true, désactive l'anonymisation même pour les LLM cloud (ex: MDPH où le LLM invente des pseudonymes)</param>
+        /// <returns>Tuple (prompt final, contexte d'anonymisation)</returns>
+        public async System.Threading.Tasks.Task<(string prompt, AnonymizationContext? context)> GetAnonymizedPromptAsync(
+            string promptId,
+            PatientMetadata? patientData = null,
+            Dictionary<string, string>? replacements = null,
+            bool skipAnonymization = false)
+        {
+            // 1. Récupérer le prompt actif (template)
+            var prompt = GetActivePrompt(promptId);
+
+            // 2. Remplacer les placeholders du template si fournis (ex: {{CONTEXTE}}, {{DEMANDES}})
+            if (replacements != null)
+            {
+                foreach (var kvp in replacements)
+                {
+                    // Remplacer {{KEY}} par VALUE
+                    prompt = prompt.Replace($"{{{{{kvp.Key}}}}}", kvp.Value);
+                }
+            }
+
+            // 3. Si anonymisation désactivée explicitement ou pas de service/données → retour direct
+            if (skipAnonymization || _anonymizationService == null || patientData == null)
+            {
+                if (skipAnonymization)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[PromptConfigService] Anonymisation désactivée pour '{promptId}' (skipAnonymization=true)");
+                }
+                return (prompt, null);
+            }
+
+            // 📊 LOG: Prompt AVANT anonymisation
+            System.Diagnostics.Debug.WriteLine($"[PromptConfigService] ========== PROMPT AVANT ANONYMISATION ==========");
+            System.Diagnostics.Debug.WriteLine($"[PromptConfigService] Longueur: {prompt.Length} caractères");
+            System.Diagnostics.Debug.WriteLine($"[PromptConfigService] Extrait (premiers 800 chars):");
+            System.Diagnostics.Debug.WriteLine(prompt.Substring(0, Math.Min(800, prompt.Length)));
+            System.Diagnostics.Debug.WriteLine($"[PromptConfigService] ================================================");
+
+            // 4. Déléguer l'anonymisation à AnonymizationService
+            // C'est lui qui décide (ShouldAnonymize) et qui anonymise si nécessaire
+            var (anonymizedPrompt, context) = await _anonymizationService.AnonymizeAsync(
+                prompt,
+                patientData
+            );
+
+            // 📊 LOG: Prompt APRÈS anonymisation
+            System.Diagnostics.Debug.WriteLine($"[PromptConfigService] ========== PROMPT APRÈS ANONYMISATION ==========");
+            System.Diagnostics.Debug.WriteLine($"[PromptConfigService] Anonymisé: {context?.WasAnonymized ?? false}");
+            if (context?.WasAnonymized == true)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PromptConfigService] Nombre de remplacements: {context.Replacements.Count}");
+                foreach (var kvp in context.Replacements)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[PromptConfigService]   '{kvp.Key}' → '{kvp.Value}'");
+                }
+                System.Diagnostics.Debug.WriteLine($"[PromptConfigService] Extrait (premiers 800 chars):");
+                System.Diagnostics.Debug.WriteLine(anonymizedPrompt.Substring(0, Math.Min(800, anonymizedPrompt.Length)));
+            }
+            System.Diagnostics.Debug.WriteLine($"[PromptConfigService] ================================================");
+
+            return (anonymizedPrompt, context);
         }
         
         /// <summary>

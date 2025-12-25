@@ -17,6 +17,7 @@ namespace MedCompanion.ViewModels
         private readonly SecureStorageService _secureStorage;
         private readonly WindowStateService _windowStateService;
         private readonly LLMServiceFactory? _llmFactory;
+        private readonly AppSettings _settings;
 
         // API Keys
         private string _openAIApiKey = string.Empty;
@@ -39,6 +40,7 @@ namespace MedCompanion.ViewModels
             _secureStorage = secureStorage ?? throw new ArgumentNullException(nameof(secureStorage));
             _windowStateService = windowStateService ?? throw new ArgumentNullException(nameof(windowStateService));
             _llmFactory = llmFactory;
+            _settings = AppSettings.Load(); // Load persisted settings
 
             // Initialize commands
             TestConnectionCommand = new RelayCommand(async _ => await TestOpenAIConnectionAsync(), _ => CanTestConnection());
@@ -148,6 +150,8 @@ namespace MedCompanion.ViewModels
 
         public bool HasOpenAIKey => !string.IsNullOrWhiteSpace(OpenAIApiKey);
 
+        public AppSettings Settings => _settings;
+
         #endregion
 
         #region Commands
@@ -192,6 +196,9 @@ namespace MedCompanion.ViewModels
 
             // Sauvegarder les préférences d'affichage
             _windowStateService.SetStartupPreference(StartupPreference);
+            
+            // Sauvegarder AppSettings (incluant AnonymizationModel)
+            _settings.Save();
         }
 
         /// <summary>

@@ -302,27 +302,71 @@ namespace MedCompanion.ViewModels
             }
         }
 
+    /// <summary>
+    /// Recharge le contenu de la note courante (utile après modification externe)
+    /// </summary>
+    public void ReloadCurrentNote()
+    {
+        if (SelectedNote != null && !string.IsNullOrEmpty(SelectedNote.FilePath))
+        {
+            LoadNoteContent(SelectedNote.FilePath);
+        }
+    }
+
         /// <summary>
         /// Événement déclenché quand une note est chargée
         /// </summary>
         public event EventHandler<(string filePath, string content)>? NoteContentLoaded;
 
         /// <summary>
-        /// Structure une note avec l'IA
+        /// Structure une note avec l'IA (avec BusyService pour overlay modal)
         /// </summary>
         private async void StructurerNoteAsync()
         {
             if (string.IsNullOrEmpty(_currentPatientName))
                 return;
 
+            // Démarrer le BusyService avec étapes détaillées
+            var busyService = BusyService.Instance;
+            var cancellationToken = busyService.Start("Structuration de la note...", canCancel: true);
+
             try
             {
-                RaiseStatusMessage("⏳ Structuration en cours...");
+                StatusMessageChanged?.Invoke(this, "⏳ Structuration de la note...");
+                // ✅ NOUVEAU : Récupérer le sexe du patient
+                string sexe = "M";  // Défaut
+                if (_patientIndexService != null)
+                {
+                    var patient = _patientIndexService.GetAllPatients()
+                        .FirstOrDefault(p => p.NomComplet == _currentPatientName);
+                    sexe = patient?.Sexe ?? "M";
+                }
 
+                // Vérifier annulation
+                cancellationToken.ThrowIfCancellationRequested();
+
+                busyService.UpdateStep("Anonymisation des données patient...");
+                busyService.UpdateProgress(20);
+
+                // Vérifier annulation
+                cancellationToken.ThrowIfCancellationRequested();
+
+                busyService.UpdateStep("Appel du modèle IA local...");
+                busyService.UpdateProgress(40);
+
+                // ✅ APPEL MODIFIÉ : Passer le CancellationToken
                 var (success, result, relevanceWeight) = await _openAIService.StructurerNoteAsync(
                     _currentPatientName,
-                    RawNoteText.Trim()
+                    sexe,
+                    RawNoteText.Trim(),
+                    cancellationToken
                 );
+
+                // Vérifier annulation
+                cancellationToken.ThrowIfCancellationRequested();
+
+                busyService.UpdateStep("Finalisation...");
+                busyService.UpdateProgress(90);
 
                 if (success)
                 {
@@ -343,7 +387,8 @@ namespace MedCompanion.ViewModels
                     IsSauvegarderButtonVisible = true;
                     IsStructurerButtonVisible = false;
 
-                    RaiseStatusMessage("✓ Note structurée avec succès");
+                    busyService.UpdateProgress(100);
+                    StatusMessageChanged?.Invoke(this, "✅ Note structurée générée");
 
                     // Déclencher événement pour que MainWindow affiche le résultat
                     NoteStructured?.Invoke(this, result);
@@ -353,9 +398,18 @@ namespace MedCompanion.ViewModels
                     RaiseStatusMessage($"❌ {result}");
                 }
             }
+            catch (OperationCanceledException)
+            {
+                StatusMessageChanged?.Invoke(this, "⚠️ Structuration annulée");
+            }
             catch (Exception ex)
             {
                 RaiseStatusMessage($"❌ {ex.Message}");
+            }
+            finally
+            {
+                // Toujours arrêter le BusyService
+                busyService.Stop();
             }
         }
 

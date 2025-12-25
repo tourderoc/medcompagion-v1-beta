@@ -29,6 +29,13 @@ public static class ContentWeightRules
             // ORDONNANCES (logique conditionnelle)
             "ordonnance" => EvaluateOrdonnanceWeight(metadata),
 
+            // COURRIERS (templates en dur + MCC)
+            "courrier_demande_pap" => 0.6,       // Demande de PAP à l'établissement scolaire
+            "courrier_feuille_route" => 0.4,     // Feuille de route pour les parents
+            "courrier_demande_cardio" => 0.7,    // Demande d'évaluation cardio + ECG
+            "courrier_mcc" => EvaluateMCCWeight(metadata), // Courrier MCC (poids selon docType)
+            "courrier_medical" => 0.5,           // Courrier médical générique
+
             // DOCUMENTS ADMINISTRATIFS
             "certificat_medical_simple" => 0.2,
             "courrier_administratif" => 0.1,
@@ -41,11 +48,36 @@ public static class ContentWeightRules
             // NÉCESSITE IA (retourne null)
             "note_clinique" => null,        // IA évalue pendant structuration
             "synthese_document" => null,    // IA évalue pendant synthèse
-            "courrier_medical" => null,     // IA évalue si généré
 
             // Valeur par défaut: demander à l'IA
             _ => null
         };
+    }
+
+    /// <summary>
+    /// Évalue le poids d'un courrier MCC selon ses métadonnées
+    /// </summary>
+    private static double EvaluateMCCWeight(Dictionary<string, object>? metadata)
+    {
+        if (metadata == null)
+            return 0.5; // Poids moyen par défaut
+
+        // Extraire le docType si disponible
+        if (metadata.ContainsKey("docType") && metadata["docType"] is string docType)
+        {
+            return docType.ToLower() switch
+            {
+                "compte_rendu" => 0.8,           // Compte-rendu important
+                "courrier_specialiste" => 0.7,  // Courrier spécialiste
+                "courrier_ecole" => 0.5,         // Courrier école
+                "courrier_parents" => 0.4,       // Courrier parents
+                "demande_examen" => 0.6,         // Demande d'examen
+                _ => 0.5                          // Défaut
+            };
+        }
+
+        // Si pas de docType, utiliser le poids par défaut
+        return 0.5;
     }
 
     /// <summary>

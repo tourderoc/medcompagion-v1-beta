@@ -45,6 +45,12 @@ namespace MedCompanion.Services
             LoadLibrary();
         }
 
+        #region Événements
+
+        public event EventHandler? LibraryUpdated;
+
+        #endregion
+
         #region Chargement et Sauvegarde
 
         /// <summary>
@@ -87,6 +93,10 @@ namespace MedCompanion.Services
                 File.WriteAllText(_libraryPath, json);
                 
                 System.Diagnostics.Debug.WriteLine($"[MCCLibrary] {_library.Count} MCC sauvegardés dans {_libraryPath}");
+                
+                // Notifier les abonnés que la bibliothèque a changé
+                LibraryUpdated?.Invoke(this, EventArgs.Empty);
+                
                 return (true, "Bibliothèque sauvegardée avec succès");
             }
             catch (Exception ex)
@@ -226,10 +236,13 @@ namespace MedCompanion.Services
         {
             try
             {
-                // Filtrer par type de document et statut actif
+                // Filtrer par type de document, statut actif ET audience compatible
+                var targetAudience = metadata.ContainsKey("audience") ? metadata["audience"] : null;
+
                 var candidates = _library.Values
                     .Where(m => m.Semantic?.DocType == docType && 
-                               (m.Status == MCCStatus.Active || m.Status == MCCStatus.Validated))
+                               (m.Status == MCCStatus.Active || m.Status == MCCStatus.Validated) &&
+                               IsAudienceCompatible(targetAudience, m.Semantic?.Audience))
                     .ToList();
 
                 if (!candidates.Any())
@@ -331,10 +344,13 @@ namespace MedCompanion.Services
         {
             try
             {
-                // Filtrer par type de document et statut actif
+                // Filtrer par type de document, statut actif ET audience compatible
+                var targetAudience = metadata.ContainsKey("audience") ? metadata["audience"] : null;
+
                 var candidates = _library.Values
                     .Where(m => m.Semantic?.DocType == docType && 
-                               (m.Status == MCCStatus.Active || m.Status == MCCStatus.Validated))
+                               (m.Status == MCCStatus.Active || m.Status == MCCStatus.Validated) &&
+                               IsAudienceCompatible(targetAudience, m.Semantic?.Audience))
                     .ToList();
 
                 if (!candidates.Any())
@@ -368,6 +384,33 @@ namespace MedCompanion.Services
                 System.Diagnostics.Debug.WriteLine($"[MCCLibrary] Erreur recherche : {ex.Message}");
                 return new List<(MCCModel, double)>();
             }
+        }
+
+        /// <summary>
+        /// Vérifie si une audience cible est compatible avec l'audience du MCC
+        /// </summary>
+        private bool IsAudienceCompatible(string? targetAudience, string? mccAudience)
+        {
+            // Pas de cible = tout accepté
+            if (string.IsNullOrWhiteSpace(targetAudience)) return true;
+            
+            // MCC universel = accepté
+            if (string.IsNullOrWhiteSpace(mccAudience)) return true;
+            
+            var target = targetAudience.ToLower().Trim();
+            var mcc = mccAudience.ToLower().Trim();
+
+            // 1. Exact match
+            if (target == mcc) return true;
+
+            // 2. MCC Universel explicite
+            if (mcc == "all" || mcc == "general" || mcc == "tous" || mcc == "everyone") return true;
+
+            // 3. Alias match (ex: school == ecole)
+            if (ValuesMatch(target, mcc, AUDIENCE_ALIASES)) return true;
+
+            // Sinon -> Incompatible (ex: school != parents)
+            return false;
         }
 
         /// <summary>
@@ -679,6 +722,78 @@ namespace MedCompanion.Services
             }
         }
 
+        /// <summary>
+        /// Ajoute un MCC à la liste des courriers (combobox Courriers)
+        /// </summary>
+        public (bool success, string message) AddToCourriersList(string mccId)
+        {
+            try
+            {
+                if (!_library.TryGetValue(mccId, out var mcc))
+                {
+                    return (false, "MCC introuvable");
+                }
+
+                if (mcc.IsInCourriersList)
+                {
+                    return (false, "Ce MCC est déjà dans la liste Courriers");
+                }
+
+                mcc.IsInCourriersList = true;
+                mcc.LastModified = DateTime.Now;
+
+                var saveResult = SaveLibrary();
+
+                if (saveResult.success)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MCCLibrary] MCC ajouté à la liste Courriers : {mcc.Name}");
+                    return (true, $"✅ '{mcc.Name}' ajouté à la liste Courriers");
+                }
+
+                return saveResult;
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Erreur lors de l'ajout : {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Retire un MCC de la liste des courriers (combobox Courriers)
+        /// </summary>
+        public (bool success, string message) RemoveFromCourriersList(string mccId)
+        {
+            try
+            {
+                if (!_library.TryGetValue(mccId, out var mcc))
+                {
+                    return (false, "MCC introuvable");
+                }
+
+                if (!mcc.IsInCourriersList)
+                {
+                    return (false, "Ce MCC n'est pas dans la liste Courriers");
+                }
+
+                mcc.IsInCourriersList = false;
+                mcc.LastModified = DateTime.Now;
+
+                var saveResult = SaveLibrary();
+
+                if (saveResult.success)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MCCLibrary] MCC retiré de la liste Courriers : {mcc.Name}");
+                    return (true, $"✅ '{mcc.Name}' retiré de la liste Courriers");
+                }
+
+                return saveResult;
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Erreur lors du retrait : {ex.Message}");
+            }
+        }
+
         #endregion
 
         #region Optimisation IA
@@ -895,6 +1010,59 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Extrait les sections d'un template Markdown (titres commençant par ##)
+        /// </summary>
+        private Dictionary<string, string> ExtractSectionsFromTemplate(string templateMarkdown)
+        {
+            var sections = new Dictionary<string, string>();
+            
+            if (string.IsNullOrWhiteSpace(templateMarkdown))
+                return sections;
+
+            // Regex pour détecter les titres ## Section
+            var matches = System.Text.RegularExpressions.Regex.Matches(
+                templateMarkdown, 
+                @"^##\s+(.+)$", 
+                System.Text.RegularExpressions.RegexOptions.Multiline
+            );
+
+            foreach (System.Text.RegularExpressions.Match match in matches)
+            {
+                var sectionName = match.Groups[1].Value.Trim();
+                
+                // Générer une description intelligente basée sur le nom de la section
+                var description = sectionName.ToLower() switch
+                {
+                    var s when s.Contains("objet") => 
+                        "Décrit l'objet du courrier",
+                    var s when s.Contains("contexte") || s.Contains("situation") => 
+                        "Présente la situation actuelle",
+                    var s when s.Contains("recommandation") || s.Contains("aménagement") => 
+                        "Liste les recommandations et aménagements",
+                    var s when s.Contains("objectif") => 
+                        "Définit les objectifs thérapeutiques ou éducatifs",
+                    var s when s.Contains("conclusion") => 
+                        "Conclut le courrier",
+                    var s when s.Contains("suivi") => 
+                        "Informations sur le suivi",
+                    var s when s.Contains("observation") => 
+                        "Observations cliniques",
+                    var s when s.Contains("diagnostic") => 
+                        "Informations diagnostiques",
+                    var s when s.Contains("antécédent") || s.Contains("historique") => 
+                        "Antécédents et historique",
+                    var s when s.Contains("traitement") => 
+                        "Informations sur le traitement",
+                    _ => $"Section : {sectionName}"
+                };
+
+                sections[sectionName] = description;
+            }
+
+            return sections;
+        }
+
+        /// <summary>
         /// Parse la réponse JSON de l'IA avec fallback sur le template et métadonnées originales
         /// </summary>
         private MCCOptimizationResponse? ParseOptimizationResponse(string response, MCCModel originalMcc)
@@ -980,9 +1148,74 @@ namespace MedCompanion.Services
                         hasFallback = true;
                     }
 
+                    // 🆕 NOUVEAU : Extraire et préserver les Sections
+                    if (optimizationResponse.Semantic.Sections == null || 
+                        optimizationResponse.Semantic.Sections.Count == 0)
+                    {
+                        // Essayer d'extraire depuis le nouveau template optimisé
+                        var extractedSections = ExtractSectionsFromTemplate(optimizationResponse.TemplateMarkdown);
+                        
+                        if (extractedSections.Count > 0)
+                        {
+                            optimizationResponse.Semantic.Sections = extractedSections;
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[MCCLibrary] ✅ Sections extraites du template optimisé : {extractedSections.Count} sections"
+                            );
+                        }
+                        else
+                        {
+                            // Fallback : préserver les anciennes sections
+                            optimizationResponse.Semantic.Sections = originalMcc.Semantic?.Sections ?? 
+                                new Dictionary<string, string>();
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[MCCLibrary] FALLBACK : sections préservées de l'ancien MCC ({optimizationResponse.Semantic.Sections.Count} sections)"
+                            );
+                        }
+                        hasFallback = true;
+                    }
+
+                    // 🆕 NOUVEAU : Préserver les Themes (mots-clés cliniques)
+                    if (optimizationResponse.Semantic.Themes == null || 
+                        optimizationResponse.Semantic.Themes.Count == 0)
+                    {
+                        optimizationResponse.Semantic.Themes = originalMcc.Semantic?.Themes ?? 
+                            new List<string>();
+                        if (optimizationResponse.Semantic.Themes.Count > 0)
+                        {
+                            System.Diagnostics.Debug.WriteLine(
+                                $"[MCCLibrary] FALLBACK : themes préservés ({optimizationResponse.Semantic.Themes.Count})"
+                            );
+                            hasFallback = true;
+                        }
+                    }
+
+                    // 🆕 NOUVEAU : Préserver Keywords (KeywordsSet)
+                    if (optimizationResponse.Semantic.Keywords == null)
+                    {
+                        optimizationResponse.Semantic.Keywords = originalMcc.Semantic?.Keywords ?? 
+                            new KeywordsSet();
+                        hasFallback = true;
+                    }
+
+                    // 🆕 NOUVEAU : Préserver Style
+                    if (optimizationResponse.Semantic.Style == null)
+                    {
+                        optimizationResponse.Semantic.Style = originalMcc.Semantic?.Style ?? 
+                            new StyleInfo();
+                        hasFallback = true;
+                    }
+
+                    // 🆕 NOUVEAU : Préserver Meta
+                    if (optimizationResponse.Semantic.Meta == null)
+                    {
+                        optimizationResponse.Semantic.Meta = originalMcc.Semantic?.Meta ?? 
+                            new MetaInfo();
+                        hasFallback = true;
+                    }
+
                     if (hasFallback)
                     {
-                        System.Diagnostics.Debug.WriteLine($"[MCCLibrary] FALLBACK activé : métadonnées sémantiques incomplètes, utilisation des valeurs originales");
+                        System.Diagnostics.Debug.WriteLine($"[MCCLibrary] FALLBACK activé : métadonnées sémantiques complétées");
                     }
                 }
 

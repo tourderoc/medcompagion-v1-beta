@@ -185,8 +185,16 @@
                 <!-- Footer Buttons -->
                 <Border DockPanel.Dock="Bottom" Background="#ECF0F1" Padding="15,10" BorderBrush="#DDD" BorderThickness="0,1,0,0">
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="SaveFormButton"
+                                Content="💾 Enregistrer le formulaire"
+                                Style="{StaticResource ActionButtonStyle}"
+                                Background="#27AE60"
+                                Foreground="White"
+                                BorderBrush="#1E8449"
+                                Click="SaveFormButton_Click"/>
+                        
                         <Button x:Name="CloseButton"
-                                Content="Fermer"
+                                Content="Annuler"
                                 Style="{StaticResource ActionButtonStyle}"
                                 Background="#95A5A6"
                                 Foreground="White"
@@ -237,7 +245,13 @@
                             <!-- Longueur -->
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="Longueur souhaitée" FontSize="13" FontWeight="SemiBold" Margin="0,0,0,5"/>
-                                <ComboBox x:Name="LengthComboBox" Padding="8" SelectedIndex="1">
+                                <ComboBox x:Name="LengthComboBox" Padding="8" IsEditable="True" Text="Moyen (standard)">
+                                    <ComboBoxItem Content="1 ligne"/>
+                                    <ComboBoxItem Content="2 lignes"/>
+                                    <ComboBoxItem Content="3 lignes"/>
+                                    <ComboBoxItem Content="4 lignes"/>
+                                    <ComboBoxItem Content="5 lignes"/>
+                                    <ComboBoxItem Content="10 lignes"/>
                                     <ComboBoxItem Content="Court (quelques lignes)"/>
                                     <ComboBoxItem Content="Moyen (standard)"/>
                                     <ComboBoxItem Content="Détaillé"/>

@@ -84,12 +84,33 @@ namespace MedCompanion.Dialogs
                 // AUTO-OPEN: Open the editor dialog to allow user to add zones
                 // We need to get the required services
                 var patientIndexService = new PatientIndexService();
-                var appSettings = new AppSettings();
+                var appSettings = AppSettings.Load();
                 var llmFactory = new LLMServiceFactory(appSettings);
-                var openAIService = new OpenAIService(llmFactory);
-                var formulaireService = new FormulaireAssistantService(openAIService);
+                var promptConfigService = new PromptConfigService(); // ✅ Créer instance pour OpenAIService
+                var anonymizationService = new AnonymizationService(appSettings); // ✅ MODIFIÉ : Passer AppSettings
+                var storageService = new StorageService(_pathService);
+                var patientContextService = new PatientContextService(storageService, patientIndexService);
+                var promptTracker = new PromptTrackerService();
+                var openAIService = new OpenAIService(llmFactory, promptConfigService, anonymizationService, promptTracker);
                 
-                var editorDialog = new ScannedFormEditorDialog(_patient, patientIndexService, formulaireService, destPdfPath);
+                // ✅ NOUVEAU : Initialiser LLMGatewayService
+                var llmGatewayService = new LLMGatewayService(llmFactory, anonymizationService, openAIService, _pathService);
+
+                var formulaireService = new FormulaireAssistantService(
+                    llmGatewayService,
+                    promptConfigService,
+                    patientContextService,
+                    anonymizationService,
+                    llmFactory,
+                    appSettings
+                );
+                
+                // Initialize OcrService
+                string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+                string tessDataPath = Path.Combine(appData, "MedCompanion", "tessdata");
+                var ocrService = new OcrService(tessDataPath);
+
+                var editorDialog = new ScannedFormEditorDialog(_patient, patientIndexService, formulaireService, destPdfPath, ocrService);
                 editorDialog.Owner = Application.Current.MainWindow;
                 editorDialog.ShowDialog();
             }

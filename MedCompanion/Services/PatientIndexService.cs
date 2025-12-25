@@ -186,47 +186,28 @@ namespace MedCompanion.Services
                 // Créer l'ID (Nom_Prenom)
                 var id = $"{metadata.Nom}_{metadata.Prenom.Replace(" ", "_")}";
                 var patientDir = Path.Combine(_patientsRoot, id);
-                
-                // DÉTECTER LES DOUBLONS POTENTIELS avant création
-                var similarPatients = _index.Where(p => 
-                    p.Id != id && // Pas le même ID
-                    (
-                        // Même nom ET prénom similaire (Gabin vs Gabin-GUILLOT)
-                        (p.Nom.Equals(metadata.Nom, StringComparison.OrdinalIgnoreCase) && 
-                         p.Prenom.Contains(metadata.Prenom, StringComparison.OrdinalIgnoreCase)) ||
-                        // Ou prénom similaire ET nom similaire  
-                        (p.Prenom.Equals(metadata.Prenom, StringComparison.OrdinalIgnoreCase) &&
-                         p.Nom.Contains(metadata.Nom, StringComparison.OrdinalIgnoreCase))
-                    )
-                ).ToList();
-                
-                // Si doublon détecté ET le nouveau patient n'a PAS de date de naissance
-                // MAIS l'ancien en a une → Proposer de compléter avec les infos de l'ancien
-                if (similarPatients.Count > 0 && string.IsNullOrEmpty(metadata.Dob))
+
+                // 🐛 DEBUG: Logger la création
+                System.Diagnostics.Debug.WriteLine($"[Upsert] Création patient: ID='{id}', Nom='{metadata.Nom}', Prenom='{metadata.Prenom}'");
+
+                // ✅ AMÉLIORATION: Détection de doublons AVANCÉE avec comparaison mot-à-mot et date de naissance
+                var duplicateResult = DetectDuplicates(metadata, id);
+
+                // Si doublon détecté avec score élevé (≥80%) → BLOQUER et demander confirmation utilisateur
+                if (duplicateResult.isDuplicate && duplicateResult.similarPatient != null)
                 {
-                    var similar = similarPatients.First();
-                    var similarMetadata = GetMetadata(similar.Id);
-                    
-                    // Si l'ancien patient a une date de naissance et/ou sexe, copier
-                    if (similarMetadata != null)
+                    var existingPatient = duplicateResult.similarPatient;
+                    var existingMetadata = GetMetadata(existingPatient.Id);
+
+                    // Formater le message d'alerte pour l'utilisateur
+                    var alertMessage = $"DUPLICATE_DETECTED|{existingPatient.Id}|{existingPatient.NomComplet}";
+                    if (existingMetadata != null && !string.IsNullOrEmpty(existingMetadata.Dob))
                     {
-                        if (!string.IsNullOrEmpty(similarMetadata.Dob))
-                        {
-                            metadata.Dob = similarMetadata.Dob;
-                        }
-                        if (!string.IsNullOrEmpty(similarMetadata.Sexe) && string.IsNullOrEmpty(metadata.Sexe))
-                        {
-                            metadata.Sexe = similarMetadata.Sexe;
-                        }
-                        if (!string.IsNullOrEmpty(similarMetadata.Ecole) && string.IsNullOrEmpty(metadata.Ecole))
-                        {
-                            metadata.Ecole = similarMetadata.Ecole;
-                        }
-                        if (!string.IsNullOrEmpty(similarMetadata.Classe) && string.IsNullOrEmpty(metadata.Classe))
-                        {
-                            metadata.Classe = similarMetadata.Classe;
-                        }
+                        alertMessage += $"|{existingMetadata.DobFormatted}";
                     }
+
+                    // ❌ NE PAS CRÉER - Retourner une alerte
+                    return (false, alertMessage, existingPatient.Id, existingPatient.DirectoryPath);
                 }
                 
                 // Créer le dossier si nécessaire
@@ -291,6 +272,63 @@ namespace MedCompanion.Services
             {
                 return (false, $"Erreur: {ex.Message}", null, null);
             }
+        }
+
+        /// <summary>
+        /// Détecte les doublons potentiels avec analyse mot-à-mot et date de naissance
+        /// Retourne (isDuplicate, similarPatient, similarityScore)
+        /// </summary>
+        private (bool isDuplicate, PatientIndexEntry? similarPatient, int score) DetectDuplicates(PatientMetadata newPatient, string newId)
+        {
+            var bestMatch = (isDuplicate: false, patient: (PatientIndexEntry?)null, score: 0);
+
+            foreach (var existingPatient in _index.Where(p => p.Id != newId))
+            {
+                int score = 0;
+                var existingMetadata = GetMetadata(existingPatient.Id);
+
+                // 1. Comparer les dates de naissance (si identiques = +50 points)
+                if (!string.IsNullOrEmpty(newPatient.Dob) &&
+                    !string.IsNullOrEmpty(existingMetadata?.Dob) &&
+                    newPatient.Dob == existingMetadata.Dob)
+                {
+                    score += 50;
+                }
+
+                // 2. Comparer les noms mot-à-mot (noms composés)
+                var newNomParts = newPatient.Nom.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => Normalize(p)).ToList();
+                var existingNomParts = existingPatient.Nom.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => Normalize(p)).ToList();
+
+                // Compter les mots en commun dans le nom
+                int commonNomWords = newNomParts.Count(w => existingNomParts.Contains(w));
+                if (commonNomWords > 0)
+                {
+                    score += (commonNomWords * 20); // +20 points par mot commun
+                }
+
+                // 3. Comparer les prénoms mot-à-mot (prénoms composés)
+                var newPrenomParts = newPatient.Prenom.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => Normalize(p)).ToList();
+                var existingPrenomParts = existingPatient.Prenom.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(p => Normalize(p)).ToList();
+
+                // Compter les mots en commun dans le prénom
+                int commonPrenomWords = newPrenomParts.Count(w => existingPrenomParts.Contains(w));
+                if (commonPrenomWords > 0)
+                {
+                    score += (commonPrenomWords * 15); // +15 points par mot commun
+                }
+
+                // 4. Si le score dépasse 80 → Doublon très probable
+                if (score >= 80 && score > bestMatch.score)
+                {
+                    bestMatch = (true, existingPatient, score);
+                }
+            }
+
+            return bestMatch;
         }
 
         /// <summary>
@@ -663,6 +701,19 @@ namespace MedCompanion.Services
         {
             var index = _recentPatientIds.IndexOf(patientId);
             return index; // 0 = plus récent, 1 = second plus récent, etc. -1 = pas dans l'historique
+        }
+
+        /// <summary>
+        /// Vérifie si un patient a des doublons potentiels
+        /// Retourne (hasDuplicates, duplicatePatient, similarityScore)
+        /// </summary>
+        public (bool hasDuplicates, PatientIndexEntry? duplicatePatient, int score) CheckForDuplicates(string patientId)
+        {
+            var metadata = GetMetadata(patientId);
+            if (metadata == null)
+                return (false, null, 0);
+
+            return DetectDuplicates(metadata, patientId);
         }
     }
 }

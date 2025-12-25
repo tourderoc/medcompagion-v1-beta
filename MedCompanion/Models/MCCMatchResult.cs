@@ -5,6 +5,17 @@ using MedCompanion.Services;
 namespace MedCompanion.Models
 {
     /// <summary>
+    /// Représente un MCC avec son score de matching
+    /// </summary>
+    public class MCCWithScore
+    {
+        public MCCModel MCC { get; set; }
+        public double RawScore { get; set; }
+        public double NormalizedScore { get; set; }
+        public Dictionary<string, double> ScoreBreakdown { get; set; }
+    }
+
+    /// <summary>
     /// Résultat détaillé du matching MCC
     /// </summary>
     public class MCCMatchResult
@@ -28,6 +39,11 @@ namespace MedCompanion.Models
         /// Score normalisé en pourcentage (0-100)
         /// </summary>
         public double NormalizedScore { get; set; }
+
+        /// <summary>
+        /// Les 3 meilleurs MCCs trouvés (triés par score décroissant)
+        /// </summary>
+        public List<MCCWithScore> TopMatches { get; set; } = new List<MCCWithScore>();
 
         /// <summary>
         /// Métadonnées de l'analyse IA
@@ -58,11 +74,12 @@ namespace MedCompanion.Models
         /// Constructeur pour un match réussi
         /// </summary>
         public static MCCMatchResult Success(
-            MCCModel mcc, 
-            double rawScore, 
+            MCCModel mcc,
+            double rawScore,
             LetterAnalysisResult analysis,
             Dictionary<string, double> scoreBreakdown,
-            List<string> logs)
+            List<string> logs,
+            List<MCCWithScore> topMatches = null)
         {
             return new MCCMatchResult
             {
@@ -72,7 +89,8 @@ namespace MedCompanion.Models
                 NormalizedScore = (rawScore / 210.0) * 100.0,
                 Analysis = analysis,
                 ScoreBreakdown = scoreBreakdown,
-                MatchingLogs = logs
+                MatchingLogs = logs,
+                TopMatches = topMatches ?? new List<MCCWithScore>()
             };
         }
 
@@ -84,12 +102,13 @@ namespace MedCompanion.Models
             double bestScore,
             LetterAnalysisResult analysis,
             int totalChecked,
-            List<string> logs)
+            List<string> logs,
+            MCCModel bestMCC = null)  // 🆕 Paramètre optionnel pour le meilleur MCC trouvé
         {
             return new MCCMatchResult
             {
                 HasMatch = false,
-                SelectedMCC = null,
+                SelectedMCC = bestMCC,  // 🆕 Inclure le meilleur MCC même si score insuffisant
                 RawScore = bestScore,
                 NormalizedScore = (bestScore / 210.0) * 100.0,
                 Analysis = analysis,

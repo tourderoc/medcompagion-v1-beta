@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using MedCompanion.Models;
 using UglyToad.PdfPig;
+using MedCompanion.Services.LLM; // ✅ AJOUT
 
 namespace MedCompanion.Services
 {
@@ -15,14 +16,22 @@ namespace MedCompanion.Services
     /// </summary>
     public class DocumentService
     {
-        private readonly OpenAIService _aiService;
+        private readonly LLMGatewayService _llmGatewayService; // ✅ NOUVEAU
         private readonly PathService _pathService;
+        private readonly LLMServiceFactory _llmFactory; // ✅ NOUVEAU pour le nettoyage local
+        private readonly AppSettings _settings; // ✅ NOUVEAU pour AnonymizationModel
         private const string IndexFileName = "documents-index.json";
-        
-        public DocumentService(OpenAIService aiService, PathService pathService)
+
+        public DocumentService(
+            LLMGatewayService llmGatewayService, 
+            PathService pathService, 
+            LLMServiceFactory llmFactory,
+            AppSettings settings)
         {
-            _aiService = aiService;
+            _llmGatewayService = llmGatewayService;
             _pathService = pathService;
+            _llmFactory = llmFactory;
+            _settings = settings;
         }
         
         /// <summary>
@@ -76,16 +85,19 @@ namespace MedCompanion.Services
                 // Assurer la structure de dossiers
                 EnsureDocumentStructure(nomComplet);
                 
-                // Extraire le texte du document
+                // ÉTAPE 1 : Extraire le texte du document
                 string extractedText = await ExtractTextFromFileAsync(sourceFilePath);
                 
                 if (string.IsNullOrWhiteSpace(extractedText))
                 {
                     return (false, null, "Impossible d'extraire le texte du document.");
                 }
+
+                // ÉTAPE 2 : Nettoyage local via Ollama (Indépendant du patient, texte brut)
+                string cleanedText = await CleanAndStructureOcrViaLocalLLMAsync(extractedText);
                 
-                // Analyser avec l'IA pour catégorisation et nommage
-                var analysis = await AnalyzeDocumentWithAIAsync(extractedText, fileInfo.Name);
+                // ÉTAPE 3 : Analyser avec l'IA pour catégorisation et nommage (via Gateway pour anonymisation)
+                var analysis = await AnalyzeDocumentWithAIAsync(cleanedText, fileInfo.Name, nomComplet);
                 
                 // Créer l'objet document
                 var document = new PatientDocument
@@ -93,7 +105,7 @@ namespace MedCompanion.Services
                     FileName = analysis.suggestedName + extension,
                     Category = analysis.category,
                     Summary = analysis.summary,
-                    ExtractedText = extractedText,
+                    ExtractedText = cleanedText, // Sauvegarder le texte NETTOYÉ
                     FileSizeBytes = fileInfo.Length,
                     FileExtension = extension,
                     DateAdded = DateTime.Now
@@ -182,6 +194,94 @@ namespace MedCompanion.Services
                 return string.Empty;
             }
         }
+
+        /// <summary>
+        /// Nettoie et structure le texte OCR via un LLM local (Ollama)
+        /// Utilise le modèle spécifié dans les paramètres de confidentialité.
+        /// </summary>
+        public async Task<string> CleanAndStructureOcrViaLocalLLMAsync(string rawOcrText)
+        {
+            if (string.IsNullOrWhiteSpace(rawOcrText)) return string.Empty;
+
+            try
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocumentService] 🛡️ Nettoyage OCR (Local) - Début (Modèle: {_settings.AnonymizationModel})");
+
+                // 1. Récupérer le modèle local spécifié
+                string localModel = _settings.AnonymizationModel;
+                
+                // 2. Préparer le prompt de nettoyage
+                var systemPrompt = @"Tu es un expert en traitement de texte médical. 
+Ton rôle est de NETTOYER et de RESTRUCTURER le texte issu d'un OCR bruité.
+
+RÈGLES :
+1. Corrige les erreurs de lecture évidentes (ex: 'Patien1' -> 'Patient').
+2. Reconstruit les paragraphes et les phrases pour qu'ils soient lisibles.
+3. Supprime les artéfacts d'OCR (caractères spéciaux isolés, numéros de page mal placés).
+4. CONSERVE l'intégralité des informations cliniques et des noms.
+5. NE FAIS AUCUNE SYNTHÈSE, garde le texte intégral mais propre.
+6. Retourne UNIQUEMENT le texte nettoyé, sans aucun commentaire.";
+
+                var prompt = $@"Texte OCR brut :
+--------------------
+{rawOcrText}
+--------------------
+
+Tâche : Nettoie et restructure ce texte pour le rendre parfaitement lisible.";
+
+                // 3. Utiliser le provider local via la Factory
+                var currentProvider = _llmFactory.GetCurrentProvider();
+                
+                // Si le provider actuel n'est pas celui de l'anonymisation (local), on peut quand même tenter
+                // mais l'objectif est d'utiliser le modèle local configuré.
+                // On va simuler un appel "direct" si possible ou passer par le provider s'il est configuré en local.
+                
+                if (currentProvider is MedCompanion.Services.LLM.OllamaLLMProvider ollama)
+                {
+                    // Sauvegarder le modèle actuel pour le restaurer après
+                    string originalModel = ollama.GetModelName();
+                    
+                    try 
+                    {
+                        // Basculer temporairement sur le modèle de nettoyage
+                        ollama.SetModel(localModel);
+                        
+                        var messages = new List<(string role, string content)> 
+                        {
+                            ("system", systemPrompt),
+                            ("user", prompt)
+                        };
+
+                        var (success, result, error) = await ollama.ChatAsync(systemPrompt, messages, 2048);
+                        
+                        if (success)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[DocumentService] ✓ Nettoyage OCR terminé ({result.Length} caractères)");
+                            return result;
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"[DocumentService] ✗ Échec nettoyage OCR: {error}");
+                        }
+                    }
+                    finally
+                    {
+                        // Restaurer le modèle original
+                        ollama.SetModel(originalModel);
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine("[DocumentService] ⚠️ Provider local non actif. Nettoyage OCR ignoré.");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[DocumentService] ✗ Erreur fatale nettoyage OCR: {ex.Message}");
+            }
+
+            return rawOcrText; // Fallback sur le texte brut en cas d'erreur
+        }
         
         /// <summary>
         /// Extrait le texte d'un fichier PDF avec PdfPig
@@ -219,7 +319,8 @@ namespace MedCompanion.Services
         /// </summary>
         private async Task<(string category, string suggestedName, string summary)> AnalyzeDocumentWithAIAsync(
             string documentText, 
-            string originalFileName)
+            string originalFileName,
+            string patientName) // Ajout patientName pour Gateway
         {
             try
             {
@@ -236,10 +337,12 @@ CATÉGORIE: [catégorie]
 NOM: [nom_fichier]
 SYNTHESE: [synthèse]";
 
-                var (success, response) = await _aiService.ChatAvecContexteAsync("", prompt);
+                var messages = new List<(string role, string content)> { ("user", prompt) };
+                var (success, response, error) = await _llmGatewayService.ChatAsync("", messages, patientName);
                 
                 if (!success)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[DocumentService] Erreur analyse IA: {error}");
                     return (DocumentCategories.Autres, 
                             DateTime.Now.ToString("yyyy-MM-dd") + "_" + Path.GetFileNameWithoutExtension(originalFileName), 
                             "Document médical");
@@ -363,11 +466,12 @@ Crée une synthèse en Markdown avec:
 ## Points d'Attention
 [Ce qui nécessite un suivi]";
 
-                var (success, synthesis) = await _aiService.ChatAvecContexteAsync("", prompt);
+                var messages = new List<(string role, string content)> { ("user", prompt) };
+                var (success, synthesis, error) = await _llmGatewayService.ChatAsync("", messages, nomComplet);
                 
                 if (!success)
                 {
-                    return $"Erreur lors de la génération de la synthèse: {synthesis}";
+                    return $"Erreur lors de la génération de la synthèse: {error ?? synthesis}";
                 }
                 
                 // Sauvegarder la synthèse
@@ -384,15 +488,22 @@ Crée une synthèse en Markdown avec:
         }
         
         /// <summary>
-        /// Génère une synthèse d'un seul document spécifique
+        /// Génère une synthèse d'un seul document spécifique avec anonymisation si nécessaire
         /// </summary>
-        public async Task<(string synthesis, double relevanceWeight)> GenerateSingleDocumentSynthesisAsync(PatientDocument document)
+        public async Task<(string synthesis, double relevanceWeight)> GenerateSingleDocumentSynthesisAsync(
+            PatientDocument document,
+            PatientMetadata? patientData = null)
         {
             if (document == null)
                 return ("Aucun document fourni.", 0.0);
 
             try
             {
+                // ✅ ÉTAPE 1 : Nettoyage OCR si non déjà fait (ou optionnel s'il est déjà propre)
+                // Pour l'instant on considère que document.ExtractedText est déjà nettoyé s'il vient d'ImportDocumentAsync
+                string contentToAnalyze = document.ExtractedText;
+
+                // ✅ ÉTAPE 2 : Préparer le prompt de synthèse
                 var basePrompt = $@"Tu es un assistant médical. Analyse ce document patient et génère une synthèse détaillée en Markdown.
 
 Document: {document.FileName}
@@ -400,7 +511,7 @@ Catégorie: {DocumentCategories.GetDisplayName(document.Category)}
 Date: {document.DateAddedDisplay}
 
 Contenu extrait:
-{document.ExtractedText}
+{contentToAnalyze}
 
 Crée une synthèse structurée avec:
 # Synthèse du Document: {document.FileName}
@@ -416,10 +527,7 @@ Crée une synthèse structurée avec:
 [Points importants à retenir]
 
 ## Recommandations
-[Si applicable, recommandations ou suivi nécessaire]";
-
-                // NOUVEAU : Ajouter évaluation du poids de pertinence
-                var prompt = basePrompt + @"
+[Si applicable, recommandations ou suivi nécessaire]
 
 ---
 ÉVALUATION IMPORTANCE (pour mise à jour synthèse patient) :
@@ -432,14 +540,17 @@ Crée une synthèse structurée avec:
 **Poids 0.1-0.3** : Document administratif avec infos cliniques mineures
 
 À la fin de ta synthèse, ajoute une ligne :
-POIDS_SYNTHESE: X.X
-";
+POIDS_SYNTHESE: X.X";
 
-                var (success, synthesis) = await _aiService.ChatAvecContexteAsync("", prompt);
+                string patientName = patientData != null ? $"{patientData.Prenom} {patientData.Nom}".Trim() : "";
+
+                // ✅ ÉTAPE 3 : Appel Gateway (Anonymisation 3 phases + Chat + Désanonymisation automatique)
+                var messages = new List<(string role, string content)> { ("user", basePrompt) };
+                var (success, synthesis, error) = await _llmGatewayService.ChatAsync("", messages, patientName);
 
                 if (!success)
                 {
-                    return ($"Erreur lors de la génération de la synthèse:\n\n{synthesis}", 0.0);
+                    return ($"Erreur lors de la génération de la synthèse:\n\n{error ?? synthesis}", 0.0);
                 }
 
                 // Extraire le poids de la réponse

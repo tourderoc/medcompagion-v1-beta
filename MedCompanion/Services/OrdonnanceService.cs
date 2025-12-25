@@ -13,13 +13,19 @@ public class OrdonnanceService
     private readonly StorageService _storageService;
     private readonly AppSettings _settings;
     private readonly SynthesisWeightTracker _weightTracker;
+    private readonly OrdonnancePDFService _pdfService;
+    private readonly OrdonnanceDocxService _docxService;
+    private readonly DocxToPdfService _docxToPdfService;
 
     public OrdonnanceService(LetterService letterService, StorageService storageService, PathService pathService)
     {
         _letterService = letterService;
         _storageService = storageService;
-        _settings = new AppSettings();
+        _settings = AppSettings.Load();
         _weightTracker = new SynthesisWeightTracker(pathService);
+        _pdfService = new OrdonnancePDFService();
+        _docxService = new OrdonnanceDocxService();
+        _docxToPdfService = new DocxToPdfService();
     }
     
     /// <summary>
@@ -193,9 +199,9 @@ public class OrdonnanceService
     }
 
     /// <summary>
-    /// Sauvegarde une ordonnance de biologie (Markdown + DOCX) et retourne les chemins
+    /// Sauvegarde une ordonnance de biologie (Markdown + DOCX + PDF) et retourne les chemins
     /// </summary>
-    public (bool success, string message, string? mdPath, string? docxPath) SaveOrdonnanceBiologie(
+    public (bool success, string message, string? mdPath, string? docxPath, string? pdfPath) SaveOrdonnanceBiologie(
         string patientName,
         OrdonnanceBiologie ordonnance)
     {
@@ -231,29 +237,96 @@ public class OrdonnanceService
 
             System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceBiologie] Export DOCX - Success: {exportSuccess}, Message: {exportMessage}, Path: {docxPath ?? "NULL"}");
 
+            // Générer le PDF professionnel
+            string? pdfPath = null;
+            try
+            {
+                pdfPath = Path.Combine(ordonnancesDir, $"{fileName}.pdf");
+
+                // Récupérer les métadonnées du patient
+                var patientJsonPath = Path.Combine(patientDir, "info_patient", "patient.json");
+                PatientMetadata? patientMetadata = null;
+
+                if (File.Exists(patientJsonPath))
+                {
+                    var patientJson = File.ReadAllText(patientJsonPath, Encoding.UTF8);
+                    System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] JSON brut (premiers 200 chars): {patientJson.Substring(0, Math.Min(200, patientJson.Length))}");
+
+                    patientMetadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(patientJson, new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+                    System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] APRÈS désérialisation:");
+                    System.Diagnostics.Debug.WriteLine($"  Nom={patientMetadata?.Nom}, Prenom={patientMetadata?.Prenom}");
+                    System.Diagnostics.Debug.WriteLine($"  Dob='{patientMetadata?.Dob}', DobFormatted='{patientMetadata?.DobFormatted}', Age={patientMetadata?.Age}");
+                }
+                else
+                {
+                    // Créer un PatientMetadata minimal si le fichier n'existe pas
+                    patientMetadata = new PatientMetadata
+                    {
+                        Nom = patientName.Split('_').FirstOrDefault() ?? "",
+                        Prenom = patientName.Split('_').Skip(1).FirstOrDefault() ?? ""
+                    };
+                }
+
+                if (patientMetadata != null)
+                {
+                    var pdfSuccess = _pdfService.GenerateOrdonnanceBiologiePDF(ordonnance, patientMetadata, pdfPath);
+
+                    if (pdfSuccess)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceBiologie] ✅ PDF créé avec succès: {pdfPath}");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceBiologie] ❌ Erreur génération PDF");
+                        pdfPath = null;
+                    }
+                }
+            }
+            catch (Exception pdfEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceBiologie] Erreur génération PDF: {pdfEx.Message}");
+                pdfPath = null;
+            }
+
+            // Construire le message de résultat
+            var formats = new List<string>();
+            if (exportSuccess && !string.IsNullOrEmpty(docxPath)) formats.Add("DOCX");
+            if (!string.IsNullOrEmpty(pdfPath)) formats.Add("PDF");
+
+            var formatList = formats.Count > 0 ? string.Join(" + ", formats) : "Markdown";
+
             if (exportSuccess && !string.IsNullOrEmpty(docxPath))
             {
-                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceBiologie] ✅ DOCX créé avec succès: {docxPath}");
-                return (true, "✅ Ordonnance biologie générée et exportée en DOCX", mdPath, docxPath);
+                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceBiologie] ✅ Ordonnance créée: {formatList}");
+                return (true, $"✅ Ordonnance biologie générée ({formatList})", mdPath, docxPath, pdfPath);
             }
             else
             {
                 System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceBiologie] ❌ DOCX NON créé - Erreur: {exportMessage}");
-                return (true, $"⚠️ Ordonnance sauvegardée mais erreur export DOCX: {exportMessage}", mdPath, null);
+                return (true, $"⚠️ Ordonnance sauvegardée mais erreur export DOCX: {exportMessage}", mdPath, null, pdfPath);
             }
         }
         catch (Exception ex)
         {
-            return (false, $"Erreur lors de la sauvegarde: {ex.Message}", null, null);
+            return (false, $"Erreur lors de la sauvegarde: {ex.Message}", null, null, null);
         }
     }
 
     /// <summary>
-    /// Sauvegarde une ordonnance de médicaments (Markdown + DOCX) et retourne les chemins
+    /// Sauvegarde une ordonnance de médicaments (Markdown + DOCX + PDF) et retourne les chemins
     /// </summary>
-    public (bool success, string message, string? mdPath, string? docxPath) SaveOrdonnanceMedicaments(
+    /// <param name="patientName">Nom complet du patient</param>
+    /// <param name="ordonnance">Ordonnance à sauvegarder</param>
+    /// <param name="patientMetadata">Métadonnées du patient (optionnel, pour inclure date de naissance/âge)</param>
+    /// <param name="metadata">Métadonnées additionnelles pour le système de poids</param>
+    public (bool success, string message, string? mdPath, string? docxPath, string? pdfPath) SaveOrdonnanceMedicaments(
         string patientName,
         OrdonnanceMedicaments ordonnance,
+        PatientMetadata? patientMetadata = null,
         Dictionary<string, object>? metadata = null)
     {
         try
@@ -279,14 +352,74 @@ public class OrdonnanceService
 
             System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] Markdown sauvegardé: {mdPath}");
 
-            // Exporter en DOCX
-            var (exportSuccess, exportMessage, docxPath) = _letterService.ExportToDocx(
-                patientName,
-                markdown,
-                mdPath
-            );
+            // Utiliser le PatientMetadata passé en paramètre, sinon lire depuis le fichier JSON
+            PatientMetadata? effectivePatientMetadata = patientMetadata;
 
-            System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] Export DOCX - Success: {exportSuccess}, Message: {exportMessage}, Path: {docxPath ?? "NULL"}");
+            if (effectivePatientMetadata == null)
+            {
+                // Récupérer les métadonnées du patient depuis le fichier JSON si non passées en paramètre
+                var patientJsonPath = Path.Combine(patientDir, "info_patient", "patient.json");
+
+                if (File.Exists(patientJsonPath))
+                {
+                    var patientJson = File.ReadAllText(patientJsonPath, Encoding.UTF8);
+                    effectivePatientMetadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(patientJson, new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+                }
+                else
+                {
+                    // Créer un PatientMetadata minimal si le fichier n'existe pas
+                    effectivePatientMetadata = new PatientMetadata
+                    {
+                        Nom = patientName.Split('_').FirstOrDefault() ?? "",
+                        Prenom = patientName.Split('_').Skip(1).FirstOrDefault() ?? ""
+                    };
+                }
+            }
+
+            System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] PatientMetadata - Nom={effectivePatientMetadata?.Nom}, Prenom={effectivePatientMetadata?.Prenom}, Dob={effectivePatientMetadata?.Dob}, Age={effectivePatientMetadata?.Age}");
+
+            // Générer le DOCX professionnel avec images
+            string? docxPath = null;
+            bool exportSuccess = false;
+            string exportMessage = "";
+
+            if (effectivePatientMetadata != null)
+            {
+                docxPath = Path.Combine(ordonnancesDir, $"{fileName}.docx");
+                exportSuccess = _docxService.GenerateOrdonnanceMedicamentsDocx(ordonnance, effectivePatientMetadata, docxPath);
+                exportMessage = exportSuccess ? "DOCX créé avec succès" : "Erreur création DOCX";
+
+                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] DOCX - Success: {exportSuccess}, Path: {docxPath ?? "NULL"}");
+            }
+
+            // Convertir le DOCX en PDF
+            string? pdfPath = null;
+            if (exportSuccess && !string.IsNullOrEmpty(docxPath) && File.Exists(docxPath))
+            {
+                try
+                {
+                    pdfPath = Path.Combine(ordonnancesDir, $"{fileName}.pdf");
+                    var pdfSuccess = _docxToPdfService.ConvertDocxToPdf(docxPath, pdfPath);
+
+                    if (pdfSuccess)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] ✅ PDF créé avec succès: {pdfPath}");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] ❌ Erreur conversion DOCX→PDF");
+                        pdfPath = null;
+                    }
+                }
+                catch (Exception pdfEx)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] Erreur conversion PDF: {pdfEx.Message}");
+                    pdfPath = null;
+                }
+            }
 
             // Enregistrer le poids pour la synthèse
             var weight = ContentWeightRules.GetDefaultWeight("ordonnance", metadata) ?? 0.5;
@@ -304,27 +437,34 @@ public class OrdonnanceService
 
             System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] Poids enregistré: {weight} - {justification}");
 
+            // Construire le message de résultat
+            var formats = new List<string>();
+            if (exportSuccess && !string.IsNullOrEmpty(docxPath)) formats.Add("DOCX");
+            if (!string.IsNullOrEmpty(pdfPath)) formats.Add("PDF");
+
+            var formatList = formats.Count > 0 ? string.Join(" + ", formats) : "Markdown";
+
             if (exportSuccess && !string.IsNullOrEmpty(docxPath))
             {
-                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] ✅ DOCX créé avec succès: {docxPath}");
-                return (true, "✅ Ordonnance médicaments générée et exportée en DOCX", mdPath, docxPath);
+                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] ✅ Ordonnance créée: {formatList}");
+                return (true, $"✅ Ordonnance médicaments générée ({formatList})", mdPath, docxPath, pdfPath);
             }
             else
             {
                 System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] ❌ DOCX NON créé - Erreur: {exportMessage}");
-                return (true, $"⚠️ Ordonnance sauvegardée mais erreur export DOCX: {exportMessage}", mdPath, null);
+                return (true, $"⚠️ Ordonnance sauvegardée mais erreur export DOCX: {exportMessage}", mdPath, null, pdfPath);
             }
         }
         catch (Exception ex)
         {
-            return (false, $"Erreur lors de la sauvegarde: {ex.Message}", null, null);
+            return (false, $"Erreur lors de la sauvegarde: {ex.Message}", null, null, null);
         }
     }
 
     /// <summary>
-    /// Sauvegarde une ordonnance IDE (Markdown + DOCX) et retourne les chemins
+    /// Sauvegarde une ordonnance IDE (Markdown + DOCX + PDF) et retourne les chemins
     /// </summary>
-    public (bool success, string message, string? mdPath, string? docxPath) SaveOrdonnanceIDE(
+    public (bool success, string message, string? mdPath, string? docxPath, string? pdfPath) SaveOrdonnanceIDE(
         string patientName,
         OrdonnanceIDE ordonnance)
     {
@@ -360,21 +500,83 @@ public class OrdonnanceService
             );
             
             System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceIDE] Export DOCX - Success: {exportSuccess}, Message: {exportMessage}, Path: {docxPath ?? "NULL"}");
-            
+
+            // Générer le PDF professionnel
+            string? pdfPath = null;
+            try
+            {
+                pdfPath = Path.Combine(ordonnancesDir, $"{fileName}.pdf");
+
+                // Récupérer les métadonnées du patient
+                var patientJsonPath = Path.Combine(patientDir, "info_patient", "patient.json");
+                PatientMetadata? patientMetadata = null;
+
+                if (File.Exists(patientJsonPath))
+                {
+                    var patientJson = File.ReadAllText(patientJsonPath, Encoding.UTF8);
+                    System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] JSON brut (premiers 200 chars): {patientJson.Substring(0, Math.Min(200, patientJson.Length))}");
+
+                    patientMetadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(patientJson, new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    });
+
+                    System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceMedicaments] APRÈS désérialisation:");
+                    System.Diagnostics.Debug.WriteLine($"  Nom={patientMetadata?.Nom}, Prenom={patientMetadata?.Prenom}");
+                    System.Diagnostics.Debug.WriteLine($"  Dob='{patientMetadata?.Dob}', DobFormatted='{patientMetadata?.DobFormatted}', Age={patientMetadata?.Age}");
+                }
+                else
+                {
+                    // Créer un PatientMetadata minimal si le fichier n'existe pas
+                    patientMetadata = new PatientMetadata
+                    {
+                        Nom = patientName.Split('_').FirstOrDefault() ?? "",
+                        Prenom = patientName.Split('_').Skip(1).FirstOrDefault() ?? ""
+                    };
+                }
+
+                if (patientMetadata != null)
+                {
+                    var pdfSuccess = _pdfService.GenerateOrdonnanceIDEPDF(ordonnance, patientMetadata, pdfPath);
+
+                    if (pdfSuccess)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceIDE] ✅ PDF créé avec succès: {pdfPath}");
+                    }
+                    else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceIDE] ❌ Erreur génération PDF");
+                        pdfPath = null;
+                    }
+                }
+            }
+            catch (Exception pdfEx)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceIDE] Erreur génération PDF: {pdfEx.Message}");
+                pdfPath = null;
+            }
+
+            // Construire le message de résultat
+            var formats = new List<string>();
+            if (exportSuccess && !string.IsNullOrEmpty(docxPath)) formats.Add("DOCX");
+            if (!string.IsNullOrEmpty(pdfPath)) formats.Add("PDF");
+
+            var formatList = formats.Count > 0 ? string.Join(" + ", formats) : "Markdown";
+
             if (exportSuccess && !string.IsNullOrEmpty(docxPath))
             {
-                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceIDE] ✅ DOCX créé avec succès: {docxPath}");
-                return (true, "✅ Ordonnance IDE générée et exportée en DOCX", mdPath, docxPath);
+                System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceIDE] ✅ Ordonnance créée: {formatList}");
+                return (true, $"✅ Ordonnance IDE générée ({formatList})", mdPath, docxPath, pdfPath);
             }
             else
             {
                 System.Diagnostics.Debug.WriteLine($"[SaveOrdonnanceIDE] ❌ DOCX NON créé - Erreur: {exportMessage}");
-                return (true, $"⚠️ Ordonnance sauvegardée mais erreur export DOCX: {exportMessage}", mdPath, null);
+                return (true, $"⚠️ Ordonnance sauvegardée mais erreur export DOCX: {exportMessage}", mdPath, null, pdfPath);
             }
         }
         catch (Exception ex)
         {
-            return (false, $"Erreur lors de la sauvegarde: {ex.Message}", null, null);
+            return (false, $"Erreur lors de la sauvegarde: {ex.Message}", null, null, null);
         }
     }
     
@@ -413,7 +615,25 @@ public class OrdonnanceService
                 else if (fileName.StartsWith("MED_", StringComparison.OrdinalIgnoreCase))
                     type = "Médicaments";
                 else
-                    type = "Autre";
+                {
+                    // Pour les anciennes ordonnances sans préfixe, détecter le type par le contenu
+                    try
+                    {
+                        var content = File.ReadAllText(mdFile);
+                        if (content.Contains("ORDONNANCE DE SOINS INFIRMIERS"))
+                            type = "IDE";
+                        else if (content.Contains("ORDONNANCE DE BIOLOGIE"))
+                            type = "Biologie";
+                        else if (content.Contains("# ORDONNANCE") && (content.Contains("Posologie") || content.Contains("**Durée")))
+                            type = "Médicaments";
+                        else
+                            type = "Autre";
+                    }
+                    catch
+                    {
+                        type = "Autre";
+                    }
+                }
 
                 // Lire le preview avec extraction intelligente du contenu
                 string preview = "Ordonnance";
@@ -572,7 +792,7 @@ public class OrdonnanceService
             foreach (var docxFile in docxFiles)
             {
                 var mdFile = Path.ChangeExtension(docxFile, ".md");
-                
+
                 // Si le .md n'existe pas, c'est un orphelin
                 if (!File.Exists(mdFile))
                 {
@@ -588,10 +808,15 @@ public class OrdonnanceService
                     else if (fileName.StartsWith("MED_", StringComparison.OrdinalIgnoreCase))
                         type = "Médicaments";
                     else
-                        type = "Autre";
-                    
-                    string preview = "Ordonnance (DOCX uniquement)";
-                    
+                    {
+                        // Pour les anciennes ordonnances DOCX sans préfixe, essayer de détecter par nom de fichier
+                        // (impossible de lire le contenu d'un DOCX facilement sans bibliothèque)
+                        // Par défaut, on considère que c'est une ordonnance de médicaments
+                        type = "Médicaments";  // Hypothèse: la plupart des ordonnances sont des médicaments
+                    }
+
+                    string preview = "Ordonnance (DOCX uniquement - ancien format)";
+
                     // Utiliser le chemin du .docx comme "mdPath" pour la suppression
                     result.Add((fileInfo.LastWriteTime, type, preview, docxFile, docxFile));
                 }
@@ -609,7 +834,7 @@ public class OrdonnanceService
     }
     
     /// <summary>
-    /// Supprime une ordonnance (MD + DOCX, ou juste DOCX orphelin)
+    /// Supprime une ordonnance (MD + DOCX + PDF, ou juste DOCX orphelin)
     /// </summary>
     public (bool success, string message) DeleteOrdonnance(string filePath)
     {
@@ -620,7 +845,7 @@ public class OrdonnanceService
             
             if (extension == ".md")
             {
-                // Cas normal : supprimer .md + .docx
+                // Cas normal : supprimer .md + .docx + .pdf
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
@@ -631,13 +856,29 @@ public class OrdonnanceService
                 {
                     File.Delete(docxPath);
                 }
+                
+                // Supprimer également le PDF
+                var pdfPath = Path.ChangeExtension(filePath, ".pdf");
+                if (File.Exists(pdfPath))
+                {
+                    File.Delete(pdfPath);
+                    System.Diagnostics.Debug.WriteLine($"[DeleteOrdonnance] PDF supprimé: {pdfPath}");
+                }
             }
             else if (extension == ".docx")
             {
-                // Cas orphelin : supprimer uniquement le .docx
+                // Cas orphelin : supprimer uniquement le .docx + .pdf si existe
                 if (File.Exists(filePath))
                 {
                     File.Delete(filePath);
+                }
+                
+                // Supprimer également le PDF correspondant s'il existe
+                var pdfPath = Path.ChangeExtension(filePath, ".pdf");
+                if (File.Exists(pdfPath))
+                {
+                    File.Delete(pdfPath);
+                    System.Diagnostics.Debug.WriteLine($"[DeleteOrdonnance] PDF orphelin supprimé: {pdfPath}");
                 }
             }
             
@@ -704,7 +945,7 @@ public class OrdonnanceService
                     if (parts.Length == 2)
                     {
                         var key = parts[0].Trim().Trim('*').ToLower();
-                        var value = parts[1].Trim();
+                        var value = parts[1].Trim().TrimStart('*').Trim(); // Enlever les astérisques en début de valeur
 
                         switch (key)
                         {
@@ -771,14 +1012,17 @@ public class OrdonnanceService
             // Récupérer toutes les ordonnances du patient
             var ordonnances = GetOrdonnances(patientName);
 
-            // Filtrer pour ne garder que les ordonnances de médicaments
+            // Filtrer pour ne garder que les ordonnances de médicaments avec fichier .md
+            // (exclure les anciennes ordonnances DOCX orphelines qui ne peuvent pas être parsées)
             var medicamentsOrdonnances = ordonnances
-                .Where(o => o.type == "Médicaments")
+                .Where(o => o.type == "Médicaments" && o.mdPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             if (medicamentsOrdonnances.Count == 0)
             {
-                return (false, new List<MedicamentPrescrit>(), "Aucune ordonnance de médicaments trouvée");
+                return (false, new List<MedicamentPrescrit>(),
+                    "Aucune ordonnance de médicaments trouvée.\n\n" +
+                    "💡 Pour utiliser la fonction de renouvellement, créez d'abord une nouvelle ordonnance avec le système actuel.");
             }
 
             // Prendre la première (déjà triée par date DESC dans GetOrdonnances)
@@ -808,6 +1052,48 @@ public class OrdonnanceService
         catch (Exception ex)
         {
             return (false, new List<MedicamentPrescrit>(), $"Erreur: {ex.Message}");
+        }
+        }
+
+    /// <summary>
+    /// Convertit un fichier Markdown existant en DOCX et PDF
+    /// </summary>
+    public (bool success, string message, string? docxPath, string? pdfPath) ConvertMarkdownToDocxAndPdf(string patientName, string mdPath)
+    {
+        try
+        {
+            if (!File.Exists(mdPath))
+            {
+                return (false, "Fichier Markdown introuvable", null, null);
+            }
+
+            var markdown = File.ReadAllText(mdPath, Encoding.UTF8);
+            
+            // Exporter en DOCX via LetterService
+            var (exportSuccess, exportMessage, docxPath) = _letterService.ExportToDocx(
+                patientName,
+                markdown,
+                mdPath
+            );
+
+            if (!exportSuccess || string.IsNullOrEmpty(docxPath))
+            {
+                return (false, $"Erreur création DOCX: {exportMessage}", null, null);
+            }
+
+            // Convertir DOCX en PDF via DocxToPdfService
+            string? pdfPath = Path.ChangeExtension(docxPath, ".pdf");
+            bool pdfSuccess = _docxToPdfService.ConvertDocxToPdf(docxPath, pdfPath);
+
+            string message = pdfSuccess 
+                ? "Documents générés avec succès (DOCX + PDF)" 
+                : "DOCX généré avec succès, mais échec PDF";
+
+            return (true, message, docxPath, pdfSuccess ? pdfPath : null);
+        }
+        catch (Exception ex)
+        {
+            return (false, $"Erreur conversion: {ex.Message}", null, null);
         }
     }
 }

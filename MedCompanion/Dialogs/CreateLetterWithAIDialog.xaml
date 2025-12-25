@@ -56,7 +56,7 @@
             <!-- Bouton toggle Options avancées -->
             <Button x:Name="AdvancedOptionsToggle"
                     Grid.Row="2"
-                    Content="⚙️ Options avancées ▼"
+                    Content="⚙️ Options avancées ▲"
                     HorizontalAlignment="Left"
                     FontSize="12"
                     FontWeight="SemiBold"
@@ -88,7 +88,7 @@
             <!-- Section Options avancées (masquée par défaut) -->
             <Border x:Name="AdvancedOptionsPanel"
                     Grid.Row="3"
-                    Visibility="Collapsed"
+                    Visibility="Visible"
                     BorderBrush="#E0E0E0"
                     BorderThickness="1"
                     CornerRadius="6"
@@ -112,8 +112,9 @@
                     <!-- Ligne 1: Destinataire et Ton -->
                     <StackPanel Grid.Row="0" Grid.Column="0">
                         <TextBlock Text="Destinataire" FontSize="11" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,4"/>
-                        <ComboBox x:Name="RecipientCombo" FontSize="11" Height="32">
-                            <ComboBoxItem Content="👨‍⚕️ Confrère médecin" IsSelected="True"/>
+                        <ComboBox x:Name="RecipientCombo" FontSize="11" Height="32" IsEditable="True">
+                            <ComboBoxItem Content="Automatique" IsSelected="True"/>
+                            <ComboBoxItem Content="👨‍⚕️ Confrère médecin"/>
                             <ComboBoxItem Content="🏫 Établissement scolaire"/>
                             <ComboBoxItem Content="🏛️ Administration (MDPH, CPAM...)"/>
                             <ComboBoxItem Content="⚖️ Justice / Avocat"/>
@@ -126,7 +127,8 @@
                     <StackPanel Grid.Row="0" Grid.Column="2">
                         <TextBlock Text="Ton" FontSize="11" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,4"/>
                         <ComboBox x:Name="ToneCombo" FontSize="11" Height="32">
-                            <ComboBoxItem Content="🤝 Bienveillant et empathique" IsSelected="True"/>
+                            <ComboBoxItem Content="Automatique" IsSelected="True"/>
+                            <ComboBoxItem Content="🤝 Bienveillant et empathique"/>
                             <ComboBoxItem Content="💼 Professionnel neutre"/>
                             <ComboBoxItem Content="🏛️ Administratif formel"/>
                             <ComboBoxItem Content="⚖️ Juridique prudent"/>
@@ -139,8 +141,9 @@
                     <StackPanel Grid.Row="2" Grid.Column="0">
                         <TextBlock Text="Longueur" FontSize="11" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,4"/>
                         <ComboBox x:Name="LengthCombo" FontSize="11" Height="32">
+                            <ComboBoxItem Content="Automatique" IsSelected="True"/>
                             <ComboBoxItem Content="📝 Court (≤ 10 lignes)"/>
-                            <ComboBoxItem Content="📄 Moyen (10-20 lignes)" IsSelected="True"/>
+                            <ComboBoxItem Content="📄 Moyen (10-20 lignes)"/>
                             <ComboBoxItem Content="📋 Détaillé (20-30 lignes)"/>
                             <ComboBoxItem Content="📚 Exhaustif (> 30 lignes)"/>
                         </ComboBox>
@@ -149,7 +152,8 @@
                     <StackPanel Grid.Row="2" Grid.Column="2">
                         <TextBlock Text="Format" FontSize="11" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,4"/>
                         <ComboBox x:Name="FormatCombo" FontSize="11" Height="32">
-                            <ComboBoxItem Content="📖 Paragraphes narratifs" IsSelected="True"/>
+                            <ComboBoxItem Content="Automatique" IsSelected="True"/>
+                            <ComboBoxItem Content="📖 Paragraphes narratifs"/>
                             <ComboBoxItem Content="• Liste à puces"/>
                             <ComboBoxItem Content="1️⃣ Liste numérotée"/>
                             <ComboBoxItem Content="📊 Mixte (intro + liste + conclusion)"/>
@@ -160,7 +164,8 @@
                     <StackPanel Grid.Row="4" Grid.Column="0">
                         <TextBlock Text="Niveau de prudence" FontSize="11" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,4"/>
                         <ComboBox x:Name="PrudenceCombo" FontSize="11" Height="32">
-                            <ComboBoxItem Content="✅ Standard (langage direct)" IsSelected="True"/>
+                            <ComboBoxItem Content="Automatique" IsSelected="True"/>
+                            <ComboBoxItem Content="✅ Standard (langage direct)"/>
                             <ComboBoxItem Content="⚠️ Prudent (formulations nuancées)"/>
                             <ComboBoxItem Content="🔒 Très prudent (contexte juridique)"/>
                         </ComboBox>
@@ -169,9 +174,10 @@
                     <StackPanel Grid.Row="4" Grid.Column="2">
                         <TextBlock Text="Urgence" FontSize="11" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,4"/>
                         <ComboBox x:Name="UrgencyCombo" FontSize="11" Height="32">
+                            <ComboBoxItem Content="Automatique" IsSelected="True"/>
                             <ComboBoxItem Content="🔴 Urgent (action rapide demandée)"/>
                             <ComboBoxItem Content="🟠 Important (à traiter rapidement)"/>
-                            <ComboBoxItem Content="🟢 Standard (délai normal)" IsSelected="True"/>
+                            <ComboBoxItem Content="🟢 Standard (délai normal)"/>
                         </ComboBox>
                     </StackPanel>
                 </Grid>

@@ -31,6 +31,9 @@ public partial class MainWindow : Window
                 StatusTextBlock.Text = "✅ Paramètres enregistrés";
                 StatusTextBlock.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Green);
 
+                // ✅ IMPORTANT: Recharger les settings dans OpenAIService (pour AnonymizationModel, etc.)
+                _openAIService.ReloadSettings();
+
                 // Recharger le service LLM avec les nouvelles clés
                 _ = ReloadLLMServiceAsync();
             }

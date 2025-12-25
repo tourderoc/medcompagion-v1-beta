@@ -1,0 +1,50 @@
+feat: Suppression des templates hard-codés après migration vers MCC Library
+
+CONTEXTE
+========
+Les 3 templates hard-codés (PAP, Feuille de route, Cardio) ont été migrés
+vers la bibliothèque MCC via le système de notation 5★. Ils sont maintenant
+accessibles comme n'importe quel autre MCC avec analyse sémantique complète.
+
+MODIFICATIONS
+=============
+
+1. Suppression des méthodes hard-codées (~100 lignes)
+   - GetPAPTemplate()
+   - GetFeuilleRouteTemplate()
+   - GetCardioTemplate()
+
+2. Nettoyage de LoadMCCTemplates() (~20 lignes)
+   - Suppression des appels aux templates hard-codés
+   - Chargement uniquement depuis MCCLibraryService
+
+3. Simplification de GetLetterType() (~8 lignes)
+   - Suppression de la logique de détection spécifique aux 3 templates
+   - Unification du système de poids (courrier_mcc vs courrier_medical)
+
+RÉSULTAT
+========
+- ✅ 0 erreur de compilation
+- ✅ ~116 lignes de code legacy supprimées
+- ✅ CourriersViewModel.cs : 1478 lignes (au lieu de ~1600)
+- ✅ Architecture unifiée : tous les templates via MCCLibraryService
+- ✅ ComboBox fonctionne normalement avec uniquement les MCC
+
+AVANTAGES
+=========
+- Code plus maintenable et cohérent
+- Templates modifiables sans recompilation
+- Système de notation/statistiques actif pour tous
+- Évolutivité : ajout de nouveaux templates via l'UI
+
+FICHIERS MODIFIÉS
+=================
+- MedCompanion/ViewModels/CourriersViewModel.cs
+
+DOCUMENTATION
+=============
+- CLEANUP_HARD_CODED_TEMPLATES.md (détails complets)
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+
+Co-Authored-By: Claude <noreply@anthropic.com>

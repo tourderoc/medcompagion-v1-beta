@@ -20,6 +20,11 @@ public class SynthesisWeightTracker
     }
 
     /// <summary>
+    /// Événement déclenché quand le poids d'un patient est mis à jour
+    /// </summary>
+    public event EventHandler<string>? WeightUpdated;
+
+    /// <summary>
     /// Enregistre le poids d'un nouveau contenu
     /// </summary>
     public void RecordContentWeight(
@@ -49,6 +54,9 @@ public class SynthesisWeightTracker
 
         System.Diagnostics.Debug.WriteLine(
             $"[SynthesisWeight] {itemType} → +{weight:F1} (total: {tracker.AccumulatedWeight:F1}/1.0)");
+
+        // Notifier les abonnés
+        WeightUpdated?.Invoke(this, patientName);
     }
 
     /// <summary>
@@ -73,6 +81,9 @@ public class SynthesisWeightTracker
         SaveTracker(patientName, tracker);
 
         System.Diagnostics.Debug.WriteLine($"[SynthesisWeight] Reset après mise à jour synthèse");
+
+        // Notifier les abonnés
+        WeightUpdated?.Invoke(this, patientName);
     }
 
     /// <summary>

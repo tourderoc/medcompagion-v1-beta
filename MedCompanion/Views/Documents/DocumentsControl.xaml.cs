@@ -22,6 +22,8 @@ namespace MedCompanion.Views.Documents
         private PathService? _pathService;
         private PatientIndexService? _patientIndexService;
         private SynthesisWeightTracker? _synthesisWeightTracker;
+        private ScannerService? _scannerService;
+        private RegenerationService? _regenerationService;
 
         // État
         private PatientIndexEntry? _currentPatient;
@@ -35,6 +37,7 @@ namespace MedCompanion.Views.Documents
 
         // Événement pour communication avec MainWindow
         public event EventHandler<string>? StatusChanged;
+        public event EventHandler? DocumentSynthesisSaved; // NOUVEAU : Pour rafraîchir le badge de synthèse
 
         public DocumentsControl()
         {
@@ -48,12 +51,16 @@ namespace MedCompanion.Views.Documents
             DocumentService documentService,
             PathService pathService,
             PatientIndexService patientIndexService,
-            SynthesisWeightTracker synthesisWeightTracker)
+            SynthesisWeightTracker synthesisWeightTracker,
+            ScannerService scannerService,
+            RegenerationService? regenerationService = null)
         {
             _documentService = documentService;
             _pathService = pathService;
             _patientIndexService = patientIndexService;
             _synthesisWeightTracker = synthesisWeightTracker;
+            _scannerService = scannerService;
+            _regenerationService = regenerationService;
         }
 
         /// <summary>
@@ -157,13 +164,16 @@ namespace MedCompanion.Views.Documents
             if (filePaths == null || filePaths.Length == 0 || _currentPatient == null)
                 return;
 
+            // Obtenir la fenêtre parente de manière sécurisée
+            var ownerWindow = Window.GetWindow(this);
+
             var progressWindow = new Window
             {
                 Title = "Import en cours...",
                 Width = 400,
                 Height = 150,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                Owner = Window.GetWindow(this),
+                WindowStartupLocation = ownerWindow != null ? WindowStartupLocation.CenterOwner : WindowStartupLocation.CenterScreen,
+                Owner = ownerWindow,
                 ResizeMode = ResizeMode.NoResize,
                 WindowStyle = WindowStyle.ToolWindow
             };
@@ -193,7 +203,15 @@ namespace MedCompanion.Views.Documents
             progressPanel.Children.Add(detailText);
             progressWindow.Content = progressPanel;
 
-            progressWindow.Show();
+            try
+            {
+                progressWindow.Show();
+            }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke(this, $"❌ Erreur ouverture fenêtre progression: {ex.Message}");
+                // Continuer sans fenêtre de progression
+            }
 
             int successCount = 0;
             int errorCount = 0;
@@ -204,7 +222,11 @@ namespace MedCompanion.Views.Documents
                 var filePath = filePaths[i];
                 var fileName = Path.GetFileName(filePath);
 
-                detailText.Text = $"Traitement: {fileName} ({i + 1}/{filePaths.Length})";
+                // Mettre à jour le texte seulement si la fenêtre est toujours ouverte
+                if (progressWindow.IsLoaded)
+                {
+                    detailText.Text = $"Traitement: {fileName} ({i + 1}/{filePaths.Length})";
+                }
                 await Task.Delay(100);
 
                 try
@@ -229,7 +251,18 @@ namespace MedCompanion.Views.Documents
                 }
             }
 
-            progressWindow.Close();
+            // Fermer la fenêtre seulement si elle est toujours ouverte
+            try
+            {
+                if (progressWindow.IsLoaded)
+                {
+                    progressWindow.Close();
+                }
+            }
+            catch
+            {
+                // Ignorer les erreurs de fermeture
+            }
 
             // Recharger la liste
             LoadPatientDocuments();
@@ -328,10 +361,11 @@ namespace MedCompanion.Views.Documents
                     DocSynthesisButton.IsEnabled = false;
                     DocSynthesisButton.Background = new SolidColorBrush(Color.FromRgb(189, 195, 199)); // Gris
 
-                    // Afficher bouton Supprimer, masquer Enregistrer
+                    // Afficher boutons Supprimer et Vue Détaillée, masquer Enregistrer
                     DeleteSynthesisBtn.Visibility = Visibility.Visible;
                     SaveSynthesisBtn.Visibility = Visibility.Collapsed;
                     CloseSynthesisPreviewBtn.Visibility = Visibility.Visible;
+                    ViewDocumentSynthesisButton.Visibility = Visibility.Visible;
 
                     StatusChanged?.Invoke(this, $"✓ Synthèse chargée depuis {Path.GetFileName(synthesisPath)}");
                 }
@@ -372,6 +406,7 @@ namespace MedCompanion.Views.Documents
             DeleteSynthesisBtn.Visibility = Visibility.Collapsed;
             SaveSynthesisBtn.Visibility = Visibility.Collapsed;
             CloseSynthesisPreviewBtn.Visibility = Visibility.Collapsed;
+            ViewDocumentSynthesisButton.Visibility = Visibility.Collapsed;
         }
 
         private void OpenDocument(PatientDocument document)
@@ -490,8 +525,15 @@ namespace MedCompanion.Views.Documents
 
                 StatusChanged?.Invoke(this, "⏳ Génération de la synthèse en cours...");
 
+                // Récupérer les métadonnées du patient pour l'anonymisation (si disponible)
+                PatientMetadata? patientData = null;
+                if (_patientIndexService != null && _currentPatient != null)
+                {
+                    patientData = _patientIndexService.GetMetadata(_currentPatient.Id);
+                }
+
                 // Générer la synthèse avec extraction du poids
-                var (synthesis, relevanceWeight) = await _documentService!.GenerateSingleDocumentSynthesisAsync(selectedDocument);
+                var (synthesis, relevanceWeight) = await _documentService!.GenerateSingleDocumentSynthesisAsync(selectedDocument, patientData);
 
                 // Stocker le document, la synthèse et le poids pour pouvoir les sauvegarder
                 _currentSynthesizedDocument = selectedDocument;
@@ -574,6 +616,9 @@ patient: {_currentPatient.NomComplet}
                 // Sauvegarder
                 File.WriteAllText(synthesePath, syntheseContent, Encoding.UTF8);
 
+                // Mettre à jour le chemin actuel pour permettre la prévisualisation/suppression immédiate
+                _currentSynthesisPath = synthesePath;
+
                 // NOUVEAU : Enregistrer le poids de pertinence pour la synthèse patient
                 if (_synthesisWeightTracker != null)
                 {
@@ -601,9 +646,25 @@ patient: {_currentPatient.NomComplet}
 
                 StatusChanged?.Invoke(this, $"✅ Synthèse sauvegardée : {syntheseFileName}");
 
-                // Désactiver le bouton Enregistrer (déjà sauvegardé)
+                // METRIQUE ERGONOMIE : Mettre à jour l'interface immédiatement
+                // 1. Masquer le bouton Enregistrer
+                SaveSynthesisBtn.Visibility = Visibility.Collapsed;
                 SaveSynthesisBtn.IsEnabled = false;
-                SaveSynthesisBtn.Background = new SolidColorBrush(Color.FromRgb(189, 195, 199)); // Gris
+
+                // 2. Afficher les boutons de gestion (Oeil et Poubelle)
+                ViewDocumentSynthesisButton.Visibility = Visibility.Visible;
+                DeleteSynthesisBtn.Visibility = Visibility.Visible;
+                CloseSynthesisPreviewBtn.Visibility = Visibility.Visible;
+
+                // 3. Griser le bouton de génération principal (comme si elle existait déjà au chargement)
+                if (DocSynthesisButton != null)
+                {
+                    DocSynthesisButton.IsEnabled = false;
+                    DocSynthesisButton.Background = new SolidColorBrush(Color.FromRgb(189, 195, 199)); // Gris
+                }
+
+                // NOUVEAU : Déclencher l'événement pour rafraîchir le badge de synthèse
+                DocumentSynthesisSaved?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)
             {
@@ -618,6 +679,86 @@ patient: {_currentPatient.NomComplet}
         {
             // Masquer les boutons et réinitialiser l'aperçu
             ResetSynthesisPreview();
+        }
+
+        private async void ViewDocumentSynthesisButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(_currentSynthesisPath) || _currentPatient == null)
+            {
+                MessageBox.Show("Aucune synthèse à afficher.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                var dialog = new DetailedViewDialog();
+                dialog.LoadContent(_currentSynthesisPath, ContentType.Synthesis, _currentPatient.NomComplet);
+
+                // ✅ NOUVEAU : Initialiser le service de régénération IA si disponible
+                if (_regenerationService != null)
+                {
+                    // Créer PatientMetadata depuis le patient courant pour l'anonymisation
+                    PatientMetadata? patientMetadata = null;
+                    if (_patientIndexService != null)
+                    {
+                        patientMetadata = _patientIndexService.GetMetadata(_currentPatient.Id);
+                    }
+                    else
+                    {
+                        // Fallback minimal
+                        patientMetadata = new PatientMetadata
+                        {
+                            Nom = _currentPatient.Nom ?? "",
+                            Prenom = _currentPatient.Prenom ?? "",
+                            Sexe = _currentPatient.Sexe ?? ""
+                        };
+                    }
+                    
+                    dialog.InitializeRegenerationService(_regenerationService, patientMetadata);
+                }
+
+                // S'abonner à l'événement de sauvegarde pour rafraîchir l'aperçu
+                dialog.ContentSaved += async (s, args) =>
+                {
+                    // Recharger le contenu de la synthèse dans l'aperçu
+                    if (_documentService != null && !string.IsNullOrEmpty(_currentSynthesisPath))
+                    {
+                        try
+                        {
+                            var synthesisContent = await _documentService.LoadSynthesisContentAsync(_currentSynthesisPath);
+                            
+                            // Convertir Markdown en FlowDocument formaté
+                            try
+                            {
+                                DocSynthesisPreview.Document = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(synthesisContent);
+                            }
+                            catch
+                            {
+                                // En cas d'erreur, afficher texte brut
+                                var doc = new FlowDocument();
+                                doc.Blocks.Add(new Paragraph(new Run(synthesisContent)));
+                                DocSynthesisPreview.Document = doc;
+                            }
+
+                            StatusChanged?.Invoke(this, "✅ Aperçu de la synthèse mis à jour");
+                        }
+                        catch (Exception ex)
+                        {
+                            StatusChanged?.Invoke(this, $"❌ Erreur lors du rafraîchissement: {ex.Message}");
+                        }
+                    }
+                };
+
+                dialog.Owner = Window.GetWindow(this);
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors de l'ouverture de la vue détaillée:\n\n{ex.Message}",
+                    "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusChanged?.Invoke(this, $"❌ Erreur: {ex.Message}");
+            }
         }
 
         private void DeleteSynthesisBtn_Click(object sender, RoutedEventArgs e)
@@ -737,6 +878,85 @@ patient: {_currentPatient.NomComplet}
                     "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
 
                 StatusChanged?.Invoke(this, $"❌ Erreur: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region Scanner Integration
+
+        private async void ScanButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPatient == null)
+            {
+                MessageBox.Show("Veuillez d'abord sélectionner un patient.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (_scannerService == null)
+            {
+                MessageBox.Show("Le service de scanner n'est pas initialisé.", "Erreur",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            if (_documentService == null)
+            {
+                MessageBox.Show("Le service de documents n'est pas initialisé.", "Erreur",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            try
+            {
+                // Ouvrir la boîte de dialogue de scan
+                var scanDialog = new ScanDocumentDialog(_scannerService)
+                {
+                    Owner = Window.GetWindow(this)
+                };
+
+                var result = scanDialog.ShowDialog();
+
+                if (result == true && !string.IsNullOrEmpty(scanDialog.ScannedFilePath))
+                {
+                    // L'utilisateur a scanné et sélectionné un fichier
+                    var scannedFile = scanDialog.ScannedFilePath;
+
+                    StatusChanged?.Invoke(this, "⏳ Import du document scanné en cours...");
+
+                    // Importer le document scanné
+                    await ProcessDocumentFilesAsync(new[] { scannedFile });
+
+                    StatusChanged?.Invoke(this, "✅ Document scanné importé avec succès");
+
+                    // Nettoyer le dossier temporaire après import réussi
+                    try
+                    {
+                        if (File.Exists(scannedFile))
+                        {
+                            var tempFolder = Path.GetDirectoryName(scannedFile);
+                            if (tempFolder != null && tempFolder.Contains("MedCompanion_Scans"))
+                            {
+                                Directory.Delete(tempFolder, true);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        // Ignorer les erreurs de nettoyage
+                    }
+                }
+                else
+                {
+                    StatusChanged?.Invoke(this, "Scan annulé");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors du scan:\n\n{ex.Message}",
+                    "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusChanged?.Invoke(this, $"❌ Erreur scan: {ex.Message}");
             }
         }
 

@@ -103,12 +103,17 @@ namespace MedCompanion.Models
         public List<string> Keywords { get; set; }
         
         // ========== ÉTAT ==========
-        
+
         /// <summary>
         /// Statut actuel du MCC
         /// </summary>
         public MCCStatus Status { get; set; }
-        
+
+        /// <summary>
+        /// Indique si ce MCC est ajouté à la liste des courriers (combobox Courriers)
+        /// </summary>
+        public bool IsInCourriersList { get; set; }
+
         /// <summary>
         /// Constructeur par défaut
         /// </summary>
@@ -124,6 +129,7 @@ namespace MedCompanion.Models
             TotalRatings = 0;
             TemplateMarkdown = string.Empty;
             PromptTemplate = string.Empty;
+            IsInCourriersList = false; // Par défaut, pas dans la liste Courriers
         }
     }
 

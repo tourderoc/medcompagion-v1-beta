@@ -19,6 +19,8 @@ public class SynthesisService
     private readonly PathService _pathService;
     private readonly PromptConfigService _promptConfigService;
     private readonly SynthesisWeightTracker _synthesisWeightTracker;
+    private readonly AnonymizationService _anonymizationService;
+    private readonly PromptTrackerService? _promptTracker;  // ✅ NOUVEAU - Tracking des prompts
 
     public SynthesisService(
         OpenAIService openAIService,
@@ -26,7 +28,9 @@ public class SynthesisService
         ContextLoader contextLoader,
         PathService pathService,
         PromptConfigService promptConfigService,
-        SynthesisWeightTracker synthesisWeightTracker)
+        SynthesisWeightTracker synthesisWeightTracker,
+        AnonymizationService anonymizationService,
+        PromptTrackerService? promptTracker = null)  // ✅ NOUVEAU
     {
         _openAIService = openAIService;
         _storageService = storageService;
@@ -34,18 +38,58 @@ public class SynthesisService
         _pathService = pathService;
         _promptConfigService = promptConfigService;
         _synthesisWeightTracker = synthesisWeightTracker;
+        _anonymizationService = anonymizationService;
+        _promptTracker = promptTracker;  // ✅ NOUVEAU - Stocker le tracker
     }
 
     /// <summary>
     /// Génère une synthèse complète à partir de tout le dossier patient
+    /// Utilise Phase 1+2+3 pour anonymisation complète (PatientData + LLM extraction + Regex)
     /// </summary>
     public async Task<(bool success, string markdown, string? error)> GenerateCompleteSynthesisAsync(
         string patientName,
         string patientDirectory)
     {
+        var busyService = BusyService.Instance;
+        var cancellationToken = busyService.Start("Génération de la synthèse complète", canCancel: true);
+
         try
         {
-            // Collecter tous les contenus du dossier
+            // ✅ ÉTAPE 1 : Charger les métadonnées complètes du patient
+            busyService.UpdateStep("Chargement des métadonnées patient...");
+            busyService.UpdateProgress(5);
+
+            PatientMetadata? metadata = null;
+            try
+            {
+                var patientJsonPath = System.IO.Path.Combine(patientDirectory, "info_patient", "patient.json");
+                if (System.IO.File.Exists(patientJsonPath))
+                {
+                    var json = System.IO.File.ReadAllText(patientJsonPath);
+                    System.Diagnostics.Debug.WriteLine($"[SynthesisService] JSON brut (premiers 500 chars): {json.Substring(0, Math.Min(500, json.Length))}");
+
+                    // Options de désérialisation : ignorer la casse des noms de propriétés
+                    var options = new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    };
+                    metadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(json, options);
+                    System.Diagnostics.Debug.WriteLine($"[SynthesisService] Après déserialisation: Nom='{metadata?.Nom}', Prenom='{metadata?.Prenom}'");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SynthesisService] patient.json NON TROUVÉ: {patientJsonPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Erreur chargement metadata: {ex.Message}");
+            }
+
+            // ✅ ÉTAPE 2 : Collecter tous les contenus du dossier (NON anonymisé)
+            busyService.UpdateStep("Collecte de tous les documents patient...");
+            busyService.UpdateProgress(10);
+
             var allContent = CollectAllPatientContent(patientDirectory);
 
             if (string.IsNullOrEmpty(allContent))
@@ -53,28 +97,94 @@ public class SynthesisService
                 return (false, "", "Aucun contenu trouvé dans le dossier patient");
             }
 
-            // Générer la synthèse avec l'IA
-            var prompt = BuildCompleteSynthesisPrompt(patientName, allContent);
-            var (success, synthesis, error) = await _openAIService.GenerateTextAsync(prompt);
+            // ✅ ÉTAPE 3 : Extraction des entités sensibles via LLM local (Phase 3)
+            busyService.UpdateStep("Extraction des entités sensibles (LLM local)...");
+            busyService.UpdateProgress(20);
+
+            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Extraction PII via LLM local...");
+            PIIExtractionResult? extractedPii = null;
+            try
+            {
+                extractedPii = await _openAIService.ExtractPIIAsync(allContent);
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] PII extraites: {extractedPii?.GetAllEntities().Count() ?? 0} entités");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Erreur extraction PII: {ex.Message}");
+                // Continue sans extraction - Phase 1+2 seront toujours appliquées
+            }
+
+            // ✅ ÉTAPE 4 : Construire le prompt (NON anonymisé)
+            busyService.UpdateStep("Construction du prompt...");
+            busyService.UpdateProgress(35);
+
+            var promptTemplate = _promptConfigService.GetActivePrompt("synthesis_complete");
+            var prompt = promptTemplate
+                .Replace("{{Patient_Name}}", patientName)
+                .Replace("{{Patient_Content}}", allContent);
+
+            // ✅ ÉTAPE 5 : Anonymisation hybride (Phase 1+2+3)
+            busyService.UpdateStep("Anonymisation des données sensibles...");
+            busyService.UpdateProgress(45);
+
+            var anonContext = new AnonymizationContext { WasAnonymized = true };
+            var anonymizedPrompt = _anonymizationService.AnonymizeWithExtractedData(
+                prompt,
+                extractedPii,    // Entités volatiles détectées par LLM
+                metadata,        // Source de vérité (patient.json)
+                anonContext
+            );
+
+            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Anonymisation terminée: {anonContext.Replacements.Count} remplacements");
+
+            // ✅ ÉTAPE 6 : Générer la synthèse via LLM cloud
+            busyService.UpdateStep("Génération de la synthèse (LLM cloud)...");
+            busyService.UpdateProgress(55);
+
+            var (success, synthesis, error) = await _openAIService.GenerateTextAsync(anonymizedPrompt);
 
             if (!success || string.IsNullOrEmpty(synthesis))
             {
                 return (false, "", error ?? "Erreur génération synthèse");
             }
 
+            // ✅ ÉTAPE 7 : Désanonymiser le résultat
+            busyService.UpdateStep("Désanonymisation du résultat...");
+            busyService.UpdateProgress(90);
+
+            synthesis = _anonymizationService.Deanonymize(synthesis, anonContext);
+
+            // ✅ ÉTAPE 8 : Logger le prompt (si tracker disponible)
+            busyService.UpdateStep("Finalisation...");
+            busyService.UpdateProgress(95);
+
+            LogPrompt("Synthèse", anonymizedPrompt, synthesis, patientName);
+
             // Ajouter les métadonnées YAML
             var finalMarkdown = BuildSynthesisWithMetadata(synthesis, "complete");
 
+            busyService.UpdateProgress(100);
+            await System.Threading.Tasks.Task.Delay(300); // Petit délai pour voir 100%
+
             return (true, finalMarkdown, null);
+        }
+        catch (OperationCanceledException)
+        {
+            return (false, "", "Opération annulée par l'utilisateur");
         }
         catch (Exception ex)
         {
             return (false, "", $"Erreur: {ex.Message}");
         }
+        finally
+        {
+            busyService.Stop();
+        }
     }
 
     /// <summary>
     /// Met à jour la synthèse de manière incrémentale
+    /// Utilise Phase 1+2+3 pour anonymisation complète (PatientData + LLM extraction + Regex)
     /// </summary>
     public async Task<(bool success, string markdown, string? error)> UpdateSynthesisIncrementallyAsync(
         string patientName,
@@ -82,6 +192,9 @@ public class SynthesisService
         string existingSynthesis,
         List<string> newItems)
     {
+        var busyService = BusyService.Instance;
+        var cancellationToken = busyService.Start("Mise à jour incrémentale de la synthèse", canCancel: true);
+
         try
         {
             if (newItems.Count == 0)
@@ -89,7 +202,32 @@ public class SynthesisService
                 return (true, existingSynthesis, null); // Rien à ajouter
             }
 
-            // Collecter uniquement le contenu des nouveaux éléments
+            // ✅ ÉTAPE 1 : Charger les métadonnées complètes du patient
+            busyService.UpdateStep("Chargement des métadonnées patient...");
+            busyService.UpdateProgress(10);
+
+            PatientMetadata? metadata = null;
+            try
+            {
+                var patientJsonPath = System.IO.Path.Combine(patientDirectory, "info_patient", "patient.json");
+                if (System.IO.File.Exists(patientJsonPath))
+                {
+                    var json = System.IO.File.ReadAllText(patientJsonPath);
+
+                    // Options de désérialisation : ignorer la casse des noms de propriétés
+                    var options = new System.Text.Json.JsonSerializerOptions
+                    {
+                        PropertyNameCaseInsensitive = true
+                    };
+                    metadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(json, options);
+                }
+            }
+            catch { }
+
+            // ✅ ÉTAPE 2 : Collecter uniquement le contenu des nouveaux éléments (NON anonymisé)
+            busyService.UpdateStep($"Collecte des {newItems.Count} nouveau(x) élément(s)...");
+            busyService.UpdateProgress(20);
+
             var newContent = CollectNewContent(patientDirectory, newItems);
 
             if (string.IsNullOrEmpty(newContent))
@@ -97,26 +235,95 @@ public class SynthesisService
                 return (true, existingSynthesis, null);
             }
 
-            // Nettoyer les métadonnées YAML de l'ancienne synthèse
+            // ✅ ÉTAPE 3 : Extraction des entités sensibles via LLM local (Phase 3)
+            busyService.UpdateStep("Extraction des entités sensibles (LLM local)...");
+            busyService.UpdateProgress(30);
+
+            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Extraction PII incrémentale via LLM local...");
+            PIIExtractionResult? extractedPii = null;
+            try
+            {
+                // Extraire depuis le nouveau contenu seulement
+                extractedPii = await _openAIService.ExtractPIIAsync(newContent);
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] PII extraites: {extractedPii?.GetAllEntities().Count() ?? 0} entités");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Erreur extraction PII: {ex.Message}");
+                // Continue sans extraction - Phase 1+2 seront toujours appliquées
+            }
+
+            // ✅ ÉTAPE 4 : Nettoyer les métadonnées YAML de l'ancienne synthèse
+            busyService.UpdateStep("Préparation de la synthèse existante...");
+            busyService.UpdateProgress(40);
+
             var cleanedSynthesis = RemoveYamlFrontMatter(existingSynthesis);
 
-            // Générer la mise à jour avec l'IA
-            var prompt = BuildIncrementalUpdatePrompt(patientName, cleanedSynthesis, newContent);
-            var (success, updatedSynthesis, error) = await _openAIService.GenerateTextAsync(prompt);
+            // ✅ ÉTAPE 5 : Construire le prompt (NON anonymisé)
+            busyService.UpdateStep("Construction du prompt de mise à jour...");
+            busyService.UpdateProgress(50);
+
+            var promptTemplate = _promptConfigService.GetActivePrompt("synthesis_incremental");
+            var prompt = promptTemplate
+                .Replace("{{Existing_Synthesis}}", cleanedSynthesis)
+                .Replace("{{New_Content}}", newContent);
+
+            // ✅ ÉTAPE 6 : Anonymisation hybride (Phase 1+2+3)
+            busyService.UpdateStep("Anonymisation des données sensibles...");
+            busyService.UpdateProgress(60);
+
+            var anonContext = new AnonymizationContext { WasAnonymized = true };
+            var anonymizedPrompt = _anonymizationService.AnonymizeWithExtractedData(
+                prompt,
+                extractedPii,    // Entités volatiles détectées par LLM
+                metadata,        // Source de vérité (patient.json)
+                anonContext
+            );
+
+            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Anonymisation terminée: {anonContext.Replacements.Count} remplacements");
+
+            // ✅ ÉTAPE 7 : Générer la mise à jour via LLM cloud
+            busyService.UpdateStep("Génération de la mise à jour (LLM cloud)...");
+            busyService.UpdateProgress(70);
+
+            var (success, updatedSynthesis, error) = await _openAIService.GenerateTextAsync(anonymizedPrompt);
 
             if (!success || string.IsNullOrEmpty(updatedSynthesis))
             {
                 return (false, "", error ?? "Erreur mise à jour synthèse");
             }
 
+            // ✅ ÉTAPE 8 : Désanonymiser le résultat
+            busyService.UpdateStep("Désanonymisation du résultat...");
+            busyService.UpdateProgress(90);
+
+            updatedSynthesis = _anonymizationService.Deanonymize(updatedSynthesis, anonContext);
+
+            // ✅ ÉTAPE 9 : Logger le prompt (si tracker disponible)
+            busyService.UpdateStep("Finalisation...");
+            busyService.UpdateProgress(95);
+
+            LogPrompt("Synthèse", anonymizedPrompt, updatedSynthesis, patientName);
+
             // Ajouter les métadonnées YAML
             var finalMarkdown = BuildSynthesisWithMetadata(updatedSynthesis, "incremental");
 
+            busyService.UpdateProgress(100);
+            await System.Threading.Tasks.Task.Delay(300); // Petit délai pour voir 100%
+
             return (true, finalMarkdown, null);
+        }
+        catch (OperationCanceledException)
+        {
+            return (false, "", "Opération annulée par l'utilisateur");
         }
         catch (Exception ex)
         {
             return (false, "", $"Erreur: {ex.Message}");
+        }
+        finally
+        {
+            busyService.Stop();
         }
     }
 
@@ -536,29 +743,11 @@ public class SynthesisService
         return content.ToString();
     }
 
-    private string BuildCompleteSynthesisPrompt(string patientName, string allContent)
-    {
-        // Récupérer le prompt depuis la configuration
-        var promptConfig = _promptConfigService.GetPrompt("synthesis_complete");
-        var promptTemplate = promptConfig?.ActivePrompt ?? "";
-
-        // Remplacer les placeholders
-        return promptTemplate
-            .Replace("{{Patient_Name}}", patientName)
-            .Replace("{{Patient_Content}}", allContent);
-    }
-
-    private string BuildIncrementalUpdatePrompt(string patientName, string existingSynthesis, string newContent)
-    {
-        // Récupérer le prompt depuis la configuration
-        var promptConfig = _promptConfigService.GetPrompt("synthesis_incremental");
-        var promptTemplate = promptConfig?.ActivePrompt ?? "";
-
-        // Remplacer les placeholders
-        return promptTemplate
-            .Replace("{{Existing_Synthesis}}", existingSynthesis)
-            .Replace("{{New_Content}}", newContent);
-    }
+    // NOTE: BuildCompleteSynthesisPrompt et BuildIncrementalUpdatePrompt supprimées
+    // Car GetAnonymizedPromptAsync de PromptConfigService gère désormais :
+    // - La récupération du template
+    // - Le remplacement des placeholders
+    // - L'anonymisation du prompt final
 
     private string BuildSynthesisWithMetadata(string synthesis, string type)
     {
@@ -635,6 +824,40 @@ type: {type}
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Logger les prompts de synthèse (si tracker disponible)
+    /// </summary>
+    private void LogPrompt(string module, string userPrompt, string aiResponse, string patientName)
+    {
+        if (_promptTracker == null)
+            return;
+
+        try
+        {
+            // Récupérer le system prompt depuis le service de configuration
+            var systemPrompt = _promptConfigService.GetActivePrompt("system_global");
+
+            _promptTracker.LogPrompt(new PromptLogEntry
+            {
+                Timestamp = DateTime.Now,
+                Module = module,  // "Synthèse" pour matcher le filtre dans l'UI
+                SystemPrompt = systemPrompt,
+                UserPrompt = userPrompt,  // ⚠️ Contient le PSEUDONYME (anonymisé)
+                AIResponse = aiResponse,  // ✅ Réponse DÉSANONYMISÉE (vrai nom)
+                TokensUsed = 0,  // TODO: récupérer depuis la réponse LLM si disponible
+                LLMProvider = "OpenAI/Ollama",
+                ModelName = "GPT-4",
+                Success = true,
+                Error = null
+            });
+        }
+        catch (Exception ex)
+        {
+            // Ne pas bloquer la génération si le logging échoue
+            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Erreur logging prompt: {ex.Message}");
         }
     }
 }

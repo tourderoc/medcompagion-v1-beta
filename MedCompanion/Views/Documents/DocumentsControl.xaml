@@ -47,7 +47,38 @@
                     </Style>
                 </Button.Style>
             </Button>
-            <TextBlock Text="Sélectionnez des documents à importer (Word, PDF, Images)"
+
+            <Button Content="📷 Scanner..."
+                   Click="ScanButton_Click"
+                   Height="35"
+                   Padding="15,0"
+                   FontSize="12"
+                   Background="#27AE60"
+                   Foreground="White"
+                   BorderThickness="0"
+                   Cursor="Hand"
+                   Margin="10,0,0,0">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                        <Style.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="#229954"/>
+                            </Trigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+
+            <TextBlock Text="Importez ou scannez des documents patients (Word, PDF, Images)"
                       FontSize="12"
                       Foreground="#666666"
                       VerticalAlignment="Center"
@@ -229,6 +260,43 @@
                           VerticalAlignment="Center"/>
 
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Bouton Vue Détaillée -->
+                    <Button x:Name="ViewDocumentSynthesisButton"
+                            Content="👁️"
+                            Width="28"
+                            Height="28"
+                            FontSize="14"
+                            Background="#8E44AD"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            ToolTip="Ouvrir en plein écran (lecture/édition)"
+                            Click="ViewDocumentSynthesisButton_Click"
+                            Margin="0,0,8,0"
+                            Visibility="Collapsed">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" 
+                                                    CornerRadius="4" 
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" 
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#71368A"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
                     <Button x:Name="DeleteSynthesisBtn"
                             Content="🗑️ Supprimer"
                             Height="28"

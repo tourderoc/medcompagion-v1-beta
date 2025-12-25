@@ -3,12 +3,15 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:helpers="clr-namespace:MedCompanion.Helpers"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="600">
     
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
     </UserControl.Resources>
+    
+    <!-- DataContext sera défini dans le code-behind -->
     
     <Grid>
         <Grid.RowDefinitions>
@@ -55,7 +58,7 @@
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             ToolTip="Ouvrir en plein écran (lecture/édition)"
-                            Click="ViewSynthesisButton_Click">
+                            Command="{Binding SynthesisViewModel.ViewSynthesisCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Template">
@@ -88,6 +91,7 @@
                         BorderThickness="1" 
                         CornerRadius="4">
                     <RichTextBox x:Name="SynthesisPreviewText"
+                                 helpers:RichTextBoxHelper.Document="{Binding SynthesisViewModel.SynthesisDocument}"
                                  IsReadOnly="True"
                                  VerticalScrollBarVisibility="Auto"
                                  HorizontalScrollBarVisibility="Disabled"
@@ -114,7 +118,7 @@
 
                     <TextBlock x:Name="LastSynthesisUpdateLabel"
                               Grid.Column="0"
-                              Text="📅 Dernière mise à jour : Jamais"
+                              Text="{Binding SynthesisViewModel.LastUpdateText}"
                               FontSize="11"
                               Foreground="#7F8C8D"
                               VerticalAlignment="Center"/>
@@ -132,22 +136,23 @@
                                CornerRadius="4"
                                Margin="0,0,8,0">
                             <Border x:Name="WeightProgressFill"
-                                   Background="#2ECC71"
+                                   Background="{Binding SynthesisViewModel.WeightProgressColor}"
                                    HorizontalAlignment="Left"
                                    CornerRadius="3"
-                                   Width="0"/>
+                                   Width="{Binding SynthesisViewModel.WeightProgressWidth}"/>
                         </Border>
 
                         <TextBlock x:Name="WeightIndicatorText"
-                                  Text="Poids: 0.0/1.0"
+                                  Text="{Binding SynthesisViewModel.WeightIndicatorText}"
                                   FontSize="10"
-                                  Foreground="#7F8C8D"/>
+                                  Foreground="{Binding SynthesisViewModel.WeightProgressColor}"
+                                  ToolTip="{Binding SynthesisViewModel.WeightIndicatorTooltip}"/>
                     </StackPanel>
                     
                     <!-- Grid avec badge de notification pour mise à jour synthèse -->
                     <Grid Grid.Column="2">
                         <Button x:Name="GenerateSynthesisButton"
-                                Content="🔄 Actualiser"
+                                Content="{Binding SynthesisViewModel.GenerateButtonContent}"
                                 Height="32"
                                 Padding="12,0"
                                 FontSize="12"
@@ -156,8 +161,9 @@
                                 Foreground="White"
                                 BorderThickness="0"
                                 Cursor="Hand"
-                                IsEnabled="False"
-                                Click="GenerateSynthesisButton_Click">
+                                IsEnabled="{Binding SynthesisViewModel.IsGenerateButtonEnabled}"
+                                ToolTip="{Binding SynthesisViewModel.GenerateButtonTooltip}"
+                                Command="{Binding SynthesisViewModel.GenerateSynthesisCommand}">
                             <Button.Style>
                                 <Style TargetType="Button">
                                     <Setter Property="Template">
@@ -193,9 +199,9 @@
                                 BorderThickness="2"
                                 CornerRadius="12"
                                 Padding="6,2"
-                                Visibility="Collapsed">
+                                Visibility="{Binding SynthesisViewModel.IsBadgeVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                             <TextBlock x:Name="SynthesisUpdateBadgeText"
-                                       Text="!"
+                                       Text="{Binding SynthesisViewModel.BadgeText}"
                                        Foreground="White"
                                        FontSize="11"
                                        FontWeight="Bold"

@@ -15,7 +15,7 @@ namespace MedCompanion.Services
         private readonly PromptReformulationService _reformulationService;
         private readonly MCCLibraryService _libraryService;
         
-        private const double MIN_CONFIDENCE_SCORE = 70.0;
+        private const double MIN_CONFIDENCE_SCORE = 105.0; // 50% du score maximum (105/210)
         private const double MAX_SCORE = 210.0;
 
         /// <summary>
@@ -216,7 +216,8 @@ namespace MedCompanion.Services
         /// <returns>Résultat complet du matching avec logs détaillés</returns>
         public async Task<(bool success, MCCMatchResult result, string error)> AnalyzeAndMatchAsync(
             string userRequest,
-            PatientContext patientContext = null)
+            PatientContext patientContext = null,
+            LetterGenerationOptions options = null)
         {
             var logs = new List<string>();
             
@@ -231,11 +232,21 @@ namespace MedCompanion.Services
                     logs.Add($"[{DateTime.Now:HH:mm:ss}] 👤 Contexte patient disponible : {patientContext.NomComplet}, {ageInfo}");
                 }
 
+                if (options != null)
+                {
+                    logs.Add($"[{DateTime.Now:HH:mm:ss}] ⚙️ Options fournies - Destinataire: {options.Recipient ?? "Auto"}");
+                }
+
                 // ÉTAPE 1 : Analyse sémantique de la demande
                 logs.Add($"[{DateTime.Now:HH:mm:ss}] 🧠 Analyse sémantique en cours...");
                 
                 var (analysisSuccess, analysisResult, analysisError) = 
-                    await _reformulationService.AnalyzeLetterRequestAsync(userRequest, patientContext);
+                    await _reformulationService.AnalyzeLetterRequestAsync(
+                        userRequest, 
+                        patientContext, 
+                        pseudonym: null, 
+                        anonContext: null,
+                        explicitRecipient: options?.Recipient);
 
                 if (!analysisSuccess || analysisResult == null)
                 {
@@ -306,24 +317,34 @@ namespace MedCompanion.Services
                     ), null);
                 }
 
-                // ÉTAPE 3 : Analyse détaillée des scores
-                logs.Add($"[{DateTime.Now:HH:mm:ss}] 🎯 Analyse des scores :");
-                
+                // ÉTAPE 3 : Analyse détaillée des scores pour TOUS les top 3
+                logs.Add($"[{DateTime.Now:HH:mm:ss}] 🎯 Analyse des scores (Top 3) :");
+
+                // Construire la liste des top matches avec détails complets
+                var topMatches = new List<MCCWithScore>();
+
                 foreach (var (mcc, score) in matchingMCCs)
                 {
                     var scorePercent = (score / MAX_SCORE) * 100;
+                    var breakdown = CalculateDetailedScore(mcc, metadata, analysisResult.Keywords);
+
                     logs.Add($"    • {mcc.Name} : {score:F1} pts ({scorePercent:F1}%)");
-                    
-                    // Log détaillé uniquement pour le meilleur
-                    if (matchingMCCs.IndexOf((mcc, score)) == 0)
+
+                    // Log détaillé pour tous les top 3
+                    logs.Add($"      Détail du scoring :");
+                    foreach (var (criterion, points) in breakdown.OrderByDescending(x => x.Value))
                     {
-                        var breakdown = CalculateDetailedScore(mcc, metadata, analysisResult.Keywords);
-                        logs.Add($"      Détail du scoring :");
-                        foreach (var (criterion, points) in breakdown.OrderByDescending(x => x.Value))
-                        {
-                            logs.Add($"        - {criterion}: {points:F1} pts");
-                        }
+                        logs.Add($"        - {criterion}: {points:F1} pts");
                     }
+
+                    // Ajouter à la liste des top matches
+                    topMatches.Add(new MCCWithScore
+                    {
+                        MCC = mcc,
+                        RawScore = score,
+                        NormalizedScore = scorePercent,
+                        ScoreBreakdown = breakdown
+                    });
                 }
 
                 var (bestMCC, bestScore) = matchingMCCs[0];
@@ -336,16 +357,17 @@ namespace MedCompanion.Services
 
                 if (bestScore >= MIN_CONFIDENCE_SCORE)
                 {
-                    logs.Add($"[{DateTime.Now:HH:mm:ss}] ✅ MATCH RÉUSSI avec '{bestMCC.Name}'");
-                    
+                    logs.Add($"[{DateTime.Now:HH:mm:ss}] ✅ MATCH RÉUSSI - {topMatches.Count} MCC(s) au-dessus du seuil");
+
                     var scoreBreakdown = CalculateDetailedScore(bestMCC, metadata, analysisResult.Keywords);
-                    
+
                     return (true, MCCMatchResult.Success(
                         bestMCC,
                         bestScore,
                         analysisResult,
                         scoreBreakdown,
-                        logs
+                        logs,
+                        topMatches  // ✅ Inclure les 3 meilleurs MCCs
                     ), null);
                 }
                 else
@@ -358,7 +380,8 @@ namespace MedCompanion.Services
                         bestScore,
                         analysisResult,
                         totalMCCs,
-                        logs
+                        logs,
+                        bestMCC  // 🆕 Passer le meilleur MCC trouvé pour permettre à l'utilisateur de le choisir
                     ), null);
                 }
             }

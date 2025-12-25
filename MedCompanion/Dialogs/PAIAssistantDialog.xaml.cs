@@ -17,6 +17,7 @@ namespace MedCompanion.Dialogs
         private readonly PatientIndexEntry _selectedPatient;
         private readonly PatientIndexService _patientIndex;
         private readonly FormulaireAssistantService _formulaireService;
+        private readonly SynthesisWeightTracker _synthesisWeightTracker;
         private readonly PathService _pathService = new PathService();
 
         private WebView2? _webView;
@@ -30,6 +31,7 @@ namespace MedCompanion.Dialogs
             PatientIndexEntry selectedPatient,
             PatientIndexService patientIndex,
             FormulaireAssistantService formulaireService,
+            SynthesisWeightTracker synthesisWeightTracker,
             string initialMotif = "")
         {
             InitializeComponent();
@@ -37,6 +39,7 @@ namespace MedCompanion.Dialogs
             _selectedPatient = selectedPatient;
             _patientIndex = patientIndex;
             _formulaireService = formulaireService;
+            _synthesisWeightTracker = synthesisWeightTracker;
             _motif = initialMotif;
 
             Loaded += PAIAssistantDialog_Loaded;
@@ -73,10 +76,7 @@ namespace MedCompanion.Dialogs
         private void SaveMotifButton_Click(object sender, RoutedEventArgs e)
         {
             _motif = MotifComboBox.Text;
-            var formulairesDir = _pathService.GetFormulairesDirectory(_selectedPatient.NomComplet);
-            var pdfFileName = Path.GetFileName(_pdfPath);
-            SaveMetadata(formulairesDir, pdfFileName);
-            MessageBox.Show("Motif sauvegardé !", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
+            MessageBox.Show("Le motif a été pris en compte et sera enregistré avec le formulaire.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void LoadPatientInfo()
@@ -104,6 +104,9 @@ namespace MedCompanion.Dialogs
             }
         }
 
+        private bool _isSaved = false;
+        private string _tempPdfPath = "";
+
         private async Task InitializeWebView2Async()
         {
             try
@@ -118,16 +121,9 @@ namespace MedCompanion.Dialogs
                     return;
                 }
 
-                var formulairesDir = _pathService.GetFormulairesDirectory(_selectedPatient.NomComplet);
-                Directory.CreateDirectory(formulairesDir);
-
-                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                var pdfFileName = $"PAI_{_selectedPatient.Nom}_{_selectedPatient.Prenom}_{timestamp}.pdf";
-                _pdfPath = Path.Combine(formulairesDir, pdfFileName);
-
-                File.Copy(templatePath, _pdfPath, overwrite: true);
-
-                SaveMetadata(formulairesDir, pdfFileName);
+                // Utiliser un fichier temporaire pour l'affichage
+                _tempPdfPath = Path.Combine(Path.GetTempPath(), $"preview_pai_{Guid.NewGuid()}.pdf");
+                File.Copy(templatePath, _tempPdfPath, overwrite: true);
 
                 _webView = new WebView2();
                 PdfViewerContainer.Children.Add(_webView);
@@ -136,7 +132,7 @@ namespace MedCompanion.Dialogs
                 await _webView.EnsureCoreWebView2Async(env);
 
                 _webViewInitialized = true;
-                _webView.CoreWebView2.Navigate(_pdfPath);
+                _webView.CoreWebView2.Navigate(_tempPdfPath);
 
                 PdfFallbackMessage.Visibility = Visibility.Collapsed;
                 PdfZoomInButton.IsEnabled = true;
@@ -146,6 +142,39 @@ namespace MedCompanion.Dialogs
             {
                 PdfFallbackMessage.Text = $"⚠ Erreur WebView2 : {ex.Message}";
                 PdfFallbackMessage.Foreground = Brushes.Orange;
+            }
+        }
+
+        private void SaveFormButton_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var formulairesDir = _pathService.GetFormulairesDirectory(_selectedPatient.NomComplet);
+                Directory.CreateDirectory(formulairesDir);
+
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var pdfFileName = $"PAI_{_selectedPatient.Nom}_{_selectedPatient.Prenom}_{timestamp}.pdf";
+                _pdfPath = Path.Combine(formulairesDir, pdfFileName);
+
+                File.Copy(_tempPdfPath, _pdfPath, overwrite: true);
+                SaveMetadata(formulairesDir, pdfFileName);
+
+                // Enregistrer le poids pour la synthèse (Poids moyen pour un PAI = 0.5)
+                _synthesisWeightTracker.RecordContentWeight(
+                    _selectedPatient.NomComplet,
+                    "Formulaire PAI",
+                    _pdfPath,
+                    0.5,
+                    $"Création d'un PAI ({_motif})"
+                );
+
+                _isSaved = true;
+                MessageBox.Show("Formulaire enregistré avec succès !", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
+                Close();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors de l'enregistrement : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -191,7 +220,13 @@ namespace MedCompanion.Dialogs
                 ResponseTextBox.Text = "";
 
                 var style = (StyleComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Standard";
-                var length = (LengthComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Moyen";
+                
+                // On récupère le texte directement car la ComboBox est éditable
+                var length = LengthComboBox.Text;
+                if (string.IsNullOrWhiteSpace(length))
+                {
+                    length = "Moyen";
+                }
 
                 var metadata = _patientIndex.GetMetadata(_selectedPatient.Id);
                 if (metadata == null)
@@ -248,6 +283,17 @@ namespace MedCompanion.Dialogs
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
         {
+            // Nettoyage du fichier temporaire si non sauvegardé
+            if (!_isSaved && File.Exists(_tempPdfPath))
+            {
+                try
+                {
+                    // Libérer le fichier du WebView2 si possible ou attendre fermeture
+                    _webView?.Dispose();
+                    // Note: Il se peut que le fichier soit verrouillé encore quelques ms
+                }
+                catch { }
+            }
             Close();
         }
 

@@ -490,42 +490,41 @@ namespace MedCompanion.ViewModels
 
             try
             {
-                // Sauvegarder les modifications
-                var nomComplet = $"{CurrentPatient.Nom}_{CurrentPatient.Prenom}";
-                var (success, message, mdPath, docxPath) = _attestationService.SaveAndExportAttestation(
-                    nomComplet,
-                    SelectedAttestation.Type,
+                // ✅ CORRECTION : Utiliser UpdateExistingAttestationAsync pour écraser le fichier existant
+                var existingMdPath = SelectedAttestation.MdPath;
+                var (success, error) = await _attestationService.UpdateExistingAttestationAsync(
+                    existingMdPath,
                     AttestationMarkdown
                 );
 
-                if (success && mdPath != null)
+                if (!success)
                 {
-                    // NOUVEAU : Enregistrer le poids de pertinence selon le type d'attestation (modification)
-                    if (_synthesisWeightTracker != null)
-                    {
-                        var weight = ContentWeightRules.GetDefaultWeight(SelectedAttestation.Type) ?? 0.2;
-                        _synthesisWeightTracker.RecordContentWeight(
-                            nomComplet,
-                            SelectedAttestation.Type,
-                            mdPath,
-                            weight,
-                            $"Attestation modifiée {SelectedAttestation.Type} (poids: {weight:F1})"
-                        );
-
-                        System.Diagnostics.Debug.WriteLine(
-                            $"[AttestationViewModel] Poids enregistré (modification): {weight:F1} pour {SelectedAttestation.Type}");
-                    }
-
-                    InfoMessageRequested?.Invoke(this, ("Succès", "Attestation modifiée et sauvegardée"));
-                    RefreshAttestationsList();
-                    IsModifying = false;
-                    RaiseStatusMessage("Attestation sauvegardée");
-                }
-                else
-                {
-                    ErrorOccurred?.Invoke(this, ("Erreur", message));
+                    ErrorOccurred?.Invoke(this, ("Erreur", error));
                     RaiseStatusMessage("Erreur lors de la sauvegarde");
+                    return;
                 }
+
+                // Enregistrer le poids de pertinence
+                if (_synthesisWeightTracker != null)
+                {
+                    var nomComplet = $"{CurrentPatient.Nom}_{CurrentPatient.Prenom}";
+                    var weight = ContentWeightRules.GetDefaultWeight(SelectedAttestation.Type) ?? 0.2;
+                    _synthesisWeightTracker.RecordContentWeight(
+                        nomComplet,
+                        SelectedAttestation.Type,
+                        existingMdPath,
+                        weight,
+                        $"Attestation modifiée {SelectedAttestation.Type} (poids: {weight:F1})"
+                    );
+
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[AttestationViewModel] Poids enregistré (modification): {weight:F1} pour {SelectedAttestation.Type}");
+                }
+
+                InfoMessageRequested?.Invoke(this, ("Succès", "Attestation modifiée et sauvegardée"));
+                RefreshAttestationsList();
+                IsModifying = false;
+                RaiseStatusMessage("Attestation sauvegardée");
             }
             catch (Exception ex)
             {

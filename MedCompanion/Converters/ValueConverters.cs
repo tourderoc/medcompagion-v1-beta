@@ -117,4 +117,50 @@ namespace MedCompanion.Converters
             return Binding.DoNothing;
         }
     }
+
+    /// <summary>
+    /// Convertit un pourcentage de progression (0-100) et une largeur de conteneur en largeur de barre
+    /// Utilisé pour afficher une barre de progression visuelle
+    /// </summary>
+    public class ProgressToWidthConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values.Length == 2 && 
+                values[0] is double progress && 
+                values[1] is double containerWidth)
+            {
+                // Calculer la largeur de la barre en fonction du pourcentage
+                // progress est entre 0 et 100
+                double width = (progress / 100.0) * containerWidth;
+                return Math.Max(0, Math.Min(width, containerWidth)); // Limiter entre 0 et containerWidth
+            }
+            return 0.0;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+    /// <summary>
+    /// Convertit une chaîne de caractères en Visibility
+    /// Si chaîne non vide (ni espace) → Visible, sinon → Collapsed
+    /// </summary>
+    public class StringNotWhiteSpaceToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is string stringValue)
+            {
+                return !string.IsNullOrWhiteSpace(stringValue) ? Visibility.Visible : Visibility.Collapsed;
+            }
+            return Visibility.Collapsed;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
 }

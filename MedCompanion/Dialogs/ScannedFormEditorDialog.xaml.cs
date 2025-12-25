@@ -24,13 +24,14 @@ namespace MedCompanion.Dialogs
         #region Inner Classes
 
         /// <summary>
-        /// Represents an editable zone with its visual elements (rectangle, resize handles, text)
+        /// Represents an editable zone with its visual elements (border, resize handles, text)
         /// </summary>
         private class EditableZone
         {
             public ScannedFormMetadata Metadata { get; set; }
-            public Rectangle MainRectangle { get; set; }
+            public Border MainBorder { get; set; } // Replaces MainRectangle
             public TextBlock TextDisplay { get; set; }
+            public ScrollViewer ScrollContainer { get; set; } // New ScrollViewer
             public List<Rectangle> ResizeHandles { get; set; } = new List<Rectangle>();
             public bool IsSelected { get; set; }
             
@@ -38,10 +39,11 @@ namespace MedCompanion.Dialogs
             public TextBox? EditTextBox { get; set; }
             public bool IsEditing { get; set; }
 
-            public EditableZone(ScannedFormMetadata metadata, Rectangle rectangle, TextBlock textBlock)
+            public EditableZone(ScannedFormMetadata metadata, Border border, ScrollViewer scrollViewer, TextBlock textBlock)
             {
                 Metadata = metadata;
-                MainRectangle = rectangle;
+                MainBorder = border;
+                ScrollContainer = scrollViewer;
                 TextDisplay = textBlock;
             }
 
@@ -66,16 +68,18 @@ namespace MedCompanion.Dialogs
                 IsSelected = selected;
                 if (selected)
                 {
-                    MainRectangle.Stroke = Brushes.Blue;
-                    MainRectangle.StrokeThickness = 3;
-                    MainRectangle.Fill = new SolidColorBrush(Color.FromArgb(50, 0, 0, 255));
+                    MainBorder.BorderBrush = Brushes.Blue;
+                    MainBorder.BorderThickness = new Thickness(3);
+                    // Keep background White if it has text, otherwise keep it transparent/tinted?
+                    // actually, we want the background to always be white if we want to hide lines.
+                    // But if it's selected, maybe we show a tint?
+                    // Let's rely on the BorderBrush for selection indication.
                     ShowHandles();
                 }
                 else
                 {
-                    MainRectangle.Stroke = Brushes.Red;
-                    MainRectangle.StrokeThickness = 2;
-                    MainRectangle.Fill = new SolidColorBrush(Color.FromArgb(30, 255, 0, 0));
+                    MainBorder.BorderBrush = Brushes.Red;
+                    MainBorder.BorderThickness = new Thickness(2);
                     HideHandles();
                 }
             }
@@ -87,11 +91,13 @@ namespace MedCompanion.Dialogs
 
             public void UpdateTextPosition()
             {
-                // Sync TextBlock position and size with rectangle
-                Canvas.SetLeft(TextDisplay, Canvas.GetLeft(MainRectangle));
-                Canvas.SetTop(TextDisplay, Canvas.GetTop(MainRectangle));
-                TextDisplay.Width = MainRectangle.Width;
-                TextDisplay.Height = MainRectangle.Height;
+                // Sync properties with underlying metadata if needed
+                // But since everything is inside the Border, moving the Border moves everything.
+                // We just need to update the Width/Height of the ScrollContainer to match the Border?
+                // Actually if ScrollViewer is Child of Border, it autosizes.
+                // So we just need to ensure Border size matches Metadata.
+                MainBorder.Width = Metadata.Rectangle.Width;
+                MainBorder.Height = Metadata.Rectangle.Height;
             }
         }
 
@@ -99,6 +105,7 @@ namespace MedCompanion.Dialogs
 
         #region Fields
 
+        private readonly OcrService _ocrService;
         private readonly PatientIndexEntry _selectedPatient;
         private readonly PatientIndexService _patientIndex;
         private readonly FormulaireAssistantService _formulaireService;
@@ -140,7 +147,8 @@ namespace MedCompanion.Dialogs
             PatientIndexEntry selectedPatient,
             PatientIndexService patientIndex,
             FormulaireAssistantService formulaireService,
-            string pdfPath)
+            string pdfPath,
+            OcrService ocrService)
         {
             InitializeComponent();
 
@@ -148,6 +156,7 @@ namespace MedCompanion.Dialogs
             _patientIndex = patientIndex;
             _formulaireService = formulaireService;
             _pdfPath = pdfPath;
+            _ocrService = ocrService;
 
             Loaded += ScannedFormEditorDialog_Loaded;
             KeyDown += Window_KeyDown;
@@ -404,52 +413,67 @@ namespace MedCompanion.Dialogs
         {
             if (_zoneCanvas == null) return null!;
 
-            var rect = new Rectangle
+            // Container Border (Replacing Rectangle)
+            var border = new Border
             {
-                Stroke = Brushes.Red,
-                StrokeThickness = 2,
-                Fill = new SolidColorBrush(Color.FromArgb(30, 255, 0, 0)),
+                BorderBrush = Brushes.Red,
+                BorderThickness = new Thickness(2),
+                Background = new SolidColorBrush(Color.FromArgb(240, 255, 255, 255)), // White with slight transparency (or opaque?)
+                // Let's make it fully opaque white to hide lines perfectly
+                // Background = Brushes.White, 
                 Width = metadata.Rectangle.Width,
                 Height = metadata.Rectangle.Height,
                 Cursor = Cursors.Hand
             };
 
-            Canvas.SetLeft(rect, metadata.Rectangle.X);
-            Canvas.SetTop(rect, metadata.Rectangle.Y);
+            Canvas.SetLeft(border, metadata.Rectangle.X);
+            Canvas.SetTop(border, metadata.Rectangle.Y);
 
-            // Create TextBlock to display text inside the zone
+            // ScrollViewer for text content
+            var scrollViewer = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                IsHitTestVisible = true, // Allow scrolling
+                Background = Brushes.Transparent,
+                Padding = new Thickness(0)
+            };
+
+            // TextBlock to display text
             var textBlock = new TextBlock
             {
                 Text = metadata.FilledText,
                 Foreground = new SolidColorBrush(Color.FromRgb(0, 0, 139)), // DarkBlue
                 FontSize = metadata.FontSize,
                 TextWrapping = TextWrapping.Wrap,
-                Padding = new Thickness(5),
+                Padding = new Thickness(4),
                 VerticalAlignment = VerticalAlignment.Top,
                 HorizontalAlignment = HorizontalAlignment.Left,
-                Width = metadata.Rectangle.Width,
-                Height = metadata.Rectangle.Height,
-                IsHitTestVisible = false // Don't capture mouse events
+                // Width should default to available width in scrollviewer
             };
 
-            Canvas.SetLeft(textBlock, metadata.Rectangle.X);
-            Canvas.SetTop(textBlock, metadata.Rectangle.Y);
+            scrollViewer.Content = textBlock;
+            border.Child = scrollViewer;
 
-            var editableZone = new EditableZone(metadata, rect, textBlock);
+            var editableZone = new EditableZone(metadata, border, scrollViewer, textBlock);
 
             // Create resize handles
             CreateResizeHandles(editableZone);
 
-            // Add to canvas (rectangle first, then text on top)
-            _zoneCanvas.Children.Add(rect);
-            _zoneCanvas.Children.Add(textBlock);
+            // Add to canvas
+            _zoneCanvas.Children.Add(border);
 
             // Add event handlers
-            rect.MouseLeftButtonDown += (s, e) => Zone_MouseLeftButtonDown(editableZone, e);
-            rect.MouseEnter += (s, e) => { if (!_isDrawingMode) rect.Cursor = Cursors.Hand; };
+            // CLICK: Handle on Border. 
+            // Note: If user clicks TextBlock/ScrollViewer, it bubbles up to Border.
+            border.MouseLeftButtonDown += (s, e) => Zone_MouseLeftButtonDown(editableZone, e);
+            border.MouseEnter += (s, e) => { if (!_isDrawingMode) border.Cursor = Cursors.Hand; };
             
-            // Add context menu
-            rect.ContextMenu = CreateZoneContextMenu(editableZone);
+            // Context Menu
+            border.ContextMenu = CreateZoneContextMenu(editableZone);
+            // Also attach context menu to TextBlock/ScrollViewer just in case? 
+            // Bubbling should handle it, but ScrollViewer sometimes swallows events.
+            // Let's leave it on Border first.
 
             _editableZones.Add(editableZone);
 
@@ -459,6 +483,18 @@ namespace MedCompanion.Dialogs
         private ContextMenu CreateZoneContextMenu(EditableZone zone)
         {
             var menu = new ContextMenu();
+
+            // Smart Capture OCR
+            var ocrItem = new MenuItem 
+            { 
+                Header = "📝 Capturer Texte (OCR) -> IA", 
+                Foreground = Brushes.Blue,
+                FontWeight = FontWeights.Bold
+            };
+            ocrItem.Click += (s, e) => CaptureZoneTextForAI(zone);
+            menu.Items.Add(ocrItem);
+            
+            menu.Items.Add(new Separator());
             
             // Font size submenu
             var fontSizeMenu = new MenuItem { Header = "📏 Taille de police" };
@@ -502,6 +538,155 @@ namespace MedCompanion.Dialogs
             menu.Items.Add(deleteItem);
             
             return menu;
+        }
+
+        private async void CaptureZoneTextForAI(EditableZone zone)
+        {
+            try
+            {
+                if (!_ocrService.IsConfigured())
+                {
+                    MessageBox.Show($"Erreur OCR : {_ocrService.GetConfigurationError()}", "OcrService Non Configuré", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                this.Cursor = Cursors.Wait;
+                
+                // 1. Locate which page image contains this zone
+                // We stored PageIndex and OffsetY in Image.Tag in InitializePdfViewerAsync
+                // But we need to find it by coordinates.
+                
+                var zoneY = zone.Metadata.Rectangle.Y;
+                var zoneH = zone.Metadata.Rectangle.Height;
+                // zoneY is relative to the Canvas, which is an overlay over the entire StackPanel of images.
+                
+                var stackPanel = PdfViewerContainer.Children.OfType<StackPanel>().FirstOrDefault();
+                if (stackPanel == null) return;
+
+                Image? targetPageImage = null;
+                double pageOffsetY = 0;
+                int pageIndex = -1;
+
+                foreach (var child in stackPanel.Children.OfType<Image>())
+                {
+                    dynamic tag = child.Tag;
+                    double offsetY = tag.OffsetY;
+                    double height = child.ActualHeight;
+
+                    // Check overlap
+                    // Simple check: if the top of the zone starts within this page's vertical range
+                    if (zoneY >= offsetY && zoneY < (offsetY + height))
+                    {
+                        targetPageImage = child;
+                        pageOffsetY = offsetY;
+                        pageIndex = tag.PageIndex;
+                        break;
+                    }
+                }
+
+                if (targetPageImage == null)
+                {
+                    MessageBox.Show("Impossible de déterminer la page source pour cette zone.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                // 2. Calculate relative coordinates
+                // BitmapSource used in Image might be scaled by WPF display.
+                // We need to query the underlying BitmapSource for pixel dimensions.
+                var bitmapSource = targetPageImage.Source as System.Windows.Media.Imaging.BitmapSource;
+                if (bitmapSource == null) return;
+
+                double displayWidth = targetPageImage.ActualWidth;
+                double displayHeight = targetPageImage.ActualHeight;
+                
+                // Scale factor between Display pixels and Image pixels
+                double scaleX = bitmapSource.PixelWidth / displayWidth;
+                double scaleY = bitmapSource.PixelHeight / displayHeight;
+
+                // Zone coordinates relative to Page Top-Left
+                double relX = zone.Metadata.Rectangle.X; // X is relative to Canvas, which matches StackPanel width?
+                // Wait, StackPanel centers images. The canvas stretches.
+                // If images are centered in StackPanel, we need to account for margins if Canvas is wider.
+                // Let's assume Canvas Width == StackPanel Width. But Images might have margins?
+                // In InitializePdfViewerAsync: HorizontalAlignment = Center.
+                // If the Window is wide, there's empty space left/right.
+                // If Canvas covers everything, we need to find where the image starts relative to Canvas.
+
+                // To get accurate position, we can use TranslatePoint
+                var imagePos = targetPageImage.TranslatePoint(new Point(0, 0), _zoneCanvas);
+                
+                double zoneRelX = zone.Metadata.Rectangle.X - imagePos.X;
+                double zoneRelY = zone.Metadata.Rectangle.Y - imagePos.Y;
+                double zoneRelW = zone.Metadata.Rectangle.Width;
+                double zoneRelH = zone.Metadata.Rectangle.Height;
+
+                // 3. Convert to Image Pixels
+                double cropX = zoneRelX * scaleX;
+                double cropY = zoneRelY * scaleY;
+                double cropW = zoneRelW * scaleX;
+                double cropH = zoneRelH * scaleY;
+
+                // 4. Extract Image Bytes from BitmapSource (cropping is done here to save memory before sending to service?)
+                // Or we can send the whole page bytes and let service crop?
+                // Service expects byte[]. Let's crop here using CroppedBitmap for efficiency.
+                
+                var cropRect = new Int32Rect((int)cropX, (int)cropY, (int)cropW, (int)cropH);
+                
+                // Validate bounds
+                if (cropRect.X < 0) cropRect.X = 0;
+                if (cropRect.Y < 0) cropRect.Y = 0;
+                if (cropRect.Width > bitmapSource.PixelWidth - cropRect.X) cropRect.Width = bitmapSource.PixelWidth - cropRect.X;
+                if (cropRect.Height > bitmapSource.PixelHeight - cropRect.Y) cropRect.Height = bitmapSource.PixelHeight - cropRect.Y;
+
+                if (cropRect.Width <= 0 || cropRect.Height <= 0) 
+                {
+                     MessageBox.Show("Zone invalide ou hors de l'image.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                     return;
+                }
+
+                var croppedBitmap = new System.Windows.Media.Imaging.CroppedBitmap(bitmapSource, cropRect);
+                
+                // Convert to byte array
+                var encoder = new System.Windows.Media.Imaging.PngBitmapEncoder();
+                encoder.Frames.Add(System.Windows.Media.Imaging.BitmapFrame.Create(croppedBitmap));
+                
+                byte[] imageBytes;
+                using (var ms = new MemoryStream())
+                {
+                    encoder.Save(ms);
+                    imageBytes = ms.ToArray();
+                }
+
+                // 5. Call OCR Service
+                // We pass 0,0 for x,y because we already cropped it.
+                var text = await _ocrService.ExtractTextFromImageRegionAsync(imageBytes, 0, 0, cropRect.Width, cropRect.Height);
+
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                     MessageBox.Show("Aucun texte détecté dans cette zone.", "OCR", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+                else
+                {
+                    // 6. Append to Instruction Box
+                    if (!string.IsNullOrWhiteSpace(InstructionTextBox.Text))
+                        InstructionTextBox.AppendText("\n\n");
+                    
+                    InstructionTextBox.AppendText(text);
+                    InstructionTextBox.ScrollToEnd();
+                    
+                    // Show small notification?
+                    // MessageBox.Show($"Texte capturé :\n\n{text}", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur Capture OCR : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                this.Cursor = Cursors.Arrow;
+            }
         }
         
         private void PasteIntoZone(EditableZone zone)
@@ -555,13 +740,13 @@ namespace MedCompanion.Dialogs
         {
             if (zone.ResizeHandles.Count != 8) return;
 
-            var rect = zone.MainRectangle;
-            var left = Canvas.GetLeft(rect);
-            var top = Canvas.GetTop(rect);
-            var right = left + rect.Width;
-            var bottom = top + rect.Height;
-            var centerX = left + rect.Width / 2;
-            var centerY = top + rect.Height / 2;
+            var border = zone.MainBorder;
+            var left = Canvas.GetLeft(border);
+            var top = Canvas.GetTop(border);
+            var right = left + border.Width;
+            var bottom = top + border.Height;
+            var centerX = left + border.Width / 2;
+            var centerY = top + border.Height / 2;
 
             var positions = new Dictionary<string, Point>
             {
@@ -684,7 +869,7 @@ namespace MedCompanion.Dialogs
             if (result != MessageBoxResult.Yes) return;
 
             // Remove from canvas
-            _zoneCanvas.Children.Remove(_selectedZone.MainRectangle);
+            _zoneCanvas.Children.Remove(_selectedZone.MainBorder);
             foreach (var handle in _selectedZone.ResizeHandles)
             {
                 _zoneCanvas.Children.Remove(handle);
@@ -737,8 +922,8 @@ namespace MedCompanion.Dialogs
             // Single click to select and start dragging
             SelectZone(zone);
             _isDragging = true;
-            _dragOffset = e.GetPosition(zone.MainRectangle);
-            zone.MainRectangle.CaptureMouse();
+            _dragOffset = e.GetPosition(zone.MainBorder);
+            zone.MainBorder.CaptureMouse();
         }
 
         private void ResizeHandle_MouseLeftButtonDown(EditableZone zone, Rectangle handle, MouseButtonEventArgs e)
@@ -752,21 +937,21 @@ namespace MedCompanion.Dialogs
             _activeResizeHandle = handle;
             _resizeDirection = handle.Tag as string ?? "";
 
-            var rect = zone.MainRectangle;
-            var left = Canvas.GetLeft(rect);
-            var top = Canvas.GetTop(rect);
+            var border = zone.MainBorder;
+            var left = Canvas.GetLeft(border);
+            var top = Canvas.GetTop(border);
 
             // Set anchor point (opposite corner/side)
             _resizeAnchor = _resizeDirection switch
             {
-                "NW" => new Point(left + rect.Width, top + rect.Height),
-                "N" => new Point(left, top + rect.Height),
-                "NE" => new Point(left, top + rect.Height),
+                "NW" => new Point(left + border.Width, top + border.Height),
+                "N" => new Point(left, top + border.Height),
+                "NE" => new Point(left, top + border.Height),
                 "E" => new Point(left, top),
                 "SE" => new Point(left, top),
                 "S" => new Point(left, top),
-                "SW" => new Point(left + rect.Width, top),
-                "W" => new Point(left + rect.Width, top),
+                "SW" => new Point(left + border.Width, top),
+                "W" => new Point(left + border.Width, top),
                 _ => new Point(left, top)
             };
 
@@ -828,18 +1013,18 @@ namespace MedCompanion.Dialogs
             // Handle dragging zone
             if (_isDragging && _selectedZone != null)
             {
-                var rect = _selectedZone.MainRectangle;
+                var border = _selectedZone.MainBorder;
                 var newLeft = pos.X - _dragOffset.X;
                 var newTop = pos.Y - _dragOffset.Y;
 
                 // Keep within canvas bounds
-                newLeft = Math.Max(0, Math.Min(newLeft, _zoneCanvas.ActualWidth - rect.Width));
-                newTop = Math.Max(0, Math.Min(newTop, _zoneCanvas.ActualHeight - rect.Height));
+                newLeft = Math.Max(0, Math.Min(newLeft, _zoneCanvas.ActualWidth - border.Width));
+                newTop = Math.Max(0, Math.Min(newTop, _zoneCanvas.ActualHeight - border.Height));
 
-                Canvas.SetLeft(rect, newLeft);
-                Canvas.SetTop(rect, newTop);
+                Canvas.SetLeft(border, newLeft);
+                Canvas.SetTop(border, newTop);
 
-                _selectedZone.UpdateTextPosition(); // Sync TextBlock position
+                _selectedZone.UpdateTextPosition(); // Sync sizes
                 UpdateResizeHandles(_selectedZone);
                 UpdateSelectedZoneInfo();
                 return;
@@ -848,12 +1033,12 @@ namespace MedCompanion.Dialogs
             // Handle resizing zone
             if (_isResizing && _selectedZone != null)
             {
-                var rect = _selectedZone.MainRectangle;
+                var border = _selectedZone.MainBorder;
                 
-                double newLeft = Canvas.GetLeft(rect);
-                double newTop = Canvas.GetTop(rect);
-                double newWidth = rect.Width;
-                double newHeight = rect.Height;
+                double newLeft = Canvas.GetLeft(border);
+                double newTop = Canvas.GetTop(border);
+                double newWidth = border.Width;
+                double newHeight = border.Height;
 
                 switch (_resizeDirection)
                 {
@@ -893,10 +1078,10 @@ namespace MedCompanion.Dialogs
                         break;
                 }
 
-                Canvas.SetLeft(rect, newLeft);
-                Canvas.SetTop(rect, newTop);
-                rect.Width = newWidth;
-                rect.Height = newHeight;
+                Canvas.SetLeft(border, newLeft);
+                Canvas.SetTop(border, newTop);
+                border.Width = newWidth;
+                border.Height = newHeight;
 
                 _selectedZone.UpdateTextPosition(); // Sync TextBlock size and position
                 UpdateResizeHandles(_selectedZone);
@@ -956,15 +1141,15 @@ namespace MedCompanion.Dialogs
             // Handle drag completion
             if (_isDragging && _selectedZone != null)
             {
-                _selectedZone.MainRectangle.ReleaseMouseCapture();
+                _selectedZone.MainBorder.ReleaseMouseCapture();
                 
                 // Update metadata
-                var rect = _selectedZone.MainRectangle;
+                var border = _selectedZone.MainBorder;
                 _selectedZone.Metadata.Rectangle = new Rect(
-                    Canvas.GetLeft(rect),
-                    Canvas.GetTop(rect),
-                    rect.Width,
-                    rect.Height
+                    Canvas.GetLeft(border),
+                    Canvas.GetTop(border),
+                    border.Width,
+                    border.Height
                 );
 
                 _isDragging = false;
@@ -977,12 +1162,12 @@ namespace MedCompanion.Dialogs
                 _activeResizeHandle.ReleaseMouseCapture();
 
                 // Update metadata
-                var rect = _selectedZone.MainRectangle;
+                var border = _selectedZone.MainBorder;
                 _selectedZone.Metadata.Rectangle = new Rect(
-                    Canvas.GetLeft(rect),
-                    Canvas.GetTop(rect),
-                    rect.Width,
-                    rect.Height
+                    Canvas.GetLeft(border),
+                    Canvas.GetTop(border),
+                    border.Width,
+                    border.Height
                 );
 
                 _isResizing = false;
@@ -1016,16 +1201,17 @@ namespace MedCompanion.Dialogs
             };
 
             // Position and size to match zone
-            Canvas.SetLeft(editBox, Canvas.GetLeft(zone.MainRectangle));
-            Canvas.SetTop(editBox, Canvas.GetTop(zone.MainRectangle));
-            editBox.Width = zone.MainRectangle.Width;
-            editBox.Height = zone.MainRectangle.Height;
+            Canvas.SetLeft(editBox, Canvas.GetLeft(zone.MainBorder));
+            Canvas.SetTop(editBox, Canvas.GetTop(zone.MainBorder));
+            editBox.Width = zone.MainBorder.Width;
+            editBox.Height = zone.MainBorder.Height;
 
             // Store reference
             zone.EditTextBox = editBox;
 
             // Hide TextBlock, show TextBox
-            zone.TextDisplay.Visibility = Visibility.Collapsed;
+            // In the new model, we can just hide the ScrollViewer or the TextBlock inside
+            zone.ScrollContainer.Visibility = Visibility.Collapsed;
             _zoneCanvas.Children.Add(editBox);
 
             // Focus and select all
@@ -1065,8 +1251,8 @@ namespace MedCompanion.Dialogs
             zone.EditTextBox = null;
             zone.IsEditing = false;
 
-            // Show TextBlock
-            zone.TextDisplay.Visibility = Visibility.Visible;
+            // Show TextBlock/ScrollViewer
+            zone.ScrollContainer.Visibility = Visibility.Visible;
             zone.UpdateText();
             UpdateSelectedZoneInfo();
         }

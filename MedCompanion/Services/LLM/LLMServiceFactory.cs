@@ -28,24 +28,16 @@ namespace MedCompanion.Services.LLM
         /// </summary>
         public async Task<ILLMService> InitializeAsync()
         {
-            // Tenter d'initialiser Ollama si sélectionné
+            // Initialiser Ollama si sélectionné
             if (_settings.LLMProvider == "Ollama")
             {
                 _ollamaProvider = new OllamaLLMProvider(
                     _settings.OllamaBaseUrl,
                     _settings.OllamaModel
                 );
-
-                var (isConnected, _) = await _ollamaProvider.CheckConnectionAsync();
                 
-                if (isConnected)
-                {
-                    _currentProvider = _ollamaProvider;
-                    return _currentProvider;
-                }
-                
-                // Ollama indisponible → fallback vers OpenAI
-                _settings.LLMProvider = "OpenAI";
+                _currentProvider = _ollamaProvider;
+                return _currentProvider;
             }
 
             // Charger la clé OpenAI depuis le stockage sécurisé ou variable d'environnement
@@ -149,6 +141,11 @@ namespace MedCompanion.Services.LLM
 
                     _currentProvider = _openAIProvider;
                     _settings.LLMProvider = "OpenAI";
+                    
+                    if (modelName != null)
+                    {
+                        _settings.OpenAIModel = modelName;
+                    }
 
                     return (true, $"☁️ Basculé vers OpenAI ({_openAIProvider.GetModelName()})");
                 }

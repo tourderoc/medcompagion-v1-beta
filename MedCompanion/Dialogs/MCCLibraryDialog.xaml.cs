@@ -1,285 +1,53 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Controls;
 using MedCompanion.Models;
 using MedCompanion.Services;
-using MedCompanion.Services.LLM;
+using MedCompanion.ViewModels;
 
 namespace MedCompanion.Dialogs;
 
+/// <summary>
+/// Dialogue de bibliothèque MCC - Architecture MVVM
+/// ViewModel = MCCLibraryViewModel
+/// Migré le 05/12/2025 - Backup : MCCLibraryDialog.xaml.cs.bak
+/// </summary>
 public partial class MCCLibraryDialog : Window
 {
     private readonly MCCLibraryService _mccLibrary;
-    private readonly LetterRatingService _ratingService;
-    private List<MCCDisplayItem> _allMCCs = new();
-    private List<MCCDisplayItem> _filteredMCCs = new();
-    private MCCModel? _selectedMCC;
-    
-    public MCCModel? SelectedMCC => _selectedMCC;
-    public bool ShouldGenerate { get; private set; }
-    
+    private MCCLibraryViewModel? _viewModel;
+
+    public MCCModel? SelectedMCC => _viewModel?.SelectedMCC;
+    public bool ShouldGenerate => _viewModel?.ShouldGenerate ?? false;
+
     public MCCLibraryDialog(MCCLibraryService mccLibrary, LetterRatingService? ratingService = null)
     {
         InitializeComponent();
+
         _mccLibrary = mccLibrary;
-        _ratingService = ratingService ?? new LetterRatingService();
-        Loaded += MCCLibraryDialog_Loaded;
-    }
-    
-    private void MCCLibraryDialog_Loaded(object sender, RoutedEventArgs e)
-    {
-        LoadMCCs();
-    }
-    
-    private void LoadMCCs()
-    {
-        try
-        {
-            var mccs = _mccLibrary.GetAllMCCs();
-            
-            _allMCCs = mccs.Select(mcc =>
-            {
-                // Récupérer les statistiques de notation pour ce MCC
-                var stats = _ratingService.GetMCCStatistics(mcc.Id);
-                
-                return new MCCDisplayItem
-                {
-                    MCC = mcc,
-                    Name = mcc.Name,
-                    CreatedDisplay = mcc.Created.ToString("dd/MM/yyyy"),
-                    UsageCount = mcc.UsageCount,
-                    KeywordsPreview = mcc.Keywords != null && mcc.Keywords.Count > 0
-                        ? string.Join(", ", mcc.Keywords.Take(3)) + (mcc.Keywords.Count > 3 ? "..." : "")
-                        : "Aucun",
-                    Semantic = mcc.Semantic ?? new SemanticAnalysis(),
-                    // 🆕 Statistiques de notation
-                    AverageRating = stats.AverageRating,
-                    RatingCount = stats.TotalRatings,
-                    RatingDisplay = FormatRatingDisplay(stats),
-                    RatingColor = GetRatingColor(stats.AverageRating, stats.TotalRatings)
-                };
-            }).ToList();
-            
-            _filteredMCCs = new List<MCCDisplayItem>(_allMCCs);
-            UpdateList();
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show($"Erreur chargement MCC :\n\n{ex.Message}", "Erreur",
-                MessageBoxButton.OK, MessageBoxImage.Error);
-        }
-    }
-    
-    private void UpdateList()
-    {
-        MCCListBox.ItemsSource = null;
-        MCCListBox.ItemsSource = _filteredMCCs;
-        
-        var count = _filteredMCCs.Count;
-        CountLabel.Text = count == 0 ? "Aucun MCC" :
-                         count == 1 ? "1 MCC" :
-                         $"{count} MCCs";
-    }
-    
-    private void SearchBox_TextChanged(object sender, TextChangedEventArgs e)
-    {
-        var query = SearchBox.Text.Trim().ToLower();
-        
-        if (string.IsNullOrEmpty(query))
-        {
-            _filteredMCCs = new List<MCCDisplayItem>(_allMCCs);
-        }
-        else
-        {
-            _filteredMCCs = _allMCCs.Where(mcc =>
-                mcc.Name.ToLower().Contains(query) ||
-                (mcc.MCC.Keywords != null && mcc.MCC.Keywords.Any(k => k.ToLower().Contains(query))) ||
-                (mcc.MCC.Semantic?.DocType?.ToLower().Contains(query) ?? false) ||
-                (mcc.MCC.Semantic?.Audience?.ToLower().Contains(query) ?? false)
-            ).ToList();
-        }
-        
-        UpdateList();
-    }
-    
-    private void MCCListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (MCCListBox.SelectedItem is MCCDisplayItem displayItem)
-        {
-            _selectedMCC = displayItem.MCC;
-            DisplayMCCDetails(displayItem.MCC);
+        _viewModel = new MCCLibraryViewModel(mccLibrary, ratingService);
 
-            // Activer les boutons
-            EditButton.IsEnabled = true;
-            GenerateButton.IsEnabled = true;
-            DeleteButton.IsEnabled = true;
-            OptimizeButton.IsEnabled = true;
-        }
-        else
-        {
-            _selectedMCC = null;
-            ClearDetails();
+        // S'abonner aux événements ViewModel
+        _viewModel.EditRequested += OnEditRequested;
+        _viewModel.OptimizeRequested += OnOptimizeRequested;
+        _viewModel.DeleteConfirmationRequested += OnDeleteConfirmation;
+        _viewModel.CloseDialogRequested += OnCloseDialog;
+        _viewModel.ErrorOccurred += OnError;
 
-            // Désactiver les boutons
-            EditButton.IsEnabled = false;
-            GenerateButton.IsEnabled = false;
-            DeleteButton.IsEnabled = false;
-            OptimizeButton.IsEnabled = false;
-        }
-    }
-    
-    private void DisplayMCCDetails(MCCModel mcc)
-    {
-        // En-tête
-        PreviewTitle.Text = mcc.Name;
-        PreviewSubtitle.Text = mcc.Semantic != null
-            ? $"{mcc.Semantic.DocType} • {mcc.Semantic.Audience}"
-            : "Informations sémantiques non disponibles";
-        
-        // Stats
-        UsageStats.Text = $"📊 {mcc.UsageCount} utilisations";
-        DateStats.Text = $"📅 Créé le {mcc.Created:dd/MM/yyyy}";
-        if (mcc.LastModified != mcc.Created)
-        {
-            DateStats.Text += $"\n✏️ Modifié le {mcc.LastModified:dd/MM/yyyy}";
-        }
-        
-        // Template
-        TemplatePreview.Text = mcc.TemplateMarkdown ?? "Template non disponible";
-        
-        // Variables - EXTRAIRE depuis le template Markdown
-        var variables = ExtractVariablesFromTemplate(mcc.TemplateMarkdown);
-        if (variables.Count > 0)
-        {
-            VariablesText.Text = string.Join(", ", variables.Select(v => $"{{{{{v}}}}}"));
-        }
-        else
-        {
-            VariablesText.Text = "Aucune variable détectée";
-        }
-        
-        // Analyse sémantique
-        // 🆕 Afficher les évaluations
-        var stats = _ratingService.GetMCCStatistics(mcc.Id);
-        if (stats.TotalRatings > 0)
-        {
-            RatingStarsText.Text = GetStarDisplay(stats.AverageRating);
-            RatingAverageText.Text = $"{stats.AverageRating:F1}/5";
-            RatingCountText.Text = $"({stats.TotalRatings} {(stats.TotalRatings > 1 ? "évaluations" : "évaluation")})";
-            RatingSatisfactionText.Text = $"Satisfaction : {stats.SatisfactionRate:F0}%";
-            
-            // Distribution des notes
-            RatingDistributionText.Text = $"5★ ({stats.FiveStars}) • 4★ ({stats.FourStars}) • 3★ ({stats.ThreeStars}) • 2★ ({stats.TwoStars}) • 1★ ({stats.OneStar})";
-            
-            // Afficher la section
-            RatingSection.Visibility = Visibility.Visible;
-        }
-        else
-        {
-            RatingSection.Visibility = Visibility.Collapsed;
-        }
-        
-        if (mcc.Semantic != null)
-        {
-            SemanticType.Text = mcc.Semantic.DocType ?? "-";
-            SemanticAudience.Text = mcc.Semantic.Audience ?? "-";
-            SemanticAge.Text = mcc.Semantic.AgeGroup ?? "-";
-            SemanticTone.Text = mcc.Semantic.Tone ?? "-";
-            
-            // Mots-clés - Afficher les mots-clés optimisés du MCC
-            if (mcc.Keywords != null && mcc.Keywords.Count > 0)
-            {
-                KeywordsList.ItemsSource = mcc.Keywords;
-            }
-            else
-            {
-                KeywordsList.ItemsSource = new List<string> { "Aucun" };
-            }
-            
-            // Structure
-            if (mcc.Semantic.Sections != null && mcc.Semantic.Sections.Count > 0)
-            {
-                StructureList.ItemsSource = mcc.Semantic.Sections.ToList();
-            }
-            else
-            {
-                StructureList.ItemsSource = new List<KeyValuePair<string, string>>
-                {
-                    new KeyValuePair<string, string>("Structure", "Non analysée")
-                };
-            }
-        }
-        else
-        {
-            SemanticType.Text = "Non disponible";
-            SemanticAudience.Text = "-";
-            SemanticAge.Text = "-";
-            SemanticTone.Text = "-";
-            KeywordsList.ItemsSource = new List<string> { "Non disponible" };
-            StructureList.ItemsSource = new List<KeyValuePair<string, string>>();
-        }
-    }
-    
-    private void ClearDetails()
-    {
-        PreviewTitle.Text = "Sélectionnez un MCC";
-        PreviewSubtitle.Text = "";
-        UsageStats.Text = "📊 0 utilisations";
-        DateStats.Text = "";
-        TemplatePreview.Text = "Sélectionnez un MCC dans la liste pour voir son aperçu...";
-        VariablesText.Text = "Aucune";
-        
-        SemanticType.Text = "-";
-        SemanticAudience.Text = "-";
-        SemanticAge.Text = "-";
-        SemanticTone.Text = "-";
-        KeywordsList.ItemsSource = null;
-        StructureList.ItemsSource = null;
-    }
-    
-    private void RefreshButton_Click(object sender, RoutedEventArgs e)
-    {
-        LoadMCCs();
-        MessageBox.Show("Liste rafraîchie !", "Info", MessageBoxButton.OK, MessageBoxImage.Information);
-    }
-    
-    private void GenerateButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selectedMCC == null)
-        {
-            MessageBox.Show("Veuillez sélectionner un MCC.", "Info", 
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-        
-        // Incrémenter le compteur d'utilisation
-        _selectedMCC.UsageCount++;
-        _mccLibrary.UpdateMCC(_selectedMCC);
-        
-        ShouldGenerate = true;
-        DialogResult = true;
-        Close();
-    }
-    
-    private void EditButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selectedMCC == null)
-        {
-            MessageBox.Show("Veuillez sélectionner un MCC à éditer.", "Info",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
+        DataContext = _viewModel;
 
+        Loaded += async (s, e) => await _viewModel.LoadMCCsAsync();
+    }
+
+    private async void OnEditRequested(object? sender, MCCModel mcc)
+    {
         try
         {
             // Sauvegarder l'ID avant d'ouvrir le dialogue
-            var mccId = _selectedMCC.Id;
+            var mccId = mcc.Id;
             
             // Ouvrir le dialogue d'édition
-            var editDialog = new EditMCCDialog(_selectedMCC, _mccLibrary)
+            var editDialog = new EditMCCDialog(mcc, _mccLibrary)
             {
                 Owner = this
             };
@@ -289,22 +57,13 @@ public partial class MCCLibraryDialog : Window
             if (result == true)
             {
                 // Rafraîchir la liste pour afficher les modifications
-                LoadMCCs();
+                await _viewModel!.LoadMCCsAsync();
 
                 // Resélectionner le MCC édité en utilisant l'ID sauvegardé
-                var displayItem = _allMCCs.FirstOrDefault(d => d.MCC != null && d.MCC.Id == mccId);
+                var displayItem = _viewModel.FilteredMCCs.FirstOrDefault(d => d.MCC != null && d.MCC.Id == mccId);
                 if (displayItem != null && displayItem.MCC != null)
                 {
-                    _selectedMCC = displayItem.MCC;
-                    MCCListBox.SelectedItem = displayItem;
-                    DisplayMCCDetails(_selectedMCC);
-                }
-                else
-                {
-                    // Si on ne peut pas resélectionner, juste effacer la sélection
-                    _selectedMCC = null;
-                    MCCListBox.SelectedItem = null;
-                    ClearDetails();
+                    _viewModel.SelectedMCCItem = displayItem;
                 }
             }
         }
@@ -314,66 +73,14 @@ public partial class MCCLibraryDialog : Window
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
-    
-    private void DeleteButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selectedMCC == null)
-        {
-            MessageBox.Show("Veuillez sélectionner un MCC.", "Info", 
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-        
-        var result = MessageBox.Show(
-            $"Êtes-vous sûr de vouloir supprimer ce MCC ?\n\n" +
-            $"Nom : {_selectedMCC.Name}\n" +
-            $"Utilisations : {_selectedMCC.UsageCount}\n\n" +
-            "Cette action est irréversible.",
-            "Confirmer la suppression",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning
-        );
-        
-        if (result == MessageBoxResult.Yes)
-        {
-            var (success, message) = _mccLibrary.DeleteMCC(_selectedMCC.Id);
-            
-            if (success)
-            {
-                MessageBox.Show("✅ MCC supprimé avec succès", "Succès",
-                    MessageBoxButton.OK, MessageBoxImage.Information);
-                LoadMCCs();
-            }
-            else
-            {
-                MessageBox.Show($"❌ Erreur : {message}", "Erreur",
-                    MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-    }
-    
-    private async void OptimizeButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selectedMCC == null)
-        {
-            MessageBox.Show("Veuillez sélectionner un MCC à optimiser.", "Info",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
 
-        // Vérifier si le MCC a un template valide
-        if (string.IsNullOrWhiteSpace(_selectedMCC.TemplateMarkdown))
-        {
-            MessageBox.Show("Ce MCC n'a pas de template valide à optimiser.", "Info",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
+    private async void OnOptimizeRequested(object? sender, MCCModel mcc)
+    {
         // Demander confirmation
         var result = MessageBox.Show(
             $"Êtes-vous sûr de vouloir optimiser ce MCC avec l'IA ?\n\n" +
-            $"Nom : {_selectedMCC.Name}\n" +
-            $"Version actuelle : {_selectedMCC.Version}\n\n" +
+            $"Nom : {mcc.Name}\n" +
+            $"Version actuelle : {mcc.Version}\n\n" +
             "L'optimisation va :\n" +
             "• Nettoyer et améliorer le template\n" +
             "• Régénérer les 5 mots-clés\n" +
@@ -390,10 +97,6 @@ public partial class MCCLibraryDialog : Window
 
         try
         {
-            // Désactiver le bouton pendant l'optimisation
-            OptimizeButton.IsEnabled = false;
-            OptimizeButton.Content = "🧠 Optimisation en cours...";
-
             // Obtenir le service LLM depuis la fenêtre principale
             var mainWindow = Application.Current.MainWindow as MainWindow;
             if (mainWindow == null)
@@ -403,7 +106,6 @@ public partial class MCCLibraryDialog : Window
                 return;
             }
 
-            // Récupérer le service LLM actuel
             var llmService = mainWindow.GetCurrentLLMService();
             if (llmService == null)
             {
@@ -413,7 +115,7 @@ public partial class MCCLibraryDialog : Window
             }
 
             // Optimiser le MCC
-            var (success, message, optimizationResponse) = await _mccLibrary.OptimizeMCCAsync(_selectedMCC.Id, llmService);
+            var (success, message, optimizationResponse) = await _mccLibrary.OptimizeMCCAsync(mcc.Id, llmService);
 
             if (!success || optimizationResponse == null)
             {
@@ -434,10 +136,8 @@ public partial class MCCLibraryDialog : Window
 
             if (applyResult == MessageBoxResult.Yes)
             {
-                // Sauvegarder l'ID avant l'application
-                var mccId = _selectedMCC.Id;
+                var mccId = mcc.Id;
                 
-                // Appliquer l'optimisation
                 var (applySuccess, applyMessage) = _mccLibrary.ApplyOptimization(mccId, optimizationResponse);
 
                 if (applySuccess)
@@ -446,22 +146,13 @@ public partial class MCCLibraryDialog : Window
                         MessageBoxButton.OK, MessageBoxImage.Information);
 
                     // Rafraîchir l'affichage
-                    LoadMCCs();
+                    await _viewModel!.LoadMCCsAsync();
 
-                    // Resélectionner le MCC optimisé en utilisant l'ID sauvegardé
-                    var displayItem = _allMCCs.FirstOrDefault(d => d.MCC?.Id == mccId);
+                    // Resélectionner le MCC optimisé
+                    var displayItem = _viewModel.FilteredMCCs.FirstOrDefault(d => d.MCC != null && d.MCC.Id == mccId);
                     if (displayItem != null && displayItem.MCC != null)
                     {
-                        _selectedMCC = displayItem.MCC;
-                        MCCListBox.SelectedItem = displayItem;
-                        DisplayMCCDetails(_selectedMCC);
-                    }
-                    else
-                    {
-                        // Si on ne peut pas resélectionner, juste effacer la sélection
-                        _selectedMCC = null;
-                        MCCListBox.SelectedItem = null;
-                        ClearDetails();
+                        _viewModel.SelectedMCCItem = displayItem;
                     }
                 }
                 else
@@ -476,95 +167,32 @@ public partial class MCCLibraryDialog : Window
             MessageBox.Show($"Erreur inattendue:\n\n{ex.Message}", "Erreur",
                 MessageBoxButton.OK, MessageBoxImage.Error);
         }
-        finally
+    }
+
+    private void OnDeleteConfirmation(object? sender, MCCModel mcc)
+    {
+        var result = MessageBox.Show(
+            $"Voulez-vous vraiment supprimer le MCC '{mcc.Name}' ?\n\n" +
+            $"Cette action est irréversible.",
+            "Confirmation de suppression",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (result == MessageBoxResult.Yes)
         {
-            // Réactiver le bouton
-            OptimizeButton.IsEnabled = true;
-            OptimizeButton.Content = "🧠 Optimiser le MCC";
+            _viewModel.ConfirmDelete();
         }
     }
 
-    /// <summary>
-    /// Extrait les variables d'un template en détectant les placeholders {{Variable}}
-    /// </summary>
-    private List<string> ExtractVariablesFromTemplate(string? templateContent)
+    private void OnCloseDialog(object? sender, bool shouldGenerate)
     {
-        if (string.IsNullOrWhiteSpace(templateContent))
-            return new List<string>();
+        DialogResult = shouldGenerate;
+        Close();
+    }
 
-        var matches = System.Text.RegularExpressions.Regex.Matches(templateContent, @"\{\{([^}]+)\}\}");
-        return matches
-            .Cast<System.Text.RegularExpressions.Match>()
-            .Select(m => m.Groups[1].Value.Trim())
-            .Distinct()
-            .OrderBy(v => v)
-            .ToList();
-    }
-    
-    /// <summary>
-    /// Formate l'affichage de la note pour les cartes MCC
-    /// </summary>
-    private string FormatRatingDisplay(MCCStatistics stats)
+    private void OnError(object? sender, (string title, string message) error)
     {
-        if (stats.TotalRatings == 0)
-            return "Aucune évaluation";
-        
-        var label = stats.AverageRating >= 4.5 ? "Excellent" :
-                    stats.AverageRating >= 3.5 ? "Bon" :
-                    stats.AverageRating >= 2.5 ? "À améliorer" :
-                    "À revoir";
-        
-        return $"⭐ {stats.AverageRating:F1} ({stats.TotalRatings}) • {label}";
+        MessageBox.Show(error.message, error.title,
+            MessageBoxButton.OK, MessageBoxImage.Error);
     }
-    
-    /// <summary>
-    /// Retourne la couleur selon la note moyenne
-    /// </summary>
-    private string GetRatingColor(double average, int count)
-    {
-        if (count == 0)
-            return "#999999"; // Gris
-        
-        if (average >= 4.0)
-            return "#27AE60"; // Vert
-        else if (average >= 3.0)
-            return "#F39C12"; // Orange
-        else
-            return "#E74C3C"; // Rouge
-    }
-    
-    /// <summary>
-    /// Affiche les étoiles selon la note moyenne
-    /// </summary>
-    private string GetStarDisplay(double average)
-    {
-        var fullStars = (int)Math.Floor(average);
-        var hasHalfStar = (average - fullStars) >= 0.5;
-        var emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
-        
-        var stars = new string('★', fullStars);
-        if (hasHalfStar) stars += "⯨";
-        stars += new string('☆', emptyStars);
-        
-        return stars;
-    }
-}
-
-/// <summary>
-/// Classe pour l'affichage des MCC dans la liste
-/// </summary>
-public class MCCDisplayItem
-{
-    public MCCModel MCC { get; set; } = null!;
-    public string Name { get; set; } = string.Empty;
-    public string CreatedDisplay { get; set; } = string.Empty;
-    public int UsageCount { get; set; }
-    public string KeywordsPreview { get; set; } = string.Empty;
-    public SemanticAnalysis Semantic { get; set; } = new();
-    
-    // 🆕 Propriétés de notation
-    public double AverageRating { get; set; }
-    public int RatingCount { get; set; }
-    public string RatingDisplay { get; set; } = string.Empty;
-    public string RatingColor { get; set; } = "#999999";
 }

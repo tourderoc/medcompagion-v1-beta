@@ -164,6 +164,49 @@
                         
                         <!-- Séparateur -->
                         <Separator Margin="0,10,0,20"/>
+
+                         <!-- Modèle d'Anonymisation (Local) -->
+                        <Border Background="#E8F8F5" Padding="15" CornerRadius="5" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#16A085" Margin="0,0,0,5">
+                                    🛡️ Sécurité &amp; Confidentialité
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#16A085" Margin="0,0,0,10">
+                                    Pour l'extraction de données sensibles (PII), un modèle local est OBLIGATOIRE.
+                                    Ce modèle tournera uniquement sur votre machine via Ollama.
+                                </TextBlock>
+                                
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    
+                                    <ComboBox x:Name="AnonymizationModelCombo"
+                                              Grid.Column="0"
+                                              Height="35"
+                                              Padding="10,8"
+                                              FontSize="12"
+                                              VerticalContentAlignment="Center"
+                                              Background="White"/>
+                                              
+                                    <Button x:Name="RefreshLocalModelsBtn"
+                                            Grid.Column="1"
+                                            Content="🔄"
+                                            Width="40"
+                                            Height="35"
+                                            Margin="5,0,0,0"
+                                            Click="RefreshLocalModelsBtn_Click"
+                                            ToolTip="Rafraîchir la liste des modèles locaux (Ollama)"
+                                            Style="{StaticResource ModernButtonStyle}"
+                                            Background="#16A085"
+                                            Foreground="White"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Séparateur -->
+                        <Separator Margin="0,10,0,20"/>
                         
                         <!-- OpenRouter API Key (à venir) -->
                         <TextBlock Text="OpenRouter API Key" FontWeight="Bold" Margin="0,0,0,8"/>
@@ -185,7 +228,126 @@
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
-            
+
+            <!-- Onglet Sécurité -->
+            <TabItem Header="🔒 Sécurité">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="20">
+
+                        <!-- En-tête explicatif -->
+                        <Border Background="#E8F5E9" Padding="15" CornerRadius="5" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#2E7D32" Margin="0,0,0,5">
+                                    🔐 Protection de l'application
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#2E7D32">
+                                    Configurez la sécurité de MedCompanion. Un mot de passe est requis après 3 jours d'absence, sinon un code PIN suffit.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Activer/Désactiver la sécurité -->
+                        <Border Background="White" Padding="15" CornerRadius="5" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Authentification au démarrage" FontWeight="Bold" FontSize="13" Margin="0,0,0,3"/>
+                                    <TextBlock Text="Demande un code PIN ou mot de passe pour accéder à l'application"
+                                               FontSize="11" Foreground="Gray"/>
+                                </StackPanel>
+
+                                <CheckBox x:Name="SecurityEnabledCheckBox"
+                                          Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          Checked="SecurityEnabledCheckBox_Changed"
+                                          Unchecked="SecurityEnabledCheckBox_Changed"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Section modification mot de passe -->
+                        <Border x:Name="PasswordSection" Background="White" Padding="15" CornerRadius="5" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="Modifier le mot de passe" FontWeight="Bold" FontSize="13" Margin="0,0,0,15"/>
+
+                                <TextBlock Text="Mot de passe actuel" FontSize="12" Margin="0,0,0,5"/>
+                                <PasswordBox x:Name="CurrentPasswordBox" Height="35" Padding="10,8" FontSize="12" Margin="0,0,0,10"/>
+
+                                <TextBlock Text="Nouveau mot de passe" FontSize="12" Margin="0,0,0,5"/>
+                                <PasswordBox x:Name="NewPasswordBox" Height="35" Padding="10,8" FontSize="12" Margin="0,0,0,5"/>
+                                <TextBlock Text="Minimum 6 caractères" FontSize="10" Foreground="Gray" Margin="0,0,0,10"/>
+
+                                <TextBlock Text="Confirmer le nouveau mot de passe" FontSize="12" Margin="0,0,0,5"/>
+                                <PasswordBox x:Name="ConfirmNewPasswordBox" Height="35" Padding="10,8" FontSize="12" Margin="0,0,0,15"/>
+
+                                <Button x:Name="ChangePasswordButton"
+                                        Content="Modifier le mot de passe"
+                                        Click="ChangePassword_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#1976D2"
+                                        Foreground="White"
+                                        HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Section modification code PIN -->
+                        <Border x:Name="PinSection" Background="White" Padding="15" CornerRadius="5" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="Modifier le code PIN" FontWeight="Bold" FontSize="13" Margin="0,0,0,15"/>
+
+                                <TextBlock Text="Mot de passe (pour confirmer)" FontSize="12" Margin="0,0,0,5"/>
+                                <PasswordBox x:Name="PasswordForPinBox" Height="35" Padding="10,8" FontSize="12" Margin="0,0,0,10"/>
+
+                                <TextBlock Text="Nouveau code PIN (4 chiffres)" FontSize="12" Margin="0,0,0,5"/>
+                                <TextBox x:Name="NewPinBox"
+                                         Height="35"
+                                         Padding="10,8"
+                                         FontSize="12"
+                                         MaxLength="4"
+                                         PreviewTextInput="PinBox_PreviewTextInput"
+                                         Margin="0,0,0,15"/>
+
+                                <Button x:Name="ChangePinButton"
+                                        Content="Modifier le code PIN"
+                                        Click="ChangePin_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#1976D2"
+                                        Foreground="White"
+                                        HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Message de statut -->
+                        <TextBlock x:Name="SecurityStatusText"
+                                   Text=""
+                                   FontSize="12"
+                                   Margin="0,10,0,0"
+                                   TextWrapping="Wrap"/>
+
+                        <!-- Section Réinitialisation (pour tests) -->
+                        <Border Background="#FFEBEE" Padding="15" CornerRadius="5" Margin="0,20,0,0" BorderBrush="#FFCDD2" BorderThickness="1">
+                            <StackPanel>
+                                <TextBlock Text="Zone de test / développement" FontWeight="Bold" FontSize="13" Foreground="#C62828" Margin="0,0,0,10"/>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#C62828" Margin="0,0,0,15">
+                                    Réinitialiser supprime tous les paramètres de sécurité. Au prochain démarrage, l'assistant de configuration s'affichera comme lors de la première utilisation.
+                                </TextBlock>
+                                <Button x:Name="ResetSecurityButton"
+                                        Content="Réinitialiser la sécurité"
+                                        Click="ResetSecurity_Click"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#C62828"
+                                        Foreground="White"
+                                        HorizontalAlignment="Left"/>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- Onglet Affichage -->
             <TabItem Header="🖥️ Affichage">
                 <StackPanel Margin="20">
@@ -359,8 +521,90 @@
                     </Border>
                 </Grid>
             </TabItem>
-            
-            
+
+            <!-- Onglet Chat -->
+            <TabItem Header="💬 Chat">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="20">
+
+                        <!-- En-tête explicatif -->
+                        <Border Background="#E7F3FF" Padding="15" CornerRadius="5" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#0066CC" Margin="0,0,0,5">
+                                    📚 Mémoire intelligente
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#0066CC">
+                                    Le système compacte automatiquement les anciens échanges sauvegardés pour éviter de saturer le contexte de l'IA, tout en préservant les informations médicales essentielles.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Activer la compaction -->
+                        <CheckBox x:Name="EnableCompactionCheckBox"
+                                 Content="Activer la compaction automatique"
+                                 FontWeight="SemiBold"
+                                 FontSize="13"
+                                 Margin="0,0,0,20"
+                                 IsChecked="True"/>
+
+                        <!-- Seuil de compaction -->
+                        <TextBlock Text="Seuil de compaction (caractères)" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <Slider x:Name="CompactionThresholdSlider"
+                                   Grid.Column="0"
+                                   Minimum="5000"
+                                   Maximum="100000"
+                                   Value="20000"
+                                   TickFrequency="5000"
+                                   IsSnapToTickEnabled="True"
+                                   VerticalAlignment="Center"
+                                   Margin="0,0,15,0"/>
+
+                            <TextBlock Grid.Column="1"
+                                      Text="{Binding ElementName=CompactionThresholdSlider, Path=Value, StringFormat={}{0:N0}}"
+                                      FontFamily="Consolas"
+                                      FontSize="13"
+                                      FontWeight="Bold"
+                                      Foreground="#007BFF"
+                                      VerticalAlignment="Center"
+                                      MinWidth="70"
+                                      TextAlignment="Right"/>
+                        </Grid>
+
+                        <TextBlock TextWrapping="Wrap"
+                                  FontSize="11"
+                                  Foreground="Gray"
+                                  Margin="0,0,0,20">
+                            Nombre de caractères total des échanges sauvegardés avant déclenchement de la compaction.
+                        </TextBlock>
+
+                        <!-- Info sur l'architecture -->
+                        <Border Background="#FFF3CD" Padding="15" CornerRadius="5" Margin="0,0,0,0">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="12" Foreground="#856404" Margin="0,0,0,8">
+                                    📋 Architecture de la mémoire du Chat
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#856404" Margin="0,0,0,5">
+                                    • Contexte Patient : synthèse ou notes (jamais compacté)
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#856404" Margin="0,0,0,5">
+                                    • Mémoire compactée : résumé de tous les échanges sauvegardés
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#856404" Margin="0,0,0,0">
+                                    • Historique temporaire : 3 derniers échanges de la session en cours
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
         
         <!-- Boutons d'action -->

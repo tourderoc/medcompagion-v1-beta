@@ -29,7 +29,8 @@ namespace MedCompanion.Dialogs
             MedicamentsListBox.ItemsSource = Medicaments;
 
             // Afficher info
-            InfoTextBlock.Text = $"Dernière ordonnance : {medicaments.Count} médicament(s). Tous sont cochés par défaut.";
+            InfoTextBlock.Text = $"Dernière ordonnance : {medicaments.Count} médicament(s). Tous sont cochés par défaut.\n" +
+                                 "✏️ Vous pouvez modifier la posologie, la durée, la quantité et le nombre de renouvellements avant de valider.";
 
             SelectedMedicaments = new List<MedicamentPrescrit>();
         }
@@ -86,6 +87,10 @@ namespace MedCompanion.Dialogs
     public class SelectableMedicament : INotifyPropertyChanged
     {
         private bool _isSelected;
+        private string _posologie;
+        private string _duree;
+        private int _quantite;
+        private int _nombreRenouvellements;
 
         public MedicamentPrescrit Medicament { get; set; }
 
@@ -102,22 +107,85 @@ namespace MedCompanion.Dialogs
             }
         }
 
-        // Propriétés calculées pour le binding XAML
+        // Propriétés en lecture seule pour l'affichage
         public string MedicamentNom => Medicament.Medicament.Denomination;
-
         public string PresentationLibelle => Medicament.Presentation?.Libelle ?? "Aucune présentation";
 
-        public string Posologie => Medicament.Posologie;
+        // Propriétés éditables avec binding bidirectionnel
+        public string Posologie
+        {
+            get => _posologie;
+            set
+            {
+                if (_posologie != value)
+                {
+                    _posologie = value;
+                    Medicament.Posologie = value; // Mettre à jour l'objet source
+                    OnPropertyChanged(nameof(Posologie));
+                }
+            }
+        }
 
-        public string Duree => Medicament.Duree;
+        public string Duree
+        {
+            get => _duree;
+            set
+            {
+                if (_duree != value)
+                {
+                    _duree = value;
+                    Medicament.Duree = value; // Mettre à jour l'objet source
+                    OnPropertyChanged(nameof(Duree));
+                }
+            }
+        }
 
-        public int Quantite => Medicament.Quantite;
+        public int Quantite
+        {
+            get => _quantite;
+            set
+            {
+                if (_quantite != value)
+                {
+                    _quantite = value;
+                    Medicament.Quantite = value; // Mettre à jour l'objet source
+                    OnPropertyChanged(nameof(Quantite));
+                }
+            }
+        }
 
-        public int Renouvelable => Medicament.NombreRenouvellements;
+        public int NombreRenouvellements
+        {
+            get => _nombreRenouvellements;
+            set
+            {
+                if (_nombreRenouvellements != value)
+                {
+                    _nombreRenouvellements = value;
+                    Medicament.NombreRenouvellements = value; // Mettre à jour l'objet source
+
+                    // ✅ FIX: Activer le renouvellement si le nombre > 0
+                    Medicament.Renouvelable = value > 0;
+
+                    OnPropertyChanged(nameof(NombreRenouvellements));
+                }
+            }
+        }
 
         public SelectableMedicament(MedicamentPrescrit medicament)
         {
             Medicament = medicament;
+            // Initialiser les propriétés éditables depuis le médicament
+            _posologie = medicament.Posologie;
+            _duree = medicament.Duree;
+            _quantite = medicament.Quantite;
+            _nombreRenouvellements = medicament.NombreRenouvellements;
+
+            // ✅ S'assurer que Renouvelable est cohérent avec NombreRenouvellements
+            if (_nombreRenouvellements > 0)
+            {
+                Medicament.Renouvelable = true;
+            }
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

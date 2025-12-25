@@ -37,6 +37,14 @@ namespace MedCompanion.Models
 
         // === Situation ===
         public string? SituationAccueil { get; set; }  // Domicile, Foyer, Famille d'accueil, Autre
+
+        // === Médecins / Professionnels ===
+        public string? MedecinTraitantNom { get; set; }
+        public string? MedecinTraitantPrenom { get; set; }
+        
+        public string? MedecinReferentNom { get; set; }
+        public string? MedecinReferentPrenom { get; set; }
+        public string? MedecinReferentSpecialite { get; set; }
         
         // Propriétés calculées (non sérialisées)
         public string NomComplet => $"{Prenom} {Nom}";

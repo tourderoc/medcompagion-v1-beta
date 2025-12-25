@@ -75,7 +75,9 @@
                       RowHeight="45"
                       CanUserResizeRows="False"
                       CanUserSortColumns="False"
-                      SelectionMode="Single">
+                      SelectionMode="Single"
+                      PreviewMouseLeftButtonDown="PatientsDataGrid_PreviewMouseLeftButtonDown"
+                      MouseDoubleClick="PatientsDataGrid_MouseDoubleClick">
                 
                 <!-- Style du header -->
                 <DataGrid.ColumnHeaderStyle>
@@ -122,12 +124,36 @@
                 
                 <DataGrid.Columns>
                     <!-- Nom complet -->
-                    <DataGridTextColumn Header="Nom Complet" 
-                                        Binding="{Binding NomComplet}" 
+                    <DataGridTextColumn Header="Nom Complet"
+                                        Binding="{Binding NomComplet}"
                                         Width="2*"
                                         FontWeight="SemiBold"
                                         FontSize="13"/>
-                    
+
+                    <!-- Indicateur de doublons -->
+                    <DataGridTemplateColumn Header="⚠️" Width="40">
+                        <DataGridTemplateColumn.HeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="#34495E"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="FontSize" Value="16"/>
+                                <Setter Property="Cursor" Value="Hand"/>
+                                <Setter Property="ToolTip" Value="Cliquer pour filtrer les doublons"/>
+                                <EventSetter Event="Click" Handler="DuplicateHeader_Click"/>
+                            </Style>
+                        </DataGridTemplateColumn.HeaderStyle>
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DuplicateIndicator}"
+                                           FontSize="16"
+                                           HorizontalAlignment="Center"
+                                           Cursor="Hand"
+                                           ToolTip="Doublon potentiel - Cliquez pour charger"
+                                           MouseLeftButtonDown="DuplicateIndicator_Click"/>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+
                     <!-- Âge -->
                     <DataGridTextColumn Header="Âge" 
                                         Binding="{Binding AgeDisplay}" 

@@ -145,17 +145,38 @@ namespace MedCompanion.Services.LLM
         {
             try
             {
-                var requestBody = new
+                // Créer les options selon maxTokens
+                object requestBody;
+
+                if (maxTokens <= 0)
                 {
-                    model = _currentModel,
-                    prompt = prompt,
-                    stream = false,
-                    options = new
+                    // Pas de limite de tokens
+                    requestBody = new
                     {
-                        num_predict = maxTokens,
-                        temperature = 0.3
-                    }
-                };
+                        model = _currentModel,
+                        prompt = prompt,
+                        stream = false,
+                        options = new
+                        {
+                            temperature = 0.3
+                        }
+                    };
+                }
+                else
+                {
+                    // Limite spécifiée
+                    requestBody = new
+                    {
+                        model = _currentModel,
+                        prompt = prompt,
+                        stream = false,
+                        options = new
+                        {
+                            num_predict = maxTokens,
+                            temperature = 0.3
+                        }
+                    };
+                }
 
                 var json = JsonSerializer.Serialize(requestBody);
                 var content = new StringContent(json, Encoding.UTF8, "application/json");

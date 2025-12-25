@@ -23,7 +23,10 @@ namespace MedCompanion.Views.Formulaires
         private Services.PatientIndexService? _patientIndex;
         private DocumentService? _documentService;
         private PathService? _pathService;
+        private SynthesisWeightTracker? _synthesisWeightTracker;
         private PatientIndexEntry? _currentPatient;
+
+        private OcrService? _ocrService; // ✅ OCR Service reference
 
         public event EventHandler<string>? StatusChanged;
 
@@ -37,13 +40,17 @@ namespace MedCompanion.Views.Formulaires
             LetterService letterService,
             Services.PatientIndexService patientIndex,
             DocumentService documentService,
-            PathService pathService)
+            PathService pathService,
+            SynthesisWeightTracker synthesisWeightTracker,
+            OcrService ocrService) // ✅ Added OcrService parameter
         {
             _formulaireService = formulaireService;
             _letterService = letterService;
             _patientIndex = patientIndex;
             _documentService = documentService;
             _pathService = pathService;
+            _synthesisWeightTracker = synthesisWeightTracker;
+            _ocrService = ocrService; // ✅ Store it
         }
 
         public void SetCurrentPatient(PatientIndexEntry? patient)
@@ -54,23 +61,20 @@ namespace MedCompanion.Views.Formulaires
             FormulaireTypeCombo.SelectedIndex = 0;
             PreremplirFormulaireButton.Visibility = Visibility.Collapsed;
             PreremplirFormulaireButton.IsEnabled = false;
-            TestRemplirPdfButton.Visibility = Visibility.Collapsed;
-            TestRemplirPdfButton.IsEnabled = false;
-            OuvrirModelePAIButton.Visibility = Visibility.Collapsed;
-            OuvrirModelePAIButton.IsEnabled = false;
+            // TestRemplirPdfButton removed
+            // OuvrirModelePAIButton.Visibility = Visibility.Collapsed;
+            // OuvrirModelePAIButton.IsEnabled = false;
         }
 
         private void FormulaireTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
-            if (PreremplirFormulaireButton == null || TestRemplirPdfButton == null || OuvrirModelePAIButton == null)
+            if (PreremplirFormulaireButton == null || OuvrirModelePAIButton == null)
                 return;
 
             if (FormulaireTypeCombo.SelectedIndex <= 0 || _currentPatient == null)
             {
                 PreremplirFormulaireButton.Visibility = Visibility.Collapsed;
                 PreremplirFormulaireButton.IsEnabled = false;
-                TestRemplirPdfButton.Visibility = Visibility.Collapsed;
-                TestRemplirPdfButton.IsEnabled = false;
                 OuvrirModelePAIButton.Visibility = Visibility.Collapsed;
                 OuvrirModelePAIButton.IsEnabled = false;
                 return;
@@ -83,21 +87,17 @@ namespace MedCompanion.Views.Formulaires
                 {
                     PreremplirFormulaireButton.Visibility = Visibility.Collapsed;
                     PreremplirFormulaireButton.IsEnabled = false;
-                    TestRemplirPdfButton.Visibility = Visibility.Collapsed;
-                    TestRemplirPdfButton.IsEnabled = false;
                     OuvrirModelePAIButton.Visibility = Visibility.Visible;
                     OuvrirModelePAIButton.IsEnabled = true;
                     StatusChanged?.Invoke(this, "🏫 PAI sélectionné - Cliquez pour ouvrir le modèle PDF");
                 }
                 else if (formulaireType == "MDPH")
                 {
-                    OuvrirModelePAIButton.Visibility = Visibility.Collapsed;
-                    OuvrirModelePAIButton.IsEnabled = false;
                     PreremplirFormulaireButton.Visibility = Visibility.Visible;
                     PreremplirFormulaireButton.IsEnabled = true;
-                    TestRemplirPdfButton.Visibility = Visibility.Visible;
-                    TestRemplirPdfButton.IsEnabled = true;
-                    StatusChanged?.Invoke(this, "📋 MDPH sélectionné - Cliquez sur 'Pré-remplir avec l'IA' ou 'Tester remplissage PDF'");
+                    OuvrirModelePAIButton.Visibility = Visibility.Collapsed;
+                    OuvrirModelePAIButton.IsEnabled = false;
+                    StatusChanged?.Invoke(this, "📋 MDPH sélectionné - Cliquez sur 'Pré-remplir avec l'IA'");
                 }
             }
         }
@@ -118,7 +118,7 @@ namespace MedCompanion.Views.Formulaires
 
             try
             {
-                var dialog = new MDPHAssistantDialog(_currentPatient, _patientIndex!, _formulaireService!, _letterService!);
+                var dialog = new MDPHAssistantDialog(_currentPatient, _patientIndex!, _formulaireService!, _letterService!, _synthesisWeightTracker!);
                 dialog.Owner = Window.GetWindow(this);
                 var result = dialog.ShowDialog();
                 if (result == true)
@@ -239,8 +239,7 @@ namespace MedCompanion.Views.Formulaires
                 {
                     try
                     {
-                        var psi = new System.Diagnostics.ProcessStartInfo { FileName = filePath, UseShellExecute = true };
-                        System.Diagnostics.Process.Start(psi);
+                        OpenPdfWithPreferredBrowser(filePath);
                         StatusChanged?.Invoke(this, $"📄 Formulaire ouvert : {Path.GetFileName(filePath)}");
                     }
                     catch (Exception ex)
@@ -334,53 +333,108 @@ namespace MedCompanion.Views.Formulaires
             var filePath = filePathProp.GetValue(item) as string;
             var fileName = fileNameProp.GetValue(item) as string;
             if (string.IsNullOrEmpty(filePath)) return;
-            var result = MessageBox.Show($"Êtes-vous sûr de vouloir supprimer ce formulaire ?\n\n{fileName}", "Confirmer la suppression", MessageBoxButton.YesNo, MessageBoxImage.Warning);
-            if (result != MessageBoxResult.Yes) return;
-            try
+
+            // Analyse pour exclusion en cascade
+            var directory = Path.GetDirectoryName(filePath);
+            var filesToDelete = new List<string>();
+            filesToDelete.Add(filePath);
+
+            // LOGIQUE DE SUPPRESSION EN CASCADE POUR MDPH
+            // Format attendu : MDPH_YYYYMMDD_HHMMSS ou MDPH_Rempli_YYYYMMDD_HHMMSS
+            var fileNameNoExt = Path.GetFileNameWithoutExtension(filePath);
+            bool isMdph = fileNameNoExt.StartsWith("MDPH_");
+
+            if (isMdph && directory != null)
             {
-                if (File.Exists(filePath)) File.Delete(filePath);
-                var mdPath = Path.ChangeExtension(filePath, ".md");
-                if (File.Exists(mdPath)) File.Delete(mdPath);
-                
-                // Handle JSON deletion properly for both source and _rempli files
-                string jsonPath;
+                try 
+                {
+                    // Extraction du timestamp
+                    // Regex pour capturer YYYYMMDD_HHMMSS (15 caractères)
+                    var match = System.Text.RegularExpressions.Regex.Match(fileNameNoExt, @"(\d{8}_\d{6})");
+                    if (match.Success)
+                    {
+                        var timestampStr = match.Groups[1].Value;
+                        if (DateTime.TryParseExact(timestampStr, "yyyyMMdd_HHmmss", null, System.Globalization.DateTimeStyles.None, out var fileDate))
+                        {
+                            // Chercher tous les fichiers du dossier qui semblent liés (même créneau à +/- 2 minutes)
+                            var allFiles = Directory.GetFiles(directory);
+                            foreach (var f in allFiles)
+                            {
+                                var fName = Path.GetFileName(f);
+                                if (f == filePath) continue; // Déjà ajouté
+
+                                // Si c'est le log global des champs
+                                if (fName.Equals("MDPH_Champs_PDF.txt", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    if (!filesToDelete.Contains(f)) filesToDelete.Add(f);
+                                    continue;
+                                }
+
+                                // Vérifier si le fichier contient un timestamp similaire
+                                var fMatch = System.Text.RegularExpressions.Regex.Match(fName, @"(\d{8}_\d{6})");
+                                if (fMatch.Success)
+                                {
+                                    var fTimestampStr = fMatch.Groups[1].Value;
+                                    if (DateTime.TryParseExact(fTimestampStr, "yyyyMMdd_HHmmss", null, System.Globalization.DateTimeStyles.None, out var fDate))
+                                    {
+                                        // Si l'écart est < 2 minutes, on considère que c'est le même lot
+                                        if (Math.Abs((fDate - fileDate).TotalMinutes) < 2)
+                                        {
+                                            if (!filesToDelete.Contains(f)) filesToDelete.Add(f);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Erreur analyse cascade: {ex.Message}");
+                }
+            }
+            else
+            {
+                // Logique standard pour autres fichiers
+                // Essayer de trouver le JSON associé
                 if (filePath.EndsWith("_rempli.pdf", StringComparison.OrdinalIgnoreCase))
                 {
-                    // For _rempli files, JSON is stored with the source filename
-                    string directory = Path.GetDirectoryName(filePath)!;
-                    string nameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
-                    string sourceName = nameWithoutExtension.Substring(0, nameWithoutExtension.Length - 7); // Remove _rempli
-                    if (sourceName.EndsWith(".")) sourceName = sourceName.Substring(0, sourceName.Length - 1);
-                    jsonPath = Path.Combine(directory, sourceName + ".json");
+                    var relatedJson = filePath.Replace("_rempli.pdf", "_rempli.json"); 
+                    if (File.Exists(relatedJson) && !filesToDelete.Contains(relatedJson)) filesToDelete.Add(relatedJson);
                 }
                 else
                 {
-                    // For source files, JSON has the same name
-                    jsonPath = Path.ChangeExtension(filePath, ".json");
+                     var relatedJson = Path.ChangeExtension(filePath, ".json");
+                     if (File.Exists(relatedJson) && !filesToDelete.Contains(relatedJson)) filesToDelete.Add(relatedJson);
                 }
-                
-                if (File.Exists(jsonPath)) File.Delete(jsonPath);
+            }
 
-                // Also delete the source file if we just deleted a _rempli version
-                if (filePath.EndsWith("_rempli.pdf", StringComparison.OrdinalIgnoreCase))
+            // Message de confirmation adapté
+            string message = $"Voulez-vous vraiment supprimer ce formulaire ?\n{fileName}";
+            if (filesToDelete.Count > 1)
+            {
+                message += $"\n\n⚠️ Cela supprimera {filesToDelete.Count} fichiers associés (sources, logs, exports Word, JSON...) du même lot.";
+            }
+
+            if (MessageBox.Show(message, "Confirmation de suppression", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                int deletedCount = 0;
+                foreach (var file in filesToDelete)
                 {
-                    // Try to find the source file. 
-                    // Logic must match the grouping logic: remove "_rempli" and potentially trailing dot.
-                    string directory = Path.GetDirectoryName(filePath)!;
-                    string nameWithoutExtension = Path.GetFileNameWithoutExtension(filePath);
-                    
-                    string sourceName = nameWithoutExtension.Substring(0, nameWithoutExtension.Length - 7); // Remove _rempli
-                    if (sourceName.EndsWith(".")) sourceName = sourceName.Substring(0, sourceName.Length - 1);
-
-                    string sourcePath = Path.Combine(directory, sourceName + ".pdf");
-                    
-                    if (File.Exists(sourcePath))
+                    if (File.Exists(file))
                     {
-                        File.Delete(sourcePath);
+                        File.Delete(file);
+                        deletedCount++;
+                        System.Diagnostics.Debug.WriteLine($"[Suppression] Fichier supprimé : {file}");
                     }
                 }
 
-                StatusChanged?.Invoke(this, "✅ Formulaire supprimé");
+                StatusChanged?.Invoke(this, $"✅ {deletedCount} document(s) supprimé(s)");
                 LoadPatientFormulaires();
             }
             catch (Exception ex)
@@ -399,7 +453,7 @@ namespace MedCompanion.Views.Formulaires
             }
             try
             {
-                var assistantDialog = new PAIAssistantDialog(_currentPatient, _patientIndex!, _formulaireService!);
+                var assistantDialog = new PAIAssistantDialog(_currentPatient, _patientIndex!, _formulaireService!, _synthesisWeightTracker!);
                 assistantDialog.Owner = Window.GetWindow(this);
                 assistantDialog.ShowDialog();
                 LoadPatientFormulaires();
@@ -484,9 +538,9 @@ namespace MedCompanion.Views.Formulaires
                 File.Copy(sourcePath, destPath);
 
                 // 3. Open Editor
-                if (_patientIndex != null && _formulaireService != null)
+                if (_patientIndex != null && _formulaireService != null && _ocrService != null)
                 {
-                    var editor = new ScannedFormEditorDialog(_currentPatient, _patientIndex, _formulaireService, destPath);
+                    var editor = new ScannedFormEditorDialog(_currentPatient, _patientIndex, _formulaireService, destPath, _ocrService);
                     editor.Owner = Window.GetWindow(this);
                     var editorResult = editor.ShowDialog();
 
@@ -517,7 +571,7 @@ namespace MedCompanion.Views.Formulaires
                 }
                 else
                 {
-                    MessageBox.Show("Services non initialisés.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show("Services non initialisés (OCR requis).", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch (Exception ex)
@@ -593,9 +647,9 @@ namespace MedCompanion.Views.Formulaires
                 }
 
                 // Open Editor
-                if (_patientIndex != null && _formulaireService != null)
+                if (_patientIndex != null && _formulaireService != null && _ocrService != null)
                 {
-                    var editor = new ScannedFormEditorDialog(_currentPatient, _patientIndex, _formulaireService, destPath);
+                    var editor = new ScannedFormEditorDialog(_currentPatient, _patientIndex, _formulaireService, destPath, _ocrService);
                     editor.Owner = Window.GetWindow(this);
                     var result = editor.ShowDialog();
 
@@ -631,9 +685,80 @@ namespace MedCompanion.Views.Formulaires
             }
         }
 
-        private void TestRemplirPdfButton_Click(object sender, RoutedEventArgs e)
+
+        /// <summary>
+        /// Ouvre un fichier PDF avec Firefox (si installé) ou avec le navigateur par défaut
+        /// </summary>
+        private void OpenPdfWithPreferredBrowser(string pdfPath)
         {
-            // Existing implementation unchanged (omitted for brevity)
+            try
+            {
+                // Liste des chemins Firefox possibles
+                var firefoxPaths = new[]
+                {
+                    @"C:\Program Files\Mozilla Firefox\firefox.exe",
+                    @"C:\Program Files (x86)\Mozilla Firefox\firefox.exe",
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), @"Mozilla Firefox\firefox.exe"),
+                    Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), @"Mozilla Firefox\firefox.exe")
+                };
+
+                // Chercher Firefox
+                string? firefoxExe = firefoxPaths.FirstOrDefault(File.Exists);
+
+                if (firefoxExe != null)
+                {
+                    // Ouvrir avec Firefox
+                    System.Diagnostics.Debug.WriteLine($"[FormulairesControl] Ouverture du PDF avec Firefox: {firefoxExe}");
+                    var psi = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = firefoxExe,
+                        Arguments = $"\"{pdfPath}\"",
+                        UseShellExecute = false
+                    };
+                    System.Diagnostics.Process.Start(psi);
+                }
+                else
+                {
+                    // Firefox non trouvé, essayer Chrome
+                    var chromePaths = new[]
+                    {
+                        @"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                        @"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
+                        Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), @"Google\Chrome\Application\chrome.exe")
+                    };
+
+                    string? chromeExe = chromePaths.FirstOrDefault(File.Exists);
+
+                    if (chromeExe != null)
+                    {
+                        // Ouvrir avec Chrome
+                        System.Diagnostics.Debug.WriteLine($"[FormulairesControl] Firefox non trouvé, ouverture avec Chrome: {chromeExe}");
+                        var psi = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = chromeExe,
+                            Arguments = $"\"{pdfPath}\"",
+                            UseShellExecute = false
+                        };
+                        System.Diagnostics.Process.Start(psi);
+                    }
+                    else
+                    {
+                        // Ni Firefox ni Chrome, utiliser le navigateur par défaut (probablement Edge)
+                        System.Diagnostics.Debug.WriteLine($"[FormulairesControl] Firefox et Chrome non trouvés, ouverture avec le navigateur par défaut");
+                        var psi = new System.Diagnostics.ProcessStartInfo
+                        {
+                            FileName = pdfPath,
+                            UseShellExecute = true
+                        };
+                        System.Diagnostics.Process.Start(psi);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FormulairesControl] Erreur lors de l'ouverture du PDF: {ex.Message}");
+                MessageBox.Show($"Impossible d'ouvrir le PDF:\n{ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
     }
 }

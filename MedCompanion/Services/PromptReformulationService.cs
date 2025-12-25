@@ -108,13 +108,15 @@ Reformule le prompt selon la demande. Retourne UNIQUEMENT le nouveau prompt, san
             string userRequest,
             Models.PatientContext patientContext = null,
             string? pseudonym = null,
-            AnonymizationContext? anonContext = null)
+            AnonymizationContext? anonContext = null,
+            string? explicitRecipient = null)
         {
             if (string.IsNullOrWhiteSpace(userRequest))
                 return (false, null, "La demande est vide");
 
             try
             {
+                // Construire le prompt système de base
                 var systemPrompt = @"Tu es un expert en analyse sémantique de demandes médicales.
 
 Ton rôle : Analyser une demande de courrier médical et extraire des métadonnées structurées EN FRANÇAIS.
@@ -129,7 +131,7 @@ TYPES DE DOCUMENTS (doc_type) - UTILISE CES VALEURS EXACTES :
 - compte_rendu : Comptes-rendus médicaux
 - explication_ordonnance : Explications d'ordonnance
 
-AUDIENCES (audience) - UTILISE CES VALEURS EXACTES :
+AUDIENCES (audience) :
 - ecole : École/établissement scolaire
 - medecin : Médecin spécialiste/confrère
 - administration : Administration/institution (MDPH, CPAM, etc.)
@@ -166,6 +168,14 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans backticks) :
   ""age_group"": ""6-11"",
   ""confidence_score"": 85
 }";
+
+                // Injection du destinataire explicite si fourni
+                if (!string.IsNullOrWhiteSpace(explicitRecipient))
+                {
+                    systemPrompt += $"\n\n🚨 CONSIGNE PRIORITAIRE : L'utilisateur a spécifié le destinataire suivant : \"{explicitRecipient}\".\n" +
+                                   $"Tu DOIS utiliser cette valeur pour le champ 'audience', en corrigeant les éventuelles fautes d'orthographe (ex: 'psycologue' -> 'psychologue').\n" +
+                                   $"IGNORE les catégories standards pour l'audience.";
+                }
 
                 // Construire le prompt avec contexte patient si disponible
                 var userPrompt = new System.Text.StringBuilder();

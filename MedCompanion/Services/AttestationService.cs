@@ -18,27 +18,38 @@ namespace MedCompanion.Services
         private readonly StorageService _storageService;
         private readonly PathService _pathService;
         private readonly LetterService _letterService;
-        private readonly OpenAIService _openAIService;
+        private readonly LLMGatewayService _llmGatewayService; // ✅ NOUVEAU : Gateway centralisé
         private readonly PromptConfigService _promptConfigService;
+        private readonly PatientContextService _patientContextService;
+        private readonly PromptTrackerService? _promptTracker;
         private readonly List<AttestationTemplate> _templates;
-        
+
         // Cache des prompts pour éviter les appels répétés
         private string _cachedAttestationPrompt;
         private string _cachedSystemPrompt;
 
-        public AttestationService(StorageService storageService, PathService pathService, LetterService letterService, OpenAIService openAIService, PromptConfigService promptConfigService)
+        public AttestationService(
+            StorageService storageService,
+            PathService pathService,
+            LetterService letterService,
+            LLMGatewayService llmGatewayService, // ✅ MODIFIÉ
+            PromptConfigService promptConfigService,
+            PatientContextService patientContextService,
+            PromptTrackerService? promptTracker = null) // ✅ Optionnel
         {
-            _settings = new AppSettings();
+            _settings = AppSettings.Load();
             _storageService = storageService;
             _pathService = pathService;
             _letterService = letterService;
-            _openAIService = openAIService;
+            _llmGatewayService = llmGatewayService; // ✅ MODIFIÉ
             _promptConfigService = promptConfigService;
+            _patientContextService = patientContextService;
+            _promptTracker = promptTracker;
             _templates = InitializeTemplates();
-            
+
             // Charger les prompts initialement
             LoadPrompts();
-            
+
             // S'abonner à l'événement de rechargement des prompts
             _promptConfigService.PromptsReloaded += OnPromptsReloaded;
         }
@@ -437,6 +448,70 @@ Cette attestation est délivrée pour valoir ce que de droit."
         }
 
         /// <summary>
+        /// Met à jour une attestation existante (écrase le fichier)
+        /// </summary>
+        public async System.Threading.Tasks.Task<(bool success, string error)> UpdateExistingAttestationAsync(
+            string mdPath,
+            string newMarkdown)
+        {
+            try
+            {
+                if (!File.Exists(mdPath))
+                {
+                    return (false, "Le fichier d'attestation n'existe plus");
+                }
+
+                // Lire les métadonnées existantes (frontmatter YAML)
+                var lines = await File.ReadAllLinesAsync(mdPath);
+                var frontmatterEnd = -1;
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    if (lines[i].Trim() == "---")
+                    {
+                        frontmatterEnd = i;
+                        break;
+                    }
+                }
+
+                // Reconstruire le fichier avec les métadonnées originales + nouveau contenu
+                var content = new StringBuilder();
+                if (frontmatterEnd > 0)
+                {
+                    // Garder le frontmatter existant
+                    for (int i = 0; i <= frontmatterEnd; i++)
+                    {
+                        content.AppendLine(lines[i]);
+                    }
+                }
+                content.AppendLine();
+                content.Append(newMarkdown);
+
+                // Écraser le fichier .md existant
+                await File.WriteAllTextAsync(mdPath, content.ToString(), Encoding.UTF8);
+
+                // Régénérer le DOCX
+                var docxPath = mdPath.Replace(".md", ".docx");
+                var nomComplet = Path.GetFileName(Path.GetDirectoryName(mdPath)!.Replace("_", " "));
+                var (exportSuccess, exportMessage, _) = _letterService.ExportToDocx(
+                    nomComplet,
+                    newMarkdown,
+                    mdPath
+                );
+
+                if (!exportSuccess)
+                {
+                    return (false, $"Fichier .md sauvegardé mais erreur DOCX : {exportMessage}");
+                }
+
+                return (true, string.Empty);
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Erreur lors de la mise à jour : {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Génère une attestation personnalisée avec l'IA à partir d'une consigne
         /// </summary>
         public async System.Threading.Tasks.Task<(bool success, string markdown, string error)> GenerateCustomAttestationAsync(
@@ -445,57 +520,109 @@ Cette attestation est délivrée pour valoir ce que de droit."
         {
             try
             {
-                // Construire le contexte patient
+                // ✅ ÉTAPE 1 : Préparer l'identité du patient pour la Gateway (si connue)
+                string patientName = "";
+                if (metadata != null && !string.IsNullOrEmpty(metadata.Nom) && !string.IsNullOrEmpty(metadata.Prenom))
+                {
+                    patientName = $"{metadata.Prenom} {metadata.Nom}";
+                }
+
+                // ✅ ÉTAPE 2 : Récupérer le contexte complet (métadonnées + synthèse/notes)
+                var contextBundle = _patientContextService.GetCompleteContext(
+                    patientName,
+                    userRequest: consigne
+                );
+
+                // ✅ ÉTAPE 3 : Construire le bloc d'informations patient (AVEC VRAIES DONNÉES)
+                // La gateway se chargera d'anonymiser ce bloc avant l'envoi au cloud.
                 var contextBuilder = new StringBuilder();
                 contextBuilder.AppendLine("INFORMATIONS PATIENT");
-                contextBuilder.AppendLine("----");
-                
-                if (metadata != null)
-                {
-                    if (!string.IsNullOrEmpty(metadata.Nom) && !string.IsNullOrEmpty(metadata.Prenom))
-                        contextBuilder.AppendLine($"- Nom complet : {metadata.Nom.ToUpper()} {metadata.Prenom}");
-                    
-                    if (metadata.Age.HasValue)
-                        contextBuilder.AppendLine($"- Âge : {metadata.Age} ans");
-                    
-                    if (!string.IsNullOrEmpty(metadata.DobFormatted))
-                        contextBuilder.AppendLine($"- Date de naissance : {metadata.DobFormatted}");
-                    
-                    if (!string.IsNullOrEmpty(metadata.Sexe))
-                        contextBuilder.AppendLine($"- Sexe : {metadata.Sexe}");
-                }
-                
+                contextBuilder.AppendLine("====================");
                 contextBuilder.AppendLine();
 
-                // 🆕 UTILISER LE PROMPT EN CACHE (rechargé automatiquement via événement)
+                if (contextBundle.Metadata != null)
+                {
+                    var meta = contextBundle.Metadata;
+                    
+                    if (!string.IsNullOrEmpty(patientName))
+                        contextBuilder.AppendLine($"- Nom complet : {patientName}");
+
+                    if (meta.Age.HasValue)
+                        contextBuilder.AppendLine($"- Âge : {meta.Age} ans");
+
+                    if (!string.IsNullOrEmpty(meta.DobFormatted))
+                        contextBuilder.AppendLine($"- Date de naissance : {meta.DobFormatted}");
+
+                    if (!string.IsNullOrEmpty(meta.Sexe))
+                        contextBuilder.AppendLine($"- Sexe : {meta.Sexe}");
+                }
+
+                contextBuilder.AppendLine();
+
+                // ✅ ÉTAPE 4 : Ajouter le contexte clinique (VRAIES DONNÉES)
+                if (!string.IsNullOrEmpty(contextBundle.ClinicalContext))
+                {
+                    contextBuilder.AppendLine("CONTEXTE CLINIQUE");
+                    contextBuilder.AppendLine("=================");
+                    contextBuilder.AppendLine($"Source : {contextBundle.ContextType}");
+                    contextBuilder.AppendLine();
+                    contextBuilder.AppendLine(contextBundle.ClinicalContext); 
+                    contextBuilder.AppendLine();
+                }
+
+                // Vérifier les prompts en cache
                 if (string.IsNullOrEmpty(_cachedAttestationPrompt))
                 {
-                    return (false, string.Empty, "Prompt d'attestation non configuré. Vérifiez la configuration des prompts.");
+                    return (false, string.Empty, "Prompt d'attestation non configuré.");
                 }
                 
-                // Remplacer les placeholders dans le prompt
+                // Remplacer les placeholders dans le prompt (VRAIES DONNÉES)
                 var userPrompt = _cachedAttestationPrompt
                     .Replace("{{Medecin}}", _settings.Medecin)
                     .Replace("{{Patient_Info}}", contextBuilder.ToString())
                     .Replace("{{Consigne}}", consigne);
 
-                // Utiliser le prompt système global en cache
                 var systemPrompt = _cachedSystemPrompt
                     .Replace("{{Medecin}}", _settings.Medecin);
                 
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(
-                    string.Empty,
-                    userPrompt,
-                    null,
-                    systemPrompt
+                // ✅ ÉTAPE 5 : Utiliser la GATEWAY pour l'appel LLM
+                // Elle s'occupe de l'anonymisation 3 phases (si Cloud) et de la désanonymisation
+                var messages = new List<(string role, string content)>
+                {
+                    ("user", userPrompt)
+                };
+
+                var (success, result, error) = await _llmGatewayService.ChatAsync(
+                    systemPrompt,
+                    messages,
+                    patientName: patientName,
+                    maxTokens: 2000
                 );
+
+                // ✅ NOUVEAU : Logger le prompt (si tracker disponible)
+                if (_promptTracker != null)
+                {
+                    _promptTracker.LogPrompt(new PromptLogEntry
+                    {
+                        Timestamp = DateTime.Now,
+                        Module = "Attestation",
+                        SystemPrompt = systemPrompt,
+                        UserPrompt = userPrompt,
+                        AIResponse = success ? result : error ?? "",
+                        TokensUsed = EstimateTokens(systemPrompt, userPrompt, result ?? error ?? ""),
+                        LLMProvider = _llmGatewayService.GetActiveProviderName(),
+                        ModelName = "gpt-4o-mini", // TODO: dynamique
+                        Success = success,
+                        Error = success ? null : error
+                    });
+                }
 
                 if (!success)
                 {
-                    return (false, string.Empty, $"Erreur IA : {result}");
+                    return (false, string.Empty, $"Erreur Gateway : {error}");
                 }
 
-                // Nettoyer le résultat
+                // ✅ ÉTAPE 6 : Nettoyer le résultat désanonymisé par la Gateway
                 var markdown = result.Trim();
                 if (markdown.StartsWith("```markdown"))
                     markdown = markdown.Substring(11);
@@ -504,6 +631,7 @@ Cette attestation est délivrée pour valoir ce que de droit."
                 if (markdown.EndsWith("```"))
                     markdown = markdown.Substring(0, markdown.Length - 3);
                 markdown = markdown.Trim();
+
 
                 // Remplacer les placeholders par les vraies données du patient
                 var fields = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -592,6 +720,16 @@ Cette attestation est délivrée pour valoir ce que de droit."
             {
                 return (false, string.Empty, $"Erreur : {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Estime le nombre de tokens utilisés (approximation simple)
+        /// </summary>
+        private int EstimateTokens(string systemPrompt, string userPrompt, string response)
+        {
+            // Approximation : 1 token ≈ 4 caractères en français
+            var totalChars = (systemPrompt?.Length ?? 0) + (userPrompt?.Length ?? 0) + (response?.Length ?? 0);
+            return totalChars / 4;
         }
 
         /// <summary>

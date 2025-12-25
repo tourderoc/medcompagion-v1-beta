@@ -195,7 +195,7 @@ public class OrdonnanceViewModel : ViewModelBase
     /// <summary>
     /// Sauvegarde une ordonnance IDE
     /// </summary>
-    public (bool success, string message, string? mdPath, string? docxPath) SaveOrdonnanceIDE(OrdonnanceIDE ordonnance)
+    public (bool success, string message, string? mdPath, string? docxPath, string? pdfPath) SaveOrdonnanceIDE(OrdonnanceIDE ordonnance)
     {
         // Utiliser SelectedPatient directement pour plus de robustesse
         var patientName = _selectedPatient?.NomComplet ?? _currentPatientName;
@@ -205,7 +205,7 @@ public class OrdonnanceViewModel : ViewModelBase
             Debug.WriteLine("[OrdonnanceViewModel] ❌ ERREUR SaveOrdonnanceIDE: Aucun patient sélectionné");
             Debug.WriteLine($"  _currentPatientName = '{_currentPatientName ?? "NULL"}'");
             Debug.WriteLine($"  _selectedPatient = {(_selectedPatient == null ? "NULL" : _selectedPatient.NomComplet)}");
-            return (false, "Aucun patient sélectionné", null, null);
+            return (false, "Aucun patient sélectionné", null, null, null);
         }
 
         Debug.WriteLine($"[OrdonnanceViewModel] 💾 SaveOrdonnanceIDE pour patient: {patientName}");
@@ -218,7 +218,7 @@ public class OrdonnanceViewModel : ViewModelBase
     /// <summary>
     /// Sauvegarde une ordonnance de biologie
     /// </summary>
-    public (bool success, string message, string? mdPath, string? docxPath) SaveOrdonnanceBiologie(OrdonnanceBiologie ordonnance)
+    public (bool success, string message, string? mdPath, string? docxPath, string? pdfPath) SaveOrdonnanceBiologie(OrdonnanceBiologie ordonnance)
     {
         // Utiliser SelectedPatient directement pour plus de robustesse
         var patientName = _selectedPatient?.NomComplet ?? _currentPatientName;
@@ -228,7 +228,7 @@ public class OrdonnanceViewModel : ViewModelBase
             Debug.WriteLine("[OrdonnanceViewModel] ❌ ERREUR SaveOrdonnanceBiologie: Aucun patient sélectionné");
             Debug.WriteLine($"  _currentPatientName = '{_currentPatientName ?? "NULL"}'");
             Debug.WriteLine($"  _selectedPatient = {(_selectedPatient == null ? "NULL" : _selectedPatient.NomComplet)}");
-            return (false, "Aucun patient sélectionné", null, null);
+            return (false, "Aucun patient sélectionné", null, null, null);
         }
 
         Debug.WriteLine($"[OrdonnanceViewModel] 💾 SaveOrdonnanceBiologie pour patient: {patientName}");

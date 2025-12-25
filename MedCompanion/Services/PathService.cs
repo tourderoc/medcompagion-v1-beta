@@ -252,6 +252,15 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Obtient le chemin de base des données d'application (AppData/Roaming/MedCompanion)
+        /// </summary>
+        public string GetAppDataPath()
+        {
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            return Path.Combine(appData, "MedCompanion");
+        }
+
+        /// <summary>
         /// Obtient le chemin de base de tous les patients
         /// </summary>
         public string GetBasePatientsDirectory()

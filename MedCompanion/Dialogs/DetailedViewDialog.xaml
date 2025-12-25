@@ -102,41 +102,79 @@
                 BorderThickness="0,1,0,0"
                 Padding="20,15">
             <Grid>
-                <!-- Mode Lecture: Bouton Modifier -->
-                <Button x:Name="EditButton"
-                        Content="✏️ Modifier"
-                        HorizontalAlignment="Right"
-                        Height="40"
-                        Padding="20,0"
-                        FontSize="14"
-                        FontWeight="SemiBold"
-                        Background="#3498DB"
-                        Foreground="White"
-                        BorderThickness="0"
-                        Cursor="Hand"
-                        Click="EditButton_Click">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}" 
-                                                CornerRadius="6" 
-                                                Padding="{TemplateBinding Padding}">
-                                            <ContentPresenter HorizontalAlignment="Center" 
-                                                            VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#2980B9"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
+                <!-- Mode Lecture: Boutons Modifier et Régénérer -->
+                <StackPanel x:Name="ReadModeButtonsPanel"
+                           Orientation="Horizontal"
+                           HorizontalAlignment="Right">
+                    <Button x:Name="RegenerateButton"
+                            Content="🔄 Régénérer"
+                            Height="40"
+                            Padding="20,0"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Background="#9B59B6"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Margin="0,0,10,0"
+                            Click="RegenerateButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="6"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#8E44AD"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <Button x:Name="EditButton"
+                            Content="✏️ Modifier"
+                            Height="40"
+                            Padding="20,0"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            Background="#3498DB"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Click="EditButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="6"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#2980B9"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
 
                 <!-- Mode Édition: Boutons Sauvegarder/Annuler -->
                 <StackPanel x:Name="EditButtonsPanel"

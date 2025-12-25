@@ -134,42 +134,7 @@
                 </Button.Style>
             </Button>
 
-            <!-- Bouton tester remplissage PDF (MDPH uniquement - TEST) -->
-            <Button x:Name="TestRemplirPdfButton"
-                    Grid.Row="6"
-                    Content="🧪 Tester remplissage PDF"
-                    Height="45"
-                    FontSize="14"
-                    FontWeight="SemiBold"
-                    Background="#9B59B6"
-                    Foreground="White"
-                    BorderThickness="0"
-                    Cursor="Hand"
-                    IsEnabled="False"
-                    Visibility="Collapsed"
-                    Click="TestRemplirPdfButton_Click">
-                <Button.Style>
-                    <Style TargetType="Button">
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="Button">
-                                    <Border Background="{TemplateBinding Background}" CornerRadius="6">
-                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                    </Border>
-                                </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                        <Style.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Background" Value="#8E44AD"/>
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Background" Value="#BDC3C7"/>
-                            </Trigger>
-                        </Style.Triggers>
-                    </Style>
-                </Button.Style>
-            </Button>
+
 
             <!-- Bouton ouvrir modèle PAI (PAI uniquement) -->
             <Button x:Name="OuvrirModelePAIButton"

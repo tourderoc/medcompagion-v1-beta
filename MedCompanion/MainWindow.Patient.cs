@@ -25,6 +25,28 @@ public partial class MainWindow : Window
     {
         PatientSearchViewModel?.CreatePatientCommand?.Execute(PatientSearchViewModel?.SearchText);
     }
+
+    private void DuplicateIndicator_MainWindow_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (_selectedPatient == null || _currentPatientDuplicate == null)
+            return;
+
+        var result = MessageBox.Show(
+            $"Ce patient a un doublon détecté (score: {_currentPatientDuplicateScore}/210):\n\n" +
+            $"Patient actuel:\n{_selectedPatient.Nom} {_selectedPatient.Prenom}\n" +
+            $"Né(e) le: {_selectedPatient.DobFormatted}\n\n" +
+            $"Doublon détecté:\n{_currentPatientDuplicate.Nom} {_currentPatientDuplicate.Prenom}\n" +
+            $"Né(e) le: {_currentPatientDuplicate.DobFormatted}\n\n" +
+            $"Voulez-vous charger le doublon pour vérification?",
+            "Doublon détecté",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            LoadPatientAsync(_currentPatientDuplicate);
+        }
+    }
     private bool PatientHasStructuredNotes(string nomComplet)
     {
         try
@@ -87,7 +109,7 @@ public partial class MainWindow : Window
             // Charger notes via le ViewModel, courriers, documents, formulaires, ordonnances, synthèse et échanges sauvegardés
             NoteViewModel.LoadNotes(patient.NomComplet, _patientIndex);
             // RefreshLettersList(); // MIGRÉ vers CourriersControl - appelé via SetCurrentPatient
-            LoadSavedExchanges();
+            // LoadSavedExchanges(); // MIGRÉ vers ChatControl - appelé via SetCurrentPatient
             // RefreshAttestationsList(); // MIGRÉ vers AttestationsControl - géré par le ViewModel
             // LoadPatientDocuments(); // MIGRÉ vers DocumentsControl - appelé via SetCurrentPatient
 
@@ -112,6 +134,24 @@ public partial class MainWindow : Window
 
             // MIGRÉ vers NotesControl - Charger la synthèse via SetCurrentPatient
             NotesControlPanel.SetCurrentPatient(_selectedPatient);
+
+            // Initialiser ChatControl avec le patient courant
+            ChatControlPanel.SetCurrentPatient(_selectedPatient);
+
+            // Vérifier si le patient a un doublon
+            var (hasDuplicates, duplicatePatient, score) = _patientIndex.CheckForDuplicates(patient.Id);
+            if (hasDuplicates && duplicatePatient != null)
+            {
+                _currentPatientDuplicate = duplicatePatient;
+                _currentPatientDuplicateScore = score;
+                DuplicateIndicator.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                _currentPatientDuplicate = null;
+                _currentPatientDuplicateScore = 0;
+                DuplicateIndicator.Visibility = Visibility.Collapsed;
+            }
 
             // Vérifier si le patient a des notes structurées
             bool hasNotes = PatientHasStructuredNotes(patient.NomComplet);
@@ -210,7 +250,7 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = "⏳ Ouverture...";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
 
-            _promptsDialog = new PromptsAnalysisDialog();
+            _promptsDialog = new PromptsAnalysisDialog(_promptConfigService, _promptReformulationService); // ✅ Passer les instances partagées
             _promptsDialog.Owner = this;
 
             // Nettoyer la référence quand la fenêtre est fermée
@@ -281,8 +321,13 @@ public partial class MainWindow : Window
 
         try
         {
+            // ✅ Récupérer le sexe du patient
+            var sexe = _selectedPatient.Sexe ?? "M";
+
+            // ✅ APPEL MODIFIÉ : Passer le sexe
             var (success, result, relevanceWeight) = await _openAIService.StructurerNoteAsync(
                 _selectedPatient.NomComplet,
+                sexe,  // ✅ NOUVEAU paramètre
                 NotesControlPanel.RawNoteTextBox.Text.Trim()
             );
 
@@ -453,11 +498,10 @@ private void OnNoteStatusChanged(object sender, string message)
             }
 
             // NOUVEAU : Rafraîchir le badge de notification de synthèse
-            NotesControlPanel.UpdateNotificationBadge();
+            NotesControlPanel.SynthesisViewModel?.UpdateNotificationBadge();
 
-            // NOUVEAU : Rafraîchir aussi la barre de progression de poids
-            System.Diagnostics.Debug.WriteLine("[MainWindow.OnNoteSaved] Appel de UpdateWeightIndicator()");
-            NotesControlPanel.UpdateWeightIndicator();
+            // NOUVEAU : La barre de progression de poids est automatiquement mise à jour par le ViewModel
+            System.Diagnostics.Debug.WriteLine("[MainWindow.OnNoteSaved] Badge et poids mis à jour via ViewModel");
         }
     }
     
@@ -634,422 +678,6 @@ private void OnNoteStatusChanged(object sender, string message)
 
         return null;
     }
-     // ===== CHAT IA =====
     
-    private void ChatInput_KeyDown(object sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && Keyboard.Modifiers == ModifierKeys.Control)
-        {
-            ChatSendBtn_Click(sender, e);
-            e.Handled = true;
-        }
-    }
-
-    private async void ChatSendBtn_Click(object sender, RoutedEventArgs e)
-    {
-        var question = ChatInput.Text.Trim();
-
-        if (string.IsNullOrWhiteSpace(question))
-        {
-            StatusTextBlock.Text = "⚠️ Veuillez saisir une question.";
-            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
-            return;
-        }
-
-        if (_selectedPatient == null)
-        {
-            StatusTextBlock.Text = "⚠️ Veuillez d'abord sélectionner un patient.";
-            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
-            return;
-        }
-
-        try
-        {
-            AddChatMessage("Vous", question, Colors.DarkBlue);
-            ChatInput.Text = string.Empty;
-
-            ChatSendBtn.IsEnabled = false;
-
-            // ANCIEN SYSTÈME DÉSACTIVÉ - Utiliser le banner de suggestion à la place
-            // Le nouveau système détecte automatiquement l'intent pendant la frappe
-            // et affiche un banner avec bouton "Générer" pour confirmation
-            // else clause devient le code principal maintenant
-            {
-                // Chat normal
-                StatusTextBlock.Text = "⏳ L'IA réfléchit...";
-                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-
-                var (hasContext, contextText, contextInfo) = _contextLoader.GetContextBundle(
-                    _selectedPatient.NomComplet,
-                    null  // Ne pas passer le contenu RichTextBox au chat
-                );
-
-                string contexte = hasContext ? contextText : string.Empty;
-
-                if (!hasContext)
-                {
-                    AddChatMessage("Système", "⚠️ Aucune note disponible. L'IA répondra sans contexte patient.", Colors.Gray);
-                }
-
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(contexte, question, _chatHistory, null);
-
-                if (success)
-                {
-                    var reponse = result;
-                    if (hasContext)
-                    {
-                        reponse += $"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📎 Contexte : {contextInfo}";
-                    }
-
-                    // Ajouter à l'historique temporaire AVANT d'afficher (pour que le bouton apparaisse)
-                    _chatHistory.Add(new ChatExchange
-                    {
-                        Question = question,
-                        Response = result,
-                        Timestamp = DateTime.Now
-                    });
-
-                    // Limiter à 3 échanges (FIFO)
-                    if (_chatHistory.Count > 3)
-                    {
-                        _chatHistory.RemoveAt(0);
-                    }
-
-                    // PUIS afficher le message avec le bouton 💾
-                    AddChatMessage("IA", reponse, Colors.DarkGreen);
-
-                    // Mettre à jour l'indicateur de mémoire
-                    UpdateMemoryIndicator();
-
-                    StatusTextBlock.Text = "✓ Réponse reçue";
-                    StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
-                }
-                else
-                {
-                    AddChatMessage("Erreur", result, Colors.Red);
-                    StatusTextBlock.Text = $"❌ {result}";
-                    StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            StatusTextBlock.Text = $"❌ {ex.Message}";
-            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
-        }
-        finally
-        {
-            ChatSendBtn.IsEnabled = true;
-        }
-    }
-
-    private void SaveExchangeButton_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selectedPatient == null || sender is not Button button || button.Tag is not int exchangeIndex)
-            return;
-
-        if (exchangeIndex < 0 || exchangeIndex >= _chatHistory.Count)
-        {
-            MessageBox.Show("Échange introuvable dans l'historique.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
-            return;
-        }
-
-        var exchange = _chatHistory[exchangeIndex];
-
-        // NOUVEAU : Récupérer le texte modifié depuis le TextBox affiché
-        try
-        {
-            // Remonter dans l'arbre visuel pour trouver le Grid parent
-            var parent = VisualTreeHelper.GetParent(button);
-            while (parent != null && parent is not Grid)
-            {
-                parent = VisualTreeHelper.GetParent(parent);
-            }
-
-            if (parent is Grid messageGrid)
-            {
-                // Trouver le TextBox dans le Grid (colonne 0)
-                foreach (var child in messageGrid.Children)
-                {
-                    if (child is TextBox messageBox)
-                    {
-                        // Récupérer le texte modifié
-                        var modifiedText = messageBox.Text;
-                        
-                        // Séparer l'en-tête (première ligne) du contenu
-                        var lines = modifiedText.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                        if (lines.Length > 1)
-                        {
-                            // Mettre à jour la réponse avec le texte modifié (sans la première ligne qui est l'en-tête)
-                            exchange.Response = string.Join("\n", lines.Skip(1));
-                        }
-                        break;
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[SaveExchange] Erreur récupération texte modifié: {ex.Message}");
-            // En cas d'erreur, on garde le texte original
-        }
-
-        // Ouvrir le dialog pour saisir l'étiquette
-        var dialog = new SaveChatDialog();
-        dialog.Owner = this;
-
-        if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.Etiquette))
-        {
-            exchange.Etiquette = dialog.Etiquette;
-
-            // Sauvegarder l'échange (avec le texte potentiellement modifié)
-            var (success, message, filePath) = _storageService.SaveChatExchange(_selectedPatient.NomComplet, exchange);
-
-            if (success)
-            {
-                // Ajouter à la liste des échanges sauvegardés
-                _savedChatExchanges.Add(exchange);
-                RefreshSavedExchangesList();
-
-                // Désactiver le bouton de sauvegarde (déjà sauvegardé)
-                button.IsEnabled = false;
-                button.Background = new SolidColorBrush(Colors.Gray);
-                button.ToolTip = "Échange déjà sauvegardé";
-
-                StatusTextBlock.Text = message;
-                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
-            }
-            else
-            {
-                MessageBox.Show(message, "Erreur de sauvegarde", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-    }
-    private void LoadSavedExchanges()
-    {
-        if (_selectedPatient == null)
-        {
-            _savedChatExchanges.Clear();
-            RefreshSavedExchangesList();
-            return;
-        }
-
-        var exchanges = _storageService.GetChatExchanges(_selectedPatient.NomComplet);
-        _savedChatExchanges = exchanges.ToList();
-        RefreshSavedExchangesList();
-    }
-     private void ViewSavedExchangeBtn_Click(object sender, RoutedEventArgs e)
-    {
-        if (SavedExchangesList.SelectedItem is not ChatExchange exchange)
-        {
-            MessageBox.Show("Veuillez sélectionner un échange.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-        
-        // NOUVEAU : Vérifier si l'échange est déjà affiché dans le chat
-        Border? existingBorder = null;
-        foreach (var child in ChatList.Children)
-        {
-            if (child is Border border && border.Tag is string borderId && borderId == exchange.Id)
-            {
-                existingBorder = border;
-                break;
-            }
-        }
-        
-        if (existingBorder != null)
-        {
-            // L'échange existe déjà → Scroll vers lui au lieu de le re-ajouter
-            existingBorder.BringIntoView();
-            
-            StatusTextBlock.Text = $"✓ Conversation déjà affichée - Scroll vers l'échange du {exchange.Timestamp:dd/MM/yyyy HH:mm}";
-            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-            return;
-        }
-        
-        // L'échange n'existe pas encore → L'ajouter (une seule fois)
-        AddChatMessage("📖 Vous (archivé)", exchange.Question, Colors.DarkBlue, exchange.Id);
-        AddChatMessage("📖 IA (archivé)", exchange.Response, Colors.DarkGreen, exchange.Id);
-        
-        StatusTextBlock.Text = $"✓ Échange du {exchange.Timestamp:dd/MM/yyyy HH:mm} affiché";
-        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-    }
-    
-    /// <summary>
-    /// Supprime un échange sauvegardé
-    /// </summary>
-    private void DeleteSavedExchangeBtn_Click(object sender, RoutedEventArgs e)
-    {
-        if (SavedExchangesList.SelectedItem is not ChatExchange exchange || _selectedPatient == null)
-        {
-            MessageBox.Show("Veuillez sélectionner un échange.", "Information", MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-        
-        var result = MessageBox.Show(
-            $"Supprimer cet échange ?\n\nÉtiquette : {exchange.Etiquette}\nDate : {exchange.Timestamp:dd/MM/yyyy HH:mm}",
-            "Confirmer",
-            MessageBoxButton.YesNo,
-            MessageBoxImage.Warning
-        );
-        
-        if (result == MessageBoxResult.Yes)
-        {
-            var (success, message) = _storageService.DeleteChatExchange(_selectedPatient.NomComplet, exchange.Id);
-            
-            if (success)
-            {
-                _savedChatExchanges.Remove(exchange);
-                RefreshSavedExchangesList();
-                
-                StatusTextBlock.Text = message;
-                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
-            }
-            else
-            {
-                MessageBox.Show(message, "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
-        }
-    }
-    
-    /// <summary>
-    /// Rafraîchit la liste des échanges sauvegardés
-    /// </summary>
-    private void RefreshSavedExchangesList()
-    {
-        SavedExchangesList.ItemsSource = null;
-        SavedExchangesList.ItemsSource = _savedChatExchanges;
-    }
-    
-    /// <summary>
-    /// Gère la sélection dans la liste des échanges sauvegardés
-    /// Affiche/masque les boutons selon qu'un échange est sélectionné ou non
-    /// </summary>
-    private void SavedExchangesList_SelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        bool hasSelection = SavedExchangesList.SelectedItem != null;
-        
-        // Afficher les boutons uniquement si un échange est sélectionné
-        ViewSavedExchangeBtn.Visibility = hasSelection ? Visibility.Visible : Visibility.Collapsed;
-        LetterFromChatBtn.Visibility = hasSelection ? Visibility.Visible : Visibility.Collapsed;
-        DeleteSavedExchangeBtn.Visibility = hasSelection ? Visibility.Visible : Visibility.Collapsed;
-    }
-    
-    /// <summary>
-    /// Génère un courrier à partir d'une conversation sauvegardée
-    /// Version refactorisée - utilise CourriersControl.SetDraft()
-    /// </summary>
-    private async void LetterFromChatBtn_Click(object sender, RoutedEventArgs e)
-    {
-        if (SavedExchangesList.SelectedItem is not ChatExchange exchange || _selectedPatient == null)
-        {
-            MessageBox.Show("Veuillez sélectionner une conversation.", "Information",
-                MessageBoxButton.OK, MessageBoxImage.Information);
-            return;
-        }
-
-        try
-        {
-            // Ouvrir le dialogue pour récupérer la demande de l'utilisateur
-            var dialog = new Dialogs.LetterFromChatDialog(exchange);
-            dialog.Owner = this;
-
-            if (dialog.ShowDialog() != true || string.IsNullOrEmpty(dialog.UserRequest))
-                return;
-
-            // Désactiver le bouton pendant la génération
-            LetterFromChatBtn.IsEnabled = false;
-            LetterFromChatBtn.Content = "⏳ Génération...";
-
-            StatusTextBlock.Text = "⏳ Génération du courrier depuis la conversation...";
-            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-
-            // Récupérer le contexte patient
-            var (hasContext, contextText, contextInfo) = _contextLoader.GetContextBundle(
-                _selectedPatient.NomComplet,
-                null
-            );
-
-            // Construire le prompt pour l'IA
-            var conversationContext = $"**Conversation précédente:**\n\n" +
-                                     $"Question: {exchange.Question}\n\n" +
-                                     $"Réponse: {exchange.Response}";
-
-            var fullContext = hasContext
-                ? $"{contextText}\n\n---\n\n{conversationContext}"
-                : conversationContext;
-
-            // Générer le courrier avec l'IA
-            var (success, markdown, error) = await _letterService.GenerateLetterFromChatAsync(
-                _selectedPatient.NomComplet,
-                fullContext,
-                dialog.UserRequest
-            );
-
-            if (success && !string.IsNullOrEmpty(markdown))
-            {
-                // Basculer vers l'onglet Courriers
-                AssistantTabControl.SelectedIndex = 1;
-
-                // Utiliser CourriersControl pour afficher le brouillon
-                CourriersControlPanel.SetDraft(markdown);
-
-                StatusTextBlock.Text = "✅ Courrier généré depuis la conversation - Vous pouvez le modifier puis sauvegarder";
-                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
-
-                MessageBox.Show(
-                    "✅ Courrier généré avec succès !\n\n" +
-                    "Le brouillon est maintenant affiché dans l'onglet Courriers.\n" +
-                    "Vous pouvez le modifier puis le sauvegarder.",
-                    "Succès",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information
-                );
-            }
-            else
-            {
-                MessageBox.Show(
-                    $"❌ Erreur lors de la génération:\n\n{error}",
-                    "Erreur",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Error
-                );
-
-                StatusTextBlock.Text = $"❌ Erreur: {error}";
-                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
-            }
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(
-                $"Erreur lors de la génération du courrier:\n\n{ex.Message}",
-                "Erreur",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error
-            );
-
-            StatusTextBlock.Text = $"❌ Erreur: {ex.Message}";
-            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
-        }
-        finally
-        {
-            // Réactiver le bouton
-            LetterFromChatBtn.IsEnabled = true;
-            LetterFromChatBtn.Content = "📝 Courrier";
-        }
-    }
-
-
-    private void UpdateMemoryIndicator()
-    {
-        // Pour l'instant, cette méthode est un placeholder
-        // L'UI n'est pas encore ajoutée dans le XAML
-        // TODO: Ajouter TextBlock MemoryIndicator dans MainWindow.xaml
-    }
-
-
-    // ===== BLOC NOTESCONTROL/SYNTHÈSE SUPPRIMÉ =====
-    // Code migré vers Views/Notes/NotesControl.xaml.cs
-    // Supprimé le 23/11/2025 après validation
 
 }

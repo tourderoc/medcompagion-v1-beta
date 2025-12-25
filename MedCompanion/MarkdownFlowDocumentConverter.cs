@@ -19,17 +19,43 @@ namespace MedCompanion
         public static FlowDocument MarkdownToFlowDocument(string markdown)
         {
             var document = new FlowDocument();
-            
+
+            System.Diagnostics.Debug.WriteLine($"[MarkdownFlowDocumentConverter] Début conversion - Markdown reçu: {markdown?.Length ?? 0} caractères");
+
             if (string.IsNullOrWhiteSpace(markdown))
+            {
+                System.Diagnostics.Debug.WriteLine("[MarkdownFlowDocumentConverter] Markdown vide ou null!");
                 return document;
-            
+            }
+
+            // Debug: Afficher les 200 premiers caractères du markdown reçu
+            var preview = markdown.Length > 200 ? markdown.Substring(0, 200) + "..." : markdown;
+            System.Diagnostics.Debug.WriteLine($"[MarkdownFlowDocumentConverter] Contenu brut (200 premiers chars): {preview}");
+
             // Retirer l'en-tête YAML si présent
             var cleanMarkdown = RemoveYamlHeader(markdown);
-            
-            var lines = cleanMarkdown.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-            
-            foreach (var line in lines)
+            System.Diagnostics.Debug.WriteLine($"[MarkdownFlowDocumentConverter] Après RemoveYamlHeader: {cleanMarkdown?.Length ?? 0} caractères");
+
+            // Debug: Vérifier si le contenu est vide après nettoyage YAML
+            if (string.IsNullOrWhiteSpace(cleanMarkdown))
             {
+                System.Diagnostics.Debug.WriteLine("[MarkdownFlowDocumentConverter] ATTENTION: Contenu vide après suppression YAML!");
+                // Retourner le document avec le markdown original si le nettoyage a tout supprimé
+                var fallbackPara = new Paragraph(new Run(markdown));
+                document.Blocks.Add(fallbackPara);
+                return document;
+            }
+
+            var cleanPreview = cleanMarkdown.Length > 200 ? cleanMarkdown.Substring(0, 200) + "..." : cleanMarkdown;
+            System.Diagnostics.Debug.WriteLine($"[MarkdownFlowDocumentConverter] Contenu nettoyé (200 premiers chars): {cleanPreview}");
+
+            var lines = cleanMarkdown.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            System.Diagnostics.Debug.WriteLine($"[MarkdownFlowDocumentConverter] Nombre de lignes à traiter: {lines.Length}");
+            
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     // Ligne vide → Petit espace (seulement 2px)
@@ -41,8 +67,21 @@ namespace MedCompanion
                     continue;
                 }
                 
-                // Ligne de séparation (---)
-                if (line.Trim() == "---" || line.Trim().All(c => c == '-'))
+                // NOUVEAU : Détecter les tableaux Markdown
+                if (line.TrimStart().StartsWith("|") && line.TrimEnd().EndsWith("|"))
+                {
+                    var (isTable, table, linesConsumed) = DetectAndParseTable(lines, i);
+                    
+                    if (isTable && table != null)
+                    {
+                        document.Blocks.Add(table);
+                        i += linesConsumed - 1; // Sauter les lignes du tableau
+                        continue;
+                    }
+                }
+                
+                // Ligne de séparation (---) - mais pas celle des tableaux
+                if (line.Trim() == "---" || (line.Trim().All(c => c == '-') && !line.Contains("|")))
                 {
                     // Ignorer les lignes de séparation (elles ne sont pas nécessaires visuellement)
                     continue;
@@ -142,8 +181,190 @@ namespace MedCompanion
                 ParseInlineMarkdown(line, paragraph);
                 document.Blocks.Add(paragraph);
             }
-            
+
+            System.Diagnostics.Debug.WriteLine($"[MarkdownFlowDocumentConverter] Conversion terminée - Document créé avec {document.Blocks.Count} blocs");
             return document;
+        }
+        
+        /// <summary>
+        /// Détecte et parse un tableau Markdown
+        /// </summary>
+        private static (bool isTable, Table? table, int linesConsumed) DetectAndParseTable(string[] lines, int startIndex)
+        {
+            if (startIndex >= lines.Length - 1)
+                return (false, null, 0);
+            
+            var headerLine = lines[startIndex];
+            var separatorLine = startIndex + 1 < lines.Length ? lines[startIndex + 1] : "";
+            
+            // Vérifier que la ligne suivante est un séparateur (|---|---|)
+            if (!IsSeparatorLine(separatorLine))
+                return (false, null, 0);
+            
+            // Parser les en-têtes
+            var headers = ParseTableRow(headerLine);
+            if (headers.Count == 0)
+                return (false, null, 0);
+            
+            // Parser les lignes de données
+            var rows = new System.Collections.Generic.List<System.Collections.Generic.List<string>>();
+            int currentLine = startIndex + 2;
+            
+            while (currentLine < lines.Length)
+            {
+                var line = lines[currentLine];
+                
+                // Arrêter si la ligne n'est pas une ligne de tableau
+                if (!line.TrimStart().StartsWith("|") || !line.TrimEnd().EndsWith("|"))
+                    break;
+                
+                var rowData = ParseTableRow(line);
+                if (rowData.Count > 0)
+                {
+                    rows.Add(rowData);
+                    currentLine++;
+                }
+                else
+                {
+                    break;
+                }
+            }
+            
+            // Créer le tableau WPF
+            var table = CreateWpfTable(headers, rows);
+            int linesConsumed = currentLine - startIndex;
+            
+            return (true, table, linesConsumed);
+        }
+        
+        /// <summary>
+        /// Vérifie si une ligne est un séparateur de tableau (|---|---|)
+        /// </summary>
+        private static bool IsSeparatorLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return false;
+            
+            var trimmed = line.Trim();
+            if (!trimmed.StartsWith("|") || !trimmed.EndsWith("|"))
+                return false;
+            
+            // Retirer les pipes et vérifier que tout est composé de - et espaces
+            var content = trimmed.Trim('|');
+            var cells = content.Split('|');
+            
+            foreach (var cell in cells)
+            {
+                var cellTrimmed = cell.Trim();
+                if (string.IsNullOrEmpty(cellTrimmed) || !cellTrimmed.All(c => c == '-' || c == ':'))
+                    return false;
+            }
+            
+            return true;
+        }
+        
+        /// <summary>
+        /// Parse une ligne de tableau et retourne les cellules
+        /// </summary>
+        private static System.Collections.Generic.List<string> ParseTableRow(string line)
+        {
+            var cells = new System.Collections.Generic.List<string>();
+            
+            if (string.IsNullOrWhiteSpace(line))
+                return cells;
+            
+            var trimmed = line.Trim();
+            if (!trimmed.StartsWith("|") || !trimmed.EndsWith("|"))
+                return cells;
+            
+            // Retirer les pipes de début et fin
+            var content = trimmed.Substring(1, trimmed.Length - 2);
+            
+            // Split par | et trim chaque cellule
+            var parts = content.Split('|');
+            foreach (var part in parts)
+            {
+                cells.Add(part.Trim());
+            }
+            
+            return cells;
+        }
+        
+        /// <summary>
+        /// Crée un tableau WPF à partir des données parsées
+        /// </summary>
+        private static Table CreateWpfTable(System.Collections.Generic.List<string> headers, System.Collections.Generic.List<System.Collections.Generic.List<string>> rows)
+        {
+            var table = new Table
+            {
+                CellSpacing = 0,
+                BorderBrush = new SolidColorBrush(Color.FromRgb(189, 195, 199)),
+                BorderThickness = new Thickness(1),
+                Margin = new Thickness(0, 4, 0, 4)
+            };
+            
+            // Définir les colonnes
+            foreach (var header in headers)
+            {
+                table.Columns.Add(new TableColumn { Width = GridLength.Auto });
+            }
+            
+            // Créer le groupe d'en-têtes
+            var headerGroup = new TableRowGroup();
+            var headerRow = new TableRow
+            {
+                Background = new SolidColorBrush(Color.FromRgb(236, 240, 241))
+            };
+            
+            foreach (var header in headers)
+            {
+                var cell = new TableCell(new Paragraph(new Run(header))
+                {
+                    Margin = new Thickness(0),
+                    FontSize = 12
+                })
+                {
+                    BorderBrush = new SolidColorBrush(Color.FromRgb(189, 195, 199)),
+                    BorderThickness = new Thickness(1),
+                    Padding = new Thickness(8, 4, 8, 4),
+                    FontWeight = FontWeights.Bold
+                };
+                headerRow.Cells.Add(cell);
+            }
+            
+            headerGroup.Rows.Add(headerRow);
+            table.RowGroups.Add(headerGroup);
+            
+            // Créer le groupe de données
+            var dataGroup = new TableRowGroup();
+            
+            foreach (var row in rows)
+            {
+                var tableRow = new TableRow();
+                
+                // S'assurer qu'on a le bon nombre de cellules
+                for (int i = 0; i < headers.Count; i++)
+                {
+                    var cellText = i < row.Count ? row[i] : "";
+                    var cell = new TableCell(new Paragraph(new Run(cellText))
+                    {
+                        Margin = new Thickness(0),
+                        FontSize = 12
+                    })
+                    {
+                        BorderBrush = new SolidColorBrush(Color.FromRgb(189, 195, 199)),
+                        BorderThickness = new Thickness(1),
+                        Padding = new Thickness(8, 4, 8, 4)
+                    };
+                    tableRow.Cells.Add(cell);
+                }
+                
+                dataGroup.Rows.Add(tableRow);
+            }
+            
+            table.RowGroups.Add(dataGroup);
+            
+            return table;
         }
         
         /// <summary>
@@ -274,35 +495,80 @@ namespace MedCompanion
         
         /// <summary>
         /// Retire l'en-tête YAML d'un Markdown
+        /// Un header YAML valide doit :
+        /// - Commencer par --- sur la première ligne
+        /// - Se terminer par --- dans les 15 premières lignes (header YAML typique)
+        /// - Contenir des lignes au format clé: valeur
         /// </summary>
         private static string RemoveYamlHeader(string markdown)
         {
+            System.Diagnostics.Debug.WriteLine($"[RemoveYamlHeader] Entrée - Longueur: {markdown?.Length ?? 0}");
+
             if (!markdown.TrimStart().StartsWith("---"))
+            {
+                System.Diagnostics.Debug.WriteLine("[RemoveYamlHeader] Pas de YAML détecté (ne commence pas par ---)");
                 return markdown;
-            
+            }
+
             var lines = markdown.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            System.Diagnostics.Debug.WriteLine($"[RemoveYamlHeader] Nombre total de lignes: {lines.Length}");
+
+            // Limite de recherche : un header YAML ne dépasse jamais 15 lignes
+            const int maxYamlHeaderLines = 15;
+            int searchLimit = Math.Min(lines.Length, maxYamlHeaderLines);
+
+            System.Diagnostics.Debug.WriteLine($"[RemoveYamlHeader] Recherche YAML limitée aux {searchLimit} premières lignes");
+
             bool inYaml = false;
             int yamlEndIndex = 0;
-            
-            for (int i = 0; i < lines.Length; i++)
+            bool hasValidYamlContent = false;
+
+            for (int i = 0; i < searchLimit; i++)
             {
-                if (i == 0 && lines[i].Trim() == "---")
+                var line = lines[i].Trim();
+
+                if (i == 0 && line == "---")
                 {
                     inYaml = true;
+                    System.Diagnostics.Debug.WriteLine($"[RemoveYamlHeader] Début YAML trouvé à ligne {i}");
                     continue;
                 }
-                if (inYaml && lines[i].Trim() == "---")
+
+                if (inYaml)
                 {
-                    yamlEndIndex = i + 1;
-                    break;
+                    // Vérifier si c'est la fin du YAML
+                    if (line == "---")
+                    {
+                        yamlEndIndex = i + 1;
+                        System.Diagnostics.Debug.WriteLine($"[RemoveYamlHeader] Fin YAML potentielle à ligne {i}, yamlEndIndex={yamlEndIndex}");
+                        break;
+                    }
+
+                    // Vérifier si la ligne ressemble à du YAML (clé: valeur)
+                    if (line.Contains(":") && !line.StartsWith("#") && !line.StartsWith("-"))
+                    {
+                        hasValidYamlContent = true;
+                    }
                 }
             }
-            
-            if (yamlEndIndex > 0)
+
+            // Ne supprimer le YAML que si on a trouvé un header valide
+            if (yamlEndIndex > 0 && hasValidYamlContent)
             {
-                return string.Join("\n", lines.Skip(yamlEndIndex));
+                var result = string.Join("\n", lines.Skip(yamlEndIndex));
+                System.Diagnostics.Debug.WriteLine($"[RemoveYamlHeader] YAML valide supprimé - Résultat: {result?.Length ?? 0} caractères");
+                return result;
             }
-            
+
+            if (yamlEndIndex > 0 && !hasValidYamlContent)
+            {
+                System.Diagnostics.Debug.WriteLine("[RemoveYamlHeader] --- trouvé mais pas de contenu YAML valide (clé: valeur) - Retour du contenu original");
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine("[RemoveYamlHeader] Pas de fin YAML dans les 15 premières lignes - Retour du contenu original");
+            }
+
             return markdown;
         }
     }

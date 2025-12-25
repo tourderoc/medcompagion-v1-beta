@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using MedCompanion.Models;
 
@@ -10,14 +11,24 @@ namespace MedCompanion.Services
 {
     /// <summary>
     /// Service pour extraire automatiquement un template à partir d'un exemple de courrier
+    /// Utilise LLMGatewayService pour l'anonymisation automatique des données patient
     /// </summary>
     public class TemplateExtractorService
     {
         private readonly OpenAIService _openAIService;
+        private LLMGatewayService? _llmGatewayService;
 
         public TemplateExtractorService(OpenAIService openAIService)
         {
             _openAIService = openAIService;
+        }
+
+        /// <summary>
+        /// Configure le service LLMGateway pour l'anonymisation automatique
+        /// </summary>
+        public void SetLLMGatewayService(LLMGatewayService llmGatewayService)
+        {
+            _llmGatewayService = llmGatewayService;
         }
 
         /// <summary>
@@ -69,12 +80,39 @@ EXEMPLES DE VARIABLES :
 
 {exampleLetter}";
 
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(
-                    string.Empty,
-                    userPrompt,
-                    null,
-                    systemPrompt
-                );
+                string result;
+                bool success;
+
+                // Utiliser LLMGatewayService si disponible (anonymisation automatique)
+                if (_llmGatewayService != null)
+                {
+                    var messages = new List<(string role, string content)>
+                    {
+                        ("user", userPrompt)
+                    };
+
+                    var (gatewaySuccess, gatewayResult, error) = await _llmGatewayService.ChatAsync(
+                        systemPrompt,
+                        messages,
+                        null,  // Pas de nom de patient spécifique, mais l'anonymisation par patterns sera appliquée
+                        maxTokens: 2000
+                    );
+
+                    success = gatewaySuccess;
+                    result = gatewaySuccess ? gatewayResult : (error ?? "Erreur inconnue");
+                }
+                else
+                {
+                    // Fallback sur OpenAIService (sans anonymisation)
+                    var (directSuccess, directResult) = await _openAIService.ChatAvecContexteAsync(
+                        string.Empty,
+                        userPrompt,
+                        null,
+                        systemPrompt
+                    );
+                    success = directSuccess;
+                    result = directResult;
+                }
 
                 if (!success)
                 {
@@ -271,12 +309,39 @@ Réponds uniquement en JSON valide et complet, sans texte explicatif.
 DOCUMENT À ANALYSER :
 {documentText}";
 
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(
-                    string.Empty,
-                    userPrompt,
-                    null,
-                    systemPrompt
-                );
+                string result;
+                bool success;
+
+                // Utiliser LLMGatewayService si disponible (anonymisation automatique)
+                if (_llmGatewayService != null)
+                {
+                    var messages = new List<(string role, string content)>
+                    {
+                        ("user", userPrompt)
+                    };
+
+                    var (gatewaySuccess, gatewayResult, error) = await _llmGatewayService.ChatAsync(
+                        systemPrompt,
+                        messages,
+                        null,  // Pas de nom de patient spécifique
+                        maxTokens: 2000
+                    );
+
+                    success = gatewaySuccess;
+                    result = gatewaySuccess ? gatewayResult : (error ?? "Erreur inconnue");
+                }
+                else
+                {
+                    // Fallback sur OpenAIService (sans anonymisation)
+                    var (directSuccess, directResult) = await _openAIService.ChatAvecContexteAsync(
+                        string.Empty,
+                        userPrompt,
+                        null,
+                        systemPrompt
+                    );
+                    success = directSuccess;
+                    result = directResult;
+                }
 
                 if (!success)
                 {
@@ -374,12 +439,39 @@ Réponds uniquement en JSON valide et complet, sans texte explicatif.";
 
 Réponds en JSON avec l'objet ""sections"" contenant les sections identifiées et leur description détaillée.";
 
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(
-                    string.Empty,
-                    userPrompt,
-                    null,
-                    systemPrompt
-                );
+                string result;
+                bool success;
+
+                // Utiliser LLMGatewayService si disponible (anonymisation automatique)
+                if (_llmGatewayService != null)
+                {
+                    var messages = new List<(string role, string content)>
+                    {
+                        ("user", userPrompt)
+                    };
+
+                    var (gatewaySuccess, gatewayResult, error) = await _llmGatewayService.ChatAsync(
+                        systemPrompt,
+                        messages,
+                        null,  // Pas de nom de patient spécifique
+                        maxTokens: 2000
+                    );
+
+                    success = gatewaySuccess;
+                    result = gatewaySuccess ? gatewayResult : (error ?? "Erreur inconnue");
+                }
+                else
+                {
+                    // Fallback sur OpenAIService (sans anonymisation)
+                    var (directSuccess, directResult) = await _openAIService.ChatAvecContexteAsync(
+                        string.Empty,
+                        userPrompt,
+                        null,
+                        systemPrompt
+                    );
+                    success = directSuccess;
+                    result = directResult;
+                }
 
                 if (!success)
                 {

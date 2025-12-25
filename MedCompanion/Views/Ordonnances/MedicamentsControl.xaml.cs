@@ -28,6 +28,7 @@ namespace MedCompanion.Views.Ordonnances
         // Événements
         public event EventHandler<string>? StatusChanged;
         public event EventHandler? OrdonnanceGenerated; // Notifie le parent qu'une ordonnance a été générée
+        public event EventHandler? CancelRequested; // Notifie le parent que l'utilisateur veut annuler
 
         public MedicamentsControl()
         {
@@ -456,10 +457,12 @@ namespace MedCompanion.Views.Ordonnances
                     };
                 }
 
-                // Sauvegarder l'ordonnance (Markdown + DOCX)
-                var (success, message, mdPath, docxPath) = _ordonnanceService.SaveOrdonnanceMedicaments(
+                // Sauvegarder l'ordonnance (Markdown + DOCX + PDF)
+                // ✅ FIX: Passer le PatientMetadata pour inclure la date de naissance et l'âge
+                var (success, message, mdPath, docxPath, pdfPath) = _ordonnanceService.SaveOrdonnanceMedicaments(
                     _selectedPatient.NomComplet,
                     ordonnance,
+                    _selectedPatient,  // PatientMetadata avec date de naissance
                     metadata
                 );
 
@@ -482,8 +485,9 @@ namespace MedCompanion.Views.Ordonnances
                     _isRenewal = false;
                     GenererOrdonnanceButton.IsEnabled = false;
 
-                    // Ouvrir le DOCX si disponible
-                    if (!string.IsNullOrEmpty(docxPath) && System.IO.File.Exists(docxPath))
+                    // Ouvrir le PDF si disponible, sinon le DOCX
+                    var fileToOpen = !string.IsNullOrEmpty(pdfPath) && System.IO.File.Exists(pdfPath) ? pdfPath : docxPath;
+                    if (!string.IsNullOrEmpty(fileToOpen) && System.IO.File.Exists(fileToOpen))
                     {
                         var result = MessageBox.Show(
                             "Voulez-vous ouvrir l'ordonnance maintenant ?",
@@ -498,7 +502,7 @@ namespace MedCompanion.Views.Ordonnances
                             {
                                 var psi = new System.Diagnostics.ProcessStartInfo
                                 {
-                                    FileName = docxPath,
+                                    FileName = fileToOpen,
                                     UseShellExecute = true
                                 };
                                 System.Diagnostics.Process.Start(psi);
@@ -626,6 +630,40 @@ namespace MedCompanion.Views.Ordonnances
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 StatusChanged?.Invoke(this, $"❌ Erreur: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Annule la création d'ordonnance et retourne au menu ordonnances
+        /// </summary>
+        private void AnnulerOrdonnanceButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Demander confirmation si des médicaments sont dans la liste
+            if (_medicamentsPrescrits.Count > 0)
+            {
+                var result = MessageBox.Show(
+                    "Voulez-vous vraiment annuler ? Les médicaments ajoutés seront perdus.",
+                    "Confirmer l'annulation",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Question);
+
+                if (result != MessageBoxResult.Yes)
+                    return;
+            }
+
+            // Vider la liste des médicaments prescrits
+            _medicamentsPrescrits.Clear();
+            GenererOrdonnanceButton.IsEnabled = false;
+            _isRenewal = false;
+
+            // Réinitialiser les champs
+            SearchTextBox.Text = "";
+            AddMedicamentBorder.Visibility = Visibility.Collapsed;
+            SearchResultsBorder.Visibility = Visibility.Collapsed;
+
+            StatusChanged?.Invoke(this, "↩️ Création d'ordonnance annulée");
+
+            // Notifier le parent pour revenir au menu ordonnances
+            CancelRequested?.Invoke(this, EventArgs.Empty);
         }
     }
 }

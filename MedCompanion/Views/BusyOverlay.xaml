@@ -1,0 +1,139 @@
+<UserControl x:Class="MedCompanion.Views.BusyOverlay"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:MedCompanion.Converters"
+             x:Name="BusyOverlayControl">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <converters:StringNotWhiteSpaceToVisibilityConverter x:Key="StringToVis"/>
+
+        <!-- Converter pour Progress >= 0 (mode déterminé) -->
+        <Style x:Key="DeterminateProgressStyle" TargetType="ProgressBar">
+            <Setter Property="IsIndeterminate" Value="False"/>
+            <Style.Triggers>
+                <!-- Binding direct au DataContext (BusyOverlayViewModel) -->
+                <DataTrigger Binding="{Binding Progress, Mode=OneWay}" Value="-1">
+                    <Setter Property="IsIndeterminate" Value="True"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+    </UserControl.Resources>
+
+    <!-- Overlay semi-transparent qui couvre toute l'application -->
+    <!-- Panel.ZIndex="9999" pour être toujours au premier plan -->
+    <Grid Visibility="{Binding IsBusy, Mode=OneWay, Converter={StaticResource BoolToVis}}"
+          Panel.ZIndex="9999">
+
+        <!-- Fond grisé -->
+        <Rectangle Fill="#80000000" />
+
+        <!-- Panneau central -->
+        <Border Background="White"
+                CornerRadius="12"
+                Padding="30,25"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                MinWidth="350"
+                MaxWidth="500">
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="20" ShadowDepth="5" Opacity="0.3"/>
+            </Border.Effect>
+
+            <StackPanel>
+                <!-- Icône animée -->
+                <TextBlock Text="⏳"
+                           FontSize="32"
+                           HorizontalAlignment="Center"
+                           Margin="0,0,0,15">
+                    <TextBlock.RenderTransform>
+                        <RotateTransform x:Name="IconRotation" CenterX="16" CenterY="16"/>
+                    </TextBlock.RenderTransform>
+                    <TextBlock.Triggers>
+                        <EventTrigger RoutedEvent="Loaded">
+                            <BeginStoryboard>
+                                <Storyboard RepeatBehavior="Forever">
+                                    <DoubleAnimation Storyboard.TargetName="IconRotation"
+                                                     Storyboard.TargetProperty="Angle"
+                                                     From="0" To="360"
+                                                     Duration="0:0:2"/>
+                                </Storyboard>
+                            </BeginStoryboard>
+                        </EventTrigger>
+                    </TextBlock.Triggers>
+                </TextBlock>
+
+                <!-- Message principal -->
+                <TextBlock Text="{Binding Message, Mode=OneWay}"
+                           FontSize="16"
+                           FontWeight="SemiBold"
+                           Foreground="#2C3E50"
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Margin="0,0,0,10"/>
+
+                <!-- Étape détaillée -->
+                <TextBlock Text="{Binding Step, Mode=OneWay}"
+                           FontSize="13"
+                           Foreground="#7F8C8D"
+                           HorizontalAlignment="Center"
+                           TextWrapping="Wrap"
+                           TextAlignment="Center"
+                           Margin="0,0,0,15"
+                           Visibility="{Binding Step, Mode=OneWay, Converter={StaticResource StringToVis}}"/>
+
+                <!-- Barre de progression -->
+                <ProgressBar Height="8"
+                             Margin="0,0,0,20"
+                             Value="{Binding Progress, Mode=OneWay}"
+                             Maximum="100"
+                             Foreground="#3498DB"
+                             Background="#ECF0F1"
+                             Style="{StaticResource DeterminateProgressStyle}"/>
+
+                <!-- Bouton Annuler -->
+                <Button x:Name="CancelButton"
+                        Content="Annuler"
+                        HorizontalAlignment="Center"
+                        Padding="25,8"
+                        FontSize="13"
+                        Background="#E74C3C"
+                        Foreground="White"
+                        BorderThickness="0"
+                        Cursor="Hand"
+                        Click="CancelButton_Click"
+                        Visibility="{Binding CanCancel, Mode=OneWay, Converter={StaticResource BoolToVis}}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="6"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center"
+                                                              VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#C0392B"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#95A5A6"/>
+                                </Trigger>
+                                <DataTrigger Binding="{Binding IsCancellationRequested}" Value="True">
+                                    <Setter Property="IsEnabled" Value="False"/>
+                                    <Setter Property="Content" Value="Annulation..."/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Border>
+    </Grid>
+</UserControl>

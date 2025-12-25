@@ -31,9 +31,13 @@ public class ObservableObject : INotifyPropertyChanged
     protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)
     {
         if (Equals(field, value))
+        {
+            System.Diagnostics.Debug.WriteLine($"[ObservableObject] SetProperty({propertyName}): Valeurs égales, pas de notification");
             return false;
+        }
 
         field = value;
+        System.Diagnostics.Debug.WriteLine($"[ObservableObject] SetProperty({propertyName}): PropertyChanged déclenché");
         OnPropertyChanged(propertyName);
         return true;
     }

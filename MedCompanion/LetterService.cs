@@ -24,8 +24,9 @@ namespace MedCompanion
         private readonly StorageService _storageService;
         private readonly AppSettings _settings;
         private readonly PromptConfigService _promptConfig;
-        private readonly PatientContextService _patientContextService; // ✅ NOUVEAU
-        private readonly AnonymizationService _anonymizationService; // ✅ NOUVEAU
+        private readonly PatientContextService _patientContextService;
+        private readonly AnonymizationService _anonymizationService;
+        private readonly LLMGatewayService _llmGatewayService; // ✅ Gateway centralisé pour anonymisation automatique
         
         // Cache des prompts pour éviter les appels répétés
         private string _cachedSystemPrompt;
@@ -34,28 +35,34 @@ namespace MedCompanion
         private string _cachedTemplateAdaptationPrompt;
 
         public LetterService(
-            OpenAIService openAIService, 
-            ContextLoader contextLoader, 
+            OpenAIService openAIService,
+            ContextLoader contextLoader,
             StorageService storageService,
-            PatientContextService patientContextService, // ✅ NOUVEAU
-            AnonymizationService anonymizationService) // ✅ NOUVEAU
+            PatientContextService patientContextService,
+            AnonymizationService anonymizationService,
+            PromptConfigService promptConfig,
+            LLMGatewayService llmGatewayService) // ✅ Gateway centralisé
         {
             _openAIService = openAIService;
             _contextLoader = contextLoader;
             _storageService = storageService;
-            _patientContextService = patientContextService; // ✅ NOUVEAU
-            _anonymizationService = anonymizationService; // ✅ NOUVEAU
-            _settings = new AppSettings();
-            _promptConfig = new PromptConfigService();
-            
+            _patientContextService = patientContextService;
+            _anonymizationService = anonymizationService;
+            _settings = AppSettings.Load();
+            _promptConfig = promptConfig;
+            _llmGatewayService = llmGatewayService; // ✅ Gateway centralisé
+
             // Configure QuestPDF License
             QuestPDF.Settings.License = LicenseType.Community;
-            
+
             // Charger les prompts initialement
             LoadPrompts();
-            
-            // S'abonner à l'événement de rechargement des prompts
-            _promptConfig.PromptsReloaded += OnPromptsReloaded;
+
+            // S'abonner à l'événement de rechargement des prompts (si _promptConfig n'est pas null)
+            if (_promptConfig != null)
+            {
+                _promptConfig.PromptsReloaded += OnPromptsReloaded;
+            }
         }
         
         /// <summary>
@@ -63,11 +70,22 @@ namespace MedCompanion
         /// </summary>
         private void LoadPrompts()
         {
+            // ✅ Vérifier si _promptConfig est null (cas où le service est créé pour export uniquement)
+            if (_promptConfig == null)
+            {
+                _cachedSystemPrompt = "";
+                _cachedLetterWithContextPrompt = "";
+                _cachedLetterNoContextPrompt = "";
+                _cachedTemplateAdaptationPrompt = "";
+                System.Diagnostics.Debug.WriteLine("[LetterService] Prompts non chargés (PromptConfig null)");
+                return;
+            }
+
             _cachedSystemPrompt = _promptConfig.GetActivePrompt("system_global");
             _cachedLetterWithContextPrompt = _promptConfig.GetActivePrompt("letter_generation_with_context");
             _cachedLetterNoContextPrompt = _promptConfig.GetActivePrompt("letter_generation_no_context");
             _cachedTemplateAdaptationPrompt = _promptConfig.GetActivePrompt("template_adaptation");
-            
+
             System.Diagnostics.Debug.WriteLine("[LetterService] Prompts chargés depuis la configuration");
         }
         
@@ -156,6 +174,7 @@ namespace MedCompanion
         
         /// <summary>
         /// Adapte un modèle de courrier avec l'IA en fonction du contexte patient
+        /// ✅ REFACTORISÉ : Utilise LLMGatewayService avec anonymisation automatique
         /// </summary>
         public async Task<(bool success, string markdown, string error)> AdaptTemplateWithAIAsync(
             string nomComplet,
@@ -164,50 +183,31 @@ namespace MedCompanion
         {
             try
             {
-                // ✅ ÉTAPE 1 : Charger les métadonnées pour obtenir le sexe
-                var patientDir = _storageService.GetPatientDirectory(nomComplet);
-                var patientJsonPath = Path.Combine(patientDir, "patient.json");
-                PatientMetadata? metadata = null;
-                
-                if (File.Exists(patientJsonPath))
-                {
-                    try
-                    {
-                        var json = File.ReadAllText(patientJsonPath);
-                        metadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(json);
-                    }
-                    catch { }
-                }
-
-                // ✅ ÉTAPE 2 : Générer le pseudonyme AVANT de créer le contexte
-                var sexe = metadata?.Sexe ?? "M";
-                var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", nomComplet, sexe);
-
-                // ✅ ÉTAPE 3 : Créer le contexte avec le pseudonyme (le vrai nom n'apparaîtra jamais)
+                // ✅ Créer le contexte avec le VRAI nom (le gateway anonymisera si cloud)
                 var contextBundle = _patientContextService.GetCompleteContext(
                     nomComplet,
                     userRequest: null,
-                    pseudonym: nomAnonymise
+                    pseudonym: null  // Pas de pseudonyme manuel, le gateway gère
                 );
 
-                var contextText = contextBundle.ToPromptText(nomAnonymise, anonContext);  // ✅ Passer le contexte d'anonymisation
-                metadata = contextBundle.Metadata;  // Utiliser les métadonnées du bundle
-                
+                var contextText = contextBundle.ToPromptText(nomComplet, null);
+                var metadata = contextBundle.Metadata;
+
                 System.Diagnostics.Debug.WriteLine($"[AdaptTemplateWithAIAsync] {contextBundle.ToDebugText()}");
-                
+
                 var medecin = _settings.Medecin;
-                
+
                 // Détecter si c'est une Feuille de route pour adapter le style
                 bool isFeuilleRoute = templateName.Contains("Feuille de route", StringComparison.OrdinalIgnoreCase);
-                
-                // Utiliser le prénom anonymisé si disponible, sinon le nom anonymisé
-                var prenomAnonymise = anonContext.Pseudonym.Split(' ').FirstOrDefault() ?? "l'enfant";
-                
+
+                // Utiliser le prénom du patient (sera anonymisé automatiquement si cloud)
+                var prenom = nomComplet.Split('_').LastOrDefault()?.Split(' ').FirstOrDefault() ?? "l'enfant";
+
                 var systemPrompt = isFeuilleRoute
                     ? $@"Tu es l'assistant du {medecin}, pédopsychiatre.
 Tu rédiges un document chaleureux et bienveillant DESTINÉ AUX PARENTS.
 - Ton : empathique, pratique, non médical, rassurant
-- Tu t'adresses AUX PARENTS mais parles DE L'ENFANT en 3ᵉ personne (il/elle, {prenomAnonymise})
+- Tu t'adresses AUX PARENTS mais parles DE L'ENFANT en 3ᵉ personne (il/elle, {prenom})
 - Style : guidance parentale simple et concrète, pas de jargon clinique"
                     : $@"Tu es l'assistant du {medecin}, pédopsychiatre.
 - L'UTILISATEUR est le clinicien. Tu rédiges EN PREMIÈRE PERSONNE au nom du {medecin}.
@@ -236,7 +236,7 @@ INTERDICTIONS :
 
 CONSIGNE SPECIALE FEUILLE DE ROUTE
 ----
-Génère une feuille de route CHALEUREUSE et PRATIQUE pour les parents de {prenomAnonymise}.
+Génère une feuille de route CHALEUREUSE et PRATIQUE pour les parents de {prenom}.
 
 1. **Motif principal** : Identifie en 1-2 phrases le motif de consultation principal depuis le contexte (ex: ""difficultés de sommeil"", ""anxiété importante"", ""opposition"", ""trop d'écrans"", etc.)
 
@@ -251,7 +251,7 @@ Génère une feuille de route CHALEUREUSE et PRATIQUE pour les parents de {preno
 
 Structure Markdown :
 ```
-# Feuille de route pour les parents de {prenomAnonymise}
+# Feuille de route pour les parents de {prenom}
 
 **Motif principal :**
 [Texte ici]
@@ -273,8 +273,8 @@ Structure Markdown :
 **Prochain point :** {{{{Date_Prochain_RDV}}}}
 ```
 
-⚠️ IMPORTANT : 
-- Personnalise avec le prénom {prenomAnonymise} partout
+⚠️ IMPORTANT :
+- Personnalise avec le prénom {prenom} partout
 - Ton chaleureux, NON médical
 - Conseils concrets et applicables"
                     : $@"CONTEXTE PATIENT COMPLET
@@ -294,24 +294,34 @@ REGLE : Remplace UNIQUEMENT les informations trouvees EXPLICITEMENT dans le cont
 CONSIGNE
 ----
 Redige en 12-15 lignes maximum, ton professionnel.
-- Le patient s'appelle : {nomAnonymise}
+- Le patient s'appelle : {nomComplet}
 - Adapte les amenagements selon le motif principal
 - Format Markdown avec titre et corps uniquement
 - NE PAS inclure en-tete, date, signature, pied de page
 - Personnalise selon le contexte patient
 - IMPORTANT : Sois concis, evite redondance";
 
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(string.Empty, userPrompt, null, systemPrompt);
+                // ✅ Construire les messages pour le gateway
+                var messages = new List<(string role, string content)>
+                {
+                    ("user", userPrompt)
+                };
+
+                // ✅ Appel via LLMGatewayService - anonymisation automatique si cloud
+                var (success, result, error) = await _llmGatewayService.ChatAsync(
+                    systemPrompt: systemPrompt,
+                    messages: messages,
+                    patientName: nomComplet,
+                    maxTokens: 2000
+                );
 
                 if (success)
                 {
-                    // ✅ DÉSANONYMISATION
-                    var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
-                    return (true, deanonymizedResult, string.Empty);
+                    return (true, result, string.Empty);
                 }
                 else
                 {
-                    return (false, string.Empty, result);
+                    return (false, string.Empty, error ?? result);
                 }
             }
             catch (Exception ex)
@@ -322,68 +332,60 @@ Redige en 12-15 lignes maximum, ton professionnel.
         
         /// <summary>
         /// Génère un brouillon de courrier
+        /// ✅ REFACTORISÉ : Utilise LLMGatewayService avec anonymisation automatique
         /// </summary>
         public async Task<(bool success, string markdown, string error)> GenerateLetterAsync(
-            string nomComplet, 
+            string nomComplet,
             string userRequest)
         {
             try
             {
-                // ✅ ÉTAPE 1 : Charger les métadonnées pour obtenir le sexe
-                var patientDir = _storageService.GetPatientDirectory(nomComplet);
-                var patientJsonPath = Path.Combine(patientDir, "patient.json");
-                PatientMetadata? metadata = null;
-                
-                if (File.Exists(patientJsonPath))
-                {
-                    try
-                    {
-                        var json = File.ReadAllText(patientJsonPath);
-                        metadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(json);
-                    }
-                    catch { }
-                }
-
-                // ✅ ÉTAPE 2 : Générer le pseudonyme AVANT de créer le contexte
-                var sexe = metadata?.Sexe ?? "M";
-                var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", nomComplet, sexe);
-
-                // ✅ ÉTAPE 3 : Créer le contexte avec le pseudonyme
+                // ✅ Créer le contexte avec le VRAI nom (le gateway anonymisera si cloud)
                 var contextBundle = _patientContextService.GetCompleteContext(
                     nomComplet,
                     userRequest: null,
-                    pseudonym: nomAnonymise
+                    pseudonym: null  // Pas de pseudonyme manuel, le gateway gère
                 );
 
-                var contextText = contextBundle.ToPromptText(nomAnonymise, anonContext);  // ✅ Passer le contexte d'anonymisation
+                var contextText = contextBundle.ToPromptText(nomComplet, null);
 
                 var medecin = _settings.Medecin;
-                
+
                 // Utiliser le prompt système en cache (rechargé automatiquement via événement)
                 var systemPrompt = _cachedSystemPrompt.Replace("{{Medecin}}", medecin);
-                
+
                 // Utiliser le prompt en cache (rechargé automatiquement via événement)
                 var userPromptTemplate = !string.IsNullOrEmpty(contextText) ? _cachedLetterWithContextPrompt : _cachedLetterNoContextPrompt;
-                
+
                 // Remplacer les variables
                 var userPrompt = userPromptTemplate
                     .Replace("{{Contexte}}", contextText)
                     .Replace("{{User_Request}}", userRequest);
 
-                // Ajouter l'instruction sur le nom anonymisé
-                userPrompt += $"\n\nIMPORTANT : Le patient s'appelle {nomAnonymise}.";
+                // Ajouter l'instruction sur le nom (sera anonymisé automatiquement si cloud)
+                userPrompt += $"\n\nIMPORTANT : Le patient s'appelle {nomComplet}.";
 
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(string.Empty, userPrompt, null, systemPrompt);
+                // ✅ Construire les messages pour le gateway
+                var messages = new List<(string role, string content)>
+                {
+                    ("user", userPrompt)
+                };
+
+                // ✅ Appel via LLMGatewayService - anonymisation automatique si cloud
+                var (success, result, error) = await _llmGatewayService.ChatAsync(
+                    systemPrompt: systemPrompt,
+                    messages: messages,
+                    patientName: nomComplet,
+                    maxTokens: 2000
+                );
 
                 if (success)
                 {
-                    // ✅ DÉSANONYMISATION
-                    var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
-                    return (true, deanonymizedResult, string.Empty);
+                    return (true, result, string.Empty);
                 }
                 else
                 {
-                    return (false, string.Empty, result);
+                    return (false, string.Empty, error ?? result);
                 }
             }
             catch (Exception ex)
@@ -394,6 +396,7 @@ Redige en 12-15 lignes maximum, ton professionnel.
         
         /// <summary>
         /// Génère un courrier à partir d'une conversation sauvegardée
+        /// ✅ REFACTORISÉ : Utilise LLMGatewayService avec anonymisation automatique
         /// </summary>
         public async Task<(bool success, string markdown, string error)> GenerateLetterFromChatAsync(
             string nomComplet,
@@ -402,42 +405,13 @@ Redige en 12-15 lignes maximum, ton professionnel.
         {
             try
             {
-                // ✅ ÉTAPE 1 : Charger les métadonnées pour obtenir le sexe
-                var patientDir = _storageService.GetPatientDirectory(nomComplet);
-                var patientJsonPath = Path.Combine(patientDir, "patient.json");
-                PatientMetadata? metadata = null;
-                
-                if (File.Exists(patientJsonPath))
-                {
-                    try
-                    {
-                        var json = File.ReadAllText(patientJsonPath);
-                        metadata = System.Text.Json.JsonSerializer.Deserialize<PatientMetadata>(json);
-                    }
-                    catch { }
-                }
-
-                // ✅ ÉTAPE 2 : Générer le pseudonyme AVANT de créer le contexte
-                var sexe = metadata?.Sexe ?? "M";
-                var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", nomComplet, sexe);
-                
-                // ✅ ÉTAPE 3 : Anonymiser le contexte de conversation et la requête
-                if (conversationContext.Contains(nomComplet))
-                {
-                    conversationContext = conversationContext.Replace(nomComplet, nomAnonymise);
-                }
-                
-                if (userRequest.Contains(nomComplet))
-                {
-                    userRequest = userRequest.Replace(nomComplet, nomAnonymise);
-                }
-
                 var medecin = _settings.Medecin;
-                
+
                 // Utiliser le prompt système en cache (rechargé automatiquement via événement)
                 var systemPrompt = _cachedSystemPrompt.Replace("{{Medecin}}", medecin);
-                
+
                 // Construire le prompt utilisateur enrichi avec la conversation
+                // ✅ Utiliser le VRAI nom (le gateway anonymisera si cloud)
                 var userPrompt = $@"CONTEXTE DE LA CONVERSATION
 ----
 {conversationContext}
@@ -453,7 +427,7 @@ Rédige un courrier professionnel en te basant sur :
 2. La conversation précédente (échange sauvegardé)
 3. La demande spécifique de l'utilisateur
 
-IMPORTANT : Le patient s'appelle {nomAnonymise}.
+IMPORTANT : Le patient s'appelle {nomComplet}.
 
 FORMAT ATTENDU :
 - Titre avec # Objet : [titre du courrier]
@@ -463,17 +437,27 @@ FORMAT ATTENDU :
 - Utilise les informations de la conversation pour enrichir le courrier
 - Sois concis et évite les redondances";
 
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(string.Empty, userPrompt, null, systemPrompt);
+                // ✅ Construire les messages pour le gateway
+                var messages = new List<(string role, string content)>
+                {
+                    ("user", userPrompt)
+                };
+
+                // ✅ Appel via LLMGatewayService - anonymisation automatique si cloud
+                var (success, result, error) = await _llmGatewayService.ChatAsync(
+                    systemPrompt: systemPrompt,
+                    messages: messages,
+                    patientName: nomComplet,
+                    maxTokens: 2000
+                );
 
                 if (success)
                 {
-                    // ✅ DÉSANONYMISATION
-                    var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
-                    return (true, deanonymizedResult, string.Empty);
+                    return (true, result, string.Empty);
                 }
                 else
                 {
-                    return (false, string.Empty, result);
+                    return (false, string.Empty, error ?? result);
                 }
             }
             catch (Exception ex)
@@ -484,6 +468,7 @@ FORMAT ATTENDU :
         
         /// <summary>
         /// Génère un courrier à partir d'un template MCC avec analyse sémantique
+        /// ✅ REFACTORISÉ : Utilise LLMGatewayService avec anonymisation automatique
         /// </summary>
         public async Task<(bool success, string markdown, string error)> GenerateLetterFromMCCAsync(
             string nomComplet,
@@ -493,12 +478,12 @@ FORMAT ATTENDU :
             {
                 // Construire le contexte enrichi du patient
                 var (hasContext, contextText, contextInfo) = _contextLoader.GetContextBundle(nomComplet, null);
-                
+
                 // Récupérer les métadonnées pour injecter l'âge calculé
                 var patientDir = _storageService.GetPatientDirectory(nomComplet);
                 var patientJsonPath = Path.Combine(patientDir, "patient.json");
                 PatientMetadata? metadata = null;
-                
+
                 if (File.Exists(patientJsonPath))
                 {
                     try
@@ -508,100 +493,58 @@ FORMAT ATTENDU :
                     }
                     catch { }
                 }
-                
-                // ✅ ANONYMISATION : Générer le pseudonyme AVANT de construire le contexte
-                var sexe = metadata?.Sexe ?? "M";
-                var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", nomComplet, sexe);
-                
-                // Enrichir le contexte avec les infos patient calculées (âge, etc.)
+
+                // ✅ Enrichir le contexte avec le VRAI nom (le gateway anonymisera si cloud)
                 var enrichedContext = new StringBuilder();
                 if (metadata != null)
                 {
                     enrichedContext.AppendLine("INFORMATIONS PATIENT");
                     enrichedContext.AppendLine("----");
-                    enrichedContext.AppendLine($"- Nom complet : {nomAnonymise}");  // ✅ Utiliser le pseudonyme
-                    
+                    enrichedContext.AppendLine($"- Nom complet : {nomComplet}");
+
                     if (metadata.Age.HasValue)
                     {
                         enrichedContext.AppendLine($"- Âge actuel : {metadata.Age} ans");
                     }
-                    
+
                     if (!string.IsNullOrEmpty(metadata.DobFormatted))
                     {
                         enrichedContext.AppendLine($"- Date de naissance : {metadata.DobFormatted}");
                     }
-                    
+
                     if (!string.IsNullOrEmpty(metadata.Sexe))
                     {
                         enrichedContext.AppendLine($"- Sexe : {metadata.Sexe}");
                     }
-                    
+
                     if (!string.IsNullOrEmpty(metadata.Ecole))
                     {
                         enrichedContext.AppendLine($"- École : {metadata.Ecole}");
                     }
-                    
+
                     if (!string.IsNullOrEmpty(metadata.Classe))
                     {
                         enrichedContext.AppendLine($"- Classe : {metadata.Classe}");
                     }
                     enrichedContext.AppendLine();
                 }
-                
+
                 // Ajouter le contexte des notes si disponible
                 if (hasContext)
                 {
                     enrichedContext.AppendLine("NOTES CLINIQUES RÉCENTES");
                     enrichedContext.AppendLine("----");
-                    
-                    // ✅ Anonymiser aussi le contexte des notes
-                    var anonymizedContextText = contextText;
-                    if (anonymizedContextText.Contains(nomComplet))
-                    {
-                        anonymizedContextText = anonymizedContextText.Replace(nomComplet, nomAnonymise);
-                    }
-                    
-                    enrichedContext.AppendLine(anonymizedContextText);
+                    enrichedContext.AppendLine(contextText);
                     enrichedContext.AppendLine();
                 }
-                
+
                 var medecin = _settings.Medecin;
-                
-                // Construire les métadonnées sémantiques pour le prompt
-                var semanticInfo = new StringBuilder();
-                if (mcc.Semantic != null)
-                {
-                    semanticInfo.AppendLine("ANALYSE SÉMANTIQUE DU TEMPLATE");
-                    semanticInfo.AppendLine("----");
-                    semanticInfo.AppendLine($"- Type de document : {mcc.Semantic.DocType ?? "Non spécifié"}");
-                    semanticInfo.AppendLine($"- Audience cible : {mcc.Semantic.Audience ?? "Non spécifiée"}");
-                    semanticInfo.AppendLine($"- Ton requis : {mcc.Semantic.Tone ?? "Non spécifié"}");
-                    semanticInfo.AppendLine($"- Tranche d'âge : {mcc.Semantic.AgeGroup ?? "Non spécifiée"}");
-                    
-                    if (mcc.Semantic.ClinicalKeywords != null && mcc.Semantic.ClinicalKeywords.Any())
-                    {
-                        semanticInfo.AppendLine($"- Mots-clés cliniques : {string.Join(", ", mcc.Semantic.ClinicalKeywords)}");
-                    }
-                    
-                    if (mcc.Semantic.Sections != null && mcc.Semantic.Sections.Any())
-                    {
-                        semanticInfo.AppendLine("- Structure attendue :");
-                        foreach (var section in mcc.Semantic.Sections)
-                        {
-                            semanticInfo.AppendLine($"  • {section.Key}");
-                        }
-                    }
-                    semanticInfo.AppendLine();
-                }
-                
-                // ✅ Le contexte est déjà anonymisé, pas besoin de remplacement
                 var enrichedContextStr = enrichedContext.ToString();
-                
+
                 // Utiliser le prompt système en cache (rechargé automatiquement via événement)
                 var systemPrompt = _cachedSystemPrompt.Replace("{{Medecin}}", medecin);
-                
-                // Construire le prompt enrichi avec toutes les métadonnées MCC
-                // ✅ UTILISER LE NOM ANONYMISÉ DANS LE PROMPT
+
+                // ✅ Construire le prompt avec le VRAI nom (le gateway anonymisera si cloud)
                 var userPrompt = $@"🎯 TEMPLATE MCC OPTIMISÉ : ""{mcc.Name}""
 
 {ExplainTemplateNotation()}
@@ -636,8 +579,8 @@ Pour CHAQUE variable {{{{Variable}}}} du template :
 ❌ SI l'information N'EST PAS dans le contexte → GARDE le placeholder {{{{Variable}}}} INTACT
 
 EXEMPLES CONCRETS :
-- {{{{Nom_Prenom}}}} → TOUJOURS disponible dans contexte → Remplacer par ""{nomAnonymise}""
-- {{{{Age}}}} → TOUJOURS disponible dans contexte → Remplacer  
+- {{{{Nom_Prenom}}}} → TOUJOURS disponible dans contexte → Remplacer par ""{nomComplet}""
+- {{{{Age}}}} → TOUJOURS disponible dans contexte → Remplacer
 - {{{{Ecole}}}} → SI présent dans contexte → Remplacer, SINON garder {{{{Ecole}}}}
 - {{{{Etablissement}}}} → SI présent dans contexte → Remplacer, SINON garder {{{{Etablissement}}}}
 - {{{{Destinataire}}}} → Presque JAMAIS dans contexte → GARDER {{{{Destinataire}}}}
@@ -681,24 +624,34 @@ NE GÉNÈRE JAMAIS les éléments suivants (ils sont gérés automatiquement par
 
 ---
 🎯 MISSION : Crée un courrier INSPIRÉ de ce MCC, adapté à la situation unique de ce patient.
-- Le patient s'appelle : {nomAnonymise}
+- Le patient s'appelle : {nomComplet}
 - Respecte le TON ({mcc.Semantic?.Tone ?? "professionnel"})
 - Adapte à l'AUDIENCE ({mcc.Semantic?.Audience ?? "destinataire"})
 - Personnalise selon l'ÂGE du patient ({metadata?.Age ?? 0} ans)
 - Format Markdown avec titre # Objet : [titre]
 - Concision : 12-15 lignes maximum, évite la redondance";
 
-                var (success, result) = await _openAIService.ChatAvecContexteAsync(string.Empty, userPrompt, null, systemPrompt);
+                // ✅ Construire les messages pour le gateway
+                var messages = new List<(string role, string content)>
+                {
+                    ("user", userPrompt)
+                };
+
+                // ✅ Appel via LLMGatewayService - anonymisation automatique si cloud
+                var (success, result, error) = await _llmGatewayService.ChatAsync(
+                    systemPrompt: systemPrompt,
+                    messages: messages,
+                    patientName: nomComplet,
+                    maxTokens: 2500
+                );
 
                 if (success)
                 {
-                    // ✅ DÉSANONYMISATION
-                    var deanonymizedResult = _anonymizationService.Deanonymize(result, anonContext);
-                    return (true, deanonymizedResult, string.Empty);
+                    return (true, result, string.Empty);
                 }
                 else
                 {
-                    return (false, string.Empty, result);
+                    return (false, string.Empty, error ?? result);
                 }
             }
             catch (Exception ex)
@@ -926,13 +879,20 @@ Ce courrier DOIT aborder ces concepts cliniques :
 
                 System.Diagnostics.Debug.WriteLine($"[ExportToDocx] Nom de fichier: {docxFileName}, Chemin complet: {docxPath}");
 
-                // Gérer les doublons
-                int version = 2;
-                while (File.Exists(docxPath))
+                // Gérer les doublons : NON, on veut écraser le fichier existant lors d'une modification
+                // Si le fichier existe déjà, on tente de le supprimer pour le recréer
+                if (File.Exists(docxPath))
                 {
-                    docxFileName = $"{baseName}-v{version}.docx";
-                    docxPath = Path.Combine(courrierDir, docxFileName);
-                    version++;
+                    try
+                    {
+                        File.Delete(docxPath);
+                        System.Diagnostics.Debug.WriteLine($"[ExportToDocx] Fichier existant supprimé pour mise à jour");
+                    }
+                    catch (IOException ex)
+                    {
+                        // Probablement ouvert dans Word
+                        return (false, $"Le fichier est ouvert dans un autre programme. Veuillez le fermer et réessayer.\n{ex.Message}", docxPath);
+                    }
                 }
 
                 System.Diagnostics.Debug.WriteLine($"[ExportToDocx] Création du document Word...");

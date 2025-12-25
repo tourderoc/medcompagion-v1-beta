@@ -233,6 +233,9 @@
                                         <ComboBoxItem Content="Court"/>
                                         <ComboBoxItem Content="Moyen"/>
                                         <ComboBoxItem Content="Long"/>
+                                        <ComboBoxItem Content="1 ligne"/>
+                                        <ComboBoxItem Content="2 lignes"/>
+                                        <ComboBoxItem Content="3 lignes"/>
                                     </ComboBox>
                                 </StackPanel>
                             </Grid>

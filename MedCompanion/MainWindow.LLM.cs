@@ -202,6 +202,9 @@ public partial class MainWindow : Window
             {
                 _currentLLMService = _llmFactory.GetCurrentProvider();
                 
+                // Sauvegarder le choix dans les paramètres
+                _settings.Save();
+                
                 LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(76, 175, 80)); // Vert
                 LLMStatusIndicator.ToolTip = message;
                 

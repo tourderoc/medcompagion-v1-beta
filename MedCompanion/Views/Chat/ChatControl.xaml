@@ -1,0 +1,377 @@
+<UserControl x:Class="MedCompanion.Views.Chat.ChatControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:converters="clr-namespace:MedCompanion.Converters"
+             xmlns:helpers="clr-namespace:MedCompanion.Helpers"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="900">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:InverseBooleanToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
+        <converters:ColorToBrushConverter x:Key="ColorToBrushConverter"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="2*"/>   <!-- Chat -->
+            <ColumnDefinition Width="10"/>   <!-- Espace -->
+            <ColumnDefinition Width="1*"/>   <!-- Échanges sauvegardés -->
+        </Grid.ColumnDefinitions>
+
+        <!-- ===== ZONE CHAT ===== -->
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- Titre -->
+                <RowDefinition Height="Auto"/>  <!-- Barre mémoire + Bouton compactage -->
+                <RowDefinition Height="*"/>     <!-- Messages -->
+                <RowDefinition Height="Auto"/>  <!-- Input -->
+            </Grid.RowDefinitions>
+
+            <!-- Titre -->
+            <TextBlock Grid.Row="0"
+                      Text="💬 Discussion avec l'IA"
+                      FontSize="16"
+                      FontWeight="Bold"
+                      Foreground="#2C3E50"
+                      Margin="0,0,0,10"/>
+
+            <!-- ===== BARRE MÉMOIRE + BOUTON COMPACTAGE ===== -->
+            <Grid Grid.Row="1" Margin="0,0,0,10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- Barre de progression mémoire -->
+                <Grid Grid.Row="0" Margin="0,0,0,5">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Grid.Column="0"
+                              Text="{Binding MemoryStatusText}"
+                              FontSize="12"
+                              Foreground="#7F8C8D"
+                              VerticalAlignment="Center"
+                              Margin="0,0,10,0"/>
+
+                    <!-- ProgressBar standard WPF avec couleurs dynamiques -->
+                    <ProgressBar Grid.Column="1"
+                                Height="20"
+                                Minimum="0"
+                                Maximum="100"
+                                Value="{Binding MemoryPercentage, Mode=OneWay}"
+                                BorderThickness="1"
+                                BorderBrush="#BDC3C7">
+                        <ProgressBar.Style>
+                            <Style TargetType="ProgressBar">
+                                <!-- Style de base avec couleur verte -->
+                                <Setter Property="Foreground" Value="#2ECC71"/>
+                                <Setter Property="Background" Value="#ECF0F1"/>
+                                <Style.Triggers>
+                                    <!-- Orange si >= 80% -->
+                                    <DataTrigger Binding="{Binding IsMemoryWarning}" Value="True">
+                                        <Setter Property="Foreground" Value="#F39C12"/>
+                                    </DataTrigger>
+                                    <!-- Rouge si >= 100% -->
+                                    <DataTrigger Binding="{Binding IsMemoryCritical}" Value="True">
+                                        <Setter Property="Foreground" Value="#E74C3C"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ProgressBar.Style>
+                    </ProgressBar>
+                </Grid>
+
+                <!-- Bouton compactage (visible si mémoire pleine) -->
+                <Button Grid.Row="1"
+                       Content="⚠️ Compacter la mémoire"
+                       Height="35"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Background="#E74C3C"
+                       Foreground="White"
+                       BorderThickness="0"
+                       Cursor="Hand"
+                       Command="{Binding CompactMemoryCommand}"
+                       Visibility="{Binding ShowCompactButton, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                               CornerRadius="6"
+                                               Padding="10,5">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#C0392B"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                    <Setter Property="Cursor" Value="Arrow"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+
+            <!-- Zone messages avec scroll -->
+            <Border Grid.Row="2"
+                   BorderBrush="#BDC3C7"
+                   BorderThickness="1"
+                   CornerRadius="6"
+                   Background="White"
+                   Margin="0,0,0,10">
+                <ScrollViewer x:Name="ChatScrollViewer"
+                             VerticalScrollBarVisibility="Auto"
+                             Padding="10">
+                    <ItemsControl ItemsSource="{Binding Messages}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,10"
+                                       Background="#F5F5F5"
+                                       BorderBrush="{Binding BorderColor, Converter={StaticResource ColorToBrushConverter}}"
+                                       BorderThickness="2,0,0,0"
+                                       Padding="0">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <!-- Message IA avec RichTextBox -->
+                                        <RichTextBox Grid.Column="0"
+                                                    Visibility="{Binding IsFromAI, Converter={StaticResource BoolToVisibilityConverter}}"
+                                                    helpers:RichTextBoxHelper.Document="{Binding RichContent}"
+                                                    IsReadOnly="False"
+                                                    BorderThickness="0"
+                                                    Background="Transparent"
+                                                    Padding="8"
+                                                    FontSize="12"
+                                                    VerticalScrollBarVisibility="Auto"/>
+
+                                        <!-- Message utilisateur/système avec TextBox -->
+                                        <TextBox Grid.Column="0"
+                                                Visibility="{Binding IsFromAI, Converter={StaticResource InverseBoolToVisibilityConverter}}"
+                                                Text="{Binding PlainText, Mode=TwoWay}"
+                                                IsReadOnly="False"
+                                                AcceptsReturn="True"
+                                                TextWrapping="Wrap"
+                                                BorderThickness="0"
+                                                Background="Transparent"
+                                                Padding="8"
+                                                FontSize="12"
+                                                VerticalScrollBarVisibility="Auto"/>
+
+                                        <!-- Bouton 💾 Sauvegarder (seulement pour messages IA non archivés) -->
+                                        <Button Grid.Column="1"
+                                               Content="💾"
+                                               Width="30"
+                                               Height="30"
+                                               Margin="5,5,5,0"
+                                               VerticalAlignment="Top"
+                                               Background="#3498DB"
+                                               Foreground="White"
+                                               BorderThickness="0"
+                                               Cursor="Hand"
+                                               ToolTip="Sauvegarder cet échange"
+                                               Visibility="{Binding ShowSaveButton, Converter={StaticResource BoolToVisibilityConverter}}"
+                                               Command="{Binding DataContext.SaveExchangeCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                               CommandParameter="{Binding ExchangeIndex}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Zone input -->
+            <Grid Grid.Row="3">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <Border Grid.Column="0"
+                       BorderBrush="#BDC3C7"
+                       BorderThickness="1"
+                       CornerRadius="6"
+                       Margin="0,0,10,0">
+                    <TextBox x:Name="ChatInput"
+                            Text="{Binding InputText, UpdateSourceTrigger=PropertyChanged}"
+                            AcceptsReturn="True"
+                            TextWrapping="Wrap"
+                            Height="80"
+                            Padding="10"
+                            BorderThickness="0"
+                            VerticalScrollBarVisibility="Auto"
+                            FontSize="13"/>
+                </Border>
+
+                <Button Grid.Column="1"
+                       x:Name="ChatSendBtn"
+                       Content="▶️ Envoyer"
+                       Command="{Binding SendMessageCommand}"
+                       Width="110"
+                       Height="80"
+                       FontSize="13"
+                       FontWeight="SemiBold"
+                       Background="#27AE60"
+                       Foreground="White"
+                       BorderThickness="0"
+                       Cursor="Hand">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#229954"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+        </Grid>
+
+        <!-- ===== ZONE ÉCHANGES SAUVEGARDÉS ===== -->
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- Titre -->
+                <RowDefinition Height="*"/>     <!-- Liste -->
+                <RowDefinition Height="Auto"/>  <!-- Boutons -->
+            </Grid.RowDefinitions>
+
+            <!-- Titre -->
+            <TextBlock Grid.Row="0"
+                      Text="💾 Échanges sauvegardés"
+                      FontSize="14"
+                      FontWeight="SemiBold"
+                      Foreground="#2C3E50"
+                      Margin="0,0,0,10"/>
+
+            <!-- Liste des échanges sauvegardés -->
+            <Border Grid.Row="1"
+                   BorderBrush="#BDC3C7"
+                   BorderThickness="1"
+                   CornerRadius="6"
+                   Margin="0,0,0,10">
+                <ListBox x:Name="SavedExchangesList"
+                        ItemsSource="{Binding SavedExchanges}"
+                        SelectedItem="{Binding SelectedSavedExchange}"
+                        Background="White"
+                        BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <StackPanel Margin="5">
+                                <TextBlock Text="{Binding Etiquette}"
+                                          FontWeight="Bold"
+                                          FontSize="12"
+                                          TextTrimming="CharacterEllipsis"/>
+                                <TextBlock Text="{Binding Timestamp, StringFormat='📅 {0:dd/MM/yyyy HH:mm}'}"
+                                          FontSize="10"
+                                          Foreground="Gray"
+                                          Margin="0,2,0,0"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- Boutons actions -->
+            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center">
+                <Button x:Name="ViewSavedExchangeBtn"
+                       Content="👁️"
+                       Width="40"
+                       Height="35"
+                       FontSize="16"
+                       Background="#3498DB"
+                       Foreground="White"
+                       BorderThickness="0"
+                       Cursor="Hand"
+                       Margin="0,0,5,0"
+                       ToolTip="Afficher dans le chat"
+                       Command="{Binding ViewSavedExchangeCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#2980B9"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button x:Name="DeleteSavedExchangeBtn"
+                       Content="🗑️"
+                       Width="40"
+                       Height="35"
+                       FontSize="16"
+                       Background="#E74C3C"
+                       Foreground="White"
+                       BorderThickness="0"
+                       Cursor="Hand"
+                       ToolTip="Supprimer"
+                       Command="{Binding DeleteSavedExchangeCommand}">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#C0392B"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>
