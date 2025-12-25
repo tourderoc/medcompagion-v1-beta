@@ -113,7 +113,7 @@ namespace MedCompanion.Services
                 var logoPath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Assets", "logo.png");
                 if (File.Exists(logoPath))
                 {
-                    container.Image(logoPath, ImageScaling.FitArea);
+                    container.Image(logoPath).FitArea();
                 }
                 else
                 {

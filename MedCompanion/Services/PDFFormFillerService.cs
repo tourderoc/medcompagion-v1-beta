@@ -590,7 +590,7 @@ namespace MedCompanion.Services
                     return (false, Array.Empty<string>(), $"Le fichier PDF n'existe pas: {pdfPath}");
                 }
 
-                var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.ReadOnly);
+                var document = PdfReader.Open(pdfPath, PdfDocumentOpenMode.Import);
 
                 if (document.AcroForm == null)
                 {

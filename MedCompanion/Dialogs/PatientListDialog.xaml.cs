@@ -162,7 +162,7 @@ namespace MedCompanion.Dialogs
             }
         }
         
-        private async void DeleteButton_Click(object sender, RoutedEventArgs e)
+        private void DeleteButton_Click(object sender, RoutedEventArgs e)
         {
             if (PatientsDataGrid.SelectedItem is not PatientDisplayInfo displayInfo)
             {

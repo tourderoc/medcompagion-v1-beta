@@ -35,13 +35,10 @@ namespace MedCompanion.ViewModels
         // Événements pour communiquer avec MainWindow/UserControl
         public event EventHandler<string>? StatusMessageChanged;
         public event EventHandler<string>? LetterContentLoaded;
-        public event EventHandler? LetterListRefreshRequested;
         public event EventHandler<(string title, string message)>? ErrorOccurred;
         public event EventHandler<(string title, string message)>? InfoMessageRequested;
         public event EventHandler<(string title, string message, Action onConfirm)>? ConfirmationRequested;
-        public event EventHandler<string>? FileOpenRequested;
         public event EventHandler<string>? FilePrintRequested;
-        public event EventHandler<string>? ShowInExplorerRequested;
         public event EventHandler? CreateLetterWithAIRequested;
         public event EventHandler<(string mccId, string mccName, string letterPath, Action<int> onRatingReceived)>? RatingDialogRequested;
         public event EventHandler<(List<MissingFieldInfo> missingFields, Action<Dictionary<string, string>?> onInfoCollected)>? MissingInfoDialogRequested;

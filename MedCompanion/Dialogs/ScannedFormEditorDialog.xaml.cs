@@ -1521,8 +1521,8 @@ namespace MedCompanion.Dialogs
                 using var xImage = XImage.FromStream(pageMs);
                 
                 // Set page size to match image
-                page.Width = xImage.PointWidth;
-                page.Height = xImage.PointHeight;
+                page.Width = XUnit.FromPoint(xImage.PointWidth);
+                page.Height = XUnit.FromPoint(xImage.PointHeight);
 
                 using var xGraphics = XGraphics.FromPdfPage(page);
                 xGraphics.DrawImage(xImage, 0, 0);

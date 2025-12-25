@@ -73,7 +73,6 @@ public partial class CourriersControl : UserControl
         _viewModel.ErrorOccurred += OnViewModelError;
         _viewModel.InfoMessageRequested += OnViewModelInfo;
         _viewModel.ConfirmationRequested += OnViewModelConfirmation;
-        _viewModel.FileOpenRequested += OnFileOpenRequested;
         _viewModel.FilePrintRequested += OnFilePrintRequested;
         _viewModel.CreateLetterWithAIRequested += OnCreateLetterWithAI;
         _viewModel.RatingDialogRequested += OnRatingDialogRequested;
@@ -200,23 +199,6 @@ public partial class CourriersControl : UserControl
         if (result == MessageBoxResult.Yes)
         {
             args.onConfirm?.Invoke();
-        }
-    }
-
-    private void OnFileOpenRequested(object? sender, string filePath)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo(filePath) { UseShellExecute = true });
-        }
-        catch (Exception ex)
-        {
-            MessageBox.Show(
-                $"Impossible d'ouvrir le fichier:\n{ex.Message}",
-                "Erreur",
-                MessageBoxButton.OK,
-                MessageBoxImage.Error
-            );
         }
     }
 
