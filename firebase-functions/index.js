@@ -19,8 +19,8 @@ admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
-// Configurer la région par défaut (us-central1 est le défaut Firebase)
-setGlobalOptions({ region: "us-central1" });
+// Configurer la région par défaut sur europe-west1 (aligné avec le reste du projet)
+setGlobalOptions({ region: "europe-west1" });
 
 /**
  * Trigger: Quand une nouvelle notification est créée dans /notifications/{notificationId}
