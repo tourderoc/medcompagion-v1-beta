@@ -9,7 +9,9 @@
  *   firebase deploy --only functions
  */
 
-const functions = require("firebase-functions");
+const { onDocumentCreated } = require("firebase-functions/v2/firestore");
+const { onRequest } = require("firebase-functions/v2/https");
+const { setGlobalOptions } = require("firebase-functions/v2");
 const admin = require("firebase-admin");
 
 admin.initializeApp();
@@ -17,59 +19,57 @@ admin.initializeApp();
 const db = admin.firestore();
 const messaging = admin.messaging();
 
+// Configurer la région par défaut (us-central1 est le défaut Firebase)
+setGlobalOptions({ region: "us-central1" });
+
 /**
  * Trigger: Quand une nouvelle notification est créée dans /notifications/{notificationId}
  * Action: Envoie une push notification FCM au(x) parent(s) concerné(s)
  */
-exports.onNotificationCreated = functions.firestore
-    .document("notifications/{notificationId}")
-    .onCreate(async (snapshot, context) => {
-        const notification = snapshot.data();
-        const notificationId = context.params.notificationId;
+exports.onNotificationCreated = onDocumentCreated("notifications/{notificationId}", async (event) => {
+    const notification = event.data.data();
+    const notificationId = event.params.notificationId;
 
-        console.log(`[onNotificationCreated] Nouvelle notification: ${notificationId}`);
-        console.log(`[onNotificationCreated] Type: ${notification.type}, Target: ${notification.targetParentId}`);
+    console.log(`[onNotificationCreated] Nouvelle notification: ${notificationId}`);
+    console.log(`[onNotificationCreated] Type: ${notification.type}, Target: ${notification.targetParentId}`);
 
-        try {
-            // Récupérer le(s) token(s) FCM à notifier
-            const fcmTokens = await getFcmTokensForNotification(notification);
+    try {
+        // Récupérer le(s) token(s) FCM à notifier
+        const fcmTokens = await getFcmTokensForNotification(notification);
 
-            if (fcmTokens.length === 0) {
-                console.log("[onNotificationCreated] Aucun token FCM trouvé");
-                return null;
-            }
-
-            console.log(`[onNotificationCreated] ${fcmTokens.length} token(s) FCM à notifier`);
-
-            // Construire le message FCM
-            const message = buildFcmMessage(notification, fcmTokens);
-
-            // Envoyer la notification
-            const response = await messaging.sendEachForMulticast(message);
-
-            console.log(`[onNotificationCreated] Envoyé: ${response.successCount} succès, ${response.failureCount} échecs`);
-
-            // Nettoyer les tokens invalides
-            await cleanupInvalidTokens(fcmTokens, response);
-
-            return { success: true, sent: response.successCount, failed: response.failureCount };
-
-        } catch (error) {
-            console.error("[onNotificationCreated] Erreur:", error);
-            return { success: false, error: error.message };
+        if (fcmTokens.length === 0) {
+            console.log("[onNotificationCreated] Aucun token FCM trouvé");
+            return null;
         }
-    });
+
+        console.log(`[onNotificationCreated] ${fcmTokens.length} token(s) FCM à notifier`);
+
+        // Construire le message FCM
+        const message = buildFcmMessage(notification, fcmTokens);
+
+        // Envoyer la notification
+        const response = await messaging.sendEachForMulticast(message);
+
+        console.log(`[onNotificationCreated] Envoyé: ${response.successCount} succès, ${response.failureCount} échecs`);
+
+        // Nettoyer les tokens invalides
+        await cleanupInvalidTokens(fcmTokens, response);
+
+        return { success: true, sent: response.successCount, failed: response.failureCount };
+
+    } catch (error) {
+        console.error("[onNotificationCreated] Erreur:", error);
+        return { success: false, error: error.message };
+    }
+});
 
 /**
  * Récupère les tokens FCM pour une notification
- * - Pour un broadcast: tous les tokens actifs
- * - Pour une notification ciblée: le token du parent spécifique
  */
 async function getFcmTokensForNotification(notification) {
     const fcmTokens = [];
 
     if (notification.type === "Broadcast" || notification.targetParentId === "all") {
-        // Broadcast: récupérer tous les tokens actifs
         const tokensSnapshot = await db.collection("tokens")
             .where("status", "==", "used")
             .get();
@@ -84,7 +84,6 @@ async function getFcmTokensForNotification(notification) {
             }
         });
     } else if (notification.tokenId) {
-        // Notification ciblée: récupérer le token spécifique
         const tokenDoc = await db.collection("tokens").doc(notification.tokenId).get();
 
         if (tokenDoc.exists) {
@@ -105,13 +104,10 @@ async function getFcmTokensForNotification(notification) {
  * Construit le message FCM à envoyer
  */
 function buildFcmMessage(notification, fcmTokens) {
-    // Extraire uniquement les tokens FCM
     const tokens = fcmTokens.map(t => t.fcmToken);
 
     return {
         tokens: tokens,
-        // PAS de bloc "notification" -> force le passage par le Service Worker (data-only message)
-        // C'est indispensable pour le support PWA fiable et les badges
         data: {
             notificationId: notification.id || "",
             title: notification.title || "Nouveau message",
@@ -119,7 +115,7 @@ function buildFcmMessage(notification, fcmTokens) {
             type: notification.type || "Info",
             replyToMessageId: notification.replyToMessageId || "",
             senderName: notification.senderName || "",
-            badgeCount: "1" // On pourrait incrémenter dynamiquement si on stockait le compteur
+            badgeCount: "1"
         },
         android: {
             priority: "high"
@@ -145,7 +141,6 @@ async function cleanupInvalidTokens(fcmTokens, response) {
     response.responses.forEach((resp, idx) => {
         if (!resp.success) {
             const errorCode = resp.error?.code;
-            // Tokens invalides ou expirés
             if (errorCode === "messaging/invalid-registration-token" ||
                 errorCode === "messaging/registration-token-not-registered") {
                 invalidTokens.push(fcmTokens[idx]);
@@ -166,10 +161,9 @@ async function cleanupInvalidTokens(fcmTokens, response) {
 }
 
 /**
- * Fonction HTTP pour tester l'envoi de notifications (optionnel)
- * URL: https://<region>-<project>.cloudfunctions.net/testNotification
+ * Fonction HTTP pour tester l'envoi de notifications
  */
-exports.testNotification = functions.https.onRequest(async (req, res) => {
+exports.testNotification = onRequest(async (req, res) => {
     if (req.method !== "POST") {
         res.status(405).send("Method not allowed");
         return;
@@ -183,7 +177,6 @@ exports.testNotification = functions.https.onRequest(async (req, res) => {
     }
 
     try {
-        // Récupérer le FCM token
         const tokenDoc = await db.collection("tokens").doc(tokenId).get();
         if (!tokenDoc.exists) {
             res.status(404).json({ error: "Token non trouvé" });
@@ -196,7 +189,6 @@ exports.testNotification = functions.https.onRequest(async (req, res) => {
             return;
         }
 
-        // Envoyer la notification
         const message = {
             token: fcmToken,
             notification: { title, body: body || "" },
