@@ -125,8 +125,14 @@ function buildFcmMessage(notification, fcmTokens) {
     // IMPORTANT: Messages data-only uniquement (pas de champ "notification")
     // Le service worker (onBackgroundMessage) gère l'affichage en arrière-plan
     // Le listener onMessage gère l'affichage en premier plan
+    // On inclut à la fois "notification" (pour l'affichage OS quand fermé)
+    // et "data" (pour le traitement personnalisé et le badge)
     return {
         tokens: tokens,
+        notification: {
+            title: title,
+            body: body
+        },
         data: {
             notificationId: notification.id || "",
             title: title,
@@ -142,7 +148,9 @@ function buildFcmMessage(notification, fcmTokens) {
         apns: {
             payload: {
                 aps: {
-                    "content-available": 1
+                    "content-available": 1,
+                    badge: 1,
+                    sound: "default"
                 }
             },
             headers: {
@@ -152,6 +160,14 @@ function buildFcmMessage(notification, fcmTokens) {
         webpush: {
             headers: {
                 Urgency: "high"
+            },
+            notification: {
+                title: title,
+                body: body,
+                icon: "/icons/web-app-manifest-192x192.png",
+                badge: "/icons/favicon-96x96.png",
+                tag: notification.id || "default",
+                requireInteraction: true
             }
         }
     };
