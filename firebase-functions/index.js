@@ -55,6 +55,20 @@ exports.onNotificationCreated = onDocumentCreated("notifications/{notificationId
         // Nettoyer les tokens invalides
         await cleanupInvalidTokens(fcmTokens, response);
 
+        // Mettre à jour le statut du message d'origine si c'est une réponse
+        if (notification.replyToMessageId) {
+            console.log(`[onNotificationCreated] Mise à jour du message ${notification.replyToMessageId} en statut 'replied'`);
+            try {
+                await db.collection("messages").doc(notification.replyToMessageId).update({
+                    status: "replied",
+                    replyDate: admin.firestore.FieldValue.serverTimestamp(),
+                    replyAuthor: notification.senderName || "Médecin"
+                });
+            } catch (updateError) {
+                console.error(`[onNotificationCreated] Erreur mise à jour message ${notification.replyToMessageId}:`, updateError);
+            }
+        }
+
         return { success: true, sent: response.successCount, failed: response.failureCount };
 
     } catch (error) {
@@ -105,26 +119,56 @@ async function getFcmTokensForNotification(notification) {
  */
 function buildFcmMessage(notification, fcmTokens) {
     const tokens = fcmTokens.map(t => t.fcmToken);
+    const title = notification.title || "Nouveau message";
+    const body = notification.body || "Message de la part de votre médecin";
 
     return {
         tokens: tokens,
         data: {
             notificationId: notification.id || "",
-            title: notification.title || "Nouveau message",
-            body: notification.body || "",
+            title: title,
+            body: body,
             type: notification.type || "Info",
             replyToMessageId: notification.replyToMessageId || "",
             senderName: notification.senderName || "",
             badgeCount: "1"
         },
+        webpush: {
+            notification: {
+                title: title,
+                body: body,
+                icon: "/icons/web-app-manifest-192x192.png",
+                badge: "/icons/favicon-96x96.png",
+                vibrate: [200, 100, 200],
+                requireInteraction: true,
+                actions: [
+                    { action: "open", title: "Voir" },
+                    { action: "dismiss", title: "Fermer" }
+                ]
+            },
+            fcmOptions: {
+                link: "/espace/dashboard"
+            }
+        },
         android: {
-            priority: "high"
+            priority: "high",
+            notification: {
+                title: title,
+                body: body,
+                icon: "notification_icon",
+                sound: "default",
+                clickAction: "OPEN_DASHBOARD"
+            }
         },
         apns: {
             payload: {
                 aps: {
                     badge: 1,
                     sound: "default",
+                    alert: {
+                        title: title,
+                        body: body
+                    },
                     "content-available": 1
                 }
             }
