@@ -122,6 +122,9 @@ function buildFcmMessage(notification, fcmTokens) {
     const title = notification.title || "Nouveau message";
     const body = notification.body || "Message de la part de votre médecin";
 
+    // IMPORTANT: Messages data-only uniquement (pas de champ "notification")
+    // Le service worker (onBackgroundMessage) gère l'affichage en arrière-plan
+    // Le listener onMessage gère l'affichage en premier plan
     return {
         tokens: tokens,
         data: {
@@ -133,44 +136,22 @@ function buildFcmMessage(notification, fcmTokens) {
             senderName: notification.senderName || "",
             badgeCount: "1"
         },
-        webpush: {
-            notification: {
-                title: title,
-                body: body,
-                icon: "/icons/web-app-manifest-192x192.png",
-                badge: "/icons/favicon-96x96.png",
-                vibrate: [200, 100, 200],
-                requireInteraction: true,
-                actions: [
-                    { action: "open", title: "Voir" },
-                    { action: "dismiss", title: "Fermer" }
-                ]
-            },
-            fcmOptions: {
-                link: "/espace/dashboard"
-            }
-        },
         android: {
-            priority: "high",
-            notification: {
-                title: title,
-                body: body,
-                icon: "notification_icon",
-                sound: "default",
-                clickAction: "OPEN_DASHBOARD"
-            }
+            priority: "high"
         },
         apns: {
             payload: {
                 aps: {
-                    badge: 1,
-                    sound: "default",
-                    alert: {
-                        title: title,
-                        body: body
-                    },
                     "content-available": 1
                 }
+            },
+            headers: {
+                "apns-priority": "10"
+            }
+        },
+        webpush: {
+            headers: {
+                Urgency: "high"
             }
         }
     };
