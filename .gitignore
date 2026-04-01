@@ -23,6 +23,9 @@ obj/
 *.tmp
 *.temp
 *.log
+build_*.txt
+final_build.txt
+nul
 
 # NuGet Packages
 *.nupkg
@@ -53,3 +56,6 @@ bld/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Firebase
+firebase-functions/node_modules/
