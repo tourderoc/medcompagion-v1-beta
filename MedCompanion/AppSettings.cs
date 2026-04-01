@@ -32,6 +32,24 @@ namespace MedCompanion
         // Dernier modèle utilisé pour la régénération
         public string LastRegenerationModel { get; set; } = "deepseek-r1:8b";
 
+        // Configuration Agent de Pilotage
+        public bool IsPilotageAgentActive { get; set; } = true;
+        public string PilotageAgentProvider { get; set; } = "Ollama";
+        public string PilotageAgentModel { get; set; } = "gpt-oss:20b";  // ✅ Corrigé: gpt-oss (avec 2 's')
+        public double PilotageAgentTemperature { get; set; } = 0.3;
+
+        // Configuration Handy (transcription vocale)
+        public string HandyHotkey { get; set; } = "Ctrl+Space";
+        public bool HandyEnabled { get; set; } = true;
+
+        // Configuration SMTP Pilotage (Gmail)
+        public string SmtpHost { get; set; } = "smtp.gmail.com";
+        public int SmtpPort { get; set; } = 587;
+        public string SmtpUsername { get; set; } = "parentaile.lassoued@gmail.com";
+        public string SmtpPassword { get; set; } = "";  // Mot de passe d'application Gmail
+        public string SmtpFromEmail { get; set; } = "parentaile.lassoued@gmail.com";
+        public string SmtpFromName { get; set; } = "Parent'aile - Cabinet Dr Lassoued";
+
         private static readonly string SettingsFilePath = System.IO.Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
             "MedCompanion",

@@ -23,16 +23,16 @@ namespace MedCompanion
         private readonly ContextLoader _contextLoader;
         private readonly StorageService _storageService;
         private readonly AppSettings _settings;
-        private readonly PromptConfigService _promptConfig;
+        private readonly PromptConfigService _promptConfig = null!;
         private readonly PatientContextService _patientContextService;
         private readonly AnonymizationService _anonymizationService;
         private readonly LLMGatewayService _llmGatewayService; // ✅ Gateway centralisé pour anonymisation automatique
         
         // Cache des prompts pour éviter les appels répétés
-        private string _cachedSystemPrompt;
-        private string _cachedLetterWithContextPrompt;
-        private string _cachedLetterNoContextPrompt;
-        private string _cachedTemplateAdaptationPrompt;
+        private string _cachedSystemPrompt = string.Empty;
+        private string _cachedLetterWithContextPrompt = string.Empty;
+        private string _cachedLetterNoContextPrompt = string.Empty;
+        private string _cachedTemplateAdaptationPrompt = string.Empty;
 
         public LetterService(
             OpenAIService openAIService,
@@ -179,7 +179,8 @@ namespace MedCompanion
         public async Task<(bool success, string markdown, string error)> AdaptTemplateWithAIAsync(
             string nomComplet,
             string templateName,
-            string templateMarkdown)
+            string templateMarkdown,
+            CancellationToken cancellationToken = default)
         {
             try
             {
@@ -307,13 +308,20 @@ Redige en 12-15 lignes maximum, ton professionnel.
                     ("user", userPrompt)
                 };
 
+                // Vérifier l'annulation avant l'appel LLM
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // ✅ Appel via LLMGatewayService - anonymisation automatique si cloud
                 var (success, result, error) = await _llmGatewayService.ChatAsync(
                     systemPrompt: systemPrompt,
                     messages: messages,
                     patientName: nomComplet,
-                    maxTokens: 2000
+                    maxTokens: 2000,
+                    cancellationToken: cancellationToken
                 );
+
+                // Vérifier l'annulation après l'appel LLM
+                cancellationToken.ThrowIfCancellationRequested();
 
                 if (success)
                 {
@@ -324,12 +332,16 @@ Redige en 12-15 lignes maximum, ton professionnel.
                     return (false, string.Empty, error ?? result);
                 }
             }
+            catch (OperationCanceledException)
+            {
+                return (false, string.Empty, "Opération annulée par l'utilisateur");
+            }
             catch (Exception ex)
             {
                 return (false, string.Empty, $"Erreur lors de l'adaptation: {ex.Message}");
             }
         }
-        
+
         /// <summary>
         /// Génère un brouillon de courrier
         /// ✅ REFACTORISÉ : Utilise LLMGatewayService avec anonymisation automatique
@@ -864,14 +876,15 @@ Ce courrier DOIT aborder ces concepts cliniques :
 
                 System.Diagnostics.Debug.WriteLine($"[ExportToDocx] Type détecté - Attestation: {isAttestation}, Ordonnance: {isOrdonnance}");
 
-                // CORRECTION : Utiliser le dossier du fichier .md source au lieu de recalculer avec GetPatientDirectory()
-                // Cela garantit que le .docx est créé dans le MÊME dossier que le .md
+                // Normaliser le chemin et le nom (enlever les espaces de fin potentiels venant de TextRange.Text)
+                markdownFilePath = markdownFilePath.Trim();
+                markdown = markdown.Trim();
+
                 string courrierDir = Path.GetDirectoryName(markdownFilePath) 
                     ?? throw new InvalidOperationException("Impossible d'extraire le dossier du fichier markdown");
                 
-                System.Diagnostics.Debug.WriteLine($"[ExportToDocx] Dossier cible (extrait du .md): {courrierDir}");
+                System.Diagnostics.Debug.WriteLine($"[ExportToDocx] Dossier cible: {courrierDir}");
                 Directory.CreateDirectory(courrierDir);
-                System.Diagnostics.Debug.WriteLine($"[ExportToDocx] Dossier créé/vérifié");
 
                 var baseName = Path.GetFileNameWithoutExtension(markdownFilePath);
                 var docxFileName = $"{baseName}.docx";
@@ -1151,21 +1164,31 @@ Ce courrier DOIT aborder ces concepts cliniques :
                     }
                 }
 
-                // Marquer le brouillon comme validé
+                // Marquer le contenu comme validé (le markdown passé contient déjà les modifs)
+                // On met à jour le fichier .md avec le status "validé" si besoin
                 if (File.Exists(markdownFilePath))
                 {
-                    var content = File.ReadAllText(markdownFilePath);
-                    content = content.Replace("status: \"brouillon\"", "status: \"validé\"");
-                    File.WriteAllText(markdownFilePath, content);
+                    try
+                    {
+                        // On réutilise le markdown passé en paramètre pour être sûr de ne rien perdre
+                        // Si le markdown ne contient pas déjà le status validé, on le met à jour
+                        if (markdown.Contains("status: \"brouillon\""))
+                        {
+                            var updatedMarkdown = markdown.Replace("status: \"brouillon\"", "status: \"validé\"");
+                            File.WriteAllText(markdownFilePath, updatedMarkdown, Encoding.UTF8);
+                        }
+                    }
+                    catch (Exception mdEx)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[ExportToDocx] ⚠️ Erreur maj status MD: {mdEx.Message}");
+                    }
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[ExportToDocx] ✅ SUCCÈS - Fichier créé: {docxPath}");
-                return (true, $"✅ Document créé: {docxFileName}", docxPath);
+                return (true, $"✅ Document créé: {docxFileName} ({markdown.Length} chars)", docxPath);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ExportToDocx] ❌ EXCEPTION: {ex.Message}");
-                System.Diagnostics.Debug.WriteLine($"[ExportToDocx] Stack trace: {ex.StackTrace}");
                 return (false, $"❌ Erreur export .docx: {ex.Message}", string.Empty);
             }
         }
@@ -1408,12 +1431,46 @@ Ce courrier DOIT aborder ces concepts cliniques :
             }
             
             var lines = cleanMarkdown.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-            
-            foreach (var line in lines)
+
+            for (int i = 0; i < lines.Length; i++)
             {
+                var line = lines[i];
+
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     body.AppendChild(new Paragraph());
+                    continue;
+                }
+
+                // ===== DETECTION DES TABLEAUX MARKDOWN =====
+                var trimmedLine = line.Trim();
+                if (trimmedLine.StartsWith("|") || IsTableSeparatorLine(trimmedLine))
+                {
+                    // Collecter toutes les lignes du tableau
+                    var tableLines = new List<string>();
+                    while (i < lines.Length)
+                    {
+                        var currentLine = lines[i].Trim();
+                        if (string.IsNullOrWhiteSpace(currentLine))
+                            break;
+                        if (!currentLine.StartsWith("|") && !IsTableSeparatorLine(currentLine))
+                            break;
+                        tableLines.Add(currentLine);
+                        i++;
+                    }
+                    i--; // Reculer d'une position car la boucle for va incrémenter
+
+                    // Créer le tableau Word
+                    if (tableLines.Count > 0)
+                    {
+                        var wordTable = CreateWordTableFromMarkdown(tableLines);
+                        body.AppendChild(wordTable);
+
+                        // Ajouter un petit espacement après le tableau
+                        var spacingPara = body.AppendChild(new Paragraph());
+                        var spacingProps = spacingPara.AppendChild(new ParagraphProperties());
+                        spacingProps.AppendChild(new SpacingBetweenLines() { After = "100" });
+                    }
                     continue;
                 }
 
@@ -1422,14 +1479,14 @@ Ce courrier DOIT aborder ces concepts cliniques :
                 {
                     var titleText = line.Substring(2).Trim();
                     var para = body.AppendChild(new Paragraph());
-                    
+
                     // Propriétés du paragraphe : centré
                     var paraProps = para.AppendChild(new ParagraphProperties());
                     paraProps.AppendChild(new Justification() { Val = JustificationValues.Center });
-                    
+
                     var run = para.AppendChild(new Run());
                     run.AppendChild(new Text(titleText));
-                    
+
                     // Style titre: 14pt, gras, majuscules
                     var runProps = run.InsertBefore(new RunProperties(), run.FirstChild);
                     runProps.AppendChild(new Bold());
@@ -1445,7 +1502,7 @@ Ce courrier DOIT aborder ces concepts cliniques :
                     var para = body.AppendChild(new Paragraph());
                     var run = para.AppendChild(new Run());
                     run.AppendChild(new Text(subtitleText));
-                    
+
                     var runProps = run.InsertBefore(new RunProperties(), run.FirstChild);
                     runProps.AppendChild(new Bold());
                     runProps.AppendChild(new FontSize() { Val = "24" }); // 12pt
@@ -1455,18 +1512,18 @@ Ce courrier DOIT aborder ces concepts cliniques :
 
                 // Paragraphe normal - JUSTIFIÉ avec interligne simple + pas d'espacement
                 var paragraph = body.AppendChild(new Paragraph());
-                
+
                 // Propriétés du paragraphe : justifié + interligne simple + AUCUN espacement
                 var paragraphProps = paragraph.AppendChild(new ParagraphProperties());
                 paragraphProps.AppendChild(new Justification() { Val = JustificationValues.Both });
-                paragraphProps.AppendChild(new SpacingBetweenLines() 
-                { 
+                paragraphProps.AppendChild(new SpacingBetweenLines()
+                {
                     Line = "240",  // 1.0 (simple) = 240
                     LineRule = LineSpacingRuleValues.Auto,
                     After = "0",    // 0pt après paragraphe pour maximiser l'espace
                     Before = "0"    // Pas d'espace avant
                 });
-                
+
                 ParseInlineMarkdownProfessional(line, paragraph);
             }
         }
@@ -1530,6 +1587,157 @@ Ce courrier DOIT aborder ces concepts cliniques :
                 runProps.AppendChild(new FontSize() { Val = "20" }); // 10pt
                 runProps.AppendChild(new RunFonts() { Ascii = "Arial" });
             }
+        }
+
+        /// <summary>
+        /// Vérifie si une ligne est un séparateur de tableau markdown (ex: |---|---|)
+        /// </summary>
+        private bool IsTableSeparatorLine(string line)
+        {
+            if (string.IsNullOrWhiteSpace(line))
+                return false;
+
+            var trimmed = line.Trim();
+            // Doit contenir au moins un tiret et des pipes ou uniquement des tirets/pipes
+            if (!trimmed.Contains("-"))
+                return false;
+
+            // Vérifier que la ligne ne contient que des caractères valides pour un séparateur
+            foreach (char c in trimmed)
+            {
+                if (c != '|' && c != '-' && c != ':' && c != ' ')
+                    return false;
+            }
+
+            return trimmed.Length >= 3;
+        }
+
+        /// <summary>
+        /// Crée un tableau Word à partir des lignes markdown
+        /// </summary>
+        private Table CreateWordTableFromMarkdown(List<string> tableLines)
+        {
+            var table = new Table();
+
+            // Propriétés du tableau avec bordures
+            var tableProps = new TableProperties();
+            var tableWidth = new TableWidth() { Width = "5000", Type = TableWidthUnitValues.Pct }; // 100% de la largeur
+            tableProps.Append(tableWidth);
+
+            // Bordures du tableau (style professionnel)
+            var tableBorders = new TableBorders(
+                new TopBorder { Val = BorderValues.Single, Size = 8, Color = "2980B9" },
+                new BottomBorder { Val = BorderValues.Single, Size = 8, Color = "2980B9" },
+                new LeftBorder { Val = BorderValues.Single, Size = 8, Color = "2980B9" },
+                new RightBorder { Val = BorderValues.Single, Size = 8, Color = "2980B9" },
+                new InsideHorizontalBorder { Val = BorderValues.Single, Size = 4, Color = "BDC3C7" },
+                new InsideVerticalBorder { Val = BorderValues.Single, Size = 4, Color = "BDC3C7" }
+            );
+            tableProps.Append(tableBorders);
+            table.Append(tableProps);
+
+            // Parser les lignes et créer les rangées
+            bool isFirstDataRow = true;
+            int columnCount = 0;
+
+            foreach (var line in tableLines)
+            {
+                // Ignorer les lignes séparatrices
+                if (IsTableSeparatorLine(line))
+                    continue;
+
+                var cells = ParseTableRow(line);
+                if (cells.Count == 0)
+                    continue;
+
+                // Déterminer le nombre de colonnes (première ligne)
+                if (columnCount == 0)
+                    columnCount = cells.Count;
+
+                var tableRow = new TableRow();
+
+                for (int colIndex = 0; colIndex < cells.Count; colIndex++)
+                {
+                    var cellContent = cells[colIndex];
+                    var tableCell = new TableCell();
+
+                    // Propriétés de la cellule
+                    var cellProps = new TableCellProperties();
+
+                    // Padding des cellules
+                    cellProps.Append(new TableCellMargin(
+                        new LeftMargin() { Width = "100", Type = TableWidthUnitValues.Dxa },
+                        new RightMargin() { Width = "100", Type = TableWidthUnitValues.Dxa }
+                    ));
+
+                    // Style pour l'en-tête (première ligne de données = en-tête)
+                    if (isFirstDataRow)
+                    {
+                        // Fond bleu clair pour l'en-tête
+                        cellProps.Append(new Shading()
+                        {
+                            Val = ShadingPatternValues.Clear,
+                            Fill = "E8F4FD" // Bleu très clair
+                        });
+                    }
+
+                    tableCell.Append(cellProps);
+
+                    // Contenu de la cellule
+                    var para = new Paragraph();
+                    var paraProps = new ParagraphProperties();
+                    paraProps.AppendChild(new SpacingBetweenLines() { After = "0", Before = "60" });
+                    para.AppendChild(paraProps);
+
+                    var run = para.AppendChild(new Run());
+                    run.AppendChild(new Text(cellContent) { Space = SpaceProcessingModeValues.Preserve });
+
+                    var runProps = run.InsertBefore(new RunProperties(), run.FirstChild);
+                    runProps.AppendChild(new FontSize() { Val = "18" }); // 9pt pour les tableaux
+                    runProps.AppendChild(new RunFonts() { Ascii = "Arial" });
+
+                    // En-tête en gras
+                    if (isFirstDataRow)
+                    {
+                        runProps.AppendChild(new Bold());
+                    }
+
+                    tableCell.Append(para);
+                    tableRow.Append(tableCell);
+                }
+
+                table.Append(tableRow);
+                isFirstDataRow = false;
+            }
+
+            return table;
+        }
+
+        /// <summary>
+        /// Parse une ligne de tableau markdown et retourne les cellules
+        /// </summary>
+        private List<string> ParseTableRow(string line)
+        {
+            var cells = new List<string>();
+
+            if (string.IsNullOrWhiteSpace(line))
+                return cells;
+
+            // Retirer les pipes au début et à la fin
+            var trimmed = line.Trim();
+            if (trimmed.StartsWith("|"))
+                trimmed = trimmed.Substring(1);
+            if (trimmed.EndsWith("|"))
+                trimmed = trimmed.Substring(0, trimmed.Length - 1);
+
+            // Séparer par les pipes
+            var parts = trimmed.Split('|');
+            foreach (var part in parts)
+            {
+                cells.Add(part.Trim());
+            }
+
+            return cells;
         }
 
         /// <summary>
