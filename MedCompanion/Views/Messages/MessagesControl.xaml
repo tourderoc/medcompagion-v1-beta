@@ -1,0 +1,227 @@
+<UserControl x:Class="MedCompanion.Views.Messages.MessagesControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:local="clr-namespace:MedCompanion.Views.Messages"
+             mc:Ignorable="d"
+             d:DesignHeight="600" d:DesignWidth="500">
+
+    <UserControl.Resources>
+        <local:StatusToColorConverter x:Key="StatusToColorConverter"/>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="8"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="10"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header: titre + compteur -->
+        <Grid Grid.Row="0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0" Text="Messages Parents" FontSize="14" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+            <TextBlock x:Name="MessageCountLabel" Grid.Column="1" Text="0 messages" FontSize="12" Foreground="#7F8C8D" VerticalAlignment="Center"/>
+        </Grid>
+
+        <!-- ═══ BOUTONS FILTRE ═══ -->
+        <Grid Grid.Row="2">
+            <Border Background="#F0F0F0" CornerRadius="8" Padding="3">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Bouton Non traités (actif par défaut) -->
+                    <Button x:Name="FilterUnreadBtn" Grid.Column="0"
+                            Height="34" Margin="2"
+                            FontSize="12" FontWeight="SemiBold"
+                            BorderThickness="0" Cursor="Hand"
+                            Click="FilterUnreadBtn_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="FilterBd"
+                                        Background="{TemplateBinding Background}"
+                                        CornerRadius="6"
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="📩 Non traités" VerticalAlignment="Center"/>
+                            <Border x:Name="UnreadBadge" CornerRadius="8" Background="#E74C3C"
+                                    Padding="6,1" Margin="6,0,0,0" VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                                <TextBlock x:Name="UnreadBadgeText" Text="0" FontSize="10"
+                                           Foreground="White" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Bouton Traités / Archivés -->
+                    <Button x:Name="FilterArchivedBtn" Grid.Column="1"
+                            Height="34" Margin="2"
+                            FontSize="12" FontWeight="SemiBold"
+                            BorderThickness="0" Cursor="Hand"
+                            Click="FilterArchivedBtn_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="FilterBd"
+                                        Background="{TemplateBinding Background}"
+                                        CornerRadius="6"
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock Text="✅ Traités / Archivés" VerticalAlignment="Center"/>
+                    </Button>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Liste des messages du patient -->
+        <Border Grid.Row="4" Background="White" CornerRadius="6" BorderBrush="#E0E0E0" BorderThickness="1">
+            <Grid>
+                <!-- Liste messages -->
+                <ListBox x:Name="MessagesList"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                         SelectionChanged="MessagesList_SelectionChanged">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <Border Padding="12,10" BorderBrush="#F0F0F0" BorderThickness="0,0,0,1" Cursor="Hand">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="4"/>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="4"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Nom parent + date -->
+                                    <TextBlock Grid.Row="0" Grid.Column="0"
+                                               Text="{Binding ParentName}"
+                                               FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                    <TextBlock Grid.Row="0" Grid.Column="1"
+                                               Text="{Binding RelativeTimeString}"
+                                               FontSize="11" Foreground="#95A5A6"/>
+
+                                    <!-- Résumé du message -->
+                                    <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                               Text="{Binding Summary}"
+                                               FontSize="12" Foreground="#555555"
+                                               TextTrimming="CharacterEllipsis" MaxHeight="36"
+                                               TextWrapping="Wrap"/>
+
+                                    <!-- Statut -->
+                                    <StackPanel Grid.Row="4" Grid.Column="0" Orientation="Horizontal">
+                                        <Border CornerRadius="4" Padding="6,2" Margin="0,0,6,0"
+                                                Background="{Binding Status, Converter={StaticResource StatusToColorConverter}}">
+                                            <TextBlock Text="{Binding StatusDisplay}" FontSize="10" Foreground="White"/>
+                                        </Border>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- Message quand aucun message -->
+                <TextBlock x:Name="EmptyLabel"
+                           Text="Aucun message pour ce patient"
+                           FontSize="13" Foreground="#95A5A6"
+                           HorizontalAlignment="Center" VerticalAlignment="Center"
+                           Visibility="Visible"/>
+            </Grid>
+        </Border>
+
+        <!-- Zone de détail + réponse -->
+        <Grid x:Name="DetailPanel" Grid.Row="6" Visibility="Collapsed">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="8"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="8"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Contenu complet du message sélectionné -->
+            <Border Grid.Row="0" Background="#F8F9FA" CornerRadius="6" Padding="12" MaxHeight="200">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <TextBlock x:Name="FullMessageText" TextWrapping="Wrap" FontSize="13" Foreground="#333333"/>
+                </ScrollViewer>
+            </Border>
+
+            <!-- Zone de réponse -->
+            <TextBox x:Name="ReplyTextBox" Grid.Row="2"
+                     AcceptsReturn="True" TextWrapping="Wrap"
+                     Height="100" FontSize="13"
+                     Padding="10" BorderBrush="#BDC3C7" BorderThickness="1"
+                     VerticalScrollBarVisibility="Auto">
+                <TextBox.Style>
+                    <Style TargetType="TextBox">
+                        <Setter Property="Template">
+                            <Setter.Value>
+                                <ControlTemplate TargetType="TextBox">
+                                    <Border Background="White" BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                                        <ScrollViewer x:Name="PART_ContentHost"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Setter.Value>
+                        </Setter>
+                    </Style>
+                </TextBox.Style>
+            </TextBox>
+
+            <!-- Boutons d'action -->
+            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="ArchiveBtn" Content="Archiver"
+                        Height="36" Padding="15,0" Margin="0,0,8,0"
+                        FontSize="12" Background="#95A5A6" Foreground="White"
+                        BorderThickness="0" Cursor="Hand"
+                        Click="ArchiveBtn_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <Button x:Name="ReplyBtn" Content="Envoyer la réponse"
+                        Height="36" Padding="15,0"
+                        FontSize="12" FontWeight="SemiBold"
+                        Background="#27AE60" Foreground="White"
+                        BorderThickness="0" Cursor="Hand"
+                        Click="ReplyBtn_Click">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>
