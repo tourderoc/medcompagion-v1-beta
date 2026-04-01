@@ -332,6 +332,7 @@ namespace MedCompanion.ViewModels
 
         private async Task GenerateAttestationAsync()
         {
+            await Task.Yield();
             if (CurrentPatient == null || SelectedTemplate == null) return;
 
             IsGenerating = true;
@@ -356,7 +357,6 @@ namespace MedCompanion.ViewModels
                     );
 
                     // Déclencher événement pour ouvrir le dialog
-                    bool dialogAccepted = false;
                     AttestationInfoDialogRequested?.Invoke(this, dialog);
                     
                     // Le MainWindow devra gérer l'événement et montrer le dialog
@@ -551,6 +551,7 @@ namespace MedCompanion.ViewModels
 
         private async Task DeleteAttestationAsync()
         {
+            await Task.Yield();
             if (SelectedAttestation == null) return;
 
             // Demander confirmation via événement

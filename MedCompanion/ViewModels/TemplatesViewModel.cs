@@ -271,7 +271,7 @@ namespace MedCompanion.ViewModels
                 }
 
                 // ✅ FUSION : Combiner les résultats
-                semantic.Sections = sections;
+                semantic!.Sections = sections!;
 
                 // Créer le MCC complet
                 var mcc = new MCCModel

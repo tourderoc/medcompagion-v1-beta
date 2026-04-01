@@ -9,6 +9,8 @@ using System.Windows.Media;
 using MedCompanion.Commands;
 using MedCompanion.Models;
 using MedCompanion.Services;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace MedCompanion.ViewModels
 {
@@ -419,6 +421,7 @@ namespace MedCompanion.ViewModels
                 return;
             }
 
+            FlowDocument? originalDoc = SynthesisDocument;
             try
             {
                 // Désactiver le bouton pendant la génération
@@ -530,13 +533,6 @@ namespace MedCompanion.ViewModels
                             UpdateWeightIndicatorInternal();
 
                             StatusChanged?.Invoke(this, "✅ Synthèse générée avec succès");
-
-                            MessageBox.Show(
-                                saveMessage,
-                                "Synthèse générée",
-                                MessageBoxButton.OK,
-                                MessageBoxImage.Information
-                            );
                         }
                         catch (Exception ex)
                         {
@@ -569,6 +565,15 @@ namespace MedCompanion.ViewModels
                     );
                     StatusChanged?.Invoke(this, "❌ Erreur génération synthèse");
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                // Annulation silencieuse demandée par l'utilisateur (via BusyService ou timeout HttpClient)
+                System.Diagnostics.Debug.WriteLine("[PatientSynthesisViewModel] Génération annulée ou timeout.");
+                StatusChanged?.Invoke(this, "✓ Opération annulée");
+
+                // Restaurer la synthèse précédente
+                SynthesisDocument = originalDoc;
             }
             catch (Exception ex)
             {

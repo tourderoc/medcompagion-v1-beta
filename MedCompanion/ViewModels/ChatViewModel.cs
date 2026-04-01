@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Windows.Input;
 using System.Windows.Media;
 using MedCompanion.Commands;
@@ -226,9 +227,13 @@ namespace MedCompanion.ViewModels
 
         // ===== MÉTHODES PRIVÉES =====
 
+        // Message IA en cours de streaming
+        private ChatMessageViewModel? _currentStreamingMessage;
+        private CancellationTokenSource? _streamingCts;
+
         /// <summary>
-        /// Envoie un message à l'IA via LLMGatewayService
-        /// ✅ REFACTORISÉ : Utilise le gateway centralisé qui gère automatiquement l'anonymisation
+        /// Envoie un message à l'IA via LLMGatewayService avec STREAMING
+        /// ✅ REFACTORISÉ : Streaming temps réel sans BusyService
         /// - Provider local (Ollama) : Pas d'anonymisation
         /// - Provider cloud (OpenAI) : Anonymisation 3 phases automatique
         /// </summary>
@@ -240,11 +245,13 @@ namespace MedCompanion.ViewModels
             var question = InputText.Trim();
             InputText = "";  // Vider immédiatement
 
-            // ✅ NOUVEAU : Démarrer BusyService
-            var busyService = BusyService.Instance;
             var providerName = _llmGatewayService.GetActiveProviderName();
             var isLocal = _llmGatewayService.IsLocalProvider();
-            var cancellationToken = busyService.Start($"Discussion avec l'IA ({providerName})", canCancel: true);
+
+            // CancellationToken pour pouvoir annuler
+            _streamingCts?.Cancel();
+            _streamingCts = new CancellationTokenSource();
+            var cancellationToken = _streamingCts.Token;
 
             try
             {
@@ -256,20 +263,15 @@ namespace MedCompanion.ViewModels
                 // Afficher le type de provider
                 RaiseStatusMessage($"⏳ L'IA réfléchit... ({providerName}{(isLocal ? " - local" : " - cloud")})");
 
-                // ✅ BusyService : Étape 1 - Chargement contexte
-                busyService.UpdateStep("Chargement du contexte patient...");
-
-                // ✅ Récupérer le contexte patient (avec vrai nom, le gateway anonymisera si nécessaire)
+                // Récupérer le contexte patient
                 var contextBundle = _patientContextService.GetCompleteContext(
                     _currentPatient.NomComplet,
                     userRequest: null,
-                    pseudonym: null  // Pas de pseudonyme, le gateway gère l'anonymisation
+                    pseudonym: null
                 );
 
-                // Vérifier l'annulation
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // Générer le texte de contexte
                 var contextText = contextBundle.ToPromptText(_currentPatient.NomComplet, null);
                 var contextInfo = $"{contextBundle.ContextType} ({contextText.Length} caractères)";
 
@@ -278,66 +280,78 @@ namespace MedCompanion.ViewModels
                     AddMessage("Système", "⚠️ Aucune note disponible. L'IA répondra sans contexte patient.", Colors.Gray, isFromAI: false);
                 }
 
-                // ✅ BusyService : Étape 2 - Préparation prompt
-                busyService.UpdateStep("Préparation de la requête...");
-
-                // ✅ Récupérer le prompt système
+                // Récupérer le prompt système
                 var chatPrompt = _promptConfigService?.GetActivePrompt("chat_interaction") ?? "";
                 var systemPrompt = _promptConfigService?.GetActivePrompt("system_global") ?? "";
                 var fullSystemPrompt = $"{systemPrompt}\n\n{chatPrompt}";
 
-                // ✅ Construire les messages pour le LLM
+                // Construire les messages
                 var messages = new List<(string role, string content)>();
 
-                // Ajouter le contexte patient
                 if (!string.IsNullOrWhiteSpace(contextText))
                 {
                     messages.Add(("system", $"CONTEXTE PATIENT:\n{contextText}"));
                 }
 
-                // Ajouter la mémoire compactée si disponible
                 if (!string.IsNullOrWhiteSpace(_compactedMemory))
                 {
                     messages.Add(("system", $"HISTORIQUE COMPACTÉ:\n{_compactedMemory}"));
                 }
 
-                // Ajouter l'historique récent (3 derniers échanges)
                 foreach (var exchange in _chatHistory)
                 {
                     messages.Add(("user", exchange.Question));
                     messages.Add(("assistant", exchange.Response));
                 }
 
-                // Ajouter la question actuelle
                 messages.Add(("user", question));
 
-                // Vérifier l'annulation avant l'appel LLM
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // ✅ BusyService : Étape 3 - Appel LLM
-                if (isLocal)
+                // ✅ STREAMING : Créer un message IA vide AVANT le streaming
+                _currentStreamingMessage = new ChatMessageViewModel
                 {
-                    busyService.UpdateStep($"Interrogation de {providerName}...");
-                }
-                else
+                    Author = "IA",
+                    Content = "",
+                    BorderColor = Colors.DarkGreen,
+                    IsFromAI = true,
+                    PlainText = "IA\n"  // Texte brut pendant le streaming
+                };
+                Messages.Add(_currentStreamingMessage);
+                ScrollToEndRequested?.Invoke(this, EventArgs.Empty);
+
+                // ✅ STREAMING : Callback pour chaque token
+                void OnTokenReceived(string token)
                 {
-                    busyService.UpdateStep($"Anonymisation + Appel {providerName}...");
+                    var msg = _currentStreamingMessage;
+                    if (msg == null) return;
+
+                    // Utiliser InvokeAsync avec priorité Render pour fluidité
+                    System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        msg.Content += token;
+                        msg.PlainText = $"IA\n{msg.Content}";
+                    }, System.Windows.Threading.DispatcherPriority.Render);
                 }
 
-                // ✅ APPEL VIA GATEWAY - Anonymisation automatique si provider cloud
-                var (success, result, error) = await _llmGatewayService.ChatAsync(
+                // ✅ APPEL STREAMING VIA GATEWAY
+                var (success, result, error) = await _llmGatewayService.ChatStreamAsync(
                     systemPrompt: fullSystemPrompt,
                     messages: messages,
-                    patientName: _currentPatient.NomComplet,  // Pour charger les métadonnées d'anonymisation
-                    maxTokens: 2000
+                    onTokenReceived: OnTokenReceived,
+                    patientName: _currentPatient.NomComplet,
+                    maxTokens: 2000,
+                    cancellationToken: cancellationToken
                 );
 
-                if (success)
+                cancellationToken.ThrowIfCancellationRequested();
+
+                if (success && _currentStreamingMessage != null)
                 {
-                    // ✅ La réponse est déjà désanonymisée par le gateway
+                    // ✅ Synchronisation finale du contenu (si des tokens manqués)
                     var reponse = result;
 
-                    // ✅ PROMPT TRACKER : Logger le prompt
+                    // Logger le prompt
                     if (_promptTracker != null)
                     {
                         _promptTracker.LogPrompt(new PromptLogEntry
@@ -355,53 +369,83 @@ namespace MedCompanion.ViewModels
                         });
                     }
 
-                    // Ajouter info contexte
+                    // Ajouter info contexte à la fin
                     if (!string.IsNullOrWhiteSpace(contextBundle.ClinicalContext))
                     {
                         reponse += $"\n\n━━━━━━━━━━━━━━━━━━━━━━━━━\n📎 Contexte : {contextInfo}";
+                    }
+
+                    // ✅ Mettre à jour le message final avec Markdown
+                    _currentStreamingMessage.Content = reponse;
+                    try
+                    {
+                        _currentStreamingMessage.RichContent = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(reponse);
+                        _currentStreamingMessage.PlainText = null;  // Basculer vers RichContent
+                    }
+                    catch
+                    {
+                        _currentStreamingMessage.PlainText = $"IA\n{reponse}";
                     }
 
                     // Ajouter à l'historique temporaire
                     _chatHistory.Add(new ChatExchange
                     {
                         Question = question,
-                        Response = result,  // Réponse originale (sans info contexte)
+                        Response = result,  // Réponse sans info contexte
                         Timestamp = DateTime.Now
                     });
 
-                    // Limiter à 3 échanges (FIFO)
                     if (_chatHistory.Count > 3)
                     {
                         _chatHistory.RemoveAt(0);
                     }
 
-                    // Ajouter le message IA avec le bouton 💾
-                    var exchangeIndex = _chatHistory.Count - 1;
-                    AddMessage("IA", reponse, Colors.DarkGreen, isFromAI: true, exchangeIndex: exchangeIndex);
+                    // Assigner l'index pour le bouton 💾
+                    _currentStreamingMessage.ExchangeIndex = _chatHistory.Count - 1;
 
                     RaiseStatusMessage($"✓ Réponse reçue ({providerName})");
                 }
-                else
+                else if (!success)
                 {
+                    // Supprimer le message vide en cas d'erreur
+                    if (_currentStreamingMessage != null && Messages.Contains(_currentStreamingMessage))
+                    {
+                        Messages.Remove(_currentStreamingMessage);
+                    }
                     AddMessage("Erreur", error ?? result, Colors.Red, isFromAI: false);
                     RaiseStatusMessage($"❌ {error ?? result}");
                 }
             }
             catch (OperationCanceledException)
             {
-                // ✅ Annulation par l'utilisateur
-                AddMessage("Système", "⚠️ Requête annulée par l'utilisateur", Colors.Orange, isFromAI: false);
+                // Supprimer ou marquer le message comme annulé
+                if (_currentStreamingMessage != null)
+                {
+                    if (string.IsNullOrWhiteSpace(_currentStreamingMessage.Content))
+                    {
+                        Messages.Remove(_currentStreamingMessage);
+                    }
+                    else
+                    {
+                        _currentStreamingMessage.Content += "\n\n⚠️ [Réponse interrompue]";
+                        _currentStreamingMessage.PlainText = $"IA\n{_currentStreamingMessage.Content}";
+                    }
+                }
                 RaiseStatusMessage("⚠️ Requête annulée");
             }
             catch (Exception ex)
             {
+                if (_currentStreamingMessage != null && Messages.Contains(_currentStreamingMessage))
+                {
+                    Messages.Remove(_currentStreamingMessage);
+                }
                 AddMessage("Erreur", $"Erreur inattendue: {ex.Message}", Colors.Red, isFromAI: false);
                 RaiseStatusMessage($"❌ {ex.Message}");
             }
             finally
             {
+                _currentStreamingMessage = null;
                 IsSending = false;
-                busyService.Stop();  // ✅ Toujours arrêter le BusyService
             }
         }
 

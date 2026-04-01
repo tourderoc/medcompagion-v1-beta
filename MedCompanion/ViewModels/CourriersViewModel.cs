@@ -1,4 +1,5 @@
 using System;
+using System.Windows;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -12,6 +13,34 @@ using MedCompanion.Services;
 
 namespace MedCompanion.ViewModels
 {
+    public class RatingDialogRequestedEventArgs : EventArgs
+    {
+        public string MCCId { get; set; } = string.Empty;
+        public string MCCName { get; set; } = string.Empty;
+        public string LetterPath { get; set; } = string.Empty;
+        public Action<int>? OnRatingReceived { get; set; }
+    }
+
+    public class MissingInfoDialogRequestedEventArgs : EventArgs
+    {
+        public List<MissingFieldInfo> MissingFields { get; set; } = new();
+        public Action<Dictionary<string, string>?>? OnInfoCollected { get; set; }
+    }
+
+    public class DetailedViewRequestedEventArgs : EventArgs
+    {
+        public string FilePath { get; set; } = string.Empty;
+        public string PatientName { get; set; } = string.Empty;
+        public Action<string?>? OnContentSaved { get; set; }
+    }
+
+    public class ConfirmationRequestedEventArgs : EventArgs
+    {
+        public string Title { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public Action? OnConfirm { get; set; }
+    }
+
     /// <summary>
     /// ViewModel pour la gestion des courriers médicaux
     /// Approche événementielle similaire à AttestationViewModel
@@ -37,12 +66,12 @@ namespace MedCompanion.ViewModels
         public event EventHandler<string>? LetterContentLoaded;
         public event EventHandler<(string title, string message)>? ErrorOccurred;
         public event EventHandler<(string title, string message)>? InfoMessageRequested;
-        public event EventHandler<(string title, string message, Action onConfirm)>? ConfirmationRequested;
+        public event EventHandler<ConfirmationRequestedEventArgs>? ConfirmationRequested;
         public event EventHandler<string>? FilePrintRequested;
         public event EventHandler? CreateLetterWithAIRequested;
-        public event EventHandler<(string mccId, string mccName, string letterPath, Action<int> onRatingReceived)>? RatingDialogRequested;
-        public event EventHandler<(List<MissingFieldInfo> missingFields, Action<Dictionary<string, string>?> onInfoCollected)>? MissingInfoDialogRequested;
-        public event EventHandler<(string filePath, string patientName, Action onContentSaved)>? DetailedViewRequested;
+        public event EventHandler<RatingDialogRequestedEventArgs>? RatingDialogRequested;
+        public event EventHandler<MissingInfoDialogRequestedEventArgs>? MissingInfoDialogRequested;
+        public event EventHandler<DetailedViewRequestedEventArgs>? DetailedViewRequested;
 
         // NOUVEAU : Événement déclenché après sauvegarde d'un courrier (pour rafraîchir le badge de synthèse)
         public event EventHandler? LetterSaved;
@@ -548,20 +577,25 @@ namespace MedCompanion.ViewModels
 
             try
             {
-                var lettresDir = _pathService.GetCourriersDirectory(CurrentPatient.NomComplet);
+                var letterFolders = _pathService.GetAllYearDirectories(CurrentPatient.NomComplet, "courriers");
 
-                if (!System.IO.Directory.Exists(lettresDir))
+                if (!letterFolders.Any())
                 {
                     StatusMessage = "Aucun dossier de courriers trouvé";
                     return;
                 }
 
-                var letterFiles = System.IO.Directory.GetFiles(lettresDir, "*.md")
-                    .Select(filePath => CreateLetterListItem(filePath))
-                    .OrderByDescending(l => l.Date)
-                    .ToList();
+                var allLetterFiles = new List<LetterListItem>();
+                foreach (var folder in letterFolders)
+                {
+                    var files = System.IO.Directory.GetFiles(folder, "*.md")
+                        .Select(filePath => CreateLetterListItem(filePath));
+                    allLetterFiles.AddRange(files);
+                }
 
-                foreach (var letter in letterFiles)
+                var sortedLetters = allLetterFiles.OrderByDescending(l => l.Date).ToList();
+
+                foreach (var letter in sortedLetters)
                 {
                     Letters.Add(letter);
                 }
@@ -749,11 +783,16 @@ namespace MedCompanion.ViewModels
                             busyService.UpdateStep("Adaptation IA en cours...");
                             busyService.UpdateProgress(20);
 
+                            // Passer le token d'annulation au service
                             var (success, result, error) = await _letterService.AdaptTemplateWithAIAsync(
                                 CurrentPatient.NomComplet,
                                 SelectedTemplate.Name,
-                                templateMarkdown
+                                templateMarkdown,
+                                cancellationToken
                             );
+
+                            // Vérifier immédiatement si annulé
+                            cancellationToken.ThrowIfCancellationRequested();
 
                             if (success && !string.IsNullOrEmpty(result))
                             {
@@ -763,6 +802,11 @@ namespace MedCompanion.ViewModels
                             }
                             else
                             {
+                                // Si erreur d'annulation, propager
+                                if (error?.Contains("annulée") == true)
+                                {
+                                    throw new OperationCanceledException();
+                                }
                                 StatusMessage = $"⚠️ Adaptation IA échouée : {error}";
                                 busyService.UpdateStep($"⚠️ Adaptation IA échouée : {error}");
                             }
@@ -797,10 +841,11 @@ namespace MedCompanion.ViewModels
                                 // Demander les infos manquantes via événement avec TaskCompletionSource
                                 var tcs = new TaskCompletionSource<Dictionary<string, string>?>();
 
-                                MissingInfoDialogRequested?.Invoke(this, (
-                                    reAdaptResult.MissingFields,
-                                    info => tcs.SetResult(info)
-                                ));
+                                MissingInfoDialogRequested?.Invoke(this, new MissingInfoDialogRequestedEventArgs
+                                {
+                                    MissingFields = reAdaptResult.MissingFields,
+                                    OnInfoCollected = info => tcs.SetResult(info)
+                                });
 
                                 // Attendre vraiment le retour du dialogue (avec timeout de 5 minutes)
                                 var collectedInfo = await Task.WhenAny(
@@ -865,7 +910,8 @@ namespace MedCompanion.ViewModels
                     catch (OperationCanceledException)
                     {
                         StatusMessage = "🚫 Opération annulée";
-                        SetLetterMarkdownWithNotification(templateMarkdown); // Retour au template brut
+                        // Ne PAS afficher le template - laisser l'aperçu vide/précédent
+                        SetLetterMarkdownWithNotification(string.Empty);
                     }
                     catch (Exception adaptEx)
                     {
@@ -1118,11 +1164,12 @@ namespace MedCompanion.ViewModels
 
             // Demander confirmation via événement
             bool confirmed = false;
-            ConfirmationRequested?.Invoke(this, (
-                "Confirmer la suppression",
-                $"Êtes-vous sûr de vouloir supprimer ce courrier ?\n\n{System.IO.Path.GetFileName(filePath)}",
-                () => confirmed = true
-            ));
+            ConfirmationRequested?.Invoke(this, new ConfirmationRequestedEventArgs
+            {
+                Title = "Confirmer la suppression",
+                Message = $"Êtes-vous sûr de vouloir supprimer ce courrier ?\n\n{System.IO.Path.GetFileName(filePath)}",
+                OnConfirm = () => confirmed = true
+            });
 
             // Attendre la réponse (l'événement sera traité synchroniquement dans le UserControl)
             await Task.Delay(100); // Petit délai pour laisser le temps au dialog
@@ -1241,12 +1288,12 @@ namespace MedCompanion.ViewModels
             }
 
             // Déclencher événement pour ouvrir le dialogue de vue détaillée
-            DetailedViewRequested?.Invoke(this, (markdownPath, CurrentPatient.NomComplet, () =>
+            DetailedViewRequested?.Invoke(this, new DetailedViewRequestedEventArgs
             {
-                // Callback après sauvegarde dans le dialogue
-                RefreshLettersList();
-                StatusMessage = "✅ Courrier sauvegardé depuis la vue détaillée";
-            }));
+                FilePath = markdownPath,
+                PatientName = CurrentPatient.NomComplet,
+                OnContentSaved = (string? content) => OnDetailedViewContentSaved(markdownPath, content ?? "")
+            });
             StatusMessage = "👁️ Ouverture en vue détaillée...";
         }
 
@@ -1268,12 +1315,13 @@ namespace MedCompanion.ViewModels
             bool isFromMCC = !string.IsNullOrEmpty(LastGeneratedLetterMCCId);
 
             // Déclencher événement pour ouvrir dialogue de notation (géré par UserControl)
-            RatingDialogRequested?.Invoke(this, (
-                LastGeneratedLetterMCCId ?? "",  // Peut être vide pour courriers sans MCC
-                LastGeneratedLetterMCCName ?? "Courrier",
-                letterPath,
-                rating => receivedRating = rating
-            ));
+            RatingDialogRequested?.Invoke(this, new RatingDialogRequestedEventArgs
+            {
+                MCCId = LastGeneratedLetterMCCId ?? "",  // Peut être vide pour courriers sans MCC
+                MCCName = LastGeneratedLetterMCCName ?? "Courrier",
+                LetterPath = letterPath,
+                OnRatingReceived = rating => receivedRating = rating
+            });
 
             // Attendre le retour du dialogue
             await Task.Delay(100);
@@ -1345,13 +1393,14 @@ namespace MedCompanion.ViewModels
                 {
                     // Courrier NON-MCC avec 5 étoiles → Proposer d'ajouter à la bibliothèque MCC
                     bool userWantsToConvert = false;
-                    ConfirmationRequested?.Invoke(this, (
-                        "Transformer en MCC ?",
-                        $"🌟 Excellent courrier noté 5★ !\n\n" +
+                    ConfirmationRequested?.Invoke(this, new ConfirmationRequestedEventArgs
+                    {
+                        Title = "Transformer en MCC ?",
+                        Message = $"🌟 Excellent courrier noté 5★ !\n\n" +
                         $"Voulez-vous transformer ce courrier en modèle MCC ?\n" +
                         $"Vous serez automatiquement redirigé vers l'onglet Templates.",
-                        () => userWantsToConvert = true
-                    ));
+                        OnConfirm = () => userWantsToConvert = true
+                    });
 
                     // Petit délai pour laisser le dialogue se fermer
                     await Task.Delay(100);
@@ -1469,11 +1518,12 @@ namespace MedCompanion.ViewModels
             }
 
             // Déclencher événement pour ouvrir la vue détaillée (géré par UserControl)
-            DetailedViewRequested?.Invoke(this, (
-                filePath,
-                CurrentPatient.NomComplet,
-                () => OnDetailedViewContentSaved(filePath)
-            ));
+            DetailedViewRequested?.Invoke(this, new DetailedViewRequestedEventArgs
+            {
+                FilePath = filePath,
+                PatientName = CurrentPatient.NomComplet,
+                OnContentSaved = (string? content) => OnDetailedViewContentSaved(filePath, content ?? "")
+            });
 
             StatusMessage = $"📄 Vue détaillée: {System.IO.Path.GetFileName(filePath)}";
         }
@@ -1481,26 +1531,52 @@ namespace MedCompanion.ViewModels
         /// <summary>
         /// Callback appelé quand le contenu est sauvegardé dans la vue détaillée
         /// </summary>
-        private void OnDetailedViewContentSaved(string filePath)
+        private void OnDetailedViewContentSaved(string filePath, string markdown)
         {
             // Recharger le courrier si c'est celui actuellement édité
-            if (CurrentEditingFilePath == filePath && System.IO.File.Exists(filePath))
+            if (CurrentPatient != null && System.IO.File.Exists(filePath))
             {
                 try
                 {
-                    var markdown = System.IO.File.ReadAllText(filePath);
-                    LetterMarkdown = markdown;
-                    LetterContentLoaded?.Invoke(this, markdown);
-                    StatusMessage = "✅ Courrier mis à jour depuis vue détaillée";
+                    // Mettre à jour les propriétés du ViewModel si c'est le fichier en cours
+                    if (CurrentEditingFilePath == filePath)
+                    {
+                        LetterMarkdown = markdown;
+                        LetterContentLoaded?.Invoke(this, markdown);
+                    }
+
+                    // ✅ RÉGÉNÉRER LE DOCX (Utilisation directe du markdown pour éviter les délais disque)
+                    var (exportSuccess, exportMessage, _) = _letterService.ExportToDocx(CurrentPatient.NomComplet, markdown, filePath);
+                    
+                    if (exportSuccess)
+                    {
+                        StatusMessage = "✅ Courrier et document Word mis à jour";
+                    }
+                    else
+                    {
+                        StatusMessage = $"⚠️ Courrier sauvé mais Word non mis à jour : {exportMessage}";
+                        MessageBox.Show(
+                            $"Le courrier a été sauvegardé, mais le document Word n'a pas pu être mis à jour :\n\n{exportMessage}\n\nAssurez-vous que le fichier n'est pas ouvert dans Word.",
+                            "Mise à jour Word échouée",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning
+                        );
+                    }
+
+                    // Rafraîchir la liste (nécessaire pour voir les changements de preview)
+                    RefreshLettersList();
+
+                    // Re-sélectionner le courrier pour que l'impression soit possible immédiatement
+                    if (Letters != null)
+                    {
+                        SelectedLetter = Letters.FirstOrDefault(l => l.MdPath == filePath);
+                    }
                 }
                 catch (Exception ex)
                 {
-                    StatusMessage = $"⚠️ Erreur rechargement: {ex.Message}";
+                    StatusMessage = $"⚠️ Erreur rechargement/export: {ex.Message}";
                 }
             }
-
-            // Rafraîchir la liste
-            RefreshLettersList();
         }
 
         /// <summary>

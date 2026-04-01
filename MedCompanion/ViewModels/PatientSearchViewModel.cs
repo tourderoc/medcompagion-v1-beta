@@ -19,6 +19,8 @@ public class PatientSearchViewModel : ViewModelBase
     private int _selectedSuggestionIndex = -1;
     private bool _showCreateOption;
     private bool _showingRecentPatients;
+    private int _unreadMessageCount;
+    private bool _hasUnreadMessages;
 
     /// <summary>
     /// Texte de recherche saisi par l'utilisateur
@@ -127,6 +129,38 @@ public class PatientSearchViewModel : ViewModelBase
     public event EventHandler? OpenPatientListRequested;
 
     /// <summary>
+    /// Commande pour ouvrir la liste des messages non traités
+    /// </summary>
+    public ICommand OpenMessageListCommand { get; }
+
+    /// <summary>
+    /// Événement déclenché quand l'utilisateur veut ouvrir la liste des messages
+    /// </summary>
+    public event EventHandler? OpenMessageListRequested;
+
+    /// <summary>
+    /// Nombre de messages non traités (affiché dans le badge)
+    /// </summary>
+    public int UnreadMessageCount
+    {
+        get => _unreadMessageCount;
+        set
+        {
+            if (SetProperty(ref _unreadMessageCount, value))
+                HasUnreadMessages = value > 0;
+        }
+    }
+
+    /// <summary>
+    /// Indique s'il y a des messages non traités (pour la visibilité du badge)
+    /// </summary>
+    public bool HasUnreadMessages
+    {
+        get => _hasUnreadMessages;
+        set => SetProperty(ref _hasUnreadMessages, value);
+    }
+
+    /// <summary>
     /// Commande pour créer un nouveau patient
     /// </summary>
     public ICommand CreatePatientCommand { get; }
@@ -184,11 +218,17 @@ public class PatientSearchViewModel : ViewModelBase
         );
 
         OpenPatientListCommand = new RelayCommand(OpenPatientList);
+        OpenMessageListCommand = new RelayCommand(OpenMessageList);
     }
 
     private void OpenPatientList()
     {
         OpenPatientListRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OpenMessageList()
+    {
+        OpenMessageListRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>
