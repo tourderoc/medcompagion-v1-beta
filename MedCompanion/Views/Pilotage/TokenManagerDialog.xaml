@@ -1,0 +1,335 @@
+<Window x:Class="MedCompanion.Views.Pilotage.TokenManagerDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Gestion des Tokens Parent'aile"
+        Height="650" Width="900"
+        WindowStartupLocation="CenterOwner"
+        Background="#1E1E1E"
+        ResizeMode="CanResize">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="AccentColor" Color="#E67E22"/>
+        <SolidColorBrush x:Key="CardBackground" Color="#2D2D2D"/>
+        <SolidColorBrush x:Key="TextPrimary" Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="TextSecondary" Color="#888888"/>
+        <SolidColorBrush x:Key="BorderColor" Color="#3D3D3D"/>
+        <SolidColorBrush x:Key="SuccessColor" Color="#27AE60"/>
+        <SolidColorBrush x:Key="WarningColor" Color="#F39C12"/>
+        <SolidColorBrush x:Key="DangerColor" Color="#E74C3C"/>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Margin="0,0,0,20">
+            <TextBlock Text="🔑 Gestion des Tokens" FontSize="24" FontWeight="Bold"
+                       Foreground="{StaticResource AccentColor}"/>
+            <TextBlock Text="Gérez les accès Parent'aile de vos patients"
+                       Foreground="{StaticResource TextSecondary}" Margin="0,5,0,0"/>
+        </StackPanel>
+
+        <!-- Contenu principal -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="350"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Liste des tokens -->
+            <Border Grid.Column="0" Background="{StaticResource CardBackground}"
+                    CornerRadius="8" Margin="0,0,15,0">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header liste -->
+                    <Border Grid.Row="0" Padding="15" BorderBrush="{StaticResource BorderColor}" BorderThickness="0,0,0,1">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Text="TOKENS ACTIFS" FontSize="12" FontWeight="Bold"
+                                       Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center"/>
+
+                            <Button x:Name="NewTokenBtn" Grid.Column="1" Content="+ Nouveau token"
+                                    Background="{StaticResource AccentColor}" Foreground="White"
+                                    BorderThickness="0" Padding="12,6" Cursor="Hand"
+                                    Click="NewTokenBtn_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </Grid>
+                    </Border>
+
+                    <!-- Liste -->
+                    <ListBox x:Name="TokensListBox" Grid.Row="1"
+                             Background="Transparent" BorderThickness="0"
+                             SelectionChanged="TokensListBox_SelectionChanged"
+                             HorizontalContentAlignment="Stretch">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="ListBoxItem">
+                                            <Border x:Name="Bd" Background="Transparent"
+                                                    BorderBrush="{StaticResource BorderColor}"
+                                                    BorderThickness="0,0,0,1" Padding="15,12">
+                                                <ContentPresenter/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#3D3D3D"/>
+                                                </Trigger>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter TargetName="Bd" Property="Background" Value="#4D4D4D"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Indicateur statut -->
+                                    <Ellipse Grid.Column="0" Width="10" Height="10" VerticalAlignment="Center" Margin="0,0,12,0">
+                                        <Ellipse.Style>
+                                            <Style TargetType="Ellipse">
+                                                <Setter Property="Fill" Value="{StaticResource SuccessColor}"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Active}" Value="False">
+                                                        <Setter Property="Fill" Value="{StaticResource DangerColor}"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsActivated}" Value="False">
+                                                        <Setter Property="Fill" Value="{StaticResource WarningColor}"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Ellipse.Style>
+                                    </Ellipse>
+
+                                    <!-- Infos patient -->
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="{Binding PatientDisplayName}" FontWeight="Bold"
+                                                   Foreground="{StaticResource TextPrimary}"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                            <TextBlock Text="{Binding Pseudo, TargetNullValue='(non activé)'}"
+                                                       FontStyle="Italic" FontSize="12"
+                                                       Foreground="{StaticResource TextSecondary}"/>
+                                            <TextBlock Text=" • " Foreground="{StaticResource TextSecondary}" FontSize="12"/>
+                                            <TextBlock Text="{Binding StatusDisplay}" FontSize="12"
+                                                       Foreground="{StaticResource TextSecondary}"/>
+                                        </StackPanel>
+                                    </StackPanel>
+
+                                    <!-- Date -->
+                                    <TextBlock Grid.Column="2" Text="{Binding CreatedAt, StringFormat='{}{0:dd/MM/yyyy}'}"
+                                               FontSize="11" Foreground="{StaticResource TextSecondary}"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <!-- État vide -->
+                    <StackPanel x:Name="EmptyStatePanel" Grid.Row="1"
+                                HorizontalAlignment="Center" VerticalAlignment="Center"
+                                Visibility="Collapsed">
+                        <TextBlock Text="📭" FontSize="48" HorizontalAlignment="Center"/>
+                        <TextBlock Text="Aucun token créé" FontSize="16"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   HorizontalAlignment="Center" Margin="0,10,0,5"/>
+                        <TextBlock Text="Créez un token pour permettre à un patient" FontSize="12"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   HorizontalAlignment="Center"/>
+                        <TextBlock Text="d'accéder à son espace Parent'aile" FontSize="12"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   HorizontalAlignment="Center"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Panneau détail / QR Code -->
+            <Border Grid.Column="1" Background="{StaticResource CardBackground}"
+                    CornerRadius="8">
+                <Grid>
+                    <!-- État: Aucun token sélectionné -->
+                    <StackPanel x:Name="NoSelectionPanel" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock Text="👆" FontSize="48" HorizontalAlignment="Center" Opacity="0.5"/>
+                        <TextBlock Text="Sélectionnez un token" FontSize="14"
+                                   Foreground="{StaticResource TextSecondary}"
+                                   HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                    </StackPanel>
+
+                    <!-- Détail token sélectionné -->
+                    <Grid x:Name="TokenDetailPanel" Visibility="Collapsed" Margin="15">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Contenu scrollable -->
+                        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                            <StackPanel>
+                                <TextBlock Text="QR CODE" FontSize="11" FontWeight="Bold"
+                                           Foreground="{StaticResource TextSecondary}" Margin="0,0,0,10"/>
+
+                                <!-- QR Code (taille réduite) -->
+                                <Border Background="White" CornerRadius="8" Padding="10"
+                                        HorizontalAlignment="Center" Margin="0,0,0,10">
+                                    <Image x:Name="QRCodeImage" Width="150" Height="150" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                                </Border>
+
+                                <!-- Infos token -->
+                                <Border Background="#3D3D3D" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock x:Name="DetailPatientName" FontWeight="Bold" FontSize="13"
+                                                   Foreground="{StaticResource TextPrimary}"/>
+                                        <TextBlock x:Name="DetailPseudo" FontStyle="Italic" FontSize="11"
+                                                   Foreground="{StaticResource TextSecondary}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Background="#3D3D3D" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel>
+                                            <TextBlock Text="Token ID" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
+                                            <TextBlock x:Name="DetailTokenId" FontFamily="Consolas" FontSize="11"
+                                                       Foreground="{StaticResource TextPrimary}" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="📋" ToolTip="Copier"
+                                                Background="Transparent" Foreground="White"
+                                                BorderThickness="0" Padding="5" Cursor="Hand"
+                                                Click="CopyTokenBtn_Click"/>
+                                    </Grid>
+                                </Border>
+
+                                <Border Background="#3D3D3D" CornerRadius="4" Padding="10" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="URL d'accès" FontSize="10" Foreground="{StaticResource TextSecondary}"/>
+                                        <TextBlock x:Name="DetailUrl" FontSize="10" TextWrapping="Wrap"
+                                                   Foreground="{StaticResource AccentColor}" Margin="0,2,0,0"/>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </ScrollViewer>
+
+                        <!-- Actions (toujours visibles en bas) -->
+                        <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,0">
+                            <Button x:Name="PrintQRBtn" Content="🖨️ Imprimer"
+                                    Background="#3D3D3D" Foreground="White"
+                                    BorderThickness="0" Padding="12,8" Margin="0,0,10,0"
+                                    Cursor="Hand" Click="PrintQRBtn_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#4D4D4D"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button x:Name="RevokeBtn" Content="🗑️ Révoquer"
+                                    Background="{StaticResource DangerColor}" Foreground="White"
+                                    BorderThickness="0" Padding="12,8"
+                                    Cursor="Hand" Click="RevokeBtn_Click">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}"
+                                                            CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Footer -->
+        <Border Grid.Row="2" Margin="0,15,0,0">
+            <Grid>
+                <TextBlock Text="Les QR codes permettent aux parents d'accéder à leur espace sur Parent'aile"
+                           Foreground="{StaticResource TextSecondary}" FontSize="11"
+                           VerticalAlignment="Center"/>
+                <Button Content="Fermer" HorizontalAlignment="Right"
+                        Background="#3D3D3D" Foreground="White"
+                        BorderThickness="0" Padding="20,10"
+                        Cursor="Hand" Click="CloseBtn_Click">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}"
+                                                CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#4D4D4D"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

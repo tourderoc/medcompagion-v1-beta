@@ -1,0 +1,139 @@
+<Window x:Class="MedCompanion.Views.Patient.TokenDetailDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Détails du Token Parent'aile" Height="420" Width="500"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="Transparent"
+        AllowsTransparency="True"
+        WindowStyle="None">
+    
+    <Border CornerRadius="20" Background="White" BorderBrush="#E3F2FD" BorderThickness="1.5">
+        <Border.Effect>
+            <DropShadowEffect BlurRadius="25" Opacity="0.2" ShadowDepth="8" Color="#1976D2"/>
+        </Border.Effect>
+        
+        <Grid Margin="25">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/> <!-- Header -->
+                <RowDefinition Height="*"/>    <!-- Body -->
+                <RowDefinition Height="Auto"/> <!-- Footer -->
+            </Grid.RowDefinitions>
+
+            <!-- HEADER -->
+            <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                <TextBlock x:Name="PatientNameTitle" Text="NOM DU PATIENT" FontSize="18" FontWeight="Bold" Foreground="#1976D2"/>
+                <TextBlock Text="Détails du Token Parent'aile" FontSize="12" Foreground="#78909C" Margin="0,2,0,0"/>
+            </StackPanel>
+
+            <!-- BODY -->
+            <Grid Grid.Row="1">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- QR CODE -->
+                <StackPanel Grid.Column="0" VerticalAlignment="Top">
+                    <Border Background="White" CornerRadius="12" Padding="10" BorderBrush="#BBDEFB" BorderThickness="1">
+                        <Image x:Name="QRCodeImage" Width="160" Height="160" RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                    </Border>
+                    <TextBlock Text="Scanner pour actver" FontSize="10" Foreground="#B0BEC5" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                </StackPanel>
+
+                <!-- INFOS & STATS -->
+                <StackPanel Grid.Column="1" Margin="25,0,0,0">
+                    <!-- Status Section -->
+                    <Border Background="#F1F8E9" CornerRadius="8" Padding="12,8" Margin="0,0,0,15">
+                        <StackPanel>
+                            <TextBlock Text="Statut" FontSize="10" Foreground="#558B2F" FontWeight="Bold" Margin="0,0,0,2"/>
+                            <TextBlock x:Name="StatusLabel" Text="Chargement..." FontSize="14" FontWeight="SemiBold" Foreground="#2E7D32"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Details Grid -->
+                    <Grid Margin="0,0,0,20">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="ID Token :" Foreground="#90A4AE" FontSize="11" Margin="0,0,10,5"/>
+                        <TextBlock x:Name="TokenIdLabel" Grid.Row="0" Grid.Column="1" Text="---" FontFamily="Consolas" Foreground="#455A64" FontSize="12" Margin="0,0,0,5"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="Pseudo :" Foreground="#90A4AE" FontSize="11" Margin="0,0,10,5"/>
+                        <TextBlock x:Name="PseudoLabel" Grid.Row="1" Grid.Column="1" Text="—" FontWeight="SemiBold" Foreground="#1976D2" FontSize="12" Margin="0,0,0,5"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Créé le :" Foreground="#90A4AE" FontSize="11" Margin="0,0,10,5"/>
+                        <TextBlock x:Name="CreatedAtLabel" Grid.Row="2" Grid.Column="1" Text="—" Foreground="#455A64" FontSize="12" Margin="0,0,0,5"/>
+                    </Grid>
+
+                    <!-- Stats Section -->
+                    <Separator Background="#ECEFF1" Margin="0,0,0,15"/>
+                    <StackPanel Orientation="Horizontal">
+                        <Border Background="#E3F2FD" CornerRadius="6" Padding="12,6" Margin="0,0,10,0">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📬 Total : " FontSize="11" Foreground="#1565C0"/>
+                                <TextBlock x:Name="TotalMsgLabel" Text="0" FontSize="11" FontWeight="Bold" Foreground="#1565C0"/>
+                            </StackPanel>
+                        </Border>
+                        <Border x:Name="PendingStateBorder" Background="#FFF3E0" CornerRadius="6" Padding="12,6">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock x:Name="PendingMsgIcon" Text="⏳ " FontSize="11" Foreground="#EF6C00"/>
+                                <TextBlock x:Name="PendingMsgLabel" Text="0" FontSize="11" FontWeight="Bold" Foreground="#EF6C00"/>
+                                <TextBlock x:Name="PendingMsgSuffix" Text=" en attente" FontSize="11" Foreground="#EF6C00"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </StackPanel>
+            </Grid>
+
+            <!-- FOOTER -->
+            <Grid Grid.Row="2" Margin="0,15,0,0">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                    <Button x:Name="PrintBtn" Content="🖨️ Imprimer" Padding="15,8" Margin="0,0,10,0" Click="PrintBtn_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="#1976D2"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="10" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button x:Name="RevokeBtn" Content="🚫 Révoquer" Padding="15,8" Click="RevokeBtn_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Background" Value="#f44336"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="10" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
+                
+                <Button Content="Fermer" HorizontalAlignment="Right" Padding="20,8" Click="CloseBtn_Click" BorderThickness="0" Background="Transparent" Foreground="#607D8B" FontWeight="SemiBold"/>
+            </Grid>
+        </Grid>
+    </Border>
+</Window>

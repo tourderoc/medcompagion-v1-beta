@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -16,6 +16,10 @@ using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Services.LLM;
 using MedCompanion.Dialogs;
+using MedCompanion.Views.Courriers;
+using MedCompanion.Views.Attestations;
+using MedCompanion.Views.Ordonnances;
+using MedCompanion.Views.Patient;
 
 namespace MedCompanion;
 
@@ -27,6 +31,7 @@ public partial class MainWindow : Window
     private readonly ContextLoader _contextLoader;
     private readonly ParsingService _parsingService;
     private readonly PatientIndexService _patientIndex;
+    private readonly PatientIdService _patientIdService; // ✅ NOUVEAU
     private readonly PatientContextService _patientContextService; // ✅ NOUVEAU
     private readonly LetterReAdaptationService _reAdaptationService; // ✅ NOUVEAU
     private readonly AnonymizationService _anonymizationService; // ✅ NOUVEAU
@@ -46,7 +51,16 @@ public partial class MainWindow : Window
     private readonly PromptConfigService _promptConfigService;
     private readonly PromptTrackerService _promptTracker;
     private readonly RegenerationService _regenerationService;
-    
+    private readonly FirebaseService _firebaseService;
+    private readonly PilotageAgentService _pilotageAgentService;
+    private readonly PilotageAttachmentService _pilotageAttachmentService;
+    private readonly DocxToPdfService _docxToPdfService;
+    private readonly TokenService _tokenService;
+    private readonly PatientMessageService _patientMessageService;
+    private readonly PilotageEmailService _pilotageEmailService;
+    private readonly QRCodeService _qrCodeService;
+    private readonly TokenPdfService _tokenPdfService;
+
     // Services LLM
     private LLMServiceFactory _llmFactory;
     private LLMWarmupService _warmupService;
@@ -99,16 +113,6 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        // Test Phase 3 (F12)
-this.KeyDown += (s, e) =>
-{
-    if (e.Key == Key.F12)
-    {
-        new Dialogs.SimplePhase3TestDialog(_anonymizationService).ShowDialog();
-        e.Handled = true;
-    }
-};
-    
         _settings = AppSettings.Load();
         _pathService = new PathService();
 
@@ -118,6 +122,9 @@ this.KeyDown += (s, e) =>
         // Initialiser les services de paramètres
         _secureStorageService = new SecureStorageService();
         _windowStateService = new WindowStateService();
+
+        // Charger le mot de passe SMTP depuis le stockage sécurisé
+        LoadSmtpPasswordFromSecureStorage();
 
         // IMPORTANT: Initialiser le système LLM de manière synchrone d'abord
         _llmFactory = new LLMServiceFactory(_settings, _secureStorageService);
@@ -151,6 +158,7 @@ this.KeyDown += (s, e) =>
         _contextLoader = new ContextLoader(_storageService);
         _parsingService = new ParsingService();
         _patientIndex = new PatientIndexService(_pathService);
+        _patientIdService = new PatientIdService(_pathService); // ✅ NOUVEAU
 
         // ✅ NOUVEAU : Initialiser PatientContextService
         _patientContextService = new PatientContextService(_storageService, _patientIndex);
@@ -184,7 +192,16 @@ this.KeyDown += (s, e) =>
         _scannerService = new ScannerService(_pathService);
         _regenerationService = new RegenerationService(_settings, _anonymizationService, _promptConfigService, _openAIService);  // ✅ MODIFIÉ : Ajout OpenAIService pour Phase 3
 
-        // Initialiser OrdonnanceViewModel
+        // ✅ NOUVEAU : Initialiser les services de Pilotage
+        _firebaseService = new FirebaseService();
+        _pilotageAgentService = new PilotageAgentService(_settings);  // ✅ Utilise directement OllamaLLMProvider interne
+        _pilotageAttachmentService = new PilotageAttachmentService(_pathService);
+        _docxToPdfService = new DocxToPdfService();
+        _tokenService = new TokenService();
+        _patientMessageService = new PatientMessageService(_pathService, _tokenService, _firebaseService, _patientIndex);
+        _pilotageEmailService = new PilotageEmailService(_settings);
+        _qrCodeService = new QRCodeService();
+        _tokenPdfService = new TokenPdfService();
         // NOTE: La logique des ordonnances a été migrée vers OrdonnancesControl
         OrdonnanceViewModel = new ViewModels.OrdonnanceViewModel(_ordonnanceService);
 
@@ -316,6 +333,10 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         };
         // NOUVEAU : Naviguer vers Templates avec courrier à transformer en MCC
         CourriersControlPanel.NavigateToTemplatesWithLetter += OnNavigateToTemplatesWithLetter;
+        // Envoyer vers Pilotage (PJ pour email)
+        CourriersControlPanel.SendToPilotageRequested += OnSendToPilotageRequested;
+        AttestationsControlPanel.SendToPilotageRequested += OnSendToPilotageRequested;
+        OrdonnancesControlPanel.SendToPilotageRequested += OnSendToPilotageRequested;
 
         // Initialiser ChatControl (avec LLMGatewayService pour anonymisation centralisée)
         ChatControlPanel.Initialize(_openAIService, _storageService, _patientContextService, _anonymizationService, _promptConfigService, _llmGatewayService, _promptTracker, _chatMemoryService);
@@ -358,10 +379,71 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             MessageBox.Show("✅ MCC ajouté avec succès", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
         };
 
+        // ✅ NOUVEAU : Initialiser PilotageControl
+        PilotageContent.Initialize(_patientIndex, _pilotageAgentService, _firebaseService, _openAIService, _settings, _pathService, _pilotageAttachmentService);
+        PilotageContent.StatusChanged += (s, msg) => {
+            StatusTextBlock.Text = msg;
+        };
+        PilotageContent.NavigateToPatientRequested += (s, patientName) => {
+            // Naviguer vers le dossier du patient
+            var patient = _patientIndex.GetAllPatients().FirstOrDefault(p =>
+                $"{p.Nom.ToUpperInvariant()} {p.Prenom}".Equals(patientName, StringComparison.OrdinalIgnoreCase) ||
+                $"{p.Nom} {p.Prenom}".Equals(patientName, StringComparison.OrdinalIgnoreCase));
+            if (patient != null)
+            {
+                LoadPatientAsync(patient);
+                NavigationModeCombo.SelectedIndex = 0; // Revenir au mode Compagnon
+            }
+        };
+        // ✅ NOUVEAU : Mettre à jour le badge du bouton Messages quand le polling détecte de nouveaux messages
+        PilotageContent.NewMessagesDetected += (s, count) => {
+            Dispatcher.Invoke(() => {
+                PatientSearchViewModel.UnreadMessageCount = count;
+                System.Diagnostics.Debug.WriteLine($"[MainWindow] Badge Messages mis à jour: {count} non traité(s)");
+            });
+        };
+
+        // Initialiser MessagesControl (onglet Messages dans Console)
+        MessagesControlPanel.Initialize(_patientMessageService, _firebaseService, _pilotageEmailService);
+        MessagesControlPanel.StatusChanged += (s, msg) => {
+            StatusTextBlock.Text = msg;
+        };
+
         PatientSearchViewModel.PatientSelected += (s, patient) => {
             if (patient != null) LoadPatientAsync(patient);
         };
-        
+
+        // Handler pour ouvrir la liste des messages non traités
+        PatientSearchViewModel.OpenMessageListRequested += (s, e) => {
+            var dialog = new Dialogs.MessageListDialog(_patientMessageService, _patientIndex);
+            dialog.Owner = this;
+
+            dialog.MessageSelected += (sender, msg) => {
+                // Trouver le patient lié au message
+                if (!string.IsNullOrEmpty(msg.PatientId))
+                {
+                    var patient = _patientIndex.GetAllPatients().FirstOrDefault(p => p.Id == msg.PatientId);
+                    if (patient != null)
+                    {
+                        LoadPatientAsync(patient);
+                        NavigationModeCombo.SelectedIndex = 0; // Mode Console
+
+                        // Activer l'onglet Messages
+                        for (int i = 0; i < AssistantTabControl.Items.Count; i++)
+                        {
+                            if (AssistantTabControl.Items[i] is System.Windows.Controls.TabItem tab && tab == MessagesTabItem)
+                            {
+                                AssistantTabControl.SelectedIndex = i;
+                                break;
+                            }
+                        }
+                    }
+                }
+            };
+
+            dialog.ShowDialog();
+        };
+
         PatientSearchViewModel.OpenPatientListRequested += (s, e) => {
             var dialog = new Dialogs.PatientListDialog(_patientIndex);
             dialog.Owner = this;
@@ -411,6 +493,9 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             dialog.Owner = this;
             if (dialog.ShowDialog() == true && dialog.Result != null)
             {
+                // ✅ NOUVEAU : Générer un numéro de dossier
+                dialog.Result.NumeroDossier = _patientIdService.GenerateNewNumeroDossier();
+
                 var (success, message, id, path) = _patientIndex.Upsert(dialog.Result);
 
                 // ✅ NOUVEAU: Gérer les doublons détectés
@@ -475,6 +560,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                     var newPatient = new PatientIndexEntry
                     {
                         Id = id,
+                        NumeroDossier = dialog.Result.NumeroDossier,
                         Prenom = dialog.Result.Prenom,
                         Nom = dialog.Result.Nom,
                         Dob = dialog.Result.Dob,
@@ -533,6 +619,39 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         
         StatusTextBlock.Text = "✓ Prêt";
         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Gray);
+
+        // ✅ NOUVEAU : Lancer la migration des numéros de dossier en arrière-plan
+        _ = Task.Run(async () =>
+        {
+            var count = await _patientIdService.CountPatientsWithoutNumeroDossierAsync();
+            if (count > 0)
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    StatusTextBlock.Text = $"⏳ Migration de {count} dossiers...";
+                    StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
+                });
+
+                var (migrated, total, error) = await _patientIdService.MigrateExistingPatientsAsync();
+                
+                Dispatcher.Invoke(() =>
+                {
+                    if (error != null)
+                    {
+                        StatusTextBlock.Text = $"⚠️ Erreur migration : {error}";
+                        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+                    }
+                    else
+                    {
+                        StatusTextBlock.Text = $"✅ Migration terminée : {migrated} numéros attribués";
+                        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+                        
+                        // Rafraîchir l'index pour inclure les nouveaux numéros (car on a modifié les fichiers JSON)
+                        InitializePatientIndex(); 
+                    }
+                });
+            }
+        });
     }
 
     private void WireSearchEvents()
@@ -596,6 +715,224 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             PatientSexLabel.Text = metadata.Sexe == "H" ? "Homme" : "Femme";
         else
             PatientSexLabel.Text = "";
+
+        // ✅ MAJ Statut Token Parent'aile
+        if (_selectedPatient != null)
+        {
+            _ = UpdatePatientTokenStatusAsync(_selectedPatient.Id);
+        }
+    }
+
+    /// <summary>
+    /// Met à jour l'interface du token Parent'aile dans le header
+    /// </summary>
+    private async Task UpdatePatientTokenStatusAsync(string patientId)
+    {
+        if (string.IsNullOrEmpty(patientId) || _tokenService == null)
+        {
+            GenerateTokenCardBtn.Visibility = Visibility.Collapsed;
+            TokenStatusCardBorder.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        try
+        {
+            var token = await _tokenService.GetTokenByPatientIdAsync(patientId);
+            
+            if (token == null)
+            {
+                GenerateTokenCardBtn.Visibility = Visibility.Visible;
+                TokenStatusCardBorder.Visibility = Visibility.Collapsed;
+            }
+            else
+            {
+                GenerateTokenCardBtn.Visibility = Visibility.Collapsed;
+                TokenStatusCardBorder.Visibility = Visibility.Visible;
+                
+                TokenIdCardLabel.Text = token.TokenId;
+                
+                if (token.Active)
+                {
+                    if (token.IsActivated)
+                    {
+                        TokenStatusCardLabel.Text = "Token Actif";
+                        TokenStatusCardLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1976D2")); // Bleu
+                        TokenStatusCardIcon.Text = "🔑";
+                    }
+                    else
+                    {
+                        TokenStatusCardLabel.Text = "En attente d'activation";
+                        TokenStatusCardLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F39C12")); // Orange / Ambre
+                        TokenStatusCardIcon.Text = "⏳";
+                    }
+                    RevokeTokenCardBtn.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    TokenStatusCardLabel.Text = "Token Révoqué";
+                    TokenStatusCardLabel.Foreground = Brushes.Red;
+                    TokenStatusCardIcon.Text = "🚫";
+                    RevokeTokenCardBtn.Visibility = Visibility.Collapsed;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TokenUI] Erreur: {ex.Message}");
+        }
+    }
+
+    private async void TokenStatusCardBorder_Click(object sender, MouseButtonEventArgs e)
+    {
+        if (_selectedPatient == null || _tokenService == null) return;
+
+        try
+        {
+            var token = await _tokenService.GetTokenByPatientIdAsync(_selectedPatient.Id);
+            if (token != null)
+            {
+                var dialog = new TokenDetailDialog(
+                    token, 
+                    new PatientMetadata { Nom = _selectedPatient.Nom, Prenom = _selectedPatient.Prenom },
+                    _tokenService,
+                    _patientMessageService,
+                    _qrCodeService,
+                    _tokenPdfService
+                );
+                
+                dialog.Owner = this;
+                dialog.ShowDialog();
+
+                if (dialog.WasModified)
+                {
+                    await UpdatePatientTokenStatusAsync(_selectedPatient.Id);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[TokenUI] Erreur clic capsule: {ex.Message}");
+        }
+    }
+
+    private async void GenerateTokenCardBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null || _tokenService == null) return;
+
+        try
+        {
+            GenerateTokenCardBtn.IsEnabled = false;
+            StatusTextBlock.Text = $"⏳ Génération du token pour {_selectedPatient.NomComplet}...";
+
+            var (token, firebaseOk, firebaseError) = await _tokenService.CreateTokenAsync(
+                _selectedPatient.Id,
+                _selectedPatient.NomComplet);
+
+            if (!firebaseOk)
+            {
+                MessageBox.Show(
+                    $"Token créé localement mais Firebase a échoué :\n{firebaseError}\n\nLe token fonctionnera quand Firebase sera accessible.",
+                    "Attention", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            else
+            {
+                var result = MessageBox.Show(
+                    $"Token généré avec succès !\n\nToken: {token.TokenId}\n\nVoulez-vous l'imprimer maintenant ?",
+                    "Token créé", MessageBoxButton.YesNo, MessageBoxImage.Information);
+
+                if (result == MessageBoxResult.Yes)
+                {
+                    PrintToken(token);
+                }
+            }
+
+            await UpdatePatientTokenStatusAsync(_selectedPatient.Id);
+            StatusTextBlock.Text = $"✅ Token généré pour {_selectedPatient.NomComplet}";
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+        finally
+        {
+            GenerateTokenCardBtn.IsEnabled = true;
+        }
+    }
+
+    private void PrintTokenCardBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null || _tokenService == null) return;
+        
+        _ = Task.Run(async () => {
+            var token = await _tokenService.GetTokenByPatientIdAsync(_selectedPatient.Id);
+            if (token != null)
+            {
+                Dispatcher.Invoke(() => PrintToken(token));
+            }
+        });
+    }
+
+    private async void RevokeTokenCardBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null || _tokenService == null) return;
+
+        var result = MessageBox.Show(
+            $"Êtes-vous sûr de vouloir révoquer le token de {_selectedPatient.NomComplet} ?\n" +
+            "Le parent ne pourra plus envoyer de messages jusqu'à la création d'un nouveau token.",
+            "Confirmation de révocation", MessageBoxButton.YesNo, MessageBoxImage.Warning);
+
+        if (result == MessageBoxResult.Yes)
+        {
+            try
+            {
+                StatusTextBlock.Text = "⏳ Révocation du token...";
+                var (success, error) = await _tokenService.RevokeTokenAsync(_selectedPatient.Id);
+                
+                if (success)
+                {
+                    StatusTextBlock.Text = "✅ Token révoqué";
+                    await UpdatePatientTokenStatusAsync(_selectedPatient.Id);
+                }
+                else
+                {
+                    MessageBox.Show($"Erreur lors de la révocation: {error}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+    }
+
+    private void PrintToken(PatientToken token)
+    {
+        try
+        {
+            var pdfService = new TokenPdfService();
+            if (pdfService.TemplateExists())
+            {
+                var pdfPath = pdfService.GenerateTokenPdf(
+                    token.TokenId,
+                    token.PatientDisplayName,
+                    token.CreatedAt);
+
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = pdfPath,
+                    UseShellExecute = true
+                });
+                StatusTextBlock.Text = $"✅ PDF du token généré : {Path.GetFileName(pdfPath)}";
+            }
+            else
+            {
+                MessageBox.Show("Le template PDF du token est introuvable.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur d'impression : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     
@@ -911,7 +1248,7 @@ private async Task HandleCreateLetterWithAIAsync()
             {
                 // Génération standard → Pas de MCC
                 busyService.UpdateStep("Génération standard par l'IA...");
-                generatedLetter = await GenerateLetterContentAsync(letterResult.UserRequest, null, null);
+                generatedLetter = await GenerateLetterContentAsync(letterResult.UserRequest, null, null, cancellationToken);
             }
             else if (letterResult.SelectedMCC != null)
             {
@@ -923,7 +1260,8 @@ private async Task HandleCreateLetterWithAIAsync()
                 generatedLetter = await GenerateLetterContentAsync(
                     letterResult.UserRequest,
                     letterResult.SelectedMCC,
-                    letterResult.Analysis);
+                    letterResult.Analysis,
+                    cancellationToken);
                 _mccLibrary.IncrementUsage(letterResult.SelectedMCC.Id);
             }
 
@@ -1049,14 +1387,62 @@ private void OnNavigateToTemplatesWithLetter(object? sender, string letterPath)
     }
 }
 
+private async void OnSendToPilotageRequested(object? sender, string filePath)
+{
+    if (_selectedPatient == null)
+    {
+        StatusTextBlock.Text = "⚠️ Aucun patient sélectionné";
+        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+        return;
+    }
+
+    var docType = sender switch
+    {
+        var s when s == CourriersControlPanel => "courrier",
+        var s when s == AttestationsControlPanel => "attestation",
+        var s when s == OrdonnancesControlPanel => "ordonnance",
+        _ => "autre"
+    };
+
+    // Si le fichier est un .docx → convertir en PDF avec LibreOffice
+    var fileToSend = filePath;
+    if (filePath.EndsWith(".docx", StringComparison.OrdinalIgnoreCase))
+    {
+        var pdfPath = Path.ChangeExtension(filePath, ".pdf");
+        var converted = _docxToPdfService.ConvertDocxToPdf(filePath, pdfPath);
+        if (converted)
+        {
+            fileToSend = pdfPath;
+        }
+        else
+        {
+            StatusTextBlock.Text = "⚠️ Conversion PDF échouée, envoi du DOCX";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+        }
+    }
+
+    try
+    {
+        await _pilotageAttachmentService.AddAttachmentAsync(fileToSend, _selectedPatient.Id, docType);
+        var format = fileToSend.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? "PDF" : "DOCX";
+        StatusTextBlock.Text = $"✅ {docType} ({format}) envoyé vers Pilotage";
+        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+    }
+    catch (Exception ex)
+    {
+        StatusTextBlock.Text = $"❌ Erreur envoi Pilotage: {ex.Message}";
+        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+    }
+}
+
 /// <summary>
 /// Génère le contenu du courrier et le retourne (sans afficher)
 /// </summary>
-private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCModel? mcc, LetterAnalysisResult? analysis)
+private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCModel? mcc, LetterAnalysisResult? analysis, CancellationToken cancellationToken = default)
 {
     // ✅ ANONYMISATION : Générer le pseudonyme
-    var sexe = _selectedPatient.Sexe ?? "M";
-    var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", _selectedPatient.NomComplet, sexe);
+    var sexe = _selectedPatient?.Sexe ?? "M";
+    var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", _selectedPatient!.NomComplet, sexe);
 
     // ✅ NOUVEAU : Utiliser PatientContextService pour le contexte complet
     var contextBundle = _patientContextService.GetCompleteContext(_selectedPatient.NomComplet, userRequest);
@@ -1167,7 +1553,7 @@ private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCMo
         ("user", userPrompt)
     };
 
-    var (success, letter, error) = await _currentLLMService.ChatAsync(systemPrompt, messages, maxTokens: 2000);
+    var (success, letter, error) = await _currentLLMService!.ChatAsync(systemPrompt, messages, maxTokens: 2000, cancellationToken: cancellationToken);
 
     // ✅ Logger le prompt dans le tracker
     _promptTracker.LogPrompt(new Models.PromptLogEntry
@@ -1187,7 +1573,7 @@ private async Task<string?> GenerateLetterContentAsync(string userRequest, MCCMo
     if (success)
     {
         // ✅ Désanonymiser : remplacer le pseudonyme par le vrai nom
-        var deanonymizedLetter = _anonymizationService.Deanonymize(letter, anonContext);
+        var deanonymizedLetter = _anonymizationService.Deanonymize(letter!, anonContext);
         return deanonymizedLetter;
     }
     else
@@ -1213,16 +1599,16 @@ private PatientContext BuildPatientContext(PatientIndexEntry patient)
         {
             context.NomComplet = $"{metadata.Prenom} {metadata.Nom}";
             context.Age = metadata.Age ?? patient.Age; // ✅ Fallback sur patient.Age si metadata.Age est null
-            context.Sexe = metadata.Sexe == "H" ? "Homme" : metadata.Sexe == "F" ? "Femme" : metadata.Sexe;
-            context.DateNaissance = metadata.DobFormatted ?? patient.DobFormatted;
+            context.Sexe = metadata.Sexe == "H" ? "Homme" : metadata.Sexe == "F" ? "Femme" : metadata.Sexe ?? "";
+            context.DateNaissance = metadata.DobFormatted ?? patient.DobFormatted ?? "";
         }
         else
         {
             // Fallback complet depuis PatientIndexEntry
             context.NomComplet = patient.NomComplet;
             context.Age = patient.Age; // ✅ Copier l'âge aussi
-            context.Sexe = patient.Sexe == "H" ? "Homme" : patient.Sexe == "F" ? "Femme" : patient.Sexe;
-            context.DateNaissance = patient.DobFormatted;
+            context.Sexe = patient.Sexe == "H" ? "Homme" : patient.Sexe == "F" ? "Femme" : patient.Sexe ?? "";
+            context.DateNaissance = patient.DobFormatted ?? "";
         }
         
         // NOUVEAU : Priorité à la synthèse patient si disponible
@@ -1354,6 +1740,26 @@ private PatientContext BuildPatientContext(PatientIndexEntry patient)
         {
             System.Diagnostics.Debug.WriteLine($"[MainWindow] Erreur rafraîchissement templates: {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"[MainWindow] Stack trace: {ex.StackTrace}");
+        }
+    }
+
+    /// <summary>
+    /// Charge le mot de passe SMTP depuis le stockage sécurisé et l'injecte dans AppSettings
+    /// </summary>
+    private void LoadSmtpPasswordFromSecureStorage()
+    {
+        try
+        {
+            var smtpPassword = _secureStorageService?.GetApiKey("pilotage_smtp_password");
+            if (!string.IsNullOrEmpty(smtpPassword))
+            {
+                _settings.SmtpPassword = smtpPassword;
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Mot de passe SMTP chargé depuis SecureStorage");
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[MainWindow] Erreur chargement mot de passe SMTP: {ex.Message}");
         }
     }
 }
