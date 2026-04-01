@@ -39,12 +39,12 @@ namespace MedCompanion.Models
         /// <summary>
         /// Identifiant unique du MCC
         /// </summary>
-        public string Id { get; set; }
-        
+        public string Id { get; set; } = string.Empty;
+
         /// <summary>
         /// Nom descriptif du MCC
         /// </summary>
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
         
         /// <summary>
         /// Version du MCC (incrémenté à chaque modification)
@@ -83,7 +83,7 @@ namespace MedCompanion.Models
         /// <summary>
         /// Analyse sémantique du document source
         /// </summary>
-        public SemanticAnalysis Semantic { get; set; }
+        public SemanticAnalysis? Semantic { get; set; }
         
         // ========== CONTENU ==========
         

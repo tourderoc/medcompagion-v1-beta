@@ -11,19 +11,19 @@ namespace MedCompanion.Models
         /// <summary>
         /// Identifiant unique du feedback
         /// </summary>
-        public string Id { get; set; }
+        public string Id { get; set; } = string.Empty;
         
         /// <summary>
         /// Identifiant de la génération concernée
         /// Permet de tracer quel document a été noté
         /// </summary>
-        public string GenerationId { get; set; }
+        public string GenerationId { get; set; } = string.Empty;
         
         /// <summary>
         /// Identifiant du MCC utilisé pour cette génération
         /// Permet d'associer la note au bon MCC
         /// </summary>
-        public string MCCUsed { get; set; }
+        public string MCCUsed { get; set; } = string.Empty;
         
         /// <summary>
         /// Note attribuée par l'utilisateur (1-5 étoiles)
@@ -35,7 +35,7 @@ namespace MedCompanion.Models
         /// Commentaire optionnel de l'utilisateur
         /// Permet de comprendre pourquoi une note a été donnée
         /// </summary>
-        public string Comment { get; set; }
+        public string? Comment { get; set; }
         
         /// <summary>
         /// Date et heure du feedback
@@ -46,7 +46,7 @@ namespace MedCompanion.Models
         /// Hash anonymisé du contexte patient (pour analyse sans identifier le patient)
         /// Permet d'analyser les feedbacks par type de situation sans violer la confidentialité
         /// </summary>
-        public string PatientContext { get; set; }
+        public string PatientContext { get; set; } = string.Empty;
         
         /// <summary>
         /// Constructeur par défaut

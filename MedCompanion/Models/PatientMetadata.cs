@@ -7,6 +7,9 @@ namespace MedCompanion.Models
     /// </summary>
     public class PatientMetadata
     {
+        // === Numéro de dossier ===
+        public string? NumeroDossier { get; set; }  // Format: "2025-0042"
+
         // === Identité ===
         public string Prenom { get; set; } = string.Empty;
         public string Nom { get; set; } = string.Empty;
@@ -97,6 +100,7 @@ namespace MedCompanion.Models
     public class PatientIndexEntry
     {
         public string Id { get; set; } = string.Empty;  // Nom_Prenom
+        public string? NumeroDossier { get; set; }  // Format: "2025-0042"
         public string Prenom { get; set; } = string.Empty;
         public string Nom { get; set; } = string.Empty;
         public string? Dob { get; set; }

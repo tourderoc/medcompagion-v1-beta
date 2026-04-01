@@ -13,13 +13,13 @@ namespace MedCompanion.Models
         /// Type de document (ex: "courrier", "attestation", "note", "synthese", "rapport")
         /// </summary>
         [JsonPropertyName("doc_type")]
-        public string DocType { get; set; }
-        
+        public string DocType { get; set; } = string.Empty;
+
         /// <summary>
         /// Public cible (ex: "parents", "ecole", "medecin", "institution", "juge", "mixte")
         /// </summary>
         [JsonPropertyName("public")]
-        public string Public { get; set; }
+        public string Public { get; set; } = string.Empty;
         
         /// <summary>
         /// Public cible - propriété de compatibilité pour ancien code
@@ -35,25 +35,25 @@ namespace MedCompanion.Models
         /// Ton du document (ex: "bienveillant", "clinique", "administratif", "pedagogique", "formel")
         /// </summary>
         [JsonPropertyName("tone")]
-        public string Tone { get; set; }
-        
+        public string Tone { get; set; } = string.Empty;
+
         /// <summary>
         /// Tranche d'âge concernée (ex: "0-3", "3-6", "6-11", "12-15", "16+")
         /// </summary>
         [JsonPropertyName("age_group")]
-        public string AgeGroup { get; set; }
-        
+        public string AgeGroup { get; set; } = string.Empty;
+
         /// <summary>
         /// Niveau de détail (ex: "bref", "complet", "analytique")
         /// </summary>
         [JsonPropertyName("detail_level")]
-        public string DetailLevel { get; set; }
-        
+        public string DetailLevel { get; set; } = string.Empty;
+
         /// <summary>
         /// Résumé du contexte en 2 phrases (famille, école, difficultés)
         /// </summary>
         [JsonPropertyName("context_summary")]
-        public string ContextSummary { get; set; }
+        public string ContextSummary { get; set; } = string.Empty;
         
         /// <summary>
         /// Thèmes identifiés (ex: "attention", "anxiete", "regulation_emotionnelle", "socialisation")
@@ -141,9 +141,9 @@ namespace MedCompanion.Models
         /// Longueur du document (ex: "court", "moyen", "long")
         /// </summary>
         [JsonPropertyName("longueur")]
-        public string Longueur { get; set; }
-        
-        private object _phrasesMoyennes;
+        public string Longueur { get; set; } = string.Empty;
+
+        private object? _phrasesMoyennes;
         
         /// <summary>
         /// Nombre approximatif de mots par phrase (accepte string ou nombre)
@@ -151,7 +151,7 @@ namespace MedCompanion.Models
         [JsonPropertyName("phrases_moyennes")]
         public object PhrasesMoyennesRaw
         {
-            get => _phrasesMoyennes;
+            get => _phrasesMoyennes!;
             set
             {
                 _phrasesMoyennes = value;
@@ -164,13 +164,13 @@ namespace MedCompanion.Models
         /// Nombre approximatif de mots par phrase (version string)
         /// </summary>
         [JsonIgnore]
-        public string PhrasesMoyennes { get; set; }
-        
+        public string PhrasesMoyennes { get; set; } = string.Empty;
+
         /// <summary>
         /// Richesse de la structure (ex: "faible", "moyenne", "elevee")
         /// </summary>
         [JsonPropertyName("structure_richesse")]
-        public string StructureRichesse { get; set; }
+        public string StructureRichesse { get; set; } = string.Empty;
     }
     
     /// <summary>
@@ -178,7 +178,7 @@ namespace MedCompanion.Models
     /// </summary>
     public class MetaInfo
     {
-        private object _semanticConfidence;
+        private object? _semanticConfidence;
         
         /// <summary>
         /// Niveau de confiance de l'analyse sémantique (0.0 - 1.0) - Raw (accepte string ou nombre)
@@ -186,7 +186,7 @@ namespace MedCompanion.Models
         [JsonPropertyName("semantic_confidence")]
         public object SemanticConfidenceRaw
         {
-            get => _semanticConfidence;
+            get => _semanticConfidence!;
             set
             {
                 _semanticConfidence = value;
@@ -216,12 +216,12 @@ namespace MedCompanion.Models
         /// Langue détectée (ex: "fr")
         /// </summary>
         [JsonPropertyName("detected_language")]
-        public string DetectedLanguage { get; set; }
-        
+        public string DetectedLanguage { get; set; } = "fr";
+
         /// <summary>
         /// Source de l'analyse (ex: "TemplateExtractor")
         /// </summary>
         [JsonPropertyName("source")]
-        public string Source { get; set; }
+        public string Source { get; set; } = string.Empty;
     }
 }

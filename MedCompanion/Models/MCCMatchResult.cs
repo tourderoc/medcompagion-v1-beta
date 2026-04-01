@@ -9,10 +9,10 @@ namespace MedCompanion.Models
     /// </summary>
     public class MCCWithScore
     {
-        public MCCModel MCC { get; set; }
+        public MCCModel MCC { get; set; } = null!;
         public double RawScore { get; set; }
         public double NormalizedScore { get; set; }
-        public Dictionary<string, double> ScoreBreakdown { get; set; }
+        public Dictionary<string, double> ScoreBreakdown { get; set; } = new();
     }
 
     /// <summary>
@@ -28,7 +28,7 @@ namespace MedCompanion.Models
         /// <summary>
         /// Le MCC sélectionné (null si pas de match)
         /// </summary>
-        public MCCModel SelectedMCC { get; set; }
+        public MCCModel? SelectedMCC { get; set; }
 
         /// <summary>
         /// Score de matching en points bruts (0-210)
@@ -48,7 +48,7 @@ namespace MedCompanion.Models
         /// <summary>
         /// Métadonnées de l'analyse IA
         /// </summary>
-        public LetterAnalysisResult Analysis { get; set; }
+        public LetterAnalysisResult? Analysis { get; set; }
 
         /// <summary>
         /// Logs détaillés du processus de matching
@@ -68,7 +68,7 @@ namespace MedCompanion.Models
         /// <summary>
         /// Raison de l'échec si pas de match
         /// </summary>
-        public string FailureReason { get; set; }
+        public string? FailureReason { get; set; }
 
         /// <summary>
         /// Constructeur pour un match réussi
@@ -79,7 +79,7 @@ namespace MedCompanion.Models
             LetterAnalysisResult analysis,
             Dictionary<string, double> scoreBreakdown,
             List<string> logs,
-            List<MCCWithScore> topMatches = null)
+            List<MCCWithScore>? topMatches = null)
         {
             return new MCCMatchResult
             {
@@ -103,7 +103,7 @@ namespace MedCompanion.Models
             LetterAnalysisResult analysis,
             int totalChecked,
             List<string> logs,
-            MCCModel bestMCC = null)  // 🆕 Paramètre optionnel pour le meilleur MCC trouvé
+            MCCModel? bestMCC = null)  // 🆕 Paramètre optionnel pour le meilleur MCC trouvé
         {
             return new MCCMatchResult
             {
