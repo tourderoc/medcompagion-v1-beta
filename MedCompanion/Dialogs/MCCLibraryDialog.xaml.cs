@@ -180,7 +180,7 @@ public partial class MCCLibraryDialog : Window
 
         if (result == MessageBoxResult.Yes)
         {
-            _viewModel.ConfirmDelete();
+            _viewModel!.ConfirmDelete();
         }
     }
 

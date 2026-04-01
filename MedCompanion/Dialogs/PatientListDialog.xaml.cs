@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -16,6 +17,7 @@ namespace MedCompanion.Dialogs
         private readonly PatientIndexService _patientIndex;
         private List<PatientDisplayInfo> _allPatients = new();
         private bool _showingDuplicatesOnly = false;
+        private bool _duplicatesCalculated = false; // Flag pour lazy loading des doublons
 
         public PatientIndexEntry? SelectedPatient { get; private set; }
 
@@ -48,52 +50,29 @@ namespace MedCompanion.Dialogs
             }
         }
         
-    private void PatientListDialog_Loaded(object sender, RoutedEventArgs e)
+    private async void PatientListDialog_Loaded(object sender, RoutedEventArgs e)
     {
-        LoadPatients();
+        await LoadPatientsAsync();
 
         // Forcer le focus sur la fenêtre pour éviter le problème du double-clic
         this.Focus();
         this.Focusable = true;
     }
         
-        private void LoadPatients()
+        private async Task LoadPatientsAsync()
         {
             try
             {
-                // Récupérer tous les patients
-                var allPatients = _patientIndex.GetAllPatients();
+                // Afficher le loading overlay
+                LoadingOverlay.Visibility = Visibility.Visible;
+                LoadingText.Text = "Chargement des patients...";
                 
-                // Convertir en PatientDisplayInfo avec calculs
-                _allPatients = new List<PatientDisplayInfo>();
+                // Charger les patients en arrière-plan
+                _allPatients = await Task.Run(() => BuildPatientList());
+                _duplicatesCalculated = false; // Réinitialiser le flag
                 
-                foreach (var patient in allPatients)
-                {
-                    var metadata = _patientIndex.GetMetadata(patient.Id);
-                    var lastConsult = _patientIndex.GetLastConsultationDate(patient.Id);
-                    var creationDate = _patientIndex.GetCreationDate(patient.Id);
-
-                    // Vérifier les doublons
-                    var (hasDuplicates, duplicatePatient, score) = _patientIndex.CheckForDuplicates(patient.Id);
-
-                    _allPatients.Add(new PatientDisplayInfo
-                    {
-                        Patient = patient,
-                        AgeDisplay = metadata?.Age.HasValue == true ? $"{metadata.Age} ans" : "-",
-                        LastConsultDisplay = lastConsult.HasValue ? lastConsult.Value.ToString("dd/MM/yyyy") : "Jamais",
-                        CreationDisplay = creationDate.ToString("dd/MM/yyyy"),
-                        LastConsultDate = lastConsult,
-                        CreationDate = creationDate,
-                        HasDuplicates = hasDuplicates,
-                        DuplicatePatient = duplicatePatient,
-                        DuplicateScore = score
-                    });
-                }
-                
-                // Trier par défaut (Nom A→Z)
+                // Mettre à jour l'UI sur le thread principal
                 ApplySorting("NomAsc");
-                
-                // Mettre à jour le compteur
                 UpdatePatientCount();
             }
             catch (Exception ex)
@@ -101,6 +80,42 @@ namespace MedCompanion.Dialogs
                 MessageBox.Show($"Erreur chargement patients : {ex.Message}", "Erreur", 
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
+            finally
+            {
+                LoadingOverlay.Visibility = Visibility.Collapsed;
+            }
+        }
+        
+        /// <summary>
+        /// Construit la liste des patients (exécuté en arrière-plan)
+        /// </summary>
+        private List<PatientDisplayInfo> BuildPatientList()
+        {
+            var result = new List<PatientDisplayInfo>();
+            var allPatients = _patientIndex.GetAllPatients();
+            
+            foreach (var patient in allPatients)
+            {
+                var metadata = _patientIndex.GetMetadata(patient.Id);
+                var lastConsult = _patientIndex.GetLastConsultationDate(patient.Id);
+                var creationDate = _patientIndex.GetCreationDate(patient.Id);
+
+                // NE PAS calculer les doublons ici - sera fait à la demande
+                result.Add(new PatientDisplayInfo
+                {
+                    Patient = patient,
+                    AgeDisplay = metadata?.Age.HasValue == true ? $"{metadata.Age} ans" : "-",
+                    LastConsultDisplay = lastConsult.HasValue ? lastConsult.Value.ToString("dd/MM/yyyy") : "Jamais",
+                    CreationDisplay = creationDate.ToString("dd/MM/yyyy"),
+                    LastConsultDate = lastConsult,
+                    CreationDate = creationDate,
+                    HasDuplicates = false, // Sera calculé à la demande
+                    DuplicatePatient = null,
+                    DuplicateScore = 0
+                });
+            }
+            
+            return result;
         }
         
         private void SortComboBox_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
@@ -199,7 +214,7 @@ namespace MedCompanion.Dialogs
                         MessageBoxButton.OK, MessageBoxImage.Information);
                     
                     // Recharger la liste
-                    LoadPatients();
+                    _ = LoadPatientsAsync();
                 }
                 else
                 {
@@ -334,12 +349,29 @@ namespace MedCompanion.Dialogs
             }
         }
 
-        private void DuplicateHeader_Click(object sender, RoutedEventArgs e)
+        private async void DuplicateHeader_Click(object sender, RoutedEventArgs e)
         {
             _showingDuplicatesOnly = !_showingDuplicatesOnly;
 
             if (_showingDuplicatesOnly)
             {
+                // Calculer les doublons si pas encore fait
+                if (!_duplicatesCalculated)
+                {
+                    LoadingOverlay.Visibility = Visibility.Visible;
+                    LoadingText.Text = "Recherche des doublons...";
+                    
+                    try
+                    {
+                        await Task.Run(() => CalculateDuplicates());
+                        _duplicatesCalculated = true;
+                    }
+                    finally
+                    {
+                        LoadingOverlay.Visibility = Visibility.Collapsed;
+                    }
+                }
+                
                 // Afficher uniquement les patients avec doublons
                 var duplicatesOnly = _allPatients.Where(p => p.HasDuplicates).ToList();
                 PatientsDataGrid.ItemsSource = duplicatesOnly;
@@ -358,6 +390,20 @@ namespace MedCompanion.Dialogs
             }
 
             UpdatePatientCount();
+        }
+        
+        /// <summary>
+        /// Calcule les doublons pour tous les patients (exécuté en arrière-plan)
+        /// </summary>
+        private void CalculateDuplicates()
+        {
+            foreach (var patientInfo in _allPatients)
+            {
+                var (hasDuplicates, duplicatePatient, score) = _patientIndex.CheckForDuplicates(patientInfo.Patient.Id);
+                patientInfo.HasDuplicates = hasDuplicates;
+                patientInfo.DuplicatePatient = duplicatePatient;
+                patientInfo.DuplicateScore = score;
+            }
         }
 
         private string GetCurrentSortMode()

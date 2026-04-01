@@ -1,0 +1,1737 @@
+<UserControl x:Class="MedCompanion.Views.Consultation.ConsultationModeControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="clr-namespace:MedCompanion.ViewModels"
+             xmlns:local="clr-namespace:MedCompanion.Views.Consultation"
+             Background="#F5F7FA">
+
+    <UserControl.DataContext>
+        <vm:ConsultationModeViewModel/>
+    </UserControl.DataContext>
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Couleurs du dossier patient (bleu medical) -->
+        <SolidColorBrush x:Key="DossierBackgroundBrush" Color="#5A9AAC"/>
+        <SolidColorBrush x:Key="DossierBorderBrush" Color="#1B3A44"/>
+        <SolidColorBrush x:Key="DossierTextBrush" Color="#FFFFFF"/>
+        
+        <DropShadowEffect x:Key="PageShadow" ShadowDepth="2" BlurRadius="8" Opacity="0.1" Direction="0"/>
+        
+        <SolidColorBrush x:Key="TabActiveBrush" Color="#D4E9F0"/>
+        <SolidColorBrush x:Key="TabInactiveBrush" Color="#F0F7FA"/>
+        <SolidColorBrush x:Key="TabHoverBrush" Color="#E0EEF4"/>
+
+        <!-- Style bouton switch d'etat -->
+        <Style x:Key="StateButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#F5F5F5"/>
+            <Setter Property="Foreground" Value="#666666"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,8"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E8E8E8"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style bouton etat actif -->
+        <Style x:Key="StateButtonActiveStyle" TargetType="Button" BasedOn="{StaticResource StateButtonStyle}">
+            <Setter Property="Background" Value="#3498DB"/>
+            <Setter Property="Foreground" Value="White"/>
+        </Style>
+
+        <!-- Style bouton mode Med -->
+        <Style x:Key="MedModeButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="36"/>
+            <Setter Property="Height" Value="36"/>
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="Background" Value="#F5F5F5"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="3"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E3F2FD"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style intercalaire dossier (ancien - horizontal) -->
+        <Style x:Key="DossierTabStyle" TargetType="Button">
+            <Setter Property="Width" Value="40"/>
+            <Setter Property="Height" Value="40"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="Background" Value="{StaticResource TabInactiveBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#C5D8E0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="2"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="4">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style pour les Intercalaires Verticaux -->
+        <Style x:Key="VerticalTabStyle" TargetType="Button">
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="{StaticResource TabInactiveBrush}"/>
+            <Setter Property="Foreground" Value="#5A7A8A"/>
+            <Setter Property="BorderThickness" Value="1,1,1,1"/>
+            <Setter Property="BorderBrush" Value="#B8D4E0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="-4,1,0,1"/>
+            <Setter Property="Padding" Value="0,15,0,15"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="0,6,6,0">
+                            <Border.Effect>
+                                <DropShadowEffect ShadowDepth="1" BlurRadius="2" Opacity="0.1" Direction="0"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                                <ContentPresenter.LayoutTransform>
+                                    <RotateTransform Angle="-90"/>
+                                </ContentPresenter.LayoutTransform>
+                            </ContentPresenter>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E0EEF4"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4A90A4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Style intercalaire vertical ACTIF -->
+        <Style x:Key="VerticalTabActiveStyle" TargetType="Button" BasedOn="{StaticResource VerticalTabStyle}">
+            <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+            <Setter Property="Foreground" Value="#2C5A6A"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="BorderBrush" Value="{StaticResource DossierBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="2,2,0,2"/>
+            <Setter Property="Margin" Value="-15,1,0,1"/>
+            <Setter Property="Padding" Value="0,20,0,20"/>
+        </Style>
+
+        <!-- Style intercalaire interne Viewbox (pour mode plein écran F3) -->
+        <Style x:Key="ViewboxTabStyle" TargetType="Button">
+            <Setter Property="Width" Value="50"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Background" Value="{StaticResource TabInactiveBrush}"/>
+            <Setter Property="Foreground" Value="#5A7A8A"/>
+            <Setter Property="BorderThickness" Value="1,1,1,1"/>
+            <Setter Property="BorderBrush" Value="#B8D4E0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Margin" Value="0,1"/>
+            <Setter Property="Padding" Value="0,15"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="0,6,6,0">
+                            <Border.Effect>
+                                <DropShadowEffect ShadowDepth="1" BlurRadius="2" Opacity="0.1" Direction="0"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}">
+                                <ContentPresenter.LayoutTransform>
+                                    <RotateTransform Angle="-90"/>
+                                </ContentPresenter.LayoutTransform>
+                            </ContentPresenter>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#E0EEF4"/>
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="#4A90A4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <UserControl.InputBindings>
+        <KeyBinding Key="F1" Command="{Binding SwitchToFocusTravailCommand}"/>
+        <KeyBinding Key="F2" Command="{Binding SwitchToConsultationCommand}"/>
+        <KeyBinding Key="F3" Command="{Binding SwitchToDossierCommand}"/>
+    </UserControl.InputBindings>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- BARRE SUPERIEURE - Switch d'etats -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <Border Grid.Row="0"
+                Visibility="Collapsed"
+                Background="White"
+                BorderBrush="#E0E0E0"
+                BorderThickness="0,0,0,1"
+                Padding="15,10">
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Info patient -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel.Style>
+                        <Style TargetType="StackPanel">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </StackPanel.Style>
+                    <TextBlock Text="Mode Consultation"
+                               FontSize="14"
+                               FontWeight="SemiBold"
+                               Foreground="#2C3E50"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text=" - "
+                               Foreground="#95A5A6"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding HasPatient, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock Text="{Binding PatientDisplayName}"
+                               FontSize="14"
+                               Foreground="#3498DB"
+                               FontWeight="Medium"
+                               VerticalAlignment="Center"
+                               Visibility="{Binding HasPatient, Converter={StaticResource BoolToVis}}"/>
+                </StackPanel>
+
+                <!-- Boutons switch d'etat -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal">
+                    <!-- Focus Travail (F1) -->
+                    <Button Command="{Binding SwitchToFocusTravailCommand}"
+                            ToolTip="Focus Travail (F1) - 100% espace de travail">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StateButtonStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFocusTravail}" Value="True">
+                                        <Setter Property="Background" Value="#3498DB"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="[" Margin="0,0,2,0"/>
+                            <Border Width="16" Height="12" Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" CornerRadius="2"/>
+                            <TextBlock Text="]" Margin="2,0,0,0"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Consultation (F2) -->
+                    <Button Command="{Binding SwitchToConsultationCommand}"
+                            ToolTip="Consultation (F2) - 67% travail / 33% dossier">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StateButtonStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsConsultation}" Value="True">
+                                        <Setter Property="Background" Value="#3498DB"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="[" Margin="0,0,2,0"/>
+                            <Border Width="12" Height="12" Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" CornerRadius="2"/>
+                            <TextBlock Text="|" Margin="2,0,2,0"/>
+                            <Border Width="6" Height="12" Background="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}" CornerRadius="2"/>
+                            <TextBlock Text="]" Margin="2,0,0,0"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Focus Dossier (F3) -->
+                    <Button Command="{Binding SwitchToDossierCommand}"
+                            ToolTip="Focus Dossier (F3) - 100% dossier patient">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource StateButtonStyle}">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                        <Setter Property="Background" Value="#3498DB"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="[" Margin="0,0,2,0"/>
+                            <Border Width="16" Height="12" Background="{StaticResource DossierBorderBrush}" CornerRadius="2"/>
+                            <TextBlock Text="]" Margin="2,0,0,0"/>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <!-- ZONE PRINCIPALE - Layout adaptatif -->
+        <!-- ═══════════════════════════════════════════════════════════ -->
+        <Grid Grid.Row="1">
+            <Grid.Style>
+                <Style TargetType="Grid">
+                    <Setter Property="Margin" Value="15"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                            <Setter Property="Margin" Value="0"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Grid.Style>
+            <Grid.ColumnDefinitions>
+                <!-- Espace de travail (67% en mode Consultation) -->
+                <ColumnDefinition x:Name="WorkspaceColumn">
+                    <ColumnDefinition.Style>
+                        <Style TargetType="ColumnDefinition">
+                            <Setter Property="Width" Value="2*"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFocusTravail}" Value="True">
+                                    <Setter Property="Width" Value="*"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                    <Setter Property="Width" Value="0"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ColumnDefinition.Style>
+                </ColumnDefinition>
+
+                <!-- Separateur -->
+                <ColumnDefinition Width="15"/>
+
+                <!-- Dossier patient (33% en mode Consultation) -->
+                <ColumnDefinition x:Name="DossierColumn">
+                    <ColumnDefinition.Style>
+                        <Style TargetType="ColumnDefinition">
+                            <Setter Property="Width" Value="*"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsFocusTravail}" Value="True">
+                                    <Setter Property="Width" Value="0"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                    <Setter Property="Width" Value="*"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ColumnDefinition.Style>
+                </ColumnDefinition>
+            </Grid.ColumnDefinitions>
+
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- ESPACE DE TRAVAIL (Gauche) -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <Grid Grid.Column="0">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+
+                <Grid.ColumnDefinitions>
+                    <!-- Zone clinicien (3/4) -->
+                    <ColumnDefinition Width="3*"/>
+                    <ColumnDefinition Width="10"/>
+                    <!-- Zone Med (1/4) -->
+                    <ColumnDefinition>
+                        <ColumnDefinition.Style>
+                            <Style TargetType="ColumnDefinition">
+                                <Setter Property="Width" Value="*"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsMedExpanded}" Value="False">
+                                        <Setter Property="Width" Value="50"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ColumnDefinition.Style>
+                    </ColumnDefinition>
+                </Grid.ColumnDefinitions>
+
+                <!-- Zone Clinicien -->
+                <Border Grid.Column="0"
+                        Background="White"
+                        CornerRadius="8"
+                        BorderBrush="#E0E0E0"
+                        BorderThickness="1">
+                    <Border.Effect>
+                        <DropShadowEffect ShadowDepth="2" BlurRadius="8" Opacity="0.08"/>
+                    </Border.Effect>
+
+                    <Grid Margin="20">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <!-- Header -->
+                        <StackPanel Grid.Row="0" Margin="0,0,0,15">
+                            <TextBlock Text="Note de consultation"
+                                       FontSize="16"
+                                       FontWeight="SemiBold"
+                                       Foreground="#2C3E50"/>
+                            <TextBlock Text="{Binding ConsultationDate, StringFormat='{}{0:dddd d MMMM yyyy}'}"
+                                       FontSize="12"
+                                       Foreground="#7F8C8D"
+                                       Margin="0,4,0,0"/>
+                        </StackPanel>
+
+                        <!-- Zone d'ecriture -->
+                        <TextBox Grid.Row="1"
+                                 Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 VerticalScrollBarVisibility="Auto"
+                                 FontSize="14"
+                                 FontFamily="Segoe UI"
+                                 Padding="10"
+                                 BorderBrush="#E0E0E0"
+                                 BorderThickness="1">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="TextBox">
+                                                <Border Background="#FAFAFA"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="6">
+                                                    <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+
+                        <!-- Actions rapides -->
+                        <StackPanel Grid.Row="2"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Right"
+                                    Margin="0,15,0,0">
+                            <Button Content="Sauvegarder"
+                                    Command="{Binding SaveNoteCommand}"
+                                    Padding="15,8"
+                                    Background="#27AE60"
+                                    Foreground="White"
+                                    BorderThickness="0"
+                                    Cursor="Hand">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bd"
+                                                            Background="{TemplateBinding Background}"
+                                                            CornerRadius="6"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#219A52"/>
+                                                        </Trigger>
+                                                        <Trigger Property="IsEnabled" Value="False">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#BDC3C7"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+
+                <!-- Zone Med (1/4) -->
+                <Border Grid.Column="2"
+                        Background="White"
+                        CornerRadius="8"
+                        BorderBrush="#90CAF9"
+                        BorderThickness="1">
+                    <Border.Effect>
+                        <DropShadowEffect ShadowDepth="2" BlurRadius="8" Opacity="0.1" Color="#3498DB"/>
+                    </Border.Effect>
+
+                    <Grid>
+                        <!-- Mode etendu -->
+                        <Grid Visibility="{Binding IsMedExpanded, Converter={StaticResource BoolToVis}}">
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Header Med -->
+                            <Border Grid.Row="0"
+                                    Background="#E3F2FD"
+                                    CornerRadius="8,8,0,0"
+                                    Padding="12">
+                                <Grid>
+                                    <TextBlock Text="Med"
+                                               FontSize="14"
+                                               FontWeight="SemiBold"
+                                               Foreground="#1976D2"
+                                               VerticalAlignment="Center"/>
+                                    <Button Content="−"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding ToggleMedExpandedCommand}"
+                                            ToolTip="Reduire"
+                                            Width="24" Height="24"
+                                            FontSize="16"
+                                            FontWeight="Bold"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Foreground="#1976D2"
+                                            Cursor="Hand"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- Mode switches -->
+                            <StackPanel Grid.Row="1"
+                                        Orientation="Horizontal"
+                                        HorizontalAlignment="Center"
+                                        Margin="10">
+                                <Button Content="🔇"
+                                        Command="{Binding SetMedSilencieuxCommand}"
+                                        ToolTip="Silencieux">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MedModeButtonStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMedSilencieux}" Value="True">
+                                                    <Setter Property="Background" Value="#E3F2FD"/>
+                                                    <Setter Property="BorderBrush" Value="#3498DB"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <Button Content="💬"
+                                        Command="{Binding SetMedSuggestionsCommand}"
+                                        ToolTip="Suggestions">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MedModeButtonStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMedSuggestions}" Value="True">
+                                                    <Setter Property="Background" Value="#E3F2FD"/>
+                                                    <Setter Property="BorderBrush" Value="#3498DB"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                                <Button Content="📋"
+                                        Command="{Binding SetMedChecklistCommand}"
+                                        ToolTip="Checklist">
+                                    <Button.Style>
+                                        <Style TargetType="Button" BasedOn="{StaticResource MedModeButtonStyle}">
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsMedChecklist}" Value="True">
+                                                    <Setter Property="Background" Value="#E3F2FD"/>
+                                                    <Setter Property="BorderBrush" Value="#3498DB"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </StackPanel>
+
+                            <!-- Contenu contextuel -->
+                            <ScrollViewer Grid.Row="2"
+                                          VerticalScrollBarVisibility="Auto"
+                                          Margin="10,0,10,10">
+                                <StackPanel>
+                                    <!-- Mode Suggestions -->
+                                    <ItemsControl ItemsSource="{Binding Suggestions}"
+                                                  Visibility="{Binding IsMedSuggestions, Converter={StaticResource BoolToVis}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Background="#FAFAFA"
+                                                        CornerRadius="6"
+                                                        Padding="10"
+                                                        Margin="0,0,0,8">
+                                                    <StackPanel>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                            <TextBlock Text="{Binding Icon}" FontSize="14"/>
+                                                            <TextBlock Text="{Binding Title}"
+                                                                       FontWeight="SemiBold"
+                                                                       FontSize="12"
+                                                                       Foreground="#2C3E50"
+                                                                       Margin="6,0,0,0"/>
+                                                        </StackPanel>
+                                                        <TextBlock Text="{Binding Content}"
+                                                                   FontSize="11"
+                                                                   Foreground="#7F8C8D"
+                                                                   TextWrapping="Wrap"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- Mode Checklist -->
+                                    <ItemsControl ItemsSource="{Binding ChecklistItems}"
+                                                  Visibility="{Binding IsMedChecklist, Converter={StaticResource BoolToVis}}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsChecked}"
+                                                          Margin="0,4">
+                                                    <TextBlock Text="{Binding Text}"
+                                                               FontSize="12"
+                                                               Foreground="#2C3E50"
+                                                               TextWrapping="Wrap"/>
+                                                </CheckBox>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- Mode Silencieux -->
+                                    <TextBlock Text="Med est en mode silencieux. Appelez-le si besoin."
+                                               FontSize="11"
+                                               Foreground="#95A5A6"
+                                               TextWrapping="Wrap"
+                                               TextAlignment="Center"
+                                               Margin="0,20"
+                                               Visibility="{Binding IsMedSilencieux, Converter={StaticResource BoolToVis}}"/>
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Grid>
+
+                        <!-- Mode reduit (barre laterale) -->
+                        <Border Visibility="{Binding IsMedCollapsed, Converter={StaticResource BoolToVis}}">
+                            <Button Content="Med"
+                                    Command="{Binding ToggleMedExpandedCommand}"
+                                    ToolTip="Developper Med"
+                                    Background="#E3F2FD"
+                                    Foreground="#1976D2"
+                                    BorderThickness="0"
+                                    FontWeight="SemiBold"
+                                    Cursor="Hand">
+                                <Button.LayoutTransform>
+                                    <RotateTransform Angle="90"/>
+                                </Button.LayoutTransform>
+                            </Button>
+                        </Border>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <!-- DOSSIER PATIENT SKEUOMORPHIQUE (Droite) -->
+            <!-- Design: dossier papier francais avec intercalaires verticaux -->
+            <!-- ═══════════════════════════════════════════════════════════ -->
+            <Grid Grid.Column="2" ClipToBounds="False">
+                <Grid.Style>
+                    <Style TargetType="Grid">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsFocusTravail}" Value="True">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Grid.Style>
+
+                    <!-- Contenu du dossier + Intercalaires dans la même cellule pour permettre le chevauchement -->
+                    <Grid ClipToBounds="False">
+                        <!-- COUVERTURE (fond bleu A4 Fermé) -->
+                        <Grid Visibility="{Binding IsCouvertureActive, Converter={StaticResource BoolToVis}}">
+                            <!-- MODE ECRAN PARTAGE (F2): Sans intercalaires internes -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="595" Height="842"
+                                            Background="{StaticResource DossierBackgroundBrush}"
+                                            CornerRadius="6,6,6,6"
+                                            BorderBrush="{StaticResource DossierBorderBrush}"
+                                            BorderThickness="2">
+                                        <Border.Effect>
+                                            <DropShadowEffect ShadowDepth="5" BlurRadius="15" Opacity="0.25" Color="#2C3E50"/>
+                                        </Border.Effect>
+                                        <ScrollViewer VerticalScrollBarVisibility="Hidden">
+                                            <StackPanel Margin="25,40">
+                                                <TextBlock Text="DOSSIER PATIENT" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" Margin="0,20,0,40"/>
+                                                <TextBlock Text="Dr Lassoued" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="White" Margin="0,0,0,20"/>
+                                                <Border BorderBrush="#B0FFFFFF" BorderThickness="1.5" Margin="0,0,0,20" Padding="12" Background="#30FFFFFF" CornerRadius="4">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="N° de Dossier :" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                        <TextBlock Text="{Binding CurrentPatient.NumeroDossier, TargetNullValue='Non attribué'}" FontSize="16" Foreground="White" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                <Grid Margin="0,0,0,10">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Nom :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.Nom}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                    <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                </Grid>
+                                                <Grid Margin="0,0,0,10">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Prénom :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.Prenom}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                    <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                </Grid>
+                                                <Grid Margin="0,0,0,10">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Date de naissance :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.DobFormatted}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                    <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                </Grid>
+                                                <Grid Margin="0,20,0,10">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Date 1ère consultation :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.FirstConsultDate, FallbackValue='-'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                    <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Viewbox>
+                            </Grid>
+
+                            <!-- MODE PLEIN ECRAN (F3): Avec intercalaires internes dans le Viewbox -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <!-- Conteneur avec dossier + intercalaires -->
+                                    <Grid Width="645" Height="842">
+                                        <!-- Dossier fermé -->
+                                        <Border Width="595" Height="842" HorizontalAlignment="Left"
+                                                Background="{StaticResource DossierBackgroundBrush}"
+                                                CornerRadius="6,0,0,6"
+                                                BorderBrush="{StaticResource DossierBorderBrush}"
+                                                BorderThickness="2,2,0,2">
+                                            <Border.Effect>
+                                                <DropShadowEffect ShadowDepth="5" BlurRadius="15" Opacity="0.25" Color="#2C3E50"/>
+                                            </Border.Effect>
+                                            <ScrollViewer VerticalScrollBarVisibility="Hidden">
+                                                <StackPanel Margin="25,40">
+                                                    <TextBlock Text="DOSSIER PATIENT" FontSize="32" FontWeight="Bold" HorizontalAlignment="Center" Foreground="White" Margin="0,20,0,40"/>
+                                                    <TextBlock Text="Dr Lassoued" FontSize="16" FontWeight="SemiBold" HorizontalAlignment="Center" Foreground="White" Margin="0,0,0,20"/>
+                                                    <Border BorderBrush="#B0FFFFFF" BorderThickness="1.5" Margin="0,0,0,20" Padding="12" Background="#30FFFFFF" CornerRadius="4">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="N° de Dossier :" FontSize="16" FontWeight="Bold" Foreground="White" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                            <TextBlock Text="{Binding CurrentPatient.NumeroDossier, TargetNullValue='Non attribué'}" FontSize="16" Foreground="White" VerticalAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <Grid Margin="0,0,0,10">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Nom :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.Nom}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                        <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                    </Grid>
+                                                    <Grid Margin="0,0,0,10">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Prénom :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.Prenom}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                        <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                    </Grid>
+                                                    <Grid Margin="0,0,0,10">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Date de naissance :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.DobFormatted}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                        <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                    </Grid>
+                                                    <Grid Margin="0,20,0,10">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Date 1ère consultation :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.FirstConsultDate, FallbackValue='-'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                        <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                    </Grid>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                        </Border>
+
+                                        <!-- Intercalaires internes (collés au bord droit du dossier) -->
+                                        <StackPanel HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="50" Margin="0,20">
+                                            <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Synthese" Content="SYNTHESE" Style="{StaticResource ViewboxTabStyle}" ToolTip="Synthese" Height="130"/>
+                                            <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Administratif" Content="ADMIN." Style="{StaticResource ViewboxTabStyle}" ToolTip="Administratif" Height="130"/>
+                                            <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Consultations" Content="CONSULT." Style="{StaticResource ViewboxTabStyle}" ToolTip="Consultations" Height="130"/>
+                                            <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="ProjetTherapeutique" Content="PROJET" Style="{StaticResource ViewboxTabStyle}" ToolTip="Projet Therapeutique" Height="130"/>
+                                            <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Bilans" Content="BILANS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Bilans" Height="130"/>
+                                            <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Documents" Content="DOCS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Documents" Height="130"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Viewbox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- SYNTHESE -->
+                        <Grid Visibility="{Binding IsSyntheseActive, Converter={StaticResource BoolToVis}}">
+                            <!-- MODE ECRAN PARTAGE (F2): Page unique -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="595" Height="842" Background="White" Effect="{StaticResource PageShadow}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Margin="40,40,40,20">
+                                                <TextBlock Text="SYNTHESE" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                                <TextBlock Text="Vue d'ensemble du dossier" FontSize="14" Foreground="#7F8C8D"/>
+                                            </StackPanel>
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                                <StackPanel>
+                                                    <TextBlock Text="Synthese du patient" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                    <TextBlock Text="Les donnees du patient s'afficheront ici une fois le dossier charge." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                            <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                    Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                    Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </Viewbox>
+                            </Grid>
+
+                            <!-- MODE PLEIN ECRAN (F3): Double page avec intercalaires -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Grid Width="1240" Height="842">
+                                         <!-- Page GAUCHE (Titre + Info) -->
+                                         <Border Width="590" Height="842" HorizontalAlignment="Left" Background="White" Effect="{StaticResource PageShadow}">
+                                             <StackPanel Margin="40">
+                                                  <TextBlock Text="SYNTHESE" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                                                  <TextBlock Text="Vue d'ensemble du dossier" FontSize="16" Foreground="#7F8C8D"/>
+                                             </StackPanel>
+                                         </Border>
+
+                                         <!-- Page DROITE (Contenu Principal) -->
+                                         <Border Width="590" Height="842" Margin="600,0,50,0" Background="White" Effect="{StaticResource PageShadow}">
+                                             <Grid>
+                                                 <Grid.RowDefinitions>
+                                                     <RowDefinition Height="*"/>
+                                                     <RowDefinition Height="Auto"/>
+                                                 </Grid.RowDefinitions>
+                                                 <ScrollViewer Grid.Row="0" Margin="40" VerticalScrollBarVisibility="Hidden">
+                                                     <StackPanel>
+                                                         <TextBlock Text="Synthese du patient" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                         <TextBlock Text="Les donnees du patient s'afficheront ici une fois le dossier charge." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                     </StackPanel>
+                                                 </ScrollViewer>
+                                                 <Button Grid.Row="1" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                         Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                         Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                         <Button.Template>
+                                                             <ControlTemplate TargetType="Button">
+                                                                 <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                 </Border>
+                                                             </ControlTemplate>
+                                                         </Button.Template>
+                                                 </Button>
+                                             </Grid>
+                                         </Border>
+
+                                         <!-- Intercalaires internes (collés au bord droit) -->
+                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="50" Margin="0,20">
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Synthese" Content="SYNTHESE" ToolTip="Synthese" Height="130">
+                                                 <Button.Style>
+                                                     <Style TargetType="Button" BasedOn="{StaticResource ViewboxTabStyle}">
+                                                         <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                                         <Setter Property="Foreground" Value="#2C5A6A"/>
+                                                         <Setter Property="FontWeight" Value="Bold"/>
+                                                     </Style>
+                                                 </Button.Style>
+                                             </Button>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Administratif" Content="ADMIN." Style="{StaticResource ViewboxTabStyle}" ToolTip="Administratif" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Consultations" Content="CONSULT." Style="{StaticResource ViewboxTabStyle}" ToolTip="Consultations" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="ProjetTherapeutique" Content="PROJET" Style="{StaticResource ViewboxTabStyle}" ToolTip="Projet Therapeutique" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Bilans" Content="BILANS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Bilans" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Documents" Content="DOCS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Documents" Height="130"/>
+                                         </StackPanel>
+                                    </Grid>
+                                </Viewbox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- ADMINISTRATIF -->
+                        <Grid Visibility="{Binding IsAdminActive, Converter={StaticResource BoolToVis}}">
+                            <!-- MODE ECRAN PARTAGE (F2): Page unique -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="595" Height="842" Background="White" Effect="{StaticResource PageShadow}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Margin="40,40,40,20">
+                                                <TextBlock Text="ADMINISTRATIF" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                                <TextBlock Text="Coordonnees et infos" FontSize="14" Foreground="#7F8C8D"/>
+                                            </StackPanel>
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                                <StackPanel>
+                                                    <TextBlock Text="Informations administratives" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                    <TextBlock Text="Coordonnees, correspondants, informations scolaires..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                            <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                    Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                    Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </Viewbox>
+                            </Grid>
+
+                            <!-- MODE PLEIN ECRAN (F3): Double page avec intercalaires -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Grid Width="1240" Height="842">
+                                         <!-- Page GAUCHE -->
+                                         <Border Width="590" Height="842" HorizontalAlignment="Left" Background="White" Effect="{StaticResource PageShadow}">
+                                             <StackPanel Margin="40">
+                                                  <TextBlock Text="ADMINISTRATIF" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                                                  <TextBlock Text="Coordonnees et infos" FontSize="16" Foreground="#7F8C8D"/>
+                                             </StackPanel>
+                                         </Border>
+
+                                         <!-- Page DROITE -->
+                                         <Border Width="590" Height="842" Margin="600,0,50,0" Background="White" Effect="{StaticResource PageShadow}">
+                                             <Grid>
+                                                 <Grid.RowDefinitions>
+                                                     <RowDefinition Height="*"/>
+                                                     <RowDefinition Height="Auto"/>
+                                                 </Grid.RowDefinitions>
+                                                 <ScrollViewer Grid.Row="0" Margin="40" VerticalScrollBarVisibility="Hidden">
+                                                     <StackPanel>
+                                                         <TextBlock Text="Informations administratives" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                         <TextBlock Text="Coordonnees, correspondants, informations scolaires..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                     </StackPanel>
+                                                 </ScrollViewer>
+                                                 <Button Grid.Row="1" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                         Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                         Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                         <Button.Template>
+                                                             <ControlTemplate TargetType="Button">
+                                                                 <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                 </Border>
+                                                             </ControlTemplate>
+                                                         </Button.Template>
+                                                 </Button>
+                                             </Grid>
+                                         </Border>
+
+                                         <!-- Intercalaires internes (collés au bord droit) -->
+                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="50" Margin="0,20">
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Synthese" Content="SYNTHESE" Style="{StaticResource ViewboxTabStyle}" ToolTip="Synthese" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Administratif" Content="ADMIN." ToolTip="Administratif" Height="130">
+                                                 <Button.Style>
+                                                     <Style TargetType="Button" BasedOn="{StaticResource ViewboxTabStyle}">
+                                                         <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                                         <Setter Property="Foreground" Value="#2C5A6A"/>
+                                                         <Setter Property="FontWeight" Value="Bold"/>
+                                                     </Style>
+                                                 </Button.Style>
+                                             </Button>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Consultations" Content="CONSULT." Style="{StaticResource ViewboxTabStyle}" ToolTip="Consultations" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="ProjetTherapeutique" Content="PROJET" Style="{StaticResource ViewboxTabStyle}" ToolTip="Projet Therapeutique" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Bilans" Content="BILANS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Bilans" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Documents" Content="DOCS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Documents" Height="130"/>
+                                         </StackPanel>
+                                    </Grid>
+                                </Viewbox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- CONSULTATIONS -->
+                        <Grid Visibility="{Binding IsConsultationsActive, Converter={StaticResource BoolToVis}}">
+                            <!-- MODE ECRAN PARTAGE (F2): Page unique -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="595" Height="842" Background="White" Effect="{StaticResource PageShadow}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Margin="40,40,40,20">
+                                                <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                                <TextBlock Text="Historique medical" FontSize="14" Foreground="#7F8C8D"/>
+                                            </StackPanel>
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                                <StackPanel>
+                                                    <TextBlock Text="Historique des consultations" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                    <TextBlock Text="Les notes de consultation precedentes s'afficheront ici." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                            <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                    Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                    Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </Viewbox>
+                            </Grid>
+
+                            <!-- MODE PLEIN ECRAN (F3): Double page avec intercalaires -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Grid Width="1240" Height="842">
+                                         <!-- Page GAUCHE -->
+                                         <Border Width="590" Height="842" HorizontalAlignment="Left" Background="White" Effect="{StaticResource PageShadow}">
+                                             <StackPanel Margin="40">
+                                                  <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                                                  <TextBlock Text="Historique medical" FontSize="16" Foreground="#7F8C8D"/>
+                                             </StackPanel>
+                                         </Border>
+
+                                         <!-- Page DROITE -->
+                                         <Border Width="590" Height="842" Margin="600,0,50,0" Background="White" Effect="{StaticResource PageShadow}">
+                                             <Grid>
+                                                 <Grid.RowDefinitions>
+                                                     <RowDefinition Height="*"/>
+                                                     <RowDefinition Height="Auto"/>
+                                                 </Grid.RowDefinitions>
+                                                 <ScrollViewer Grid.Row="0" Margin="40" VerticalScrollBarVisibility="Hidden">
+                                                     <StackPanel>
+                                                         <TextBlock Text="Historique des consultations" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                         <TextBlock Text="Les notes de consultation precedentes s'afficheront ici." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                     </StackPanel>
+                                                 </ScrollViewer>
+                                                 <Button Grid.Row="1" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                         Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                         Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                         <Button.Template>
+                                                             <ControlTemplate TargetType="Button">
+                                                                 <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                 </Border>
+                                                             </ControlTemplate>
+                                                         </Button.Template>
+                                                 </Button>
+                                             </Grid>
+                                         </Border>
+
+                                         <!-- Intercalaires internes (collés au bord droit) -->
+                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="50" Margin="0,20">
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Synthese" Content="SYNTHESE" Style="{StaticResource ViewboxTabStyle}" ToolTip="Synthese" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Administratif" Content="ADMIN." Style="{StaticResource ViewboxTabStyle}" ToolTip="Administratif" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Consultations" Content="CONSULT." ToolTip="Consultations" Height="130">
+                                                 <Button.Style>
+                                                     <Style TargetType="Button" BasedOn="{StaticResource ViewboxTabStyle}">
+                                                         <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                                         <Setter Property="Foreground" Value="#2C5A6A"/>
+                                                         <Setter Property="FontWeight" Value="Bold"/>
+                                                     </Style>
+                                                 </Button.Style>
+                                             </Button>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="ProjetTherapeutique" Content="PROJET" Style="{StaticResource ViewboxTabStyle}" ToolTip="Projet Therapeutique" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Bilans" Content="BILANS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Bilans" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Documents" Content="DOCS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Documents" Height="130"/>
+                                         </StackPanel>
+                                    </Grid>
+                                </Viewbox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- PROJET -->
+                        <Grid Visibility="{Binding IsProjetActive, Converter={StaticResource BoolToVis}}">
+                            <!-- MODE ECRAN PARTAGE (F2): Page unique -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="595" Height="842" Background="White" Effect="{StaticResource PageShadow}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Margin="40,40,40,20">
+                                                <TextBlock Text="PROJET THERAPEUTIQUE" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                                <TextBlock Text="Objectifs et suivis" FontSize="14" Foreground="#7F8C8D"/>
+                                            </StackPanel>
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                                <StackPanel>
+                                                    <TextBlock Text="Projet therapeutique" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                    <TextBlock Text="Objectifs, strategies et suivis..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                            <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                    Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                    Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </Viewbox>
+                            </Grid>
+
+                            <!-- MODE PLEIN ECRAN (F3): Double page avec intercalaires -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Grid Width="1240" Height="842">
+                                         <!-- Page GAUCHE -->
+                                         <Border Width="590" Height="842" HorizontalAlignment="Left" Background="White" Effect="{StaticResource PageShadow}">
+                                             <StackPanel Margin="40">
+                                                  <TextBlock Text="PROJET THERAPEUTIQUE" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                                                  <TextBlock Text="Objectifs et suivis" FontSize="16" Foreground="#7F8C8D"/>
+                                             </StackPanel>
+                                         </Border>
+
+                                         <!-- Page DROITE -->
+                                         <Border Width="590" Height="842" Margin="600,0,50,0" Background="White" Effect="{StaticResource PageShadow}">
+                                             <Grid>
+                                                 <Grid.RowDefinitions>
+                                                     <RowDefinition Height="*"/>
+                                                     <RowDefinition Height="Auto"/>
+                                                 </Grid.RowDefinitions>
+                                                 <ScrollViewer Grid.Row="0" Margin="40" VerticalScrollBarVisibility="Hidden">
+                                                     <StackPanel>
+                                                         <TextBlock Text="Projet therapeutique" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                         <TextBlock Text="Objectifs, strategies et suivis..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                     </StackPanel>
+                                                 </ScrollViewer>
+                                                 <Button Grid.Row="1" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                         Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                         Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                         <Button.Template>
+                                                             <ControlTemplate TargetType="Button">
+                                                                 <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                 </Border>
+                                                             </ControlTemplate>
+                                                         </Button.Template>
+                                                 </Button>
+                                             </Grid>
+                                         </Border>
+
+                                         <!-- Intercalaires internes (collés au bord droit) -->
+                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="50" Margin="0,20">
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Synthese" Content="SYNTHESE" Style="{StaticResource ViewboxTabStyle}" ToolTip="Synthese" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Administratif" Content="ADMIN." Style="{StaticResource ViewboxTabStyle}" ToolTip="Administratif" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Consultations" Content="CONSULT." Style="{StaticResource ViewboxTabStyle}" ToolTip="Consultations" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="ProjetTherapeutique" Content="PROJET" ToolTip="Projet Therapeutique" Height="130">
+                                                 <Button.Style>
+                                                     <Style TargetType="Button" BasedOn="{StaticResource ViewboxTabStyle}">
+                                                         <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                                         <Setter Property="Foreground" Value="#2C5A6A"/>
+                                                         <Setter Property="FontWeight" Value="Bold"/>
+                                                     </Style>
+                                                 </Button.Style>
+                                             </Button>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Bilans" Content="BILANS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Bilans" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Documents" Content="DOCS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Documents" Height="130"/>
+                                         </StackPanel>
+                                    </Grid>
+                                </Viewbox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- BILANS -->
+                        <Grid Visibility="{Binding IsBilansActive, Converter={StaticResource BoolToVis}}">
+                            <!-- MODE ECRAN PARTAGE (F2): Page unique -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="595" Height="842" Background="White" Effect="{StaticResource PageShadow}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Margin="40,40,40,20">
+                                                <TextBlock Text="BILANS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                                <TextBlock Text="Evaluations et tests" FontSize="14" Foreground="#7F8C8D"/>
+                                            </StackPanel>
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                                <StackPanel>
+                                                    <TextBlock Text="Bilans et evaluations" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                    <TextBlock Text="Tests, evaluations, resultats..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                            <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                    Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                    Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </Viewbox>
+                            </Grid>
+
+                            <!-- MODE PLEIN ECRAN (F3): Double page avec intercalaires -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Grid Width="1240" Height="842">
+                                         <!-- Page GAUCHE -->
+                                         <Border Width="590" Height="842" HorizontalAlignment="Left" Background="White" Effect="{StaticResource PageShadow}">
+                                             <StackPanel Margin="40">
+                                                  <TextBlock Text="BILANS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                                                  <TextBlock Text="Evaluations et tests" FontSize="16" Foreground="#7F8C8D"/>
+                                             </StackPanel>
+                                         </Border>
+
+                                         <!-- Page DROITE -->
+                                         <Border Width="590" Height="842" Margin="600,0,50,0" Background="White" Effect="{StaticResource PageShadow}">
+                                             <Grid>
+                                                 <Grid.RowDefinitions>
+                                                     <RowDefinition Height="*"/>
+                                                     <RowDefinition Height="Auto"/>
+                                                 </Grid.RowDefinitions>
+                                                 <ScrollViewer Grid.Row="0" Margin="40" VerticalScrollBarVisibility="Hidden">
+                                                     <StackPanel>
+                                                         <TextBlock Text="Bilans et evaluations" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                         <TextBlock Text="Tests, evaluations, resultats..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                     </StackPanel>
+                                                 </ScrollViewer>
+                                                 <Button Grid.Row="1" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                         Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                         Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                         <Button.Template>
+                                                             <ControlTemplate TargetType="Button">
+                                                                 <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                 </Border>
+                                                             </ControlTemplate>
+                                                         </Button.Template>
+                                                 </Button>
+                                             </Grid>
+                                         </Border>
+
+                                         <!-- Intercalaires internes (collés au bord droit) -->
+                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="50" Margin="0,20">
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Synthese" Content="SYNTHESE" Style="{StaticResource ViewboxTabStyle}" ToolTip="Synthese" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Administratif" Content="ADMIN." Style="{StaticResource ViewboxTabStyle}" ToolTip="Administratif" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Consultations" Content="CONSULT." Style="{StaticResource ViewboxTabStyle}" ToolTip="Consultations" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="ProjetTherapeutique" Content="PROJET" Style="{StaticResource ViewboxTabStyle}" ToolTip="Projet Therapeutique" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Bilans" Content="BILANS" ToolTip="Bilans" Height="130">
+                                                 <Button.Style>
+                                                     <Style TargetType="Button" BasedOn="{StaticResource ViewboxTabStyle}">
+                                                         <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                                         <Setter Property="Foreground" Value="#2C5A6A"/>
+                                                         <Setter Property="FontWeight" Value="Bold"/>
+                                                     </Style>
+                                                 </Button.Style>
+                                             </Button>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Documents" Content="DOCS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Documents" Height="130"/>
+                                         </StackPanel>
+                                    </Grid>
+                                </Viewbox>
+                            </Grid>
+                        </Grid>
+
+                        <!-- DOCUMENTS -->
+                        <Grid Visibility="{Binding IsDocumentsActive, Converter={StaticResource BoolToVis}}">
+                            <!-- MODE ECRAN PARTAGE (F2): Page unique -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Border Width="595" Height="842" Background="White" Effect="{StaticResource PageShadow}">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="*"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <StackPanel Grid.Row="0" Margin="40,40,40,20">
+                                                <TextBlock Text="DOCUMENTS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                                <TextBlock Text="Pieces jointes" FontSize="14" Foreground="#7F8C8D"/>
+                                            </StackPanel>
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                                <StackPanel>
+                                                    <TextBlock Text="Documents" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                    <TextBlock Text="Courriers, attestations, ordonnances..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </ScrollViewer>
+                                            <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                    Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                    Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+                                    </Border>
+                                </Viewbox>
+                            </Grid>
+
+                            <!-- MODE PLEIN ECRAN (F3): Double page avec intercalaires -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Viewbox Stretch="Uniform">
+                                    <Grid Width="1240" Height="842">
+                                         <!-- Page GAUCHE -->
+                                         <Border Width="590" Height="842" HorizontalAlignment="Left" Background="White" Effect="{StaticResource PageShadow}">
+                                             <StackPanel Margin="40">
+                                                  <TextBlock Text="DOCUMENTS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
+                                                  <TextBlock Text="Pieces jointes" FontSize="16" Foreground="#7F8C8D"/>
+                                             </StackPanel>
+                                         </Border>
+
+                                         <!-- Page DROITE -->
+                                         <Border Width="590" Height="842" Margin="600,0,50,0" Background="White" Effect="{StaticResource PageShadow}">
+                                             <Grid>
+                                                 <Grid.RowDefinitions>
+                                                     <RowDefinition Height="*"/>
+                                                     <RowDefinition Height="Auto"/>
+                                                 </Grid.RowDefinitions>
+                                                 <ScrollViewer Grid.Row="0" Margin="40" VerticalScrollBarVisibility="Hidden">
+                                                     <StackPanel>
+                                                         <TextBlock Text="Documents" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                         <TextBlock Text="Courriers, attestations, ordonnances..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                     </StackPanel>
+                                                 </ScrollViewer>
+                                                 <Button Grid.Row="1" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+                                                         Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                         Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
+                                                         <Button.Template>
+                                                             <ControlTemplate TargetType="Button">
+                                                                 <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                 </Border>
+                                                             </ControlTemplate>
+                                                         </Button.Template>
+                                                 </Button>
+                                             </Grid>
+                                         </Border>
+
+                                         <!-- Intercalaires internes (collés au bord droit) -->
+                                         <StackPanel HorizontalAlignment="Right" VerticalAlignment="Stretch" Width="50" Margin="0,20">
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Synthese" Content="SYNTHESE" Style="{StaticResource ViewboxTabStyle}" ToolTip="Synthese" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Administratif" Content="ADMIN." Style="{StaticResource ViewboxTabStyle}" ToolTip="Administratif" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Consultations" Content="CONSULT." Style="{StaticResource ViewboxTabStyle}" ToolTip="Consultations" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="ProjetTherapeutique" Content="PROJET" Style="{StaticResource ViewboxTabStyle}" ToolTip="Projet Therapeutique" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Bilans" Content="BILANS" Style="{StaticResource ViewboxTabStyle}" ToolTip="Bilans" Height="130"/>
+                                             <Button Command="{Binding SelectDossierTabCommand}" CommandParameter="Documents" Content="DOCS" ToolTip="Documents" Height="130">
+                                                 <Button.Style>
+                                                     <Style TargetType="Button" BasedOn="{StaticResource ViewboxTabStyle}">
+                                                         <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                                         <Setter Property="Foreground" Value="#2C5A6A"/>
+                                                         <Setter Property="FontWeight" Value="Bold"/>
+                                                     </Style>
+                                                 </Button.Style>
+                                             </Button>
+                                         </StackPanel>
+                                    </Grid>
+                                </Viewbox>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+
+
+
+                <!-- INTERCALAIRES VERTICAUX - Uniquement visible en mode écran partagé (F2) -->
+                <Grid Panel.ZIndex="10" HorizontalAlignment="Right" VerticalAlignment="Stretch">
+                    <Grid.Style>
+                        <Style TargetType="Grid">
+                            <Setter Property="Margin" Value="0,0,-15,0"/>
+                            <Setter Property="Width" Value="35"/>
+                            <Setter Property="Visibility" Value="Visible"/>
+                            <Style.Triggers>
+                                <!-- Masquer en mode plein écran car les intercalaires sont dans le Viewbox -->
+                                <DataTrigger Binding="{Binding IsFocusDossier}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Grid.Style>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Intercalaire: Synthese -->
+                    <Button Grid.Row="0"
+                            Command="{Binding SelectDossierTabCommand}"
+                            CommandParameter="Synthese"
+                            ToolTip="Synthese - Vue condensee, alertes, points cles">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource VerticalTabStyle}">
+                                <Setter Property="Content" Value="SYNTHESE"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSyntheseActive}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                        <Setter Property="Foreground" Value="#2C5A6A"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource DossierBorderBrush}"/>
+                                        <Setter Property="BorderThickness" Value="2,2,0,2"/>
+                                        <Setter Property="Margin" Value="-15,1,0,1"/>
+                                        <Setter Property="Padding" Value="0,20,0,20"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Administratif -->
+                    <Button Grid.Row="1"
+                            Command="{Binding SelectDossierTabCommand}"
+                            CommandParameter="Administratif"
+                            ToolTip="Administratif - Coordonnees, correspondants, informations scolaires">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource VerticalTabStyle}">
+                                <Setter Property="Content" Value="ADMIN."/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsAdminActive}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                        <Setter Property="Foreground" Value="#2C5A6A"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource DossierBorderBrush}"/>
+                                        <Setter Property="BorderThickness" Value="2,2,0,2"/>
+                                        <Setter Property="Margin" Value="-15,1,0,1"/>
+                                        <Setter Property="Padding" Value="0,20,0,20"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Consultations -->
+                    <Button Grid.Row="2"
+                            Command="{Binding SelectDossierTabCommand}"
+                            CommandParameter="Consultations"
+                            ToolTip="Consultations - Historique des notes de consultation">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource VerticalTabStyle}">
+                                <Setter Property="Content" Value="CONSULT."/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsConsultationsActive}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                        <Setter Property="Foreground" Value="#2C5A6A"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource DossierBorderBrush}"/>
+                                        <Setter Property="BorderThickness" Value="2,2,0,2"/>
+                                        <Setter Property="Margin" Value="-15,1,0,1"/>
+                                        <Setter Property="Padding" Value="0,20,0,20"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Projet Therapeutique -->
+                    <Button Grid.Row="3"
+                            Command="{Binding SelectDossierTabCommand}"
+                            CommandParameter="ProjetTherapeutique"
+                            ToolTip="Projet Therapeutique - Objectifs, strategies et suivis">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource VerticalTabStyle}">
+                                <Setter Property="Content" Value="PROJET"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsProjetActive}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                        <Setter Property="Foreground" Value="#2C5A6A"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource DossierBorderBrush}"/>
+                                        <Setter Property="BorderThickness" Value="2,2,0,2"/>
+                                        <Setter Property="Margin" Value="-15,1,0,1"/>
+                                        <Setter Property="Padding" Value="0,20,0,20"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Bilans -->
+                    <Button Grid.Row="4"
+                            Command="{Binding SelectDossierTabCommand}"
+                            CommandParameter="Bilans"
+                            ToolTip="Bilans - Tests, evaluations, resultats">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource VerticalTabStyle}">
+                                <Setter Property="Content" Value="BILANS"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBilansActive}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                        <Setter Property="Foreground" Value="#2C5A6A"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource DossierBorderBrush}"/>
+                                        <Setter Property="BorderThickness" Value="2,2,0,2"/>
+                                        <Setter Property="Margin" Value="-15,1,0,1"/>
+                                        <Setter Property="Padding" Value="0,20,0,20"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Documents -->
+                    <Button Grid.Row="5"
+                            Command="{Binding SelectDossierTabCommand}"
+                            CommandParameter="Documents"
+                            ToolTip="Documents - Courriers, attestations, ordonnances">
+                        <Button.Style>
+                            <Style TargetType="Button" BasedOn="{StaticResource VerticalTabStyle}">
+                                <Setter Property="Content" Value="DOCS"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsDocumentsActive}" Value="True">
+                                        <Setter Property="Background" Value="{StaticResource TabActiveBrush}"/>
+                                        <Setter Property="Foreground" Value="#2C5A6A"/>
+                                        <Setter Property="FontWeight" Value="Bold"/>
+                                        <Setter Property="BorderBrush" Value="{StaticResource DossierBorderBrush}"/>
+                                        <Setter Property="BorderThickness" Value="2,2,0,2"/>
+                                        <Setter Property="Margin" Value="-15,1,0,1"/>
+                                        <Setter Property="Padding" Value="0,20,0,20"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </Grid> <!-- Close Tabs (1016) -->
+            </Grid> <!-- Close Dossier (660) -->
+    </Grid> <!-- Close Row 1 (300) -->
+    </Grid> <!-- Close Root (179) -->
+</UserControl>

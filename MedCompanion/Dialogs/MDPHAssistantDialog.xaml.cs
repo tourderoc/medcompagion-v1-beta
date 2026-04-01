@@ -1164,7 +1164,11 @@ public partial class MDPHAssistantDialog : Window
                 {
                     if (kvp.Value.IsChecked == true)
                     {
-                        demandes.Add(kvp.Value.Content.ToString());
+                        var content = kvp.Value.Content?.ToString();
+                        if (!string.IsNullOrEmpty(content))
+                        {
+                            demandes.Add(content);
+                        }
                     }
                 }
 

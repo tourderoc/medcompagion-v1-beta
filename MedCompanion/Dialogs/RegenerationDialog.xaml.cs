@@ -54,6 +54,9 @@ namespace MedCompanion.Dialogs
             {
                 UpdateRegenerateButtonState();
             };
+
+            // Configurer le bouton de dictée vocale pour cibler le TextBox des instructions
+            VoiceButton.TargetTextBox = InstructionsTextBox;
         }
 
         /// <summary>
@@ -132,6 +135,9 @@ namespace MedCompanion.Dialogs
         /// </summary>
         private void CancelButton_Click(object sender, RoutedEventArgs e)
         {
+            // Arrêter l'enregistrement Handy si actif
+            VoiceButton.ForceStop();
+
             IsSuccess = false;
             RegeneratedContent = null;
             DialogResult = false;
@@ -158,7 +164,8 @@ namespace MedCompanion.Dialogs
             }
 
             var busyService = BusyService.Instance;
-            var cancellationToken = busyService.Start($"Régénération avec {selectedModel.DisplayName}", canCancel: true);
+            // useTopMostOverlay: true pour afficher l'overlay au-dessus de ce dialog modal
+            var cancellationToken = busyService.Start($"Régénération avec {selectedModel.DisplayName}", canCancel: true, useTopMostOverlay: true);
 
             try
             {
@@ -166,32 +173,33 @@ namespace MedCompanion.Dialogs
                 SetUIEnabled(false);
                 StatusText.Foreground = new System.Windows.Media.SolidColorBrush(
                     System.Windows.Media.Color.FromRgb(52, 152, 219)); // Bleu
-                StatusText.Text = $"Régénération en cours avec {selectedModel.DisplayName}...";
+                StatusText.Text = $"Régénération en cours...";
 
                 // Étape 1: Préparation
                 busyService.UpdateStep("Préparation des données...");
                 busyService.UpdateProgress(10);
                 await Task.Delay(100); // Laisser l'UI se mettre à jour
 
-                // Étape 2: Anonymisation (si patient présent)
-                if (_patientMetadata != null)
+                // Étape 2: Anonymisation (si patient présent et provider cloud)
+                if (_patientMetadata != null && selectedModel.Provider.Equals("OpenAI", StringComparison.OrdinalIgnoreCase))
                 {
                     busyService.UpdateStep("Anonymisation des données patient...");
                     busyService.UpdateProgress(30);
                 }
 
                 // Étape 3: Appel au modèle LLM
-                busyService.UpdateStep($"Régénération avec {selectedModel.DisplayName}...");
+                busyService.UpdateStep($"Génération avec {selectedModel.Model}...");
                 busyService.UpdateProgress(50);
 
-                // Appeler le service de régénération
+                // Appeler le service de régénération avec le token d'annulation
                 var (success, result, error) = await _regenerationService.RegenerateAsync(
                     _originalContent,
                     instructions,
                     _contentType,
                     selectedModel.Provider,
                     selectedModel.Model,
-                    _patientMetadata);
+                    _patientMetadata,
+                    cancellationToken);
 
                 if (cancellationToken.IsCancellationRequested)
                 {
@@ -227,7 +235,7 @@ namespace MedCompanion.Dialogs
             }
             catch (OperationCanceledException)
             {
-                StatusText.Text = "⚠️ Régénération annulée par l'utilisateur";
+                StatusText.Text = "⚠️ Régénération annulée";
                 SetUIEnabled(true);
             }
             catch (Exception ex)

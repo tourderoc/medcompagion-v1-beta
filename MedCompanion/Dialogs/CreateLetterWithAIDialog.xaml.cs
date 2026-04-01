@@ -13,11 +13,11 @@ namespace MedCompanion.Dialogs
     public class CreateLetterResult
     {
         public bool Success { get; set; }
-        public MCCModel SelectedMCC { get; set; }
-        public string UserRequest { get; set; }
-        public LetterAnalysisResult Analysis { get; set; }
+        public MCCModel? SelectedMCC { get; set; }
+        public string UserRequest { get; set; } = string.Empty;
+        public LetterAnalysisResult? Analysis { get; set; }
         public bool UseStandardGeneration { get; set; }
-        public LetterGenerationOptions Options { get; set; }
+        public LetterGenerationOptions? Options { get; set; }
     }
 
     public partial class CreateLetterWithAIDialog : Window
@@ -25,14 +25,14 @@ namespace MedCompanion.Dialogs
         private const int MIN_CHARS = 20;
 
         private readonly MCCMatchingService _matchingService;
-        private readonly PatientContext _patientContext;
+        private readonly PatientContext? _patientContext;
 
         public CreateLetterResult Result { get; private set; }
 
         public CreateLetterWithAIDialog(
             PromptReformulationService reformulationService,
             MCCLibraryService mccLibraryService,
-            PatientContext patientContext = null)
+            PatientContext? patientContext = null)
         {
             InitializeComponent();
 
@@ -42,6 +42,9 @@ namespace MedCompanion.Dialogs
             // Créer le service de matching centralisé
             _matchingService = new MCCMatchingService(reformulationService, mccLibraryService);
             _patientContext = patientContext;
+
+            // Configurer le bouton de dictée vocale pour cibler le TextBox de la demande
+            VoiceButton.TargetTextBox = RequestTextBox;
 
             Result = new CreateLetterResult { Success = false };
         }
@@ -85,13 +88,11 @@ namespace MedCompanion.Dialogs
             {
                 AdvancedOptionsPanel.Visibility = Visibility.Visible;
                 AdvancedOptionsToggle.Content = "⚙️ Options avancées ▲";
-                RequestLabel.Margin = new Thickness(0, 220, 0, 8);
             }
             else
             {
                 AdvancedOptionsPanel.Visibility = Visibility.Collapsed;
                 AdvancedOptionsToggle.Content = "⚙️ Options avancées ▼";
-                RequestLabel.Margin = new Thickness(0, 56, 0, 8);
             }
         }
 
@@ -110,7 +111,7 @@ namespace MedCompanion.Dialogs
             {
                 if (selectedItem is not System.Windows.Controls.ComboBoxItem item) return null;
                 
-                var text = item.Content.ToString();
+                var text = item.Content?.ToString() ?? string.Empty;
                 if (string.IsNullOrEmpty(text) || text == "Automatique") return null;
 
                 // Enlever l'emoji (premier caractère + espace) s'il y en a un
@@ -125,7 +126,7 @@ namespace MedCompanion.Dialogs
             }
 
             // Traitement spécifique pour le destinataire (support du texte libre)
-            string recipient = null;
+            string? recipient = null;
             if (RecipientCombo.SelectedItem is System.Windows.Controls.ComboBoxItem item)
             {
                 recipient = ExtractValue(item);
@@ -139,13 +140,13 @@ namespace MedCompanion.Dialogs
                     recipient = null;
                 }
             }
-            options.Recipient = recipient;
+            options.Recipient = recipient ?? options.Recipient;
 
-            options.Tone = ExtractValue(ToneCombo.SelectedItem);
-            options.Length = ExtractValue(LengthCombo.SelectedItem);
-            options.Format = ExtractValue(FormatCombo.SelectedItem);
-            options.PrudenceLevel = ExtractValue(PrudenceCombo.SelectedItem);
-            options.Urgency = ExtractValue(UrgencyCombo.SelectedItem);
+            options.Tone = ExtractValue(ToneCombo.SelectedItem) ?? options.Tone;
+            options.Length = ExtractValue(LengthCombo.SelectedItem) ?? options.Length;
+            options.Format = ExtractValue(FormatCombo.SelectedItem) ?? options.Format;
+            options.PrudenceLevel = ExtractValue(PrudenceCombo.SelectedItem) ?? options.PrudenceLevel;
+            options.Urgency = ExtractValue(UrgencyCombo.SelectedItem) ?? options.Urgency;
 
             return options;
         }
@@ -235,16 +236,16 @@ namespace MedCompanion.Dialogs
                 }
 
                 // Afficher les logs dans la console de debug
-                _matchingService.PrintMatchingLogs(matchResult);
+                _matchingService.PrintMatchingLogs(matchResult!);
 
                 SetUIBusy(false);
 
                 // Vérifier si un match a été trouvé
-                if (matchResult.HasMatch)
+                if (matchResult!.HasMatch)
                 {
                     System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ {matchResult.TopMatches.Count} MCC(s) trouvé(s)");
 
-                    MCCModel selectedMCC = null;
+                    MCCModel? selectedMCC = null;
 
                     // Si plusieurs MCCs sont disponibles, afficher le dialogue de sélection
                     if (matchResult.TopMatches != null && matchResult.TopMatches.Count > 1)
@@ -253,7 +254,7 @@ namespace MedCompanion.Dialogs
 
                         var selectionDialog = new MCCSelectionDialog(
                             matchResult.TopMatches,
-                            matchResult.Analysis)
+                            matchResult.Analysis!)
                         {
                             Owner = this
                         };
@@ -263,7 +264,7 @@ namespace MedCompanion.Dialogs
                         if (selectionResult == true)
                         {
                             selectedMCC = selectionDialog.SelectedMCC;
-                            System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ Utilisateur a choisi : {selectedMCC.Name}");
+                            System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ Utilisateur a choisi : {selectedMCC?.Name}");
                         }
                         else
                         {
@@ -274,12 +275,12 @@ namespace MedCompanion.Dialogs
                     else
                     {
                         // Un seul MCC trouvé → Afficher la preview classique
-                        System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ MCC unique trouvé : {matchResult.SelectedMCC.Name} (score: {matchResult.NormalizedScore:F1}%)");
+                        System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ MCC unique trouvé : {matchResult.SelectedMCC?.Name} (score: {matchResult.NormalizedScore:F1}%)");
 
                         var previewDialog = new MCCMatchResultDialog(
-                            matchResult.SelectedMCC,
+                            matchResult.SelectedMCC!,
                             matchResult.NormalizedScore,
-                            matchResult.Analysis)
+                            matchResult.Analysis!)
                         {
                             Owner = this
                         };
@@ -378,7 +379,7 @@ namespace MedCompanion.Dialogs
             var message =
                 $"⚠️ MCC trouvé avec score partiel\n\n" +
                 $"📚 Bibliothèque consultée : {matchResult.TotalMCCsChecked} templates\n" +
-                $"🎯 Meilleur MCC : \"{matchResult.SelectedMCC.Name}\"\n" +
+                $"🎯 Meilleur MCC : \"{matchResult.SelectedMCC?.Name}\"\n" +
                 $"📊 Score : {matchResult.RawScore:F1} pts ({matchResult.NormalizedScore:F1}%)\n" +
                 $"⚠️ Raison : {matchResult.FailureReason}\n\n" +
                 $"💡 Ce MCC peut servir d'inspiration mais nécessitera adaptation.\n\n" +
@@ -400,7 +401,7 @@ namespace MedCompanion.Dialogs
             switch (dialog.UserChoice)
             {
                 case CustomChoiceDialog.Choice.Option1: // Utiliser ce MCC
-                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ Utilisateur a choisi d'utiliser le MCC partiel : {matchResult.SelectedMCC.Name}");
+                    System.Diagnostics.Debug.WriteLine($"[CreateLetter] ✅ Utilisateur a choisi d'utiliser le MCC partiel : {matchResult.SelectedMCC?.Name}");
                     Result = new CreateLetterResult
                     {
                         Success = true,
@@ -444,8 +445,27 @@ namespace MedCompanion.Dialogs
             string enrichedRequest,
             LetterGenerationOptions options)
         {
+            // Construire les infos d'analyse détaillées
+            var analysisInfo = "";
+            if (matchResult.Analysis != null)
+            {
+                var analysis = matchResult.Analysis;
+                var keywords = analysis.Keywords != null && analysis.Keywords.Count > 0
+                    ? string.Join(", ", analysis.Keywords)
+                    : "Aucun";
+
+                analysisInfo = $"📊 ANALYSE DE VOTRE DEMANDE :\n" +
+                    $"   👥 Destinataire détecté : {analysis.Audience ?? "Non détecté"}\n" +
+                    $"   📄 Type de document : {analysis.DocType ?? "Non détecté"}\n" +
+                    $"   ✍️ Ton : {analysis.Tone ?? "Non détecté"}\n" +
+                    $"   👶 Tranche d'âge : {analysis.AgeGroup ?? "Non détecté"}\n" +
+                    $"   🔑 Mots-clés : {keywords}\n" +
+                    $"   🎯 Confiance IA : {analysis.ConfidenceScore:F0}%\n\n";
+            }
+
             var response = MessageBox.Show(
                 $"⚠️ Aucun modèle MCC pertinent trouvé\n\n" +
+                analysisInfo +
                 $"📚 Bibliothèque consultée : {matchResult.TotalMCCsChecked} templates\n" +
                 $"🎯 Meilleur score : {matchResult.RawScore:F1} pts ({matchResult.NormalizedScore:F1}%)\n" +
                 $"❌ Raison : {matchResult.FailureReason}\n\n" +

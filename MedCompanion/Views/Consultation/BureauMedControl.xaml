@@ -1,0 +1,111 @@
+<UserControl x:Class="MedCompanion.Views.Consultation.BureauMedControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+    <UserControl.Resources>
+        <!-- Style bouton moderne -->
+        <Style x:Key="ModernButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="#3498DB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="15,8"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#2980B9"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>     <!-- Zone centrale embedding -->
+            <RowDefinition Height="Auto"/>  <!-- Zone chat Med -->
+        </Grid.RowDefinitions>
+
+        <!-- Zone Centrale: Host pour l'embedding -->
+        <Border x:Name="CentralHostZone" Grid.Row="0"
+                Background="#F8F9FA"
+                BorderBrush="#3498DB"
+                BorderThickness="2"
+                Margin="5">
+            <!-- Placeholder quand rien n'est integre -->
+            <TextBlock x:Name="PlaceholderText"
+                       Text="Selectionnez un outil et cliquez sur Integrer"
+                       HorizontalAlignment="Center"
+                       VerticalAlignment="Center"
+                       Foreground="#BDC3C7"
+                       FontSize="14"/>
+        </Border>
+
+        <!-- Zone Chat Med -->
+        <Border Grid.Row="1" Background="White" BorderBrush="#E0E0E0" BorderThickness="0,1,0,0">
+            <Grid Margin="10,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Label Med -->
+                <TextBlock Grid.Column="0"
+                           Text="Med:"
+                           FontWeight="SemiBold"
+                           Foreground="#3498DB"
+                           VerticalAlignment="Center"
+                           Margin="0,0,10,0"/>
+
+                <!-- Zone de saisie -->
+                <TextBox x:Name="ChatInputBox"
+                         Grid.Column="1"
+                         Text="{Binding ChatInput, UpdateSourceTrigger=PropertyChanged}"
+                         Padding="10,8"
+                         FontSize="13"
+                         BorderBrush="#E0E0E0"
+                         BorderThickness="1"
+                         VerticalAlignment="Center"
+                         KeyDown="ChatInputBox_KeyDown">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Style.Triggers>
+                                <Trigger Property="Text" Value="">
+                                    <Setter Property="Background">
+                                        <Setter.Value>
+                                            <VisualBrush Stretch="None" AlignmentX="Left">
+                                                <VisualBrush.Visual>
+                                                    <TextBlock Text="  Demandez a Med d'analyser ou d'agir..."
+                                                               Foreground="#BDC3C7" FontStyle="Italic"/>
+                                                </VisualBrush.Visual>
+                                            </VisualBrush>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <!-- Bouton Envoyer -->
+                <Button Grid.Column="2"
+                        Content="Envoyer"
+                        Click="SendChatButton_Click"
+                        Style="{StaticResource ModernButtonStyle}"
+                        Margin="10,0,0,0"/>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

@@ -208,23 +208,92 @@
                         <!-- Séparateur -->
                         <Separator Margin="0,10,0,20"/>
                         
-                        <!-- OpenRouter API Key (à venir) -->
-                        <TextBlock Text="OpenRouter API Key" FontWeight="Bold" Margin="0,0,0,8"/>
-                        <TextBox Height="35"
-                                Padding="10,8"
-                                FontSize="12"
-                                IsEnabled="False"
-                                Text="À venir..."
-                                Foreground="Gray"
-                                Margin="0,0,0,10"/>
-                        
-                        <TextBlock TextWrapping="Wrap" 
-                                  FontSize="11" 
-                                  Foreground="Gray"
+                        <!-- Ollama Web API Key (pour le sub-agent recherche web) -->
+                        <TextBlock Text="Ollama Web API Key" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <PasswordBox x:Name="OllamaWebPasswordBox"
+                                        Grid.Column="0"
+                                        Height="35"
+                                        Padding="10,8"
+                                        FontSize="12"
+                                        PasswordChar="●"/>
+
+                            <Button Grid.Column="1"
+                                   x:Name="TestOllamaWebBtn"
+                                   Content="🧪"
+                                   Width="40"
+                                   Height="35"
+                                   Margin="5,0,0,0"
+                                   Click="TestOllamaWebConnection_Click"
+                                   ToolTip="Tester la connexion Ollama Web"
+                                   Style="{StaticResource ModernButtonStyle}"
+                                   Background="#16A085"
+                                   Foreground="White"/>
+                        </Grid>
+
+                        <TextBlock TextWrapping="Wrap"
+                                  FontSize="11"
+                                  Foreground="#16A085"
                                   Margin="0,0,0,10">
-                            Support OpenRouter sera ajouté prochainement.
+                            Clé API Ollama pour la recherche web (ollama.com/settings/keys). Nécessaire pour le Sub-Agent Web.
                         </TextBlock>
-                        
+
+                        <!-- Séparateur -->
+                        <Separator Margin="0,10,0,20"/>
+
+                        <!-- Configuration SMTP Pilotage -->
+                        <Border Background="#FCE4EC" Padding="15" CornerRadius="5" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#AD1457" Margin="0,0,0,5">
+                                    📧 Email Pilotage (Parent'aile)
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#AD1457">
+                                    Configuration SMTP Gmail pour envoyer des emails aux parents via parentaile.lassoued@gmail.com.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Mot de passe SMTP -->
+                        <TextBlock Text="Mot de passe d'application Gmail" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <PasswordBox x:Name="SmtpPasswordBox"
+                                        Grid.Column="0"
+                                        Height="35"
+                                        Padding="10,8"
+                                        FontSize="12"
+                                        PasswordChar="●"/>
+
+                            <Button Grid.Column="1"
+                                   x:Name="TestSmtpBtn"
+                                   Content="🧪"
+                                   Width="40"
+                                   Height="35"
+                                   Margin="5,0,0,0"
+                                   Click="TestSmtpConnection_Click"
+                                   ToolTip="Tester la configuration SMTP"
+                                   Style="{StaticResource ModernButtonStyle}"
+                                   Background="#AD1457"
+                                   Foreground="White"/>
+                        </Grid>
+
+                        <TextBlock TextWrapping="Wrap"
+                                  FontSize="11"
+                                  Foreground="#666"
+                                  Margin="0,0,0,10">
+                            Mot de passe d'application Gmail (16 caractères sans espaces).
+                            Les emails seront envoyés via smtp.gmail.com (TLS, port 587).
+                        </TextBlock>
+
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
@@ -350,66 +419,153 @@
 
             <!-- Onglet Affichage -->
             <TabItem Header="🖥️ Affichage">
-                <StackPanel Margin="20">
-                    
-                    <!-- En-tête explicatif -->
-                    <Border Background="#FFF3CD" Padding="15" CornerRadius="5" Margin="0,0,0,20">
-                        <StackPanel>
-                            <TextBlock FontWeight="Bold" FontSize="13" Foreground="#856404" Margin="0,0,0,5">
-                                💡 Préférences d'affichage
-                            </TextBlock>
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="20">
+
+                        <!-- En-tête explicatif -->
+                        <Border Background="#FFF3CD" Padding="15" CornerRadius="5" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#856404" Margin="0,0,0,5">
+                                    💡 Préférences d'affichage
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#856404">
+                                    Configurez comment la fenêtre principale s'affiche au démarrage de l'application.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Options de démarrage -->
+                        <TextBlock Text="Au démarrage de l'application :" FontWeight="Bold" FontSize="13" Margin="0,0,0,15"/>
+
+                        <RadioButton GroupName="StartupMode"
+                                    Content="Se souvenir du dernier état"
+                                    IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Remember}"
+                                    Margin="0,0,0,12"
+                                    FontSize="12">
+                            <RadioButton.ToolTip>
+                                <ToolTip>
+                                    <TextBlock TextWrapping="Wrap" MaxWidth="300">
+                                        L'application se souviendra de la position, taille et état (normal/maximisé) de la dernière session.
+                                    </TextBlock>
+                                </ToolTip>
+                            </RadioButton.ToolTip>
+                        </RadioButton>
+
+                        <RadioButton GroupName="StartupMode"
+                                    Content="Toujours démarrer en mode fenêtré"
+                                    IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Windowed}"
+                                    Margin="0,0,0,12"
+                                    FontSize="12">
+                            <RadioButton.ToolTip>
+                                <ToolTip>
+                                    <TextBlock TextWrapping="Wrap" MaxWidth="300">
+                                        L'application démarrera toujours en mode fenêtré (non maximisé).
+                                    </TextBlock>
+                                </ToolTip>
+                            </RadioButton.ToolTip>
+                        </RadioButton>
+
+                        <RadioButton GroupName="StartupMode"
+                                    Content="Toujours démarrer maximisé"
+                                    IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Maximized}"
+                                    Margin="0,0,0,12"
+                                    FontSize="12">
+                            <RadioButton.ToolTip>
+                                <ToolTip>
+                                    <TextBlock TextWrapping="Wrap" MaxWidth="300">
+                                        L'application démarrera toujours en plein écran (maximisé).
+                                    </TextBlock>
+                                </ToolTip>
+                            </RadioButton.ToolTip>
+                        </RadioButton>
+
+                        <!-- Séparateur -->
+                        <Separator Margin="0,20,0,20"/>
+
+                        <!-- Section Handy (Dictée vocale) -->
+                        <Border Background="#E8F5E9" Padding="15" CornerRadius="5" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#2E7D32" Margin="0,0,0,5">
+                                    🎙️ Dictée vocale (Handy)
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#2E7D32">
+                                    Handy permet la transcription vocale locale. Configurez le raccourci clavier qui déclenche l'enregistrement dans Handy.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Activer Handy -->
+                        <Border Background="White" Padding="15" CornerRadius="5" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Activer la dictée vocale" FontWeight="Bold" FontSize="13" Margin="0,0,0,3"/>
+                                    <TextBlock Text="Affiche un bouton micro dans les zones de saisie"
+                                               FontSize="11" Foreground="Gray"/>
+                                </StackPanel>
+
+                                <CheckBox x:Name="HandyEnabledCheckBox"
+                                          Grid.Column="1"
+                                          VerticalAlignment="Center"
+                                          IsChecked="True"/>
+                            </Grid>
+                        </Border>
+
+                        <!-- Raccourci Handy -->
+                        <TextBlock Text="Raccourci clavier Handy" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,10">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+
+                            <ComboBox x:Name="HandyHotkeyCombo"
+                                      Grid.Column="0"
+                                      Height="35"
+                                      Padding="10,8"
+                                      FontSize="12"
+                                      VerticalContentAlignment="Center"
+                                      IsEditable="True">
+                                <ComboBoxItem Content="Ctrl+Space" IsSelected="True"/>
+                                <ComboBoxItem Content="Ctrl+Shift+H"/>
+                                <ComboBoxItem Content="Ctrl+Shift+V"/>
+                                <ComboBoxItem Content="Alt+V"/>
+                                <ComboBoxItem Content="F9"/>
+                            </ComboBox>
+
+                            <Button x:Name="TestHandyBtn"
+                                    Grid.Column="1"
+                                    Content="🧪"
+                                    Width="40"
+                                    Height="35"
+                                    Margin="5,0,0,0"
+                                    Click="TestHandy_Click"
+                                    ToolTip="Tester le raccourci Handy"
+                                    Style="{StaticResource ModernButtonStyle}"
+                                    Background="#4CAF50"
+                                    Foreground="White"/>
+                        </Grid>
+
+                        <TextBlock TextWrapping="Wrap"
+                                  FontSize="11"
+                                  Foreground="Gray"
+                                  Margin="0,0,0,10">
+                            Ce raccourci doit correspondre à celui configuré dans Handy. Par défaut : Ctrl+Space.
+                        </TextBlock>
+
+                        <!-- Info Handy -->
+                        <Border Background="#FFF3CD" Padding="10" CornerRadius="5" Margin="0,10,0,0">
                             <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#856404">
-                                Configurez comment la fenêtre principale s'affiche au démarrage de l'application.
+                                💡 Handy doit être installé et en cours d'exécution. Téléchargez-le sur handy.dev si besoin.
                             </TextBlock>
-                        </StackPanel>
-                    </Border>
-                    
-                    <!-- Options de démarrage -->
-                    <TextBlock Text="Au démarrage de l'application :" FontWeight="Bold" FontSize="13" Margin="0,0,0,15"/>
-                    
-                    <RadioButton GroupName="StartupMode" 
-                                Content="Se souvenir du dernier état"
-                                IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Remember}"
-                                Margin="0,0,0,12"
-                                FontSize="12">
-                        <RadioButton.ToolTip>
-                            <ToolTip>
-                                <TextBlock TextWrapping="Wrap" MaxWidth="300">
-                                    L'application se souviendra de la position, taille et état (normal/maximisé) de la dernière session.
-                                </TextBlock>
-                            </ToolTip>
-                        </RadioButton.ToolTip>
-                    </RadioButton>
-                    
-                    <RadioButton GroupName="StartupMode" 
-                                Content="Toujours démarrer en mode fenêtré"
-                                IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Windowed}"
-                                Margin="0,0,0,12"
-                                FontSize="12">
-                        <RadioButton.ToolTip>
-                            <ToolTip>
-                                <TextBlock TextWrapping="Wrap" MaxWidth="300">
-                                    L'application démarrera toujours en mode fenêtré (non maximisé).
-                                </TextBlock>
-                            </ToolTip>
-                        </RadioButton.ToolTip>
-                    </RadioButton>
-                    
-                    <RadioButton GroupName="StartupMode" 
-                                Content="Toujours démarrer maximisé"
-                                IsChecked="{Binding StartupPreference, Converter={StaticResource RadioButtonConverter}, ConverterParameter=Maximized}"
-                                Margin="0,0,0,12"
-                                FontSize="12">
-                        <RadioButton.ToolTip>
-                            <ToolTip>
-                                <TextBlock TextWrapping="Wrap" MaxWidth="300">
-                                    L'application démarrera toujours en plein écran (maximisé).
-                                </TextBlock>
-                            </ToolTip>
-                        </RadioButton.ToolTip>
-                    </RadioButton>
-                    
-                </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
                         <!-- Onglet Prompt Tracker -->
             <TabItem Header="🔍 Prompt Tracker">
@@ -520,6 +676,455 @@
                         </TextBlock>
                     </Border>
                 </Grid>
+            </TabItem>
+
+            <!-- Onglet Agents -->
+            <TabItem Header="🤖 Agents">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="20">
+
+                        <!-- En-tête explicatif -->
+                        <Border Background="#E3F2FD" Padding="15" CornerRadius="5" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#1565C0" Margin="0,0,0,5">
+                                    🤖 Configuration des Agents IA
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#1565C0">
+                                    Configurez le comportement de Med et des futurs agents. Chaque agent peut utiliser un LLM différent et avoir sa propre "posture" (personnalité).
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Agent Med -->
+                        <Border Background="White" Padding="15" CornerRadius="8" Margin="0,0,0,15" BorderBrush="#90CAF9" BorderThickness="2">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Avatar Med -->
+                                    <Border Grid.Column="0" Width="50" Height="50" CornerRadius="25" Background="#E3F2FD" BorderBrush="#3498DB" BorderThickness="2" Margin="0,0,15,0">
+                                        <TextBlock Text="Med" FontSize="14" FontWeight="Bold" Foreground="#3498DB" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <!-- Info Med -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="Med" FontSize="16" FontWeight="Bold" Foreground="#2C3E50"/>
+                                        <TextBlock Text="Assistant IA bienveillant pour la réflexion clinique" FontSize="11" Foreground="#7F8C8D"/>
+                                    </StackPanel>
+
+                                    <!-- Toggle Actif -->
+                                    <CheckBox x:Name="MedEnabledCheckBox"
+                                              Grid.Column="2"
+                                              Content="Actif"
+                                              IsChecked="True"
+                                              VerticalAlignment="Center"
+                                              FontWeight="SemiBold"/>
+                                </Grid>
+
+                                <!-- Séparateur -->
+                                <Separator Margin="0,0,0,15"/>
+
+                                <!-- Provider LLM -->
+                                <TextBlock Text="Provider LLM" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <ComboBox x:Name="MedLLMProviderCombo"
+                                          Height="35"
+                                          Padding="10,8"
+                                          FontSize="12"
+                                          VerticalContentAlignment="Center"
+                                          SelectionChanged="MedLLMProvider_SelectionChanged"
+                                          Margin="0,0,0,15">
+                                    <ComboBoxItem Content="OpenAI" IsSelected="True"/>
+                                    <ComboBoxItem Content="Ollama"/>
+                                </ComboBox>
+
+                                <!-- Modèle LLM -->
+                                <TextBlock Text="Modèle" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <ComboBox x:Name="MedLLMModelCombo"
+                                              Grid.Column="0"
+                                              Height="35"
+                                              Padding="10,8"
+                                              FontSize="12"
+                                              VerticalContentAlignment="Center"
+                                              IsEditable="True">
+                                        <ComboBoxItem Content="gpt-4o-mini" IsSelected="True"/>
+                                        <ComboBoxItem Content="gpt-4o"/>
+                                        <ComboBoxItem Content="gpt-4-turbo"/>
+                                    </ComboBox>
+
+                                    <Button x:Name="RefreshMedModelsBtn"
+                                            Grid.Column="1"
+                                            Content="🔄"
+                                            Width="40"
+                                            Height="35"
+                                            Margin="5,0,0,0"
+                                            Click="RefreshMedModels_Click"
+                                            ToolTip="Rafraîchir la liste des modèles"
+                                            Style="{StaticResource ModernButtonStyle}"
+                                            Background="#3498DB"
+                                            Foreground="White"/>
+                                </Grid>
+
+                                <!-- Température -->
+                                <TextBlock Text="Température (créativité)" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Slider x:Name="MedTemperatureSlider"
+                                            Grid.Column="0"
+                                            Minimum="0"
+                                            Maximum="1"
+                                            Value="0.7"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="True"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,15,0"/>
+
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ElementName=MedTemperatureSlider, Path=Value, StringFormat={}{0:F1}}"
+                                               FontFamily="Consolas"
+                                               FontSize="13"
+                                               FontWeight="Bold"
+                                               Foreground="#3498DB"
+                                               VerticalAlignment="Center"
+                                               MinWidth="40"/>
+                                </Grid>
+
+                                <!-- Posture -->
+                                <TextBlock Text="Posture de Med (personnalité et instructions)" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <TextBox x:Name="MedPostureTextBox"
+                                         Height="200"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         FontSize="12"
+                                         Padding="10"
+                                         BorderBrush="#E0E0E0"
+                                         BorderThickness="1"/>
+
+                                <!-- Bouton reset posture -->
+                                <Button x:Name="ResetMedPostureBtn"
+                                        Content="Réinitialiser la posture par défaut"
+                                        Click="ResetMedPosture_Click"
+                                        Margin="0,10,0,0"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#6C757D"
+                                        Foreground="White"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Sub-Agent Web (Recherche) -->
+                        <Border Background="White" Padding="15" CornerRadius="8" Margin="0,0,0,15" BorderBrush="#81C784" BorderThickness="2">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Avatar Web -->
+                                    <Border Grid.Column="0" Width="50" Height="50" CornerRadius="25" Background="#E8F5E9" BorderBrush="#4CAF50" BorderThickness="2" Margin="0,0,15,0">
+                                        <TextBlock Text="🌐" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <!-- Info Web -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="Web" FontSize="16" FontWeight="Bold" Foreground="#2E7D32"/>
+                                        <TextBlock Text="Sub-agent de recherche web, lecture et synthèse" FontSize="11" Foreground="#7F8C8D"/>
+                                    </StackPanel>
+
+                                    <!-- Toggle Actif -->
+                                    <CheckBox x:Name="WebEnabledCheckBox"
+                                              Grid.Column="2"
+                                              Content="Actif"
+                                              IsChecked="False"
+                                              VerticalAlignment="Center"
+                                              FontWeight="SemiBold"/>
+                                </Grid>
+
+                                <!-- Note clé API -->
+                                <TextBlock Text="💡 La clé API Ollama se configure dans l'onglet API"
+                                           FontSize="11" Foreground="#666" Margin="0,0,0,15" FontStyle="Italic"/>
+
+                                <!-- Séparateur -->
+                                <Separator Margin="0,0,0,15"/>
+
+                                <!-- Provider LLM -->
+                                <TextBlock Text="Provider LLM (pour synthèse)" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <ComboBox x:Name="WebLLMProviderCombo"
+                                          Height="35"
+                                          Padding="10,8"
+                                          FontSize="12"
+                                          VerticalContentAlignment="Center"
+                                          SelectionChanged="WebLLMProvider_SelectionChanged"
+                                          Margin="0,0,0,15">
+                                    <ComboBoxItem Content="Ollama" IsSelected="True"/>
+                                    <ComboBoxItem Content="OpenAI"/>
+                                </ComboBox>
+
+                                <!-- Modèle LLM -->
+                                <TextBlock Text="Modèle" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <ComboBox x:Name="WebLLMModelCombo"
+                                              Grid.Column="0"
+                                              Height="35"
+                                              Padding="10,8"
+                                              FontSize="12"
+                                              VerticalContentAlignment="Center"
+                                              IsEditable="True">
+                                        <ComboBoxItem Content="llama3" IsSelected="True"/>
+                                        <ComboBoxItem Content="mistral"/>
+                                        <ComboBoxItem Content="phi3"/>
+                                    </ComboBox>
+
+                                    <Button x:Name="RefreshWebModelsBtn"
+                                            Grid.Column="1"
+                                            Content="🔄"
+                                            Width="40"
+                                            Height="35"
+                                            Margin="5,0,0,0"
+                                            Click="RefreshWebModels_Click"
+                                            ToolTip="Rafraîchir la liste des modèles"
+                                            Style="{StaticResource ModernButtonStyle}"
+                                            Background="#4CAF50"
+                                            Foreground="White"/>
+                                </Grid>
+
+                                <!-- Température -->
+                                <TextBlock Text="Température (créativité)" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Slider x:Name="WebTemperatureSlider"
+                                            Grid.Column="0"
+                                            Minimum="0"
+                                            Maximum="1"
+                                            Value="0.3"
+                                            TickFrequency="0.1"
+                                            IsSnapToTickEnabled="True"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,15,0"/>
+
+                                    <TextBlock Grid.Column="1"
+                                               Text="{Binding ElementName=WebTemperatureSlider, Path=Value, StringFormat={}{0:F1}}"
+                                               FontFamily="Consolas"
+                                               FontSize="13"
+                                               FontWeight="Bold"
+                                               Foreground="#4CAF50"
+                                               VerticalAlignment="Center"
+                                               MinWidth="40"/>
+                                </Grid>
+
+                                <!-- Nombre max de résultats -->
+                                <TextBlock Text="Nombre max de résultats" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <ComboBox x:Name="WebMaxResultsCombo"
+                                          Height="35"
+                                          Padding="10,8"
+                                          FontSize="12"
+                                          VerticalContentAlignment="Center"
+                                          Margin="0,0,0,15">
+                                    <ComboBoxItem Content="3"/>
+                                    <ComboBoxItem Content="5" IsSelected="True"/>
+                                    <ComboBoxItem Content="10"/>
+                                </ComboBox>
+
+                                <!-- Posture -->
+                                <TextBlock Text="Posture (instructions de synthèse)" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <TextBox x:Name="WebPostureTextBox"
+                                         Height="150"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         FontSize="12"
+                                         Padding="10"
+                                         BorderBrush="#E0E0E0"
+                                         BorderThickness="1"/>
+
+                                <!-- Bouton reset posture -->
+                                <Button x:Name="ResetWebPostureBtn"
+                                        Content="Réinitialiser la posture par défaut"
+                                        Click="ResetWebPosture_Click"
+                                        Margin="0,10,0,0"
+                                        HorizontalAlignment="Left"
+                                        Style="{StaticResource ModernButtonStyle}"
+                                        Background="#6C757D"
+                                        Foreground="White"/>
+
+                                <!-- Info mots-clés -->
+                                <Border Background="#E8F5E9" Padding="10" CornerRadius="5" Margin="0,15,0,0">
+                                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#2E7D32">
+                                        🔍 Mots-clés déclencheurs : "cherche", "recherche", "vérifie", "voir sur le net", "sur internet"
+                                    </TextBlock>
+                                </Border>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Agent de Pilotage (Parent'aile) -->
+                        <Border Background="White" Padding="15" CornerRadius="8" Margin="0,0,0,15" BorderBrush="#E67E22" BorderThickness="2">
+                            <StackPanel>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <!-- Avatar Pilotage -->
+                                    <Border Grid.Column="0" Width="50" Height="50" CornerRadius="25" Background="#FDF2E9" BorderBrush="#E67E22" BorderThickness="2" Margin="0,0,15,0">
+                                        <TextBlock Text="🎯" FontSize="20" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+
+                                    <!-- Info Pilotage -->
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                        <TextBlock Text="Pilotage" FontSize="16" FontWeight="Bold" Foreground="#D35400"/>
+                                        <TextBlock Text="Analyse des messages parents, tri et suggestion de réponse" FontSize="11" Foreground="#7F8C8D"/>
+                                    </StackPanel>
+
+                                    <!-- Toggle Actif -->
+                                    <CheckBox x:Name="PilotageEnabledCheckBox"
+                                               Grid.Column="2"
+                                               Content="Actif"
+                                               IsChecked="True"
+                                               VerticalAlignment="Center"
+                                               FontWeight="SemiBold"/>
+                                </Grid>
+
+                                <!-- Séparateur -->
+                                <Separator Margin="0,0,0,15"/>
+
+                                <!-- Provider LLM -->
+                                <TextBlock Text="Provider LLM" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <ComboBox x:Name="PilotageLLMProviderCombo"
+                                           Height="35"
+                                           Padding="10,8"
+                                           FontSize="12"
+                                           VerticalContentAlignment="Center"
+                                           SelectionChanged="PilotageLLMProvider_SelectionChanged"
+                                           Margin="0,0,0,15">
+                                    <ComboBoxItem Content="Ollama" IsSelected="True"/>
+                                    <ComboBoxItem Content="OpenAI"/>
+                                </ComboBox>
+
+                                <!-- Modèle LLM -->
+                                <TextBlock Text="Modèle" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <ComboBox x:Name="PilotageLLMModelCombo"
+                                               Grid.Column="0"
+                                               Height="35"
+                                               Padding="10,8"
+                                               FontSize="12"
+                                               VerticalContentAlignment="Center"
+                                               IsEditable="True">
+                                        <ComboBoxItem Content="gpt-os:20b" IsSelected="True"/>
+                                    </ComboBox>
+
+                                    <Button x:Name="RefreshPilotageModelsBtn"
+                                             Grid.Column="1"
+                                             Content="🔄"
+                                             Width="40"
+                                             Height="35"
+                                             Margin="5,0,0,0"
+                                             Click="RefreshPilotageModels_Click"
+                                             ToolTip="Rafraîchir la liste des modèles"
+                                             Style="{StaticResource ModernButtonStyle}"
+                                             Background="#E67E22"
+                                             Foreground="White"/>
+                                </Grid>
+
+                                <!-- Température -->
+                                <TextBlock Text="Température (créativité)" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <Grid Margin="0,0,0,15">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+
+                                    <Slider x:Name="PilotageTemperatureSlider"
+                                             Grid.Column="0"
+                                             Minimum="0"
+                                             Maximum="1"
+                                             Value="0.3"
+                                             TickFrequency="0.1"
+                                             IsSnapToTickEnabled="True"
+                                             VerticalAlignment="Center"
+                                             Margin="0,0,15,0"/>
+
+                                    <TextBlock Grid.Column="1"
+                                                Text="{Binding ElementName=PilotageTemperatureSlider, Path=Value, StringFormat={}{0:F1}}"
+                                                FontFamily="Consolas"
+                                                FontSize="13"
+                                                FontWeight="Bold"
+                                                Foreground="#E67E22"
+                                                VerticalAlignment="Center"
+                                                MinWidth="40"/>
+                                </Grid>
+
+                                <!-- Posture -->
+                                <TextBlock Text="Posture (instructions d'analyse)" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                <TextBox x:Name="PilotagePostureTextBox"
+                                         Height="150"
+                                         TextWrapping="Wrap"
+                                         AcceptsReturn="True"
+                                         VerticalScrollBarVisibility="Auto"
+                                         FontSize="12"
+                                         Padding="10"
+                                         BorderBrush="#E0E0E0"
+                                         BorderThickness="1"/>
+
+                                <!-- Bouton reset posture -->
+                                <Button x:Name="ResetPilotagePostureBtn"
+                                         Content="Réinitialiser la posture par défaut"
+                                         Click="ResetPilotagePosture_Click"
+                                         Margin="0,10,0,0"
+                                         HorizontalAlignment="Left"
+                                         Style="{StaticResource ModernButtonStyle}"
+                                         Background="#6C757D"
+                                         Foreground="White"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Info futurs agents -->
+                        <Border Background="#FFF3CD" Padding="15" CornerRadius="5" Margin="0,0,0,0">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="12" Foreground="#856404" Margin="0,0,0,8">
+                                    💡 Évolutions futures
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#856404">
+                                    D'autres agents spécialisés pourront être ajoutés ici (calendrier, analyse de documents, etc.).
+                                    Chaque agent aura sa propre configuration et son propre LLM.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
             </TabItem>
 
             <!-- Onglet Chat -->

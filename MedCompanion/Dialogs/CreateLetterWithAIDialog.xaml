@@ -1,6 +1,7 @@
 <Window x:Class="MedCompanion.Dialogs.CreateLetterWithAIDialog"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:controls="clr-namespace:MedCompanion.Controls"
         Title="✨ Créer un courrier avec l'IA intelligente"
         Width="650" Height="600"
         WindowStartupLocation="CenterOwner"
@@ -183,52 +184,62 @@
                 </Grid>
             </Border>
 
-            <!-- Étiquette -->
-            <TextBlock Grid.Row="4" 
-                       FontWeight="SemiBold" 
-                       Foreground="#34495E"
-                       Margin="0,0,0,8"
-                       x:Name="RequestLabel">
-                📝 Décrivez votre demande :
-            </TextBlock>
+            <!-- Groupe de saisie regroupé pour une disposition automatique -->
+            <StackPanel Grid.Row="4" Margin="0,10,0,0">
+                <!-- Étiquette et Micro -->
+                <Grid x:Name="RequestHeaderGrid" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="RequestLabel" 
+                               Grid.Column="0"
+                               FontWeight="SemiBold" 
+                               Foreground="#34495E"
+                               VerticalAlignment="Center">
+                        📝 Décrivez votre demande :
+                    </TextBlock>
+                    <controls:VoiceDictationButton x:Name="VoiceButton" Grid.Column="1" ToolTip="Dicter votre demande (Handy)" Margin="10,0,0,0"/>
+                </Grid>
 
-            <!-- Zone de saisie -->
-            <Border Grid.Row="4" 
-                    BorderBrush="#BDC3C7" 
-                    BorderThickness="1" 
-                    CornerRadius="4"
-                    Background="White"
-                    Margin="0,32,0,0">
-                <TextBox x:Name="RequestTextBox"
-                         TextWrapping="Wrap"
-                         AcceptsReturn="True"
-                         VerticalScrollBarVisibility="Auto"
-                         BorderThickness="0"
-                         Padding="10"
-                         FontSize="13"
-                         TextChanged="RequestTextBox_TextChanged">
-                    <TextBox.Style>
-                        <Style TargetType="TextBox">
-                            <Style.Triggers>
-                                <Trigger Property="Text" Value="">
-                                    <Setter Property="Background">
-                                        <Setter.Value>
-                                            <VisualBrush Stretch="None" AlignmentX="Left" AlignmentY="Top">
-                                                <VisualBrush.Visual>
-                                                    <TextBlock Text="Exemple : &quot;Courrier pour demande de PAP à l'école pour un enfant avec trouble de l'attention&quot;"
-                                                               Foreground="#95A5A6"
-                                                               Margin="2,2,0,0"
-                                                               FontSize="13"/>
-                                                </VisualBrush.Visual>
-                                            </VisualBrush>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBox.Style>
-                </TextBox>
-            </Border>
+                <!-- Zone de saisie -->
+                <Border x:Name="RequestTextBorder" 
+                        BorderBrush="#BDC3C7" 
+                        BorderThickness="1" 
+                        CornerRadius="4"
+                        Background="White"
+                        Height="150">
+                    <TextBox x:Name="RequestTextBox"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="True"
+                             VerticalScrollBarVisibility="Auto"
+                             BorderThickness="0"
+                             Padding="10"
+                             FontSize="13"
+                             TextChanged="RequestTextBox_TextChanged">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox">
+                                <Style.Triggers>
+                                    <Trigger Property="Text" Value="">
+                                        <Setter Property="Background">
+                                            <Setter.Value>
+                                                <VisualBrush Stretch="None" AlignmentX="Left" AlignmentY="Top">
+                                                    <VisualBrush.Visual>
+                                                        <TextBlock Text="Exemple : &quot;Courrier pour demande de PAP à l'école pour un enfant avec trouble de l'attention&quot;"
+                                                                   Foreground="#95A5A6"
+                                                                   Margin="2,2,0,0"
+                                                                   FontSize="13"/>
+                                                    </VisualBrush.Visual>
+                                                </VisualBrush>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+                </Border>
+            </StackPanel>
 
             <!-- Compteur de caractères et infos -->
             <StackPanel Grid.Row="5" Margin="0,8,0,0">

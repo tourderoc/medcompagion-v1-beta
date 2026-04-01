@@ -7,7 +7,10 @@
         WindowStartupLocation="CenterOwner"
         Background="#F5F5F5">
     
-    <Grid Margin="20">
+    <!-- Root wrapper pour permettre l'overlay -->
+    <Grid x:Name="RootWrapper">
+    
+    <Grid x:Name="MainGrid" Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="10"/>
@@ -76,6 +79,9 @@
                       CanUserResizeRows="False"
                       CanUserSortColumns="False"
                       SelectionMode="Single"
+                      EnableRowVirtualization="True"
+                      VirtualizingStackPanel.IsVirtualizing="True"
+                      VirtualizingStackPanel.VirtualizationMode="Recycling"
                       PreviewMouseLeftButtonDown="PatientsDataGrid_PreviewMouseLeftButtonDown"
                       MouseDoubleClick="PatientsDataGrid_MouseDoubleClick">
                 
@@ -256,4 +262,25 @@
             </Button>
         </StackPanel>
     </Grid>
+    
+    <!-- Loading Overlay (doit être au-dessus du contenu) -->
+    <Grid x:Name="LoadingOverlay" 
+          Grid.RowSpan="5"
+          Visibility="Collapsed"
+          Background="#80FFFFFF">
+        <StackPanel HorizontalAlignment="Center" 
+                    VerticalAlignment="Center">
+            <TextBlock Text="⏳" 
+                       FontSize="48" 
+                       HorizontalAlignment="Center"/>
+            <TextBlock x:Name="LoadingText" 
+                       Text="Chargement des patients..." 
+                       FontSize="16" 
+                       FontWeight="SemiBold" 
+                       Foreground="#2C3E50" 
+                       Margin="0,10,0,0"/>
+        </StackPanel>
+    </Grid>
+    
+    </Grid> <!-- Ferme RootWrapper -->
 </Window>

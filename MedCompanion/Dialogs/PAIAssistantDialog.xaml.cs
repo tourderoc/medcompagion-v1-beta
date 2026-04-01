@@ -42,6 +42,9 @@ namespace MedCompanion.Dialogs
             _synthesisWeightTracker = synthesisWeightTracker;
             _motif = initialMotif;
 
+            // Configurer le bouton de dictée vocale pour cibler le TextBox des instructions
+            VoiceButton.TargetTextBox = InstructionTextBox;
+
             Loaded += PAIAssistantDialog_Loaded;
         }
 
@@ -64,7 +67,7 @@ namespace MedCompanion.Dialogs
         {
             if (MotifComboBox.SelectedItem is ComboBoxItem item)
             {
-                _motif = item.Content.ToString();
+                _motif = item.Content?.ToString() ?? string.Empty;
             }
         }
 
@@ -219,7 +222,7 @@ namespace MedCompanion.Dialogs
                 StatusText.Text = "";
                 ResponseTextBox.Text = "";
 
-                var style = (StyleComboBox.SelectedItem as ComboBoxItem)?.Content.ToString() ?? "Standard";
+                var style = (StyleComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Standard";
                 
                 // On récupère le texte directement car la ComboBox est éditable
                 var length = LengthComboBox.Text;

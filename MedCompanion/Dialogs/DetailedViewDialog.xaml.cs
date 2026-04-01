@@ -15,7 +15,7 @@ namespace MedCompanion.Dialogs
     public partial class DetailedViewDialog : Window
     {
         // Événement déclenché après sauvegarde
-        public event EventHandler? ContentSaved;
+        public event EventHandler<string>? ContentSaved;
 
         private ContentType _contentType;
         private string _filePath = string.Empty;
@@ -170,8 +170,8 @@ namespace MedCompanion.Dialogs
                     StatusTextBlock.Text = "✅ Contenu régénéré et sauvegardé";
                     StatusTextBlock.Foreground = new SolidColorBrush(Color.FromRgb(39, 174, 96));
 
-                    // Notifier la MainWindow
-                    ContentSaved?.Invoke(this, EventArgs.Empty);
+                    // Notifier la MainWindow avec le contenu tout juste sauvegardé
+                    ContentSaved?.Invoke(this, _originalContent);
                 }
                 catch (Exception ex)
                 {
@@ -260,8 +260,8 @@ namespace MedCompanion.Dialogs
                 var textRange = new TextRange(EditableContent.Document.ContentStart, EditableContent.Document.ContentEnd);
                 var content = textRange.Text;
 
-                // Sauvegarder dans le fichier
-                File.WriteAllText(_filePath, content);
+                // Sauvegarder dans le fichier avec encodage explicite
+                File.WriteAllText(_filePath, content, System.Text.Encoding.UTF8);
 
                 _originalContent = content;
                 _isModified = false;
@@ -273,8 +273,8 @@ namespace MedCompanion.Dialogs
                     MessageBoxImage.Information
                 );
 
-                // Déclencher l'événement pour rafraîchir l'app principale
-                ContentSaved?.Invoke(this, EventArgs.Empty);
+                // Déclencher l'événement avec le nouveau contenu pour rafraîchir l'app principale
+                ContentSaved?.Invoke(this, content);
 
                 // Revenir en mode lecture
                 SwitchToReadMode();

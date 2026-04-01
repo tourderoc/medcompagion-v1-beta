@@ -14,7 +14,7 @@ namespace MedCompanion.Dialogs
     /// </summary>
     public partial class MCCSelectionDialog : Window
     {
-        public MCCModel SelectedMCC { get; private set; }
+        public MCCModel? SelectedMCC { get; private set; }
         private readonly LetterAnalysisResult _analysis;
 
         public MCCSelectionDialog(
