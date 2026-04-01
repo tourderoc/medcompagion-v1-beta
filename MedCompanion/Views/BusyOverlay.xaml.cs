@@ -50,7 +50,7 @@ namespace MedCompanion.Views
         }
 
         // Propriétés relayées depuis BusyService
-        public bool IsBusy => _busyService.IsBusy;
+        public new bool IsBusy => _busyService.IsBusy;
         public string Message => _busyService.Message;
         public string Step => _busyService.Step;
         public double Progress => _busyService.Progress;

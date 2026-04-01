@@ -445,43 +445,80 @@
                           Foreground="#2C3E50"
                           VerticalAlignment="Center"/>
                 
-                <!-- Bouton Vue Détaillée -->
-                <Button x:Name="ViewLetterButton"
-                        Content="👁️"
-                        Width="28"
-                        Height="28"
-                        FontSize="14"
-                        Background="#8E44AD"
-                        Foreground="White"
-                        BorderThickness="0"
-                        Cursor="Hand"
-                        HorizontalAlignment="Right"
-                        VerticalAlignment="Center"
-                        ToolTip="Ouvrir en plein écran (lecture/édition)"
-                        Visibility="{Binding ShowReadOnlyButtons, Converter={StaticResource BoolToVis}}"
-                        Command="{Binding ViewLetterCommand}">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}" 
-                                                CornerRadius="4" 
-                                                Padding="{TemplateBinding Padding}">
-                                            <ContentPresenter HorizontalAlignment="Center" 
-                                                            VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#71368A"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                    <!-- Bouton Vue Détaillée -->
+                    <Button x:Name="ViewLetterButton"
+                            Content="👁️"
+                            Width="28"
+                            Height="28"
+                            FontSize="14"
+                            Background="#8E44AD"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            ToolTip="Ouvrir en plein écran (lecture/édition)"
+                            Visibility="{Binding ShowReadOnlyButtons, Converter={StaticResource BoolToVis}}"
+                            Command="{Binding ViewLetterCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="4"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#71368A"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Bouton Envoyer vers Pilotage -->
+                    <Button x:Name="SendToPilotageButton"
+                            Content="📤"
+                            Width="28"
+                            Height="28"
+                            FontSize="14"
+                            Background="#E67E22"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Margin="5,0,0,0"
+                            ToolTip="Envoyer vers Pilotage (pièce jointe)"
+                            Visibility="{Binding ShowReadOnlyButtons, Converter={StaticResource BoolToVis}}"
+                            Click="SendToPilotageButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}"
+                                                    CornerRadius="4"
+                                                    Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center"
+                                                                VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#CF6A17"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
             </Grid>
             
             <Border Grid.Row="1" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6">

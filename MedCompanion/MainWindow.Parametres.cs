@@ -9,6 +9,8 @@ public partial class MainWindow : Window
 {
     private SecureStorageService? _secureStorageService;
     private WindowStateService? _windowStateService;
+    private AgentConfigService? _agentConfigService;
+    private MedAgentService? _medAgentService;
 
     /// <summary>
     /// Handler pour le bouton Paramètres
@@ -36,6 +38,12 @@ public partial class MainWindow : Window
 
                 // Recharger le service LLM avec les nouvelles clés
                 _ = ReloadLLMServiceAsync();
+
+                // ✅ Recharger la config des agents et réinitialiser MedAgentService
+                _agentConfigService?.Reload();
+                _medAgentService?.ResetLLMService();
+                _medAgentService?.ReloadWebAgent();
+                System.Diagnostics.Debug.WriteLine("[MainWindow] Config agents rechargée, MedAgentService et WebAgent réinitialisés");
             }
         }
         catch (Exception ex)
@@ -101,7 +109,7 @@ public partial class MainWindow : Window
     /// <summary>
     /// Gère l'événement Window_Loaded pour restaurer l'état de la fenêtre
     /// </summary>
-    private void Window_Loaded(object sender, RoutedEventArgs e)
+    private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
         try
         {
@@ -114,6 +122,28 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"Erreur lors de la restauration de l'état de la fenêtre: {ex.Message}");
+        }
+
+        // Sync messages Firebase → dossiers patients locaux (en arrière-plan, silencieux)
+        try
+        {
+            if (_firebaseService.IsConfigured)
+            {
+                var (success, unreadMessages, error) = await _patientMessageService.FetchAndSyncMessagesAsync();
+                if (success)
+                {
+                    PatientSearchViewModel.UnreadMessageCount = unreadMessages.Count;
+                    if (unreadMessages.Count > 0)
+                    {
+                        StatusTextBlock.Text = $"Messages synchronisés - {unreadMessages.Count} non traité(s)";
+                        StatusTextBlock.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Orange);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[Messages] Erreur sync au démarrage: {ex.Message}");
         }
     }
 

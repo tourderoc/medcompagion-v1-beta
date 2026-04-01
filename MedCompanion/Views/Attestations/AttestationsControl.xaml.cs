@@ -15,6 +15,7 @@ namespace MedCompanion.Views.Attestations
     {
         // Événements pour communiquer avec MainWindow
         public event EventHandler<string>? StatusChanged;
+        public event EventHandler<string>? SendToPilotageRequested;
 
         // Attestation en attente de sauvegarde (preview seulement)
         private string? _pendingAttestationMarkdown;
@@ -246,6 +247,10 @@ namespace MedCompanion.Views.Attestations
                     AttestationReadButtonsGrid.Visibility = Visibility.Visible;
                     ImprimerAttestationButton.Visibility = Visibility.Visible;
 
+                    // Afficher le bouton Pilotage si DOCX disponible
+                    SendToPilotageButton.Visibility = !string.IsNullOrEmpty(docxPath) && System.IO.File.Exists(docxPath)
+                        ? Visibility.Visible : Visibility.Collapsed;
+
                     // Réinitialiser les variables
                     _pendingAttestationMarkdown = null;
                     _pendingAttestationType = null;
@@ -269,6 +274,20 @@ namespace MedCompanion.Views.Attestations
             }
         }
 
+        private void SendToPilotageButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is not AttestationViewModel viewModel)
+                return;
+
+            var docxPath = viewModel.SelectedAttestation?.DocxPath;
+            if (string.IsNullOrEmpty(docxPath) || !System.IO.File.Exists(docxPath))
+            {
+                StatusChanged?.Invoke(this, "⚠️ Aucune attestation sauvegardée à envoyer");
+                return;
+            }
+            SendToPilotageRequested?.Invoke(this, docxPath);
+        }
+
         /// <summary>
         /// Gère la sélection d'une attestation dans la liste
         /// </summary>
@@ -284,6 +303,7 @@ namespace MedCompanion.Views.Attestations
                 AttestationEditButtonsGrid.Visibility = Visibility.Collapsed;
                 ImprimerAttestationButton.Visibility = Visibility.Collapsed;
                 SauvegarderPreviewButton.Visibility = Visibility.Collapsed;
+                SendToPilotageButton.Visibility = Visibility.Collapsed;
                 return;
             }
 
@@ -311,6 +331,10 @@ namespace MedCompanion.Views.Attestations
             AttestationReadButtonsGrid.Visibility = Visibility.Visible;
             ImprimerAttestationButton.Visibility = Visibility.Visible;
             AttestationEditButtonsGrid.Visibility = Visibility.Collapsed;
+
+            // Afficher le bouton Pilotage si le fichier existe
+            SendToPilotageButton.Visibility = !string.IsNullOrEmpty(attestation.DocxPath) && System.IO.File.Exists(attestation.DocxPath)
+                ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void GenerateCustomAttestationButton_Click(object sender, RoutedEventArgs e)

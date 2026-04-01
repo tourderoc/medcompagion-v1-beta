@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" 
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:helpers="clr-namespace:MedCompanion.Helpers"
+             xmlns:controls="clr-namespace:MedCompanion.Controls"
              mc:Ignorable="d" 
              d:DesignHeight="800" d:DesignWidth="600">
     
@@ -438,7 +439,14 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock x:Name="RawNoteLabel" Grid.Row="0" Text="Note brute" FontSize="14" FontWeight="SemiBold" Margin="0,0,0,4" Foreground="#2C3E50"/>
+            <Grid x:Name="RawNoteHeader" Grid.Row="0" Margin="0,0,0,4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="RawNoteLabel" Grid.Column="0" Text="Note brute" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" Foreground="#2C3E50"/>
+                <controls:VoiceDictationButton x:Name="VoiceButton" Grid.Column="1" ToolTip="Dicter la note brute (Handy)" Margin="10,0,0,0"/>
+            </Grid>
             <Border Grid.Row="1" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6">
                 <TextBox x:Name="RawNoteText" 
                          Text="{Binding NoteViewModel.RawNoteText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"

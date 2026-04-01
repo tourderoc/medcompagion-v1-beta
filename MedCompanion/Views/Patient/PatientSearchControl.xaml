@@ -15,6 +15,8 @@
             <ColumnDefinition Width="*" MaxWidth="600"/>
             <ColumnDefinition Width="10"/>
             <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="8"/>
+            <ColumnDefinition Width="Auto"/>
         </Grid.ColumnDefinitions>
         
         <Border Grid.Column="0" BorderBrush="#BDC3C7" BorderThickness="2" CornerRadius="8" Background="White">
@@ -207,6 +209,49 @@
                     </Style.Triggers>
                 </Style>
             </Button.Style>
+        </Button>
+
+        <Button x:Name="MessagesBtn"
+                Grid.Column="4"
+                Height="45"
+                Padding="15,0"
+                FontSize="14"
+                FontWeight="SemiBold"
+                Background="#E67E22"
+                Foreground="White"
+                BorderThickness="0"
+                Cursor="Hand"
+                Command="{Binding OpenMessageListCommand}">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}"
+                                        CornerRadius="8"
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="#D35400"/>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter Property="Background" Value="#BDC3C7"/>
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Messages" VerticalAlignment="Center"/>
+                <Border x:Name="MessageBadge" CornerRadius="8" Background="#E74C3C" Padding="5,1" Margin="6,0,0,0"
+                        Visibility="{Binding HasUnreadMessages, Converter={StaticResource BoolToVisibilityConverter}}">
+                    <TextBlock Text="{Binding UnreadMessageCount}" FontSize="10" Foreground="White" FontWeight="Bold"/>
+                </Border>
+            </StackPanel>
         </Button>
     </Grid>
 </UserControl>

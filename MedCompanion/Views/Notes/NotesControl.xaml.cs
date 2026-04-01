@@ -32,6 +32,9 @@ namespace MedCompanion.Views.Notes
         public NotesControl()
         {
             InitializeComponent();
+
+            // Configurer le bouton de dictée vocale pour cibler le TextBox de la note brute
+            VoiceButton.TargetTextBox = RawNoteText;
         }
 
         /// <summary>

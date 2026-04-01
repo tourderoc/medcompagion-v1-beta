@@ -19,6 +19,7 @@ namespace MedCompanion.Views.Ordonnances
     {
         // Événements pour communiquer avec MainWindow
         public event EventHandler<string>? StatusChanged;
+        public event EventHandler<string>? SendToPilotageRequested;
 
         // Ordonnances temporaires en cours de prévisualisation (avant sauvegarde)
         private OrdonnanceIDE? _pendingOrdonnance;
@@ -317,6 +318,7 @@ namespace MedCompanion.Views.Ordonnances
                     {
                         ImprimerOrdonnanceButton.Visibility = Visibility.Visible;
                         ImprimerOrdonnanceButton.Tag = fileToOpen;
+                        SendToPilotageButton.Visibility = Visibility.Visible;
                     }
 
                     StatusChanged?.Invoke(this, message);
@@ -342,6 +344,21 @@ namespace MedCompanion.Views.Ordonnances
             }
         }
 
+        private void SendToPilotageButton_Click(object sender, RoutedEventArgs e)
+        {
+            // Priorité : ImprimerOrdonnanceButton.Tag (après sauvegarde) puis ImprimerOrdonnanceButton2.Tag (sélection existante)
+            var filePath = ImprimerOrdonnanceButton.Tag as string;
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+                filePath = ImprimerOrdonnanceButton2.Tag as string;
+
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            {
+                StatusChanged?.Invoke(this, "⚠️ Aucune ordonnance sauvegardée à envoyer");
+                return;
+            }
+            SendToPilotageRequested?.Invoke(this, filePath);
+        }
+
         /// <summary>
         /// Gère la sélection d'une ordonnance dans la liste
         /// </summary>
@@ -356,6 +373,7 @@ namespace MedCompanion.Views.Ordonnances
                 SupprimerOrdonnanceButton.Visibility = Visibility.Collapsed;
                 ImprimerOrdonnanceButton.Visibility = Visibility.Collapsed;
                 SauvegarderOrdonnanceButton.Visibility = Visibility.Collapsed;
+                SendToPilotageButton.Visibility = Visibility.Collapsed;
                 OrdonnancePreviewText.Document = new FlowDocument();
                 return;
             }
@@ -411,6 +429,7 @@ namespace MedCompanion.Views.Ordonnances
                     if (!string.IsNullOrEmpty(docxPath) && File.Exists(docxPath))
                     {
                         ImprimerOrdonnanceButton2.Tag = docxPath;
+                        SendToPilotageButton.Visibility = Visibility.Visible;
                     }
                 }
                 else

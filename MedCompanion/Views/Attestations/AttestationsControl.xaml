@@ -248,38 +248,73 @@
                           Foreground="#2C3E50"
                           VerticalAlignment="Center"/>
 
-                <Button x:Name="SauvegarderPreviewButton"
-                        Content="💾 Sauvegarder"
-                        HorizontalAlignment="Right"
-                        Height="30"
-                        Padding="12,0"
-                        FontSize="12"
-                        FontWeight="SemiBold"
-                        Background="#27AE60"
-                        Foreground="White"
-                        BorderThickness="0"
-                        Cursor="Hand"
-                        Visibility="Collapsed"
-                        Click="SauvegarderPreviewButton_Click">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#229954"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="SauvegarderPreviewButton"
+                            Content="💾 Sauvegarder"
+                            Height="30"
+                            Padding="12,0"
+                            Margin="0,0,8,0"
+                            FontSize="12"
+                            FontWeight="SemiBold"
+                            Background="#27AE60"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Visibility="Collapsed"
+                            Click="SauvegarderPreviewButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#229954"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- Bouton Envoyer vers Pilotage -->
+                    <Button x:Name="SendToPilotageButton"
+                            Content="📤"
+                            Width="28"
+                            Height="28"
+                            FontSize="14"
+                            Background="#E67E22"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            ToolTip="Envoyer vers Pilotage (pièce jointe)"
+                            Visibility="Collapsed"
+                            Click="SendToPilotageButton_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#CF6A17"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
             </Grid>
 
             <!-- RichTextBox preview -->

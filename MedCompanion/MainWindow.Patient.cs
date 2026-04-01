@@ -13,24 +13,25 @@ using MedCompanion.Commands;
 using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Dialogs;
-
+ 
 namespace MedCompanion;
 public partial class MainWindow : Window
 {
     // NOTE: OnSearchBoxPaste, SearchBox_GotFocus, SearchBox_LostFocus
     // Ces méthodes sont maintenant gérées par PatientSearchControl
-
+ 
+    private bool _isPilotageInitialized = false;
 
     private void CreatePatientBorder_Click(object sender, MouseButtonEventArgs e)
     {
         PatientSearchViewModel?.CreatePatientCommand?.Execute(PatientSearchViewModel?.SearchText);
     }
-
+ 
     private void DuplicateIndicator_MainWindow_Click(object sender, MouseButtonEventArgs e)
     {
         if (_selectedPatient == null || _currentPatientDuplicate == null)
             return;
-
+ 
         var result = MessageBox.Show(
             $"Ce patient a un doublon détecté (score: {_currentPatientDuplicateScore}/210):\n\n" +
             $"Patient actuel:\n{_selectedPatient.Nom} {_selectedPatient.Prenom}\n" +
@@ -41,7 +42,7 @@ public partial class MainWindow : Window
             "Doublon détecté",
             MessageBoxButton.YesNo,
             MessageBoxImage.Warning);
-
+ 
         if (result == MessageBoxResult.Yes)
         {
             LoadPatientAsync(_currentPatientDuplicate);
@@ -53,10 +54,10 @@ public partial class MainWindow : Window
         {
             // Utiliser PathService pour obtenir le bon dossier de notes
             var notesDir = _pathService.GetNotesDirectory(nomComplet);
-
+ 
             if (!Directory.Exists(notesDir))
                 return false;
-
+ 
             // Vérifier s'il existe des fichiers .md dans le dossier notes
             var mdFiles = Directory.GetFiles(notesDir, "*.md", SearchOption.TopDirectoryOnly);
             return mdFiles.Length > 0;
@@ -72,15 +73,15 @@ public partial class MainWindow : Window
         {
             // Réinitialiser l'interface pour le nouveau patient
             ResetPatientUI();
-
+ 
             _selectedPatient = patient;
-
+ 
             // Ajouter à l'historique des patients récemment ouverts
             _patientIndex.AddRecentPatient(patient.Id);
-
+ 
             // Afficher carte
             PatientCardPanel.Visibility = Visibility.Visible;
-
+ 
             var metadata = _patientIndex.GetMetadata(patient.Id);
             if (metadata != null)
             {
@@ -105,23 +106,19 @@ public partial class MainWindow : Window
                     Sexe = patient.Sexe
                 };
             }
-
+ 
             // Charger notes via le ViewModel, courriers, documents, formulaires, ordonnances, synthèse et échanges sauvegardés
             NoteViewModel.LoadNotes(patient.NomComplet, _patientIndex);
-            // RefreshLettersList(); // MIGRÉ vers CourriersControl - appelé via SetCurrentPatient
-            // LoadSavedExchanges(); // MIGRÉ vers ChatControl - appelé via SetCurrentPatient
-            // RefreshAttestationsList(); // MIGRÉ vers AttestationsControl - géré par le ViewModel
-            // LoadPatientDocuments(); // MIGRÉ vers DocumentsControl - appelé via SetCurrentPatient
-
+            
             // MIGRÉ vers DocumentsControl - Charger les documents via SetCurrentPatient
             DocumentsControlPanel.SetCurrentPatient(_selectedPatient);
-
+ 
             // MIGRÉ vers FormulairesControl - Charger les formulaires via SetCurrentPatient
             FormulairesControlPanel.SetCurrentPatient(_selectedPatient);
-
+ 
             // MIGRÉ vers CourriersControl - Charger les courriers via SetCurrentPatient
             CourriersControlPanel.SetCurrentPatient(_selectedPatient);
-
+ 
             // Mettre à jour le patient sélectionné dans OrdonnanceViewModel
             OrdonnanceViewModel.SelectedPatient = metadata ?? new PatientMetadata
             {
@@ -131,13 +128,16 @@ public partial class MainWindow : Window
                 Sexe = patient.Sexe
             };
             OrdonnanceViewModel.LoadOrdonnances(_selectedPatient.NomComplet);
-
+ 
             // MIGRÉ vers NotesControl - Charger la synthèse via SetCurrentPatient
             NotesControlPanel.SetCurrentPatient(_selectedPatient);
-
+ 
             // Initialiser ChatControl avec le patient courant
             ChatControlPanel.SetCurrentPatient(_selectedPatient);
 
+            // Charger les messages parents du patient
+            MessagesControlPanel.SetCurrentPatient(_selectedPatient);
+ 
             // Vérifier si le patient a un doublon
             var (hasDuplicates, duplicatePatient, score) = _patientIndex.CheckForDuplicates(patient.Id);
             if (hasDuplicates && duplicatePatient != null)
@@ -152,10 +152,10 @@ public partial class MainWindow : Window
                 _currentPatientDuplicateScore = 0;
                 DuplicateIndicator.Visibility = Visibility.Collapsed;
             }
-
+ 
             // Vérifier si le patient a des notes structurées
             bool hasNotes = PatientHasStructuredNotes(patient.NomComplet);
-
+ 
             if (!hasNotes)
             {
                 // Message explicatif
@@ -167,13 +167,13 @@ public partial class MainWindow : Window
                 StatusTextBlock.Text = $"✓ Dossier chargé: {patient.NomComplet}";
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
             }
-
+ 
             // Clear search (géré par le ViewModel maintenant)
             if (PatientSearchViewModel != null)
             {
                 PatientSearchViewModel.SearchText = "";
             }
-
+ 
             // Placer le focus sur la zone de note brute pour commencer à travailler
             NotesControlPanel.RawNoteTextBox.Focus();
         }
@@ -181,7 +181,7 @@ public partial class MainWindow : Window
         {
             StatusTextBlock.Text = $"❌ Erreur chargement patient: {ex.Message}";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
-
+ 
             MessageBox.Show(
                 $"Erreur lors du chargement du dossier patient :\n\n{ex.Message}\n\nStack Trace:\n{ex.StackTrace}",
                 "Erreur critique",
@@ -195,10 +195,10 @@ public partial class MainWindow : Window
         // MIGRÉ vers PatientListControl
         PatientListControlPanel.LoadPatients();
     }
-
-
+ 
+ 
     // ===== TOGGLE LISTE PATIENTS =====
-
+ 
     private void TogglePatientsBtn_Click(object sender, RoutedEventArgs e)
     {
         if (_isPatientsListVisible)
@@ -207,7 +207,7 @@ public partial class MainWindow : Window
             PatientsPanelColumn.Width = new GridLength(0);
             TogglePatientsBtn.Content = "▶";
             _isPatientsListVisible = false;
-
+ 
             StatusTextBlock.Text = "📋 Liste patients masquée";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Gray);
         }
@@ -217,20 +217,226 @@ public partial class MainWindow : Window
             PatientsPanelColumn.Width = new GridLength(220);
             TogglePatientsBtn.Content = "◀";
             _isPatientsListVisible = true;
-
+ 
             // Charger les patients
             LoadPatientsInPanel();
-
+ 
             StatusTextBlock.Text = "📋 Liste patients affichée";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Gray);
         }
     }
+ 
+    private void NavigationModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Ignorer pendant l'initialisation - les contrôles ne sont pas encore chargés
+        if (!IsLoaded) return;
 
+        if (NavigationModeCombo?.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag is string mode)
+        {
+            SwitchMode(mode);
+        }
+    }
+
+    private void SwitchMode(string mode)
+    {
+        try
+        {
+            // Vérification des contrôles - retour silencieux si pas encore chargés
+            if (ConsoleContent == null || AccueilMedContent == null || BureauMedContent == null || ConsultationModeContent == null || PilotageContent == null)
+            {
+                return;
+            }
+
+            // Auto-libérer l'application embarquée quand on quitte le mode Bureau
+            if (mode != "Bureau" && BureauMedContent.Visibility == Visibility.Visible)
+            {
+                BureauMedContent.ReleaseToolAndMinimize();
+            }
+
+            // Masquer tout par défaut
+            ConsoleContent.Visibility = Visibility.Collapsed;
+            AccueilMedContent.Visibility = Visibility.Collapsed;
+            BureauMedContent.Visibility = Visibility.Collapsed;
+            ConsultationModeContent.Visibility = Visibility.Collapsed;
+            PilotageContent.Visibility = Visibility.Collapsed;
+            
+            // Eléments V1 par défaut
+            if (AnalysePromptsBtn != null) AnalysePromptsBtn.Visibility = Visibility.Collapsed;
+            if (TogglePatientsBtn != null) TogglePatientsBtn.Visibility = Visibility.Collapsed;
+            if (PatientCardPanel != null) PatientCardPanel.Visibility = Visibility.Collapsed;
+            if (PatientSearchZone != null) PatientSearchZone.Visibility = Visibility.Collapsed;
+            if (BureauControlsZone != null) BureauControlsZone.Visibility = Visibility.Collapsed;
+
+            switch (mode)
+            {
+                case "Console":
+                    ConsoleContent.Visibility = Visibility.Visible;
+                    if (AnalysePromptsBtn != null) AnalysePromptsBtn.Visibility = Visibility.Visible;
+                    if (TogglePatientsBtn != null) TogglePatientsBtn.Visibility = Visibility.Visible;
+                    if (_selectedPatient != null && PatientCardPanel != null) PatientCardPanel.Visibility = Visibility.Visible;
+                    if (PatientSearchZone != null) PatientSearchZone.Visibility = Visibility.Visible;
+                    if (StatusTextBlock != null)
+                    {
+                        StatusTextBlock.Text = "Mode Console activé";
+                        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Gray);
+                    }
+                    break;
+
+                case "Accueil":
+                    AccueilMedContent.Visibility = Visibility.Visible;
+                    if (PatientSearchZone != null) PatientSearchZone.Visibility = Visibility.Visible;
+                    InitializeMedService();
+                    if (StatusTextBlock != null)
+                    {
+                        StatusTextBlock.Text = "Mode Med – Accueil activé";
+                        StatusTextBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2ECC71"));
+                    }
+                    break;
+                    
+                case "Bureau":
+                    BureauMedContent.Visibility = Visibility.Visible;
+                    if (BureauControlsZone != null) BureauControlsZone.Visibility = Visibility.Visible;
+                    InitializeMedService();
+                    InitializeBureauService();
+                    if (StatusTextBlock != null)
+                    {
+                        StatusTextBlock.Text = "Mode Med – Bureau activé";
+                        StatusTextBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9B59B6"));
+                    }
+                    break;
+
+                case "Consultation":
+                    ConsultationModeContent.Visibility = Visibility.Visible;
+                    if (PatientSearchZone != null) PatientSearchZone.Visibility = Visibility.Visible;
+                    // Charger le patient si sélectionné
+                    if (_selectedPatient != null)
+                    {
+                        ConsultationModeContent.LoadPatient(_selectedPatient);
+                    }
+                    if (StatusTextBlock != null)
+                    {
+                        StatusTextBlock.Text = "Mode Consultation activé";
+                        StatusTextBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4A90A4"));
+                    }
+                    break;
+
+                case "Pilotage":
+                    PilotageContent.Visibility = Visibility.Visible;
+                    
+                    if (!_isPilotageInitialized)
+                    {
+                        PilotageContent.Initialize(_patientIndex, _pilotageAgentService, _firebaseService, _openAIService, _settings);
+                        
+                        // S'abonner aux événements du PilotageContent
+                        PilotageContent.StatusChanged += (s, msg) => {
+                            if (StatusTextBlock != null)
+                            {
+                                StatusTextBlock.Text = msg;
+                                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+                            }
+                        };
+                        
+                        PilotageContent.NavigateToPatientRequested += (s, patientName) => {
+                            // Chercher le patient et basculer en mode Console
+                            var patient = _patientIndex.GetAllPatients()
+                                .FirstOrDefault(p => p.NomComplet.Equals(patientName, StringComparison.OrdinalIgnoreCase));
+                            
+                            if (patient != null) {
+                                LoadPatientAsync(patient);
+                                // Basculer la combobox
+                                foreach (ComboBoxItem item in NavigationModeCombo.Items) {
+                                    if (item.Tag?.ToString() == "Console") {
+                                        NavigationModeCombo.SelectedItem = item;
+                                        break;
+                                    }
+                                }
+                            }
+                        };
+                        _isPilotageInitialized = true;
+                    }
+                    else
+                    {
+                        PilotageContent.RefreshMessages();
+                    }
+                    if (StatusTextBlock != null)
+                    {
+                        StatusTextBlock.Text = "Mode Pilotage activé — Parent'aile";
+                        StatusTextBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E67E22"));
+                    }
+                    break;
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur lors du changement de mode ({mode}):\n{ex.Message}\n\n{ex.StackTrace}", "Crash évité", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+    }
+ 
+    /// <summary>
+    /// Initialise le service Med et connecte l'AccueilMedControl
+    /// </summary>
+    private void InitializeMedService()
+    {
+        // Créer les services si nécessaire
+        _secureStorageService ??= new SecureStorageService();
+        _agentConfigService ??= new AgentConfigService();
+ 
+        if (_medAgentService == null)
+        {
+            _medAgentService = new MedAgentService(_agentConfigService, _llmFactory, _secureStorageService);
+ 
+            // Initialiser le contrôle Accueil Med avec le service
+            AccueilMedContent.Initialize(_medAgentService);
+ 
+            System.Diagnostics.Debug.WriteLine("[MainWindow] MedAgentService initialisé");
+        }
+    }
+ 
+    private void InitializeBureauService()
+    {
+        if (_medAgentService != null)
+        {
+            BureauMedContent.Initialize(_medAgentService);
+        }
+    }
+
+    // Gestionnaires des boutons Bureau (header)
+    private void BureauIntegrerBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (BureauToolsCombo.SelectedItem is ComboBoxItem item)
+        {
+            string toolName = item.Content?.ToString() ?? "Firefox";
+            BureauMedContent.EmbedTool(toolName);
+        }
+    }
+
+    private void BureauLibererBtn_Click(object sender, RoutedEventArgs e)
+    {
+        BureauMedContent.ReleaseTool();
+    }
+
+    private void BureauAnalyserBtn_Click(object sender, RoutedEventArgs e)
+    {
+        BureauMedContent.AnalyzeTool();
+    }
+
+    private void BureauToolsCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        // Ignorer pendant l'initialisation ou si pas en mode Bureau
+        if (!IsLoaded || BureauMedContent?.Visibility != Visibility.Visible) return;
+
+        if (BureauToolsCombo.SelectedItem is ComboBoxItem item)
+        {
+            string toolName = item.Content?.ToString() ?? "Firefox";
+            // EmbedTool libère automatiquement l'ancienne app avant d'intégrer la nouvelle
+            BureauMedContent.EmbedTool(toolName);
+        }
+    }
 
     // ===== BLOC PATIENTLISTCONTROL SUPPRIMÉ =====
     // Code migré vers Views/Patients/PatientListControl.xaml.cs
     // Supprimé le 23/11/2025 après validation
-
+ 
     private void AnalysePromptsBtn_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -241,23 +447,23 @@ public partial class MainWindow : Window
                 // Fenêtre déjà ouverte → La mettre au premier plan
                 _promptsDialog.Activate();
                 _promptsDialog.Focus();
-
+ 
                 StatusTextBlock.Text = "✓ Fenêtre Prompts déjà ouverte - Mise au premier plan";
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
                 return;
             }
-
+ 
             StatusTextBlock.Text = "⏳ Ouverture...";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-
+ 
             _promptsDialog = new PromptsAnalysisDialog(_promptConfigService, _promptReformulationService); // ✅ Passer les instances partagées
             _promptsDialog.Owner = this;
-
+ 
             // Nettoyer la référence quand la fenêtre est fermée
             _promptsDialog.Closed += (s, args) => _promptsDialog = null;
-
+ 
             _promptsDialog.Show();  // Non-modal: permet d'utiliser l'app principale en même temps
-
+ 
             StatusTextBlock.Text = "✓ Dialogue ouvert (non-modal)";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
         }
@@ -265,14 +471,14 @@ public partial class MainWindow : Window
         {
             // Nettoyer la référence en cas d'erreur
             _promptsDialog = null;
-
+ 
             MessageBox.Show(
                 $"Erreur lors de l'ouverture du dialogue :\n\n{ex.Message}\n\nStack Trace:\n{ex.StackTrace}",
                 "Erreur d'initialisation",
                 MessageBoxButton.OK,
                 MessageBoxImage.Error
             );
-
+ 
             StatusTextBlock.Text = $"❌ Erreur: {ex.Message}";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
         }
@@ -302,14 +508,14 @@ public partial class MainWindow : Window
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
             return;
         }
-
+ 
         if (string.IsNullOrWhiteSpace(NotesControlPanel.RawNoteTextBox.Text))
         {
             StatusTextBlock.Text = "⚠️ Veuillez saisir une note brute.";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
             return;
         }
-
+ 
         // Désactiver boutons pendant génération
         NotesControlPanel.StructurerBtn.IsEnabled = false;
         NotesControlPanel.ValiderSauvegarderBtn.IsEnabled = false;
@@ -318,24 +524,24 @@ public partial class MainWindow : Window
         StatusTextBlock.Text = "⏳ Structuration en cours...";
         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
         NotesControlPanel.StructuredNoteTextBox.Document = new FlowDocument();
-
+ 
         try
         {
             // ✅ Récupérer le sexe du patient
             var sexe = _selectedPatient.Sexe ?? "M";
-
+ 
             // ✅ APPEL MODIFIÉ : Passer le sexe
             var (success, result, relevanceWeight) = await _openAIService.StructurerNoteAsync(
                 _selectedPatient.NomComplet,
                 sexe,  // ✅ NOUVEAU paramètre
                 NotesControlPanel.RawNoteTextBox.Text.Trim()
             );
-
+ 
             if (success)
             {
                 // NOUVEAU : Stocker le poids de pertinence pour l'utiliser lors de la sauvegarde
                 _lastNoteRelevanceWeight = relevanceWeight;
-
+ 
                 // Nouvelle note structurée → Mode édition direct avec formatage
                 NotesControlPanel.StructuredNoteTextBox.IsReadOnly = false;
                 NotesControlPanel.StructuredNoteTextBox.Background = new SolidColorBrush(Colors.White);
@@ -375,7 +581,7 @@ public partial class MainWindow : Window
             NotesControlPanel.StructurerBtn.IsEnabled = true;
         }
     }
-private void OnNoteStatusChanged(object sender, string message)
+private void OnNoteStatusChanged(object? sender, string message)
     {
         StatusTextBlock.Text = message;
         
@@ -393,7 +599,7 @@ private void OnNoteStatusChanged(object sender, string message)
         else
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Gray);
     }
-  private void OnNoteContentLoaded(object sender, (string filePath, string content) data)
+   private void OnNoteContentLoaded(object? sender, (string filePath, string content) data)
     {
         var (filePath, content) = data;
         
@@ -420,7 +626,7 @@ private void OnNoteStatusChanged(object sender, string message)
         }
     }
     
-    private void OnNoteStructured(object sender, string markdown)
+    private void OnNoteStructured(object? sender, string markdown)
     {
         try
         {
@@ -446,7 +652,7 @@ private void OnNoteStatusChanged(object sender, string message)
         }
     }
     
-    private void OnNoteSaveRequested(object sender, string? filePath)
+    private void OnNoteSaveRequested(object? sender, string? filePath)
     {
         // Convertir FlowDocument → Markdown
         var markdown = MarkdownFlowDocumentConverter.FlowDocumentToMarkdown(NotesControlPanel.StructuredNoteTextBox.Document);
@@ -455,7 +661,7 @@ private void OnNoteStatusChanged(object sender, string message)
         NoteViewModel.CompleteSave(markdown);
     }
     
-    private void OnNoteDeleteRequested(object sender, string filePath)
+    private void OnNoteDeleteRequested(object? sender, string filePath)
     {
         // Afficher dialogue de confirmation
         var result = MessageBox.Show(
@@ -475,7 +681,7 @@ private void OnNoteStatusChanged(object sender, string message)
     /// Handler pour rafraîchir la liste des PATIENTS après sauvegarde d'une note
     /// Cela met à jour la colonne "Dernière note" dans la liste des patients
     /// </summary>
-    private void OnPatientListRefreshRequested(object sender, EventArgs e)
+    private void OnPatientListRefreshRequested(object? sender, EventArgs e)
     {
         // Recharger la liste des patients pour mettre à jour la colonne "Dernière note"
         LoadPatientsInPanel();
@@ -485,21 +691,21 @@ private void OnNoteStatusChanged(object sender, string message)
     /// Handler appelé après sauvegarde d'une note
     /// Re-vérifie si le patient a des notes pour activer le menu courriers
     /// </summary>
-    private void OnNoteSaved(object sender, EventArgs e)
+    private void OnNoteSaved(object? sender, EventArgs e)
     {
         // Re-vérifier si le patient a des notes après sauvegarde
         if (_selectedPatient != null)
         {
             bool hasNotes = PatientHasStructuredNotes(_selectedPatient.NomComplet);
-
+ 
             if (hasNotes)
             {
                 StatusTextBlock.Text += " - Courriers disponibles";
             }
-
+ 
             // NOUVEAU : Rafraîchir le badge de notification de synthèse
             NotesControlPanel.SynthesisViewModel?.UpdateNotificationBadge();
-
+ 
             // NOUVEAU : La barre de progression de poids est automatiquement mise à jour par le ViewModel
             System.Diagnostics.Debug.WriteLine("[MainWindow.OnNoteSaved] Badge et poids mis à jour via ViewModel");
         }
@@ -508,24 +714,24 @@ private void OnNoteStatusChanged(object sender, string message)
     /// <summary>
     /// Handler pour vider le RichTextBox après sauvegarde
     /// </summary>
-    private void OnNoteClearedAfterSave(object sender, EventArgs e)
+    private void OnNoteClearedAfterSave(object? sender, EventArgs e)
     {
         // Forcer le vidage du RichTextBox en créant un nouveau FlowDocument vide
         NotesControlPanel.StructuredNoteTextBox.Document = new FlowDocument();
     }
-
+ 
     /// <summary>
     /// Handler pour forcer la synchronisation du RichTextBox avec le ViewModel
     /// Le binding WPF standard ne fonctionne pas bien avec RichTextBox.IsReadOnly
     /// </summary>
-   
-    private void NoteViewModel_PropertyChanged(object sender, System.ComponentModel.PropertyChangedEventArgs e)
+    
+    private void NoteViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(NoteViewModel.IsStructuredNoteReadOnly))
         {
             // Forcer la mise à jour du RichTextBox
             NotesControlPanel.StructuredNoteTextBox.IsReadOnly = NoteViewModel.IsStructuredNoteReadOnly;
-
+ 
             // Changer aussi le Background pour indiquer visuellement le mode
             if (NoteViewModel.IsStructuredNoteReadOnly)
             {
@@ -534,7 +740,7 @@ private void OnNoteStatusChanged(object sender, string message)
             else
             {
                 NotesControlPanel.StructuredNoteTextBox.Background = new SolidColorBrush(Colors.White); // Blanc (édition)
-
+ 
                 // IMPORTANT: Quand on passe en mode édition, activer immédiatement le bouton Sauvegarder
                 // Le handler TextChanged ne se déclenche pas au changement de ReadOnly
                 if (NoteViewModel != null)
@@ -551,7 +757,7 @@ private void OnNoteStatusChanged(object sender, string message)
         if (!NotesControlPanel.StructuredNoteTextBox.IsReadOnly && NoteViewModel != null)
         {
             NoteViewModel.IsSauvegarderButtonEnabled = true;
-
+ 
             // IMPORTANT: Forcer la réévaluation du Command, même si la valeur était déjà true
             // (car le setter ne déclenche pas de notification si la valeur ne change pas)
             ((RelayCommand)NoteViewModel.SaveCommand).RaiseCanExecuteChanged();
@@ -559,14 +765,14 @@ private void OnNoteStatusChanged(object sender, string message)
     }
     private void EnterConsultationMode(string content)
     {
-
+ 
         // Trouver le Grid parent pour modifier les RowDefinitions
         var parentGrid = FindParentGrid(NotesControlPanel.StructuredNoteTextBox);
         if (parentGrid != null)
         {
             // Sauvegarder la référence
             _notesGrid = parentGrid;
-
+ 
             // Masquer Row 0 (Synthèse), Row 1 (séparateur), Row 2 (Actions), Row 3 (Note brute) et Row 4 (séparateur)
             parentGrid.RowDefinitions[0].Height = new GridLength(0); // Synthèse
             parentGrid.RowDefinitions[1].Height = new GridLength(0); // Séparateur
@@ -574,21 +780,21 @@ private void OnNoteStatusChanged(object sender, string message)
             parentGrid.RowDefinitions[3].Height = new GridLength(0); // Note brute
             parentGrid.RowDefinitions[4].Height = new GridLength(0); // Séparateur
         }
-
+ 
         // Masquer le label "Note brute" et le label "Note structurée"
         NotesControlPanel.RawNoteLabelBlock.Visibility = Visibility.Collapsed;
         NotesControlPanel.StructuredNoteLabelBlock.Visibility = Visibility.Collapsed;
-
+ 
         // Masquer bouton Structurer
         NotesControlPanel.StructurerBtn.Visibility = Visibility.Collapsed;
-
+ 
         // Afficher bouton Fermer
         NotesControlPanel.FermerConsultationBtn.Visibility = Visibility.Visible;
-
+ 
         // Charger en mode lecture seule avec contenu formaté (Markdown → FlowDocument)
         NotesControlPanel.StructuredNoteTextBox.IsReadOnly = true;
         NotesControlPanel.StructuredNoteTextBox.Background = new SolidColorBrush(Color.FromRgb(250, 250, 250));
-
+ 
         try
         {
             // Convertir Markdown en FlowDocument formaté
@@ -600,18 +806,18 @@ private void OnNoteStatusChanged(object sender, string message)
             var fallbackDoc = new FlowDocument();
             fallbackDoc.Blocks.Add(new Paragraph(new Run(content)));
             NotesControlPanel.StructuredNoteTextBox.Document = fallbackDoc;
-
+ 
             StatusTextBlock.Text = $"⚠️ Erreur formatage: {ex.Message}";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
         }
-
+ 
         // NE PAS contrôler manuellement la visibilité - le binding MVVM s'en charge !
     }
       private void FermerConsultationButton_Click(object sender, RoutedEventArgs e)
     {
         ExitConsultationMode();
     }
-
+ 
     /// <summary>
     /// Désactive le mode consultation (retour à l'affichage normal)
     /// </summary>
@@ -622,51 +828,51 @@ private void OnNoteStatusChanged(object sender, string message)
         {
             // Row 0: Synthèse (Auto)
             _notesGrid.RowDefinitions[0].Height = GridLength.Auto;
-
+ 
             // Row 1: Séparateur (10px)
             _notesGrid.RowDefinitions[1].Height = new GridLength(10);
-
+ 
             // Row 2: Actions (Auto)
             _notesGrid.RowDefinitions[2].Height = GridLength.Auto;
-
+ 
             // Row 3: Note brute (MinHeight=80, MaxHeight=120)
             _notesGrid.RowDefinitions[3].Height = new GridLength(1, GridUnitType.Star);
             _notesGrid.RowDefinitions[3].MinHeight = 80;
             _notesGrid.RowDefinitions[3].MaxHeight = 120;
-
+ 
             // Row 4: Séparateur (3px)
             _notesGrid.RowDefinitions[4].Height = new GridLength(3);
-
+ 
             // Row 5: Note structurée (*)
             _notesGrid.RowDefinitions[5].Height = new GridLength(1, GridUnitType.Star);
         }
-
+ 
         // Réafficher les labels
         NotesControlPanel.RawNoteLabelBlock.Visibility = Visibility.Visible;
         NotesControlPanel.StructuredNoteLabelBlock.Visibility = Visibility.Visible;
-
+ 
         // Réafficher bouton Structurer
         NotesControlPanel.StructurerBtn.Visibility = Visibility.Visible;
-
+ 
         // Masquer bouton Fermer
         NotesControlPanel.FermerConsultationBtn.Visibility = Visibility.Collapsed;
-
+ 
         // Vider les zones
         NotesControlPanel.RawNoteTextBox.Text = string.Empty;
         NotesControlPanel.StructuredNoteTextBox.Document = new FlowDocument(); // RichTextBox utilise Document
-
+ 
         // NE PAS contrôler manuellement la visibilité - le binding MVVM s'en charge !
-
+ 
         // Désélectionner la note dans la liste
         NotesList.SelectedItem = null;
-
+ 
         StatusTextBlock.Text = "✓ Mode normal rétabli";
         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Gray);
     }
     private Grid? FindParentGrid(DependencyObject child)
     {
         var parent = System.Windows.Media.VisualTreeHelper.GetParent(child);
-
+ 
         while (parent != null)
         {
             if (parent is Grid grid && grid.RowDefinitions.Count == 6)
@@ -675,9 +881,9 @@ private void OnNoteStatusChanged(object sender, string message)
             }
             parent = System.Windows.Media.VisualTreeHelper.GetParent(parent);
         }
-
+ 
         return null;
     }
     
-
+ 
 }

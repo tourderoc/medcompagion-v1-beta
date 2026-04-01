@@ -1,0 +1,53 @@
+<UserControl x:Class="MedCompanion.Controls.AvatarTransitionControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="100" d:DesignWidth="100"
+             x:Name="TransitionControl"
+             Width="2000" Height="2000"
+             IsHitTestVisible="True">
+    <Grid Background="Transparent">
+        <!-- Zone de hit pour la sélection (plus large que le trait) -->
+        <Path x:Name="HitArea" Stroke="Transparent" StrokeThickness="20" Cursor="Hand"
+              MouseEnter="OnMouseEnter" MouseLeave="OnMouseLeave"
+              MouseLeftButtonDown="OnHitAreaClick"/>
+
+        <!-- La ligne de connexion -->
+        <Path x:Name="ConnectionPath" Stroke="#888" StrokeThickness="2" IsHitTestVisible="False">
+            <Path.Effect>
+                <DropShadowEffect Color="White" BlurRadius="2" ShadowDepth="0" Opacity="0.5"/>
+            </Path.Effect>
+        </Path>
+
+        <!-- Flèche au bout -->
+        <Polygon x:Name="ArrowHead" Fill="#888" Points="0,0 12,6 0,12" IsHitTestVisible="False">
+            <Polygon.RenderTransform>
+                <TransformGroup>
+                    <RotateTransform x:Name="ArrowRotation" CenterX="0" CenterY="6"/>
+                    <TranslateTransform x:Name="ArrowTranslation"/>
+                </TransformGroup>
+            </Polygon.RenderTransform>
+        </Polygon>
+
+        <!-- Label du Trigger avec menu contextuel -->
+        <Border x:Name="LabelBorder" Background="White" BorderBrush="#DDD" BorderThickness="1" CornerRadius="4"
+                HorizontalAlignment="Left" VerticalAlignment="Top" Padding="8,5"
+                MouseEnter="OnLabelMouseEnter" MouseLeave="OnLabelMouseLeave"
+                MouseLeftButtonDown="OnLabelClick" Cursor="Hand">
+            <Border.ContextMenu>
+                <ContextMenu>
+                    <MenuItem Header="Renommer le trigger" Click="OnRenameClick"/>
+                    <Separator/>
+                    <MenuItem Header="Supprimer la transition" Click="OnDeleteClick" Foreground="#E74C3C"/>
+                </ContextMenu>
+            </Border.ContextMenu>
+            <TextBlock x:Name="TriggerLabel" Text="{Binding Trigger}" FontSize="11" Foreground="#333"
+                       VerticalAlignment="Center" FontWeight="SemiBold"/>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="LabelTransform"/>
+            </Border.RenderTransform>
+        </Border>
+    </Grid>
+</UserControl>

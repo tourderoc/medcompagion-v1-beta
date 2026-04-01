@@ -1,0 +1,119 @@
+<UserControl x:Class="MedCompanion.Controls.VoiceDictationButton"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="40" d:DesignWidth="40">
+
+    <UserControl.Resources>
+        <!-- Animation de pulsation pour l'enregistrement -->
+        <Storyboard x:Key="RecordingPulse" RepeatBehavior="Forever">
+            <DoubleAnimation Storyboard.TargetName="RecordingRing"
+                           Storyboard.TargetProperty="Opacity"
+                           From="1" To="0.3" Duration="0:0:0.6"
+                           AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="RecordingRing"
+                           Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)"
+                           From="1" To="1.3" Duration="0:0:0.6"
+                           AutoReverse="True"/>
+            <DoubleAnimation Storyboard.TargetName="RecordingRing"
+                           Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)"
+                           From="1" To="1.3" Duration="0:0:0.6"
+                           AutoReverse="True"/>
+        </Storyboard>
+    </UserControl.Resources>
+
+    <Grid>
+        <!-- Cercle de pulsation (visible pendant l'enregistrement) -->
+        <Ellipse x:Name="RecordingRing"
+                 Width="36" Height="36"
+                 Fill="#E74C3C"
+                 Opacity="0"
+                 RenderTransformOrigin="0.5,0.5">
+            <Ellipse.RenderTransform>
+                <ScaleTransform ScaleX="1" ScaleY="1"/>
+            </Ellipse.RenderTransform>
+        </Ellipse>
+
+        <!-- Bouton principal -->
+        <Button x:Name="MicButton"
+                Width="36" Height="36"
+                Click="MicButton_Click"
+                Cursor="Hand"
+                ToolTip="Cliquez pour dicter (ou utilisez le raccourci Handy)">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Grid>
+                                    <!-- Fond du bouton -->
+                                    <Ellipse x:Name="ButtonBg"
+                                             Fill="#3498DB"
+                                             Width="36" Height="36"/>
+
+                                    <!-- Icône microphone -->
+                                    <Path x:Name="MicIcon"
+                                          Data="M12,2A3,3 0 0,1 15,5V11A3,3 0 0,1 12,14A3,3 0 0,1 9,11V5A3,3 0 0,1 12,2M19,11C19,14.53 16.39,17.44 13,17.93V21H11V17.93C7.61,17.44 5,14.53 5,11H7A5,5 0 0,0 12,16A5,5 0 0,0 17,11H19Z"
+                                          Fill="White"
+                                          Stretch="Uniform"
+                                          Width="18" Height="18"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="ButtonBg" Property="Fill" Value="#2980B9"/>
+                                    </Trigger>
+                                    <Trigger Property="IsPressed" Value="True">
+                                        <Setter TargetName="ButtonBg" Property="Fill" Value="#1F618D"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Button.Style>
+        </Button>
+
+        <!-- État enregistrement (bouton rouge) -->
+        <Button x:Name="StopButton"
+                Width="36" Height="36"
+                Click="MicButton_Click"
+                Cursor="Hand"
+                Visibility="Collapsed"
+                ToolTip="Cliquez pour arrêter l'enregistrement">
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Template">
+                        <Setter.Value>
+                            <ControlTemplate TargetType="Button">
+                                <Grid>
+                                    <!-- Fond rouge -->
+                                    <Ellipse x:Name="StopBg"
+                                             Fill="#E74C3C"
+                                             Width="36" Height="36"/>
+
+                                    <!-- Icône stop (carré) -->
+                                    <Rectangle Fill="White"
+                                               Width="14" Height="14"
+                                               RadiusX="2" RadiusY="2"
+                                               HorizontalAlignment="Center"
+                                               VerticalAlignment="Center"/>
+                                </Grid>
+
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter TargetName="StopBg" Property="Fill" Value="#C0392B"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Setter.Value>
+                    </Setter>
+                </Style>
+            </Button.Style>
+        </Button>
+    </Grid>
+</UserControl>

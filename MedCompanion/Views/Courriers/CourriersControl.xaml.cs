@@ -28,6 +28,7 @@ public partial class CourriersControl : UserControl
     public event EventHandler? CreateLetterWithAIRequested;
     public event EventHandler? LetterSaved; // NOUVEAU : Pour rafraîchir le badge de synthèse
     public event EventHandler<string>? NavigateToTemplatesWithLetter; // NOUVEAU : Pour rediriger vers Templates avec courrier
+    public event EventHandler<string>? SendToPilotageRequested;
 
     public CourriersControl()
     {
@@ -187,18 +188,18 @@ public partial class CourriersControl : UserControl
         );
     }
 
-    private void OnViewModelConfirmation(object? sender, (string title, string message, Action onConfirm) args)
+    private void OnViewModelConfirmation(object? sender, ConfirmationRequestedEventArgs e)
     {
         var result = MessageBox.Show(
-            args.message,
-            args.title,
+            e.Message,
+            e.Title,
             MessageBoxButton.YesNo,
             MessageBoxImage.Question
         );
 
         if (result == MessageBoxResult.Yes)
         {
-            args.onConfirm?.Invoke();
+            e.OnConfirm?.Invoke();
         }
     }
 
@@ -224,54 +225,54 @@ public partial class CourriersControl : UserControl
         CreateLetterWithAIRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    private void OnRatingDialogRequested(object? sender, (string mccId, string mccName, string letterPath, Action<int> onRatingReceived) args)
+    private void OnRatingDialogRequested(object? sender, RatingDialogRequestedEventArgs e)
     {
-        var dialog = new RateLetterDialog(args.mccId, args.mccName);
+        var dialog = new RateLetterDialog(e.MCCId, e.MCCName);
         dialog.Owner = Window.GetWindow(this);
 
         if (dialog.ShowDialog() == true)
         {
             var rating = dialog.Rating?.Rating ?? 0;
-            args.onRatingReceived?.Invoke(rating);
+            e.OnRatingReceived?.Invoke(rating);
         }
         else
         {
-            args.onRatingReceived?.Invoke(0); // 0 = annulé
+            e.OnRatingReceived?.Invoke(0); // 0 = annulé
         }
     }
 
-    private void OnMissingInfoDialogRequested(object? sender, (List<MissingFieldInfo> missingFields, Action<Dictionary<string, string>?> onInfoCollected) args)
+    private void OnMissingInfoDialogRequested(object? sender, MissingInfoDialogRequestedEventArgs e)
     {
-        var dialog = new MissingInfoDialog(args.missingFields);
+        var dialog = new MissingInfoDialog(e.MissingFields);
         dialog.Owner = Window.GetWindow(this);
 
         if (dialog.ShowDialog() == true)
         {
-            args.onInfoCollected?.Invoke(dialog.CollectedInfo);
+            e.OnInfoCollected?.Invoke(dialog.CollectedInfo);
         }
         else
         {
-            args.onInfoCollected?.Invoke(null); // null = annulé
+            e.OnInfoCollected?.Invoke(null); // null = annulé
         }
     }
 
-    private void OnDetailedViewRequested(object? sender, (string filePath, string patientName, Action onContentSaved) args)
+    private void OnDetailedViewRequested(object? sender, DetailedViewRequestedEventArgs e)
     {
         try
         {
             var dialog = new DetailedViewDialog();
-            dialog.LoadContent(args.filePath, ContentType.Letter, args.patientName);
+            dialog.LoadContent(e.FilePath, ContentType.Letter, e.PatientName);
 
             // ✅ NOUVEAU : Initialiser le service de régénération IA si disponible
             if (_regenerationService != null)
             {
                 // Charger les métadonnées patient pour améliorer l'anonymisation
                 PatientMetadata? patientMetadata = null;
-                if (_pathService != null && !string.IsNullOrEmpty(args.patientName))
+                if (_pathService != null && !string.IsNullOrEmpty(e.PatientName))
                 {
                     try
                     {
-                        var patientJsonPath = _pathService.GetPatientJsonPath(args.patientName);
+                        var patientJsonPath = _pathService.GetPatientJsonPath(e.PatientName);
                         if (System.IO.File.Exists(patientJsonPath))
                         {
                             var json = System.IO.File.ReadAllText(patientJsonPath, System.Text.Encoding.UTF8);
@@ -287,10 +288,10 @@ public partial class CourriersControl : UserControl
                 dialog.InitializeRegenerationService(_regenerationService, patientMetadata);
             }
 
-            // S'abonner à l'événement de sauvegarde
-            dialog.ContentSaved += (s, e) =>
+            // S'abonner à l'événement de sauvegarde avec contenu
+            dialog.ContentSaved += (s, content) =>
             {
-                args.onContentSaved?.Invoke();
+                e.OnContentSaved?.Invoke(content);
             };
 
             dialog.Owner = Window.GetWindow(this);
@@ -359,6 +360,17 @@ public partial class CourriersControl : UserControl
                 }
             }
         }
+    }
+
+    private void SendToPilotageButton_Click(object sender, RoutedEventArgs e)
+    {
+        var docxPath = _viewModel?.SelectedLetter?.DocxPath;
+        if (string.IsNullOrEmpty(docxPath) || !System.IO.File.Exists(docxPath))
+        {
+            StatusChanged?.Invoke(this, "⚠️ Aucun courrier sauvegardé à envoyer");
+            return;
+        }
+        SendToPilotageRequested?.Invoke(this, docxPath);
     }
 
     /// <summary>

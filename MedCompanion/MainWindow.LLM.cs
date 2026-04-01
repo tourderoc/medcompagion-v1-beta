@@ -196,7 +196,7 @@ public partial class MainWindow : Window
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
             
             // Effectuer le changement avec warm-up
-            var (success, message) = await _llmFactory.SwitchProviderAsync(provider, model);
+            var (success, message) = await _llmFactory.SwitchProviderAsync(provider!, model);
             
             if (success)
             {

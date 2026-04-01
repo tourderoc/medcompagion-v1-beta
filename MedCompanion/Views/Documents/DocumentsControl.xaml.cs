@@ -634,16 +634,6 @@ patient: {_currentPatient.NomComplet}
                         $"[DocumentsControl] Poids enregistré: {_lastDocumentSynthesisWeight:F1} pour synthèse {syntheseFileName}");
                 }
 
-                // Message de succès
-                MessageBox.Show(
-                    $"✅ Synthèse sauvegardée avec succès !\n\n" +
-                    $"Fichier : {syntheseFileName}\n" +
-                    $"Emplacement : documents/syntheses/",
-                    "Sauvegarde réussie",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information
-                );
-
                 StatusChanged?.Invoke(this, $"✅ Synthèse sauvegardée : {syntheseFileName}");
 
                 // METRIQUE ERGONOMIE : Mettre à jour l'interface immédiatement
@@ -681,7 +671,7 @@ patient: {_currentPatient.NomComplet}
             ResetSynthesisPreview();
         }
 
-        private async void ViewDocumentSynthesisButton_Click(object sender, RoutedEventArgs e)
+        private void ViewDocumentSynthesisButton_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrEmpty(_currentSynthesisPath) || _currentPatient == null)
             {
