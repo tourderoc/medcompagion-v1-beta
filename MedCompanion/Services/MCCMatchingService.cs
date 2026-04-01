@@ -34,16 +34,57 @@ namespace MedCompanion.Services
 
         /// <summary>
         /// Dictionnaire de mapping bilingue pour les audiences
+        /// AMÉLIORATION ÉTAPE 2 : Enrichi avec termes courants psychiatrie
         /// </summary>
         private static readonly Dictionary<string, List<string>> AUDIENCE_ALIASES = new()
         {
-            ["school"] = new() { "school", "ecole", "scolaire", "enseignant", "professeur" },
-            ["parents"] = new() { "parents", "famille", "parent", "family" },
-            ["doctor"] = new() { "doctor", "medecin", "confrere", "specialiste", "physician" },
-            ["institution"] = new() { "institution", "administratif", "administration", "mdph", "cpam" },
-            ["judge"] = new() { "judge", "juge", "tribunal", "justice", "legal" },
-            ["mixed"] = new() { "mixed", "mixte", "multiple" },
-            ["assurance"] = new() { "assurance", "insurance", "mutuelle" }
+            ["school"] = new() {
+                // Termes de base
+                "school", "ecole", "scolaire", "enseignant", "professeur",
+                // Établissements
+                "college", "lycee", "maternelle", "primaire", "etablissement scolaire", "etablissement",
+                // Personnel éducatif
+                "directeur", "directrice", "instituteur", "institutrice", "maitre", "maitresse",
+                "equipe educative", "equipe pedagogique", "corps enseignant",
+                // Personnel spécialisé école
+                "avs", "aesh", "cpe", "conseiller principal", "vie scolaire",
+                "psychologue scolaire", "medecin scolaire", "infirmiere scolaire",
+                "rased", "coordonnateur", "referent handicap", "referent"
+            },
+            ["parents"] = new() {
+                "parents", "famille", "parent", "family",
+                "mere", "pere", "maman", "papa",
+                "tuteur", "tutrice", "representant legal", "responsable legal"
+            },
+            ["doctor"] = new() {
+                // Termes génériques
+                "doctor", "medecin", "confrere", "specialiste", "physician", "praticien",
+                // Spécialités psy
+                "psychiatre", "pedopsychiatre", "psychologue", "neuropsychologue",
+                "psychomotricien", "psychomotricienne",
+                // Spécialités rééducation
+                "orthophoniste", "ergotherapeute", "orthoptiste", "kinesitherapeute",
+                // Autres spécialités
+                "neurologue", "neuropediatre", "pediatre", "generaliste", "medecin traitant",
+                "therapeute", "neuropsychiatre"
+            },
+            ["institution"] = new() {
+                "institution", "administratif", "administration",
+                // Organismes handicap/social
+                "mdph", "cdaph", "maison departementale",
+                // Sécurité sociale
+                "cpam", "caf", "securite sociale", "assurance maladie",
+                // Autres administrations
+                "prefecture", "mairie", "conseil departemental", "ars",
+                "organisme", "service", "commission"
+            },
+            ["judge"] = new() {
+                "judge", "juge", "tribunal", "justice", "legal",
+                "avocat", "magistrat", "procureur", "greffier",
+                "expert judiciaire", "juge des enfants", "juge aux affaires familiales"
+            },
+            ["mixed"] = new() { "mixed", "mixte", "multiple", "plusieurs destinataires" },
+            ["assurance"] = new() { "assurance", "insurance", "mutuelle", "complementaire sante", "prevoyance" }
         };
 
         /// <summary>
@@ -196,14 +237,62 @@ namespace MedCompanion.Services
             var normalized2 = keyword2.ToLower().Trim();
 
             // Vérifier si les deux mots appartiennent au même groupe de synonymes
+            // AMÉLIORATION ÉTAPE 5 : Matching exact dans les synonymes (pas Contains)
             foreach (var synonyms in MEDICAL_SYNONYMS.Values)
             {
-                var has1 = synonyms.Any(s => normalized1.Contains(s) || s.Contains(normalized1));
-                var has2 = synonyms.Any(s => normalized2.Contains(s) || s.Contains(normalized2));
-                
+                var has1 = synonyms.Any(s => s.Equals(normalized1, StringComparison.OrdinalIgnoreCase) ||
+                                             normalized1.StartsWith(s, StringComparison.OrdinalIgnoreCase) ||
+                                             s.StartsWith(normalized1, StringComparison.OrdinalIgnoreCase));
+                var has2 = synonyms.Any(s => s.Equals(normalized2, StringComparison.OrdinalIgnoreCase) ||
+                                             normalized2.StartsWith(s, StringComparison.OrdinalIgnoreCase) ||
+                                             s.StartsWith(normalized2, StringComparison.OrdinalIgnoreCase));
+
                 if (has1 && has2)
                     return true;
             }
+
+            return false;
+        }
+
+        /// <summary>
+        /// AMÉLIORATION ÉTAPE 5 : Vérifie si un mot-clé utilisateur correspond à un mot-clé MCC
+        /// Matching plus intelligent : mots entiers, préfixes, ou synonymes
+        /// Évite les faux positifs comme "attention" matchant "inattention"
+        /// </summary>
+        private bool KeywordMatches(string userKeyword, string mccKeyword)
+        {
+            if (string.IsNullOrEmpty(userKeyword) || string.IsNullOrEmpty(mccKeyword))
+                return false;
+
+            var user = userKeyword.ToLower().Trim();
+            var mcc = mccKeyword.ToLower().Trim();
+
+            // 1. Match exact
+            if (user.Equals(mcc, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // 2. Match par mots composés (ex: "trouble attention" vs "tdah")
+            var userWords = user.Split(new[] { ' ', '-', '_', '\'' }, StringSplitOptions.RemoveEmptyEntries);
+            var mccWords = mcc.Split(new[] { ' ', '-', '_', '\'' }, StringSplitOptions.RemoveEmptyEntries);
+
+            // Si un mot du user correspond exactement à un mot du MCC
+            if (userWords.Any(uw => mccWords.Any(mw => uw.Equals(mw, StringComparison.OrdinalIgnoreCase))))
+                return true;
+
+            // 3. Match par préfixe significatif (min 4 caractères pour éviter faux positifs)
+            // Ex: "scolarité" matche "scolaire"
+            if (user.Length >= 4 && mcc.Length >= 4)
+            {
+                var minLen = Math.Min(user.Length, mcc.Length);
+                var prefixLen = Math.Max(4, minLen - 2); // Au moins 4 chars, ou longueur - 2
+                if (user.Substring(0, Math.Min(prefixLen, user.Length))
+                        .Equals(mcc.Substring(0, Math.Min(prefixLen, mcc.Length)), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            // 4. Match par synonymes médicaux
+            if (AreSynonyms(user, mcc))
+                return true;
 
             return false;
         }
@@ -214,10 +303,10 @@ namespace MedCompanion.Services
         /// <param name="userRequest">Demande de l'utilisateur</param>
         /// <param name="patientContext">Contexte patient optionnel</param>
         /// <returns>Résultat complet du matching avec logs détaillés</returns>
-        public async Task<(bool success, MCCMatchResult result, string error)> AnalyzeAndMatchAsync(
+        public async Task<(bool success, MCCMatchResult? result, string? error)> AnalyzeAndMatchAsync(
             string userRequest,
-            PatientContext patientContext = null,
-            LetterGenerationOptions options = null)
+            PatientContext? patientContext = null,
+            LetterGenerationOptions? options = null)
         {
             var logs = new List<string>();
             
@@ -406,6 +495,7 @@ namespace MedCompanion.Services
             breakdown["Type de document"] = 50;
 
             // Correspondance mots-clés (avec support de synonymes)
+            // AMÉLIORATION ÉTAPE 5 : Utilise KeywordMatches pour éviter faux positifs
             if (keywords != null && keywords.Any())
             {
                 var mccKeywords = (mcc.Keywords ?? new List<string>())
@@ -413,14 +503,10 @@ namespace MedCompanion.Services
                     .ToList();
 
                 var matchingKeywords = 0;
-                foreach (var keyword in keywords.Select(k => k.ToLower()))
+                foreach (var keyword in keywords)
                 {
-                    // Matching flexible : exact, contient, ou synonymes
-                    if (mccKeywords.Any(mk => 
-                        mk == keyword || 
-                        mk.Contains(keyword) || 
-                        keyword.Contains(mk) ||
-                        AreSynonyms(keyword, mk)))
+                    // Matching intelligent : exact, mots composés, préfixes, ou synonymes
+                    if (mccKeywords.Any(mk => KeywordMatches(keyword, mk)))
                     {
                         matchingKeywords++;
                     }
@@ -479,20 +565,31 @@ namespace MedCompanion.Services
                 breakdown["Ton"] = 0;
             }
 
-            // Qualité (rating moyen)
+            // Qualité (rating moyen) - AMÉLIORATION ÉTAPE 6 : Moyenne bayésienne
+            // Évite qu'un MCC avec 1 seul vote 5★ soit favorisé sur un MCC avec 100 votes 4.5★
+            const double PRIOR_RATING = 3.5;  // Note "neutre" a priori
+            const int PRIOR_WEIGHT = 5;       // Équivalent à 5 votes de confiance
+
             if (mcc.TotalRatings > 0)
             {
-                breakdown["Qualité (notes)"] = (mcc.AverageRating / 5.0) * 30;
+                // Bayesian average : plus de votes = plus de confiance dans la note
+                double bayesianRating = (mcc.AverageRating * mcc.TotalRatings + PRIOR_RATING * PRIOR_WEIGHT)
+                                        / (mcc.TotalRatings + PRIOR_WEIGHT);
+                breakdown["Qualité (notes)"] = (bayesianRating / 5.0) * 30;
             }
             else
             {
-                breakdown["Qualité (notes)"] = 0;
+                // Pas de votes → note neutre (prior)
+                breakdown["Qualité (notes)"] = (PRIOR_RATING / 5.0) * 30; // = 21 pts
             }
 
-            // Popularité (usage)
+            // Popularité (usage) - AMÉLIORATION ÉTAPE 7 : Courbe plus progressive
+            // Sqrt au lieu de Log pour mieux différencier les MCCs très utilisés
+            // Log: 20 usages → 15 pts (max atteint trop vite)
+            // Sqrt: 20 usages → 6.7 pts, 100 usages → 15 pts
             if (mcc.UsageCount > 0)
             {
-                breakdown["Popularité (usage)"] = Math.Min(Math.Log(mcc.UsageCount + 1) * 5, 15);
+                breakdown["Popularité (usage)"] = Math.Min(Math.Sqrt(mcc.UsageCount) * 1.5, 15);
             }
             else
             {

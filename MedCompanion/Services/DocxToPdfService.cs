@@ -9,7 +9,7 @@ namespace MedCompanion.Services
     /// </summary>
     public class DocxToPdfService
     {
-        private readonly string _libreOfficePath;
+        private readonly string _libreOfficePath = string.Empty;
 
         public DocxToPdfService()
         {

@@ -148,7 +148,7 @@ namespace MedCompanion.Services
         /// <summary>
         /// Récupère un MCC par son ID
         /// </summary>
-        public MCCModel GetMCC(string mccId)
+        public MCCModel? GetMCC(string mccId)
         {
             return _library.TryGetValue(mccId, out var mcc) ? mcc : null;
         }
@@ -232,16 +232,18 @@ namespace MedCompanion.Services
         /// <summary>
         /// Trouve le meilleur MCC selon le type de document et les métadonnées
         /// </summary>
-        public MCCModel FindBestMCC(string docType, Dictionary<string, string> metadata)
+        public MCCModel? FindBestMCC(string docType, Dictionary<string, string> metadata)
         {
             try
             {
-                // Filtrer par type de document, statut actif ET audience compatible
+                // Filtrer par statut actif ET audience compatible
                 var targetAudience = metadata.ContainsKey("audience") ? metadata["audience"] : null;
 
+                // CORRECTION : Suppression totale du filtre DocType
+                // Le LLM peut retourner des types variés (administrative_letter, school_letter)
+                // qui bloquaient le matching. On se base uniquement sur l'Audience.
                 var candidates = _library.Values
-                    .Where(m => m.Semantic?.DocType == docType && 
-                               (m.Status == MCCStatus.Active || m.Status == MCCStatus.Validated) &&
+                    .Where(m => (m.Status == MCCStatus.Active || m.Status == MCCStatus.Validated) &&
                                IsAudienceCompatible(targetAudience, m.Semantic?.Audience))
                     .ToList();
 
@@ -316,11 +318,11 @@ namespace MedCompanion.Services
                 score += (mcc.AverageRating / 5.0) * 50; // Normaliser sur 50 points max
             }
 
-            // Popularité (usage) → jusqu'à +20 points
-            // Utiliser log pour éviter biais des très utilisés
+            // Popularité (usage) → jusqu'à +15 points
+            // AMÉLIORATION ÉTAPE 7 : Sqrt pour courbe plus progressive
             if (mcc.UsageCount > 0)
             {
-                score += Math.Log(mcc.UsageCount + 1) * 5;
+                score += Math.Min(Math.Sqrt(mcc.UsageCount) * 1.5, 15);
             }
 
             // Bonus pour statut Validated → +10 points
@@ -337,25 +339,26 @@ namespace MedCompanion.Services
         /// Utilisé par le système de courriers intelligents
         /// </summary>
         public List<(MCCModel mcc, double score)> FindBestMatchingMCCs(
-            string docType, 
-            Dictionary<string, string> metadata, 
+            string docType,
+            Dictionary<string, string> metadata,
             List<string> keywords,
             int maxResults = 3)
         {
             try
             {
-                // Filtrer par type de document, statut actif ET audience compatible
+                // Filtrer par statut actif ET audience compatible
                 var targetAudience = metadata.ContainsKey("audience") ? metadata["audience"] : null;
 
+                // CORRECTION : Suppression totale du filtre DocType
+                // Le LLM peut retourner des types variés qui bloquaient le matching
                 var candidates = _library.Values
-                    .Where(m => m.Semantic?.DocType == docType && 
-                               (m.Status == MCCStatus.Active || m.Status == MCCStatus.Validated) &&
+                    .Where(m => (m.Status == MCCStatus.Active || m.Status == MCCStatus.Validated) &&
                                IsAudienceCompatible(targetAudience, m.Semantic?.Audience))
                     .ToList();
 
                 if (!candidates.Any())
                 {
-                    System.Diagnostics.Debug.WriteLine($"[MCCLibrary] Aucun MCC trouvé pour type '{docType}'");
+                    System.Diagnostics.Debug.WriteLine($"[MCCLibrary] Aucun MCC trouvé pour audience '{targetAudience}'");
                     return new List<(MCCModel, double)>();
                 }
 
@@ -393,10 +396,10 @@ namespace MedCompanion.Services
         {
             // Pas de cible = tout accepté
             if (string.IsNullOrWhiteSpace(targetAudience)) return true;
-            
+
             // MCC universel = accepté
             if (string.IsNullOrWhiteSpace(mccAudience)) return true;
-            
+
             var target = targetAudience.ToLower().Trim();
             var mcc = mccAudience.ToLower().Trim();
 
@@ -409,21 +412,131 @@ namespace MedCompanion.Services
             // 3. Alias match (ex: school == ecole)
             if (ValuesMatch(target, mcc, AUDIENCE_ALIASES)) return true;
 
+            // 4. AMÉLIORATION ÉTAPE 3 : Pattern match
+            // Si le target contient un pattern qui correspond à la catégorie du MCC
+            if (AudienceMatchesPattern(target, mcc)) return true;
+
             // Sinon -> Incompatible (ex: school != parents)
             return false;
         }
 
         /// <summary>
-        /// Dictionnaires de mapping bilingue (copiés depuis MCCMatchingService pour cohérence)
+        /// AMÉLIORATION ÉTAPE 3 : Vérifie si une audience correspond via patterns partiels
+        /// Ex: "équipe éducative" contient "educa" → catégorie school
+        /// </summary>
+        private bool AudienceMatchesPattern(string targetAudience, string mccAudience)
+        {
+            // Trouver la catégorie du MCC
+            string? mccCategory = null;
+            foreach (var (category, aliases) in AUDIENCE_ALIASES)
+            {
+                if (aliases.Any(a => a.Equals(mccAudience, StringComparison.OrdinalIgnoreCase)))
+                {
+                    mccCategory = category;
+                    break;
+                }
+            }
+
+            // Si on n'a pas trouvé la catégorie, essayer de matcher directement
+            if (mccCategory == null)
+            {
+                // Le mccAudience pourrait être la catégorie elle-même
+                if (AUDIENCE_PATTERNS.ContainsKey(mccAudience))
+                {
+                    mccCategory = mccAudience;
+                }
+                else
+                {
+                    return false;
+                }
+            }
+
+            // Vérifier si le target contient un pattern de cette catégorie
+            if (AUDIENCE_PATTERNS.TryGetValue(mccCategory, out var patterns))
+            {
+                // Normaliser le target (retirer accents pour comparaison)
+                var normalizedTarget = RemoveAccents(targetAudience);
+                return patterns.Any(p => normalizedTarget.Contains(p, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Retire les accents d'une chaîne pour faciliter le matching
+        /// </summary>
+        private static string RemoveAccents(string text)
+        {
+            if (string.IsNullOrEmpty(text)) return text;
+
+            var normalized = text.Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder();
+
+            foreach (var c in normalized)
+            {
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c) !=
+                    System.Globalization.UnicodeCategory.NonSpacingMark)
+                {
+                    sb.Append(c);
+                }
+            }
+
+            return sb.ToString().Normalize(System.Text.NormalizationForm.FormC);
+        }
+
+        /// <summary>
+        /// Dictionnaires de mapping bilingue
+        /// AMÉLIORATION ÉTAPE 2 : Enrichi avec termes courants psychiatrie
         /// </summary>
         private static readonly Dictionary<string, List<string>> AUDIENCE_ALIASES = new()
         {
-            ["school"] = new() { "school", "ecole", "scolaire", "enseignant", "professeur" },
-            ["parents"] = new() { "parents", "famille", "parent" },
-            ["doctor"] = new() { "doctor", "medecin", "confrere", "specialiste", "physician" },
-            ["institution"] = new() { "institution", "administratif", "administration", "mdph", "cpam" },
-            ["judge"] = new() { "judge", "juge", "tribunal", "justice", "legal" },
-            ["mixed"] = new() { "mixed", "mixte", "multiple" }
+            ["school"] = new() {
+                // Termes de base
+                "school", "ecole", "scolaire", "enseignant", "professeur",
+                // Établissements
+                "college", "lycee", "maternelle", "primaire", "etablissement scolaire", "etablissement",
+                // Personnel éducatif
+                "directeur", "directrice", "instituteur", "institutrice", "maitre", "maitresse",
+                "equipe educative", "equipe pedagogique", "corps enseignant",
+                // Personnel spécialisé école
+                "avs", "aesh", "cpe", "conseiller principal", "vie scolaire",
+                "psychologue scolaire", "medecin scolaire", "infirmiere scolaire",
+                "rased", "coordonnateur", "referent handicap", "referent"
+            },
+            ["parents"] = new() {
+                "parents", "famille", "parent", "family",
+                "mere", "pere", "maman", "papa",
+                "tuteur", "tutrice", "representant legal", "responsable legal"
+            },
+            ["doctor"] = new() {
+                // Termes génériques
+                "doctor", "medecin", "confrere", "specialiste", "physician", "praticien",
+                // Spécialités psy
+                "psychiatre", "pedopsychiatre", "psychologue", "neuropsychologue",
+                "psychomotricien", "psychomotricienne",
+                // Spécialités rééducation
+                "orthophoniste", "ergotherapeute", "orthoptiste", "kinesitherapeute",
+                // Autres spécialités
+                "neurologue", "neuropediatre", "pediatre", "generaliste", "medecin traitant",
+                "therapeute", "neuropsychiatre"
+            },
+            ["institution"] = new() {
+                "institution", "administratif", "administration",
+                // Organismes handicap/social
+                "mdph", "cdaph", "maison departementale",
+                // Sécurité sociale
+                "cpam", "caf", "securite sociale", "assurance maladie",
+                // Autres administrations
+                "prefecture", "mairie", "conseil departemental", "ars",
+                "organisme", "service", "commission"
+            },
+            ["judge"] = new() {
+                "judge", "juge", "tribunal", "justice", "legal",
+                "avocat", "magistrat", "procureur", "greffier",
+                "expert judiciaire", "juge des enfants", "juge aux affaires familiales"
+            },
+            ["mixed"] = new() { "mixed", "mixte", "multiple", "plusieurs destinataires" },
+            ["assurance"] = new() { "assurance", "insurance", "mutuelle", "complementaire sante", "prevoyance" }
         };
 
         private static readonly Dictionary<string, List<string>> TONE_ALIASES = new()
@@ -434,6 +547,50 @@ namespace MedCompanion.Services
             ["educational"] = new() { "educational", "pedagogique", "educatif" },
             ["neutral"] = new() { "neutral", "neutre", "objectif" }
         };
+
+        /// <summary>
+        /// AMÉLIORATION ÉTAPE 3 : Patterns partiels pour matching flexible
+        /// Si le texte contient un de ces préfixes, on considère qu'il appartient à la catégorie
+        /// </summary>
+        private static readonly Dictionary<string, List<string>> AUDIENCE_PATTERNS = new()
+        {
+            ["school"] = new() { "educa", "scola", "enseign", "ecole", "college", "lycee", "classe", "pedagogiq" },
+            ["doctor"] = new() { "medecin", "docteur", "psychiatr", "psycholog", "orthophon", "neurolog", "pediatr", "therapeut" },
+            ["institution"] = new() { "mdph", "cpam", "caf", "administ", "prefecture", "mairie", "commission" },
+            ["parents"] = new() { "parent", "famille", "tuteur", "mere", "pere", "maman", "papa" },
+            ["judge"] = new() { "juge", "justice", "avocat", "tribunal", "legal", "judiciaire" }
+        };
+
+        /// <summary>
+        /// AMÉLIORATION ÉTAPE 5 : Matching de mots-clés plus intelligent
+        /// Évite les faux positifs comme "attention" matchant "inattention"
+        /// </summary>
+        private static bool KeywordMatchesSimple(string userKeyword, string mccKeyword)
+        {
+            if (string.IsNullOrEmpty(userKeyword) || string.IsNullOrEmpty(mccKeyword))
+                return false;
+
+            // 1. Match exact
+            if (userKeyword.Equals(mccKeyword, StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            // 2. Match par mots composés
+            var userWords = userKeyword.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+            var mccWords = mccKeyword.Split(new[] { ' ', '-', '_' }, StringSplitOptions.RemoveEmptyEntries);
+
+            if (userWords.Any(uw => mccWords.Any(mw => uw.Equals(mw, StringComparison.OrdinalIgnoreCase))))
+                return true;
+
+            // 3. Match par préfixe significatif (min 4 caractères)
+            if (userKeyword.Length >= 4 && mccKeyword.Length >= 4)
+            {
+                var prefixLen = Math.Min(4, Math.Min(userKeyword.Length, mccKeyword.Length));
+                if (userKeyword.Substring(0, prefixLen).Equals(mccKeyword.Substring(0, prefixLen), StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
+        }
 
         /// <summary>
         /// Vérifie si deux valeurs correspondent (avec support multilingue)
@@ -477,6 +634,7 @@ namespace MedCompanion.Services
             score += 50;
 
             // Correspondance mots-clés → jusqu'à +40 points
+            // AMÉLIORATION ÉTAPE 5 : Matching plus intelligent, évite faux positifs
             if (keywords != null && keywords.Any())
             {
                 var mccKeywords = (mcc.Keywords ?? new List<string>())
@@ -485,7 +643,7 @@ namespace MedCompanion.Services
 
                 var matchingKeywords = keywords
                     .Select(k => k.ToLower())
-                    .Count(k => mccKeywords.Any(mk => mk.Contains(k) || k.Contains(mk)));
+                    .Count(k => mccKeywords.Any(mk => KeywordMatchesSimple(k, mk)));
 
                 if (mccKeywords.Any())
                 {
@@ -519,15 +677,27 @@ namespace MedCompanion.Services
             }
 
             // Qualité (rating moyen) → jusqu'à +30 points
+            // AMÉLIORATION ÉTAPE 6 : Moyenne bayésienne pour éviter biais des MCCs peu notés
+            const double PRIOR_RATING = 3.5;  // Note "neutre" a priori
+            const int PRIOR_WEIGHT = 5;       // Équivalent à 5 votes de confiance
+
             if (mcc.TotalRatings > 0)
             {
-                score += (mcc.AverageRating / 5.0) * 30;
+                double bayesianRating = (mcc.AverageRating * mcc.TotalRatings + PRIOR_RATING * PRIOR_WEIGHT)
+                                        / (mcc.TotalRatings + PRIOR_WEIGHT);
+                score += (bayesianRating / 5.0) * 30;
+            }
+            else
+            {
+                // Pas de votes → note neutre
+                score += (PRIOR_RATING / 5.0) * 30;
             }
 
             // Popularité (usage) → jusqu'à +15 points
+            // AMÉLIORATION ÉTAPE 7 : Sqrt pour courbe plus progressive
             if (mcc.UsageCount > 0)
             {
-                score += Math.Min(Math.Log(mcc.UsageCount + 1) * 5, 15);
+                score += Math.Min(Math.Sqrt(mcc.UsageCount) * 1.5, 15);
             }
 
             // Bonus pour statut Validated → +10 points

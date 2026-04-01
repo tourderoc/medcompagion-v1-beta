@@ -101,11 +101,6 @@ namespace MedCompanion.Services
         /// </summary>
         public CancellationTokenSource? CancellationSource { get; private set; }
 
-        /// <summary>
-        /// Fenêtre TopMost pour afficher l'overlay au-dessus de tout
-        /// </summary>
-        private Window? _overlayWindow;
-
         // ===== MÉTHODES PUBLIQUES =====
 
         /// <summary>
@@ -113,8 +108,9 @@ namespace MedCompanion.Services
         /// </summary>
         /// <param name="message">Message principal</param>
         /// <param name="canCancel">Permet l'annulation</param>
+        /// <param name="useTopMostOverlay">Paramètre obsolète, ignoré (conservé pour compatibilité)</param>
         /// <returns>CancellationToken à passer aux opérations async</returns>
-        public CancellationToken Start(string message, bool canCancel = true)
+        public CancellationToken Start(string message, bool canCancel = true, bool useTopMostOverlay = false)
         {
             // Annuler toute opération précédente
             CancellationSource?.Cancel();
@@ -128,8 +124,8 @@ namespace MedCompanion.Services
             CanCancel = canCancel;
             IsBusy = true;
 
-            // Créer et afficher la fenêtre overlay TopMost
-            ShowOverlayWindow();
+            // Note: useTopMostOverlay est ignoré - l'overlay MainWindow est toujours utilisé
+            // Pour les dialogues modaux, intégrer un BusyOverlay local dans le dialogue
 
             System.Diagnostics.Debug.WriteLine($"[BusyService] Start: {message}");
 
@@ -169,8 +165,7 @@ namespace MedCompanion.Services
             Progress = -1;
             IsCancellationRequested = false;
 
-            // Fermer la fenêtre overlay
-            HideOverlayWindow();
+            // L'overlay dans MainWindow se masque automatiquement via le binding IsBusy
 
             // Ne pas disposer immédiatement le CancellationSource
             // car des opérations peuvent encore vérifier le token
@@ -203,68 +198,6 @@ namespace MedCompanion.Services
         public void ThrowIfCancellationRequested()
         {
             CancellationSource?.Token.ThrowIfCancellationRequested();
-        }
-
-        // ===== MÉTHODES PRIVÉES =====
-
-        /// <summary>
-        /// Affiche une fenêtre overlay TopMost au-dessus de toutes les fenêtres
-        /// </summary>
-        private void ShowOverlayWindow()
-        {
-            Application.Current?.Dispatcher.Invoke(() =>
-            {
-                // Fermer toute fenêtre précédente
-                if (_overlayWindow != null)
-                {
-                    _overlayWindow.Close();
-                    _overlayWindow = null;
-                }
-
-                // Créer une nouvelle fenêtre overlay
-                var overlayContent = new Views.BusyOverlay();
-
-                _overlayWindow = new Window
-                {
-                    Content = overlayContent,
-                    WindowStyle = WindowStyle.None,
-                    AllowsTransparency = true,
-                    Background = System.Windows.Media.Brushes.Transparent,
-                    ShowInTaskbar = false,
-                    Topmost = true, // IMPORTANT: Toujours au premier plan
-                    WindowState = WindowState.Maximized,
-                    ResizeMode = ResizeMode.NoResize,
-                    Owner = Application.Current.MainWindow // Lié à la fenêtre principale
-                };
-
-                // Empêcher la fermeture de la fenêtre
-                _overlayWindow.Closing += (s, e) =>
-                {
-                    if (IsBusy)
-                    {
-                        e.Cancel = true;
-                    }
-                };
-
-                _overlayWindow.Show();
-                System.Diagnostics.Debug.WriteLine("[BusyService] Overlay window shown");
-            });
-        }
-
-        /// <summary>
-        /// Masque et ferme la fenêtre overlay
-        /// </summary>
-        private void HideOverlayWindow()
-        {
-            Application.Current?.Dispatcher.Invoke(() =>
-            {
-                if (_overlayWindow != null)
-                {
-                    _overlayWindow.Close();
-                    _overlayWindow = null;
-                    System.Diagnostics.Debug.WriteLine("[BusyService] Overlay window closed");
-                }
-            });
         }
 
         // ===== INotifyPropertyChanged =====

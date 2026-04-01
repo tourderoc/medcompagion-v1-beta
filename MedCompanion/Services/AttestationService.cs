@@ -25,8 +25,8 @@ namespace MedCompanion.Services
         private readonly List<AttestationTemplate> _templates;
 
         // Cache des prompts pour éviter les appels répétés
-        private string _cachedAttestationPrompt;
-        private string _cachedSystemPrompt;
+        private string _cachedAttestationPrompt = string.Empty;
+        private string _cachedSystemPrompt = string.Empty;
 
         public AttestationService(
             StorageService storageService,
@@ -623,7 +623,7 @@ Cette attestation est délivrée pour valoir ce que de droit."
                 }
 
                 // ✅ ÉTAPE 6 : Nettoyer le résultat désanonymisé par la Gateway
-                var markdown = result.Trim();
+                var markdown = result?.Trim() ?? string.Empty;
                 if (markdown.StartsWith("```markdown"))
                     markdown = markdown.Substring(11);
                 if (markdown.StartsWith("```"))
@@ -741,33 +741,33 @@ Cette attestation est délivrée pour valoir ce que de droit."
 
             try
             {
-                var attestationsDir = _pathService.GetAttestationsDirectory(nomComplet);
+                var attestationFolders = _pathService.GetAllYearDirectories(nomComplet, "attestations");
 
-                if (!Directory.Exists(attestationsDir))
-                    return result;
-
-                var mdFiles = Directory.GetFiles(attestationsDir, "*.md", SearchOption.TopDirectoryOnly);
-
-                foreach (var mdFile in mdFiles)
+                foreach (var attestationsDir in attestationFolders)
                 {
-                    var docxFile = Path.ChangeExtension(mdFile, ".docx");
-                    var date = File.GetLastWriteTime(mdFile);
-                    
-                    // Extraire le type depuis le nom de fichier
-                    var fileName = Path.GetFileNameWithoutExtension(mdFile);
-                    var parts = fileName.Split('_');
-                    var type = parts.Length > 2 ? parts[2] : "attestation";
-                    
-                    // Lire le contenu pour générer un aperçu
-                    var content = File.ReadAllText(mdFile);
-                    var lines = content.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                    var preview = lines.FirstOrDefault(l => !l.StartsWith("---") && !l.StartsWith("#") && l.Length > 10)
-                        ?? "Attestation";
-                    
-                    if (preview.Length > 50)
-                        preview = preview.Substring(0, 47) + "...";
+                    var mdFiles = Directory.GetFiles(attestationsDir, "*.md", SearchOption.TopDirectoryOnly);
 
-                    result.Add((date, type, preview, mdFile, docxFile));
+                    foreach (var mdFile in mdFiles)
+                    {
+                        var docxFile = Path.ChangeExtension(mdFile, ".docx");
+                        var date = File.GetLastWriteTime(mdFile);
+                        
+                        // Extraire le type depuis le nom de fichier
+                        var fileName = Path.GetFileNameWithoutExtension(mdFile);
+                        var parts = fileName.Split('_');
+                        var type = parts.Length > 2 ? parts[2] : "attestation";
+                        
+                        // Lire le contenu pour générer un aperçu
+                        var content = File.ReadAllText(mdFile);
+                        var lines = content.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                        var preview = lines.FirstOrDefault(l => !l.StartsWith("---") && !l.StartsWith("#") && l.Length > 10)
+                            ?? "Attestation";
+                        
+                        if (preview.Length > 50)
+                            preview = preview.Substring(0, 47) + "...";
+
+                        result.Add((date, type, preview, mdFile, docxFile));
+                    }
                 }
 
                 return result.OrderByDescending(r => r.Item1).ToList();

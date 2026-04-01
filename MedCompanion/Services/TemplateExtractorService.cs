@@ -230,7 +230,7 @@ EXEMPLES DE VARIABLES :
         /// Analyse la sémantique d'un document médical avec l'IA
         /// Identifie le ton, le public cible, la tranche d'âge, le type de document, les mots-clés et la structure
         /// </summary>
-        public async Task<(bool success, SemanticAnalysis analysis, string error)> 
+        public async Task<(bool success, SemanticAnalysis? analysis, string error)>
             AnalyzeDocumentSemantic(string documentText)
         {
             if (string.IsNullOrWhiteSpace(documentText))
@@ -394,7 +394,7 @@ DOCUMENT À ANALYSER :
         /// Identifie les sections logiques et leur contenu typique
         /// Cette analyse se fait sur le TEMPLATE (avec {{Variables}}) pour éviter les biais liés aux données spécifiques
         /// </summary>
-        public async Task<(bool success, Dictionary<string, string> sections, string error)> 
+        public async Task<(bool success, Dictionary<string, string>? sections, string error)>
             AnalyzeTemplateStructure(string templateContent)
         {
             if (string.IsNullOrWhiteSpace(templateContent))
@@ -532,7 +532,7 @@ Réponds en JSON avec l'objet ""sections"" contenant les sections identifiées e
         /// Génère un MCC complet à partir d'un exemple de document
         /// Combine l'extraction de template ET l'analyse sémantique
         /// </summary>
-        public async Task<(bool success, MCCModel mcc, string error)>
+        public async Task<(bool success, MCCModel? mcc, string error)>
             GenerateMCCFromExample(string exampleDocument)
         {
             if (string.IsNullOrWhiteSpace(exampleDocument))
@@ -573,7 +573,7 @@ Réponds en JSON avec l'objet ""sections"" contenant les sections identifiées e
                 }
 
                 // FUSION : Ajouter les sections détectées dans l'analyse sémantique
-                semantic.Sections = sections;
+                semantic!.Sections = sections!;
 
                 // Créer le MCC complet en combinant les trois analyses
                 var mcc = new MCCModel

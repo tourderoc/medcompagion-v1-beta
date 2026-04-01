@@ -104,9 +104,9 @@ Reformule le prompt selon la demande. Retourne UNIQUEMENT le nouveau prompt, san
         /// Analyse une demande de courrier utilisateur pour extraire les métadonnées
         /// Version enrichie avec contexte patient pour améliorer la précision
         /// </summary>
-        public async Task<(bool success, LetterAnalysisResult result, string? error)> AnalyzeLetterRequestAsync(
+        public async Task<(bool success, LetterAnalysisResult? result, string? error)> AnalyzeLetterRequestAsync(
             string userRequest,
-            Models.PatientContext patientContext = null,
+            Models.PatientContext? patientContext = null,
             string? pseudonym = null,
             AnonymizationContext? anonContext = null,
             string? explicitRecipient = null)
@@ -215,9 +215,18 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans backticks) :
                     };
 
                     var analysisResult = JsonSerializer.Deserialize<LetterAnalysisResult>(cleanJson, options);
-                    
+
                     if (analysisResult == null)
                         return (false, null, "Format de réponse invalide");
+
+                    // CORRECTION : Forcer l'audience à partir du destinataire explicite
+                    // Car le LLM peut ignorer la consigne et retourner une audience incorrecte
+                    if (!string.IsNullOrWhiteSpace(explicitRecipient))
+                    {
+                        var mappedAudience = MapRecipientToAudience(explicitRecipient);
+                        System.Diagnostics.Debug.WriteLine($"[PromptReformulation] Forçage audience: '{explicitRecipient}' → '{mappedAudience}'");
+                        analysisResult.Audience = mappedAudience;
+                    }
 
                     return (true, analysisResult, null);
                 }
@@ -225,18 +234,23 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans backticks) :
                 {
                     System.Diagnostics.Debug.WriteLine($"[PromptReformulation] Erreur parsing JSON: {ex.Message}");
                     System.Diagnostics.Debug.WriteLine($"[PromptReformulation] Réponse IA: {result}");
-                    
+
                     // Fallback: extraction manuelle des mots-clés
+                    // CORRECTION : Utiliser le mapping du destinataire explicite si fourni
+                    var fallbackAudience = !string.IsNullOrWhiteSpace(explicitRecipient)
+                        ? MapRecipientToAudience(explicitRecipient)
+                        : "administration";
+
                     var fallbackResult = new LetterAnalysisResult
                     {
                         Keywords = ExtractKeywordsManually(userRequest),
-                        DocType = "administrative_letter",
-                        Audience = "administration",
-                        Tone = "formal",
+                        DocType = "courrier",
+                        Audience = fallbackAudience,
+                        Tone = "bienveillant",
                         AgeGroup = "all",
                         ConfidenceScore = 50
                     };
-                    
+
                     return (true, fallbackResult, "Analyse partielle (format IA invalide)");
                 }
             }
@@ -244,6 +258,50 @@ Réponds UNIQUEMENT avec ce JSON (sans markdown, sans backticks) :
             {
                 return (false, null, $"Erreur inattendue: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// Mappe le destinataire sélectionné vers une audience valide
+        /// </summary>
+        private string MapRecipientToAudience(string recipient)
+        {
+            if (string.IsNullOrWhiteSpace(recipient))
+                return "administration";
+
+            var lower = recipient.ToLower().Trim();
+
+            // Mapping des valeurs du dropdown vers les audiences
+            // Note: les valeurs viennent du ComboBox sans l'emoji (ex: "Parents / Famille")
+            if (lower.Contains("parent") || lower.Contains("famille") || lower.Contains("mère") ||
+                lower.Contains("père") || lower.Contains("tuteur"))
+                return "parents";
+
+            if (lower.Contains("école") || lower.Contains("ecole") || lower.Contains("scolaire") ||
+                lower.Contains("établissement") || lower.Contains("etablissement") ||
+                lower.Contains("enseignant") || lower.Contains("professeur") ||
+                lower.Contains("éducati") || lower.Contains("educati"))
+                return "ecole";
+
+            if (lower.Contains("médecin") || lower.Contains("medecin") || lower.Contains("confrère") ||
+                lower.Contains("confrere") || lower.Contains("psychiatre") || lower.Contains("psychologue") ||
+                lower.Contains("spécialiste") || lower.Contains("specialiste") ||
+                lower.Contains("orthophoniste") || lower.Contains("neurologue"))
+                return "medecin";
+
+            if (lower.Contains("mdph") || lower.Contains("cpam") || lower.Contains("administration") ||
+                lower.Contains("caf") || lower.Contains("préfecture") || lower.Contains("prefecture") ||
+                lower.Contains("mairie"))
+                return "administration";
+
+            if (lower.Contains("justice") || lower.Contains("avocat") || lower.Contains("juge") ||
+                lower.Contains("tribunal"))
+                return "juge";
+
+            if (lower.Contains("assurance") || lower.Contains("mutuelle") || lower.Contains("employeur"))
+                return "assurance";
+
+            // Par défaut, retourner la valeur telle quelle (le matching par pattern prendra le relais)
+            return lower;
         }
 
         /// <summary>

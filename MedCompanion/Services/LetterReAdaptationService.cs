@@ -31,6 +31,7 @@ public class LetterReAdaptationService
     
     /// <summary>
     /// Réadapte un courrier en détectant et remplissant les variables manquantes
+    /// ✅ OPTIMISÉ : Extrait d'abord via LLM local, puis complète avec métadonnées fiables
     /// </summary>
     /// <param name="markdown">Courrier à réadapter</param>
     /// <param name="patientName">Nom complet du patient</param>
@@ -63,45 +64,51 @@ public class LetterReAdaptationService
                 };
             }
             
-            // Étape 2 : Charger le contexte patient et générer l'anonymisation
+            // Étape 2 : Charger le contexte patient complet
             var patientContext = _patientContextService.GetCompleteContext(patientName, userRequest);
             System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] {patientContext.ToDebugText()}");
 
-            // ✅ Générer le pseudonyme pour anonymisation
+            // ✅ Générer le pseudonyme pour anonymisation (pour la réadaptation finale)
             var sexe = patientContext.Metadata?.Sexe ?? "M";
             var (nomAnonymise, anonContext) = _anonymizationService.Anonymize("", patientName, sexe);
 
-            // Étape 3 : Rechercher les variables dans le contexte patient (métadonnées)
-            var (availableInfo, missingFields) = SearchInPatientContext(detectedVariables, patientContext, documentTitle);
-            System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Infos disponibles (métadonnées) : {availableInfo.Count}, Manquantes : {missingFields.Count}");
+            // ═══════════════════════════════════════════════════════════════════
+            // ✅ NOUVELLE LOGIQUE OPTIMISÉE
+            // ═══════════════════════════════════════════════════════════════════
 
-            // Étape 3.5 : Extraire les variables manquantes depuis le contexte clinique avec IA
-            if (missingFields.Count > 0 && !string.IsNullOrEmpty(patientContext.ClinicalContext))
+            // Étape 3 : Extraire TOUTES les variables via LLM local depuis le contexte complet
+            System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Extraction LLM pour {detectedVariables.Count} variables...");
+            var llmExtracted = await ExtractAllVariablesFromContextAsync(detectedVariables, patientContext);
+            System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] LLM a extrait : {llmExtracted.Count} valeurs");
+
+            // Étape 4 : Écraser avec les métadonnées fiables (nom, DDN, adresse...)
+            var availableInfo = OverrideWithReliableMetadata(llmExtracted, patientContext.Metadata);
+            System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Après écrasement métadonnées : {availableInfo.Count} infos");
+
+            // Étape 5 : Identifier les variables encore manquantes
+            var missingFields = new List<MissingFieldInfo>();
+            foreach (var variable in detectedVariables)
             {
-                System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Tentative d'extraction IA pour {missingFields.Count} variables...");
-
-                var missingVariableNames = missingFields.Select(f => f.FieldName).ToList();
-                var extractedFromClinical = await ExtractFromClinicalContextAsync(missingVariableNames, patientContext);
-
-                // Fusionner les infos extraites
-                foreach (var kvp in extractedFromClinical)
+                if (!availableInfo.ContainsKey(variable) || 
+                    string.IsNullOrEmpty(availableInfo[variable]) ||
+                    availableInfo[variable].Equals("NON_TROUVE", StringComparison.OrdinalIgnoreCase))
                 {
-                    availableInfo[kvp.Key] = kvp.Value;
-                    System.Diagnostics.Debug.WriteLine($"  ✅ Ajouté depuis contexte clinique: {kvp.Key}");
+                    var prompt = GeneratePromptForVariable(variable, documentTitle);
+                    missingFields.Add(new MissingFieldInfo
+                    {
+                        FieldName = variable,
+                        Prompt = prompt,
+                        IsRequired = true
+                    });
+                    System.Diagnostics.Debug.WriteLine($"  ❌ Variable manquante : {variable}");
                 }
-
-                // Retirer les champs qui ont été trouvés par l'IA
-                missingFields = missingFields
-                    .Where(f => !extractedFromClinical.ContainsKey(f.FieldName))
-                    .ToList();
-
-                System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Après extraction IA - Infos totales : {availableInfo.Count}, Manquantes : {missingFields.Count}");
             }
+
+            System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Variables manquantes : {missingFields.Count}");
 
             if (missingFields.Count > 0)
             {
                 // Des infos manquent encore → Retourner pour collecte via dialogue
-                System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] {missingFields.Count} infos restent à collecter via dialogue");
                 return new ReAdaptationResult
                 {
                     Success = true,
@@ -116,13 +123,13 @@ public class LetterReAdaptationService
                         DocumentTitle = documentTitle,
                         UserRequest = userRequest,
                         PatientContext = patientContext,
-                        Pseudonym = nomAnonymise,  // ✅ Sauvegarder pour réutilisation
-                        AnonContext = anonContext   // ✅ Sauvegarder pour réutilisation
+                        Pseudonym = nomAnonymise,
+                        AnonContext = anonContext
                     }
                 };
             }
 
-            // Étape 4 : Réadapter avec toutes les infos disponibles (✅ avec anonymisation)
+            // Étape 6 : Réadapter avec toutes les infos disponibles
             var reAdaptedMarkdown = await ReAdaptWithInfoAsync(markdown, availableInfo, patientContext, nomAnonymise, anonContext);
             
             return new ReAdaptationResult
@@ -219,6 +226,222 @@ public class LetterReAdaptationService
 
         return variables;
     }
+
+    /// <summary>
+    /// ✅ NOUVELLE MÉTHODE : Extrait TOUTES les variables depuis le contexte patient complet via LLM local
+    /// Utilise le contexte complet (métadonnées + synthèse/notes) pour une extraction exhaustive
+    /// </summary>
+    private async Task<Dictionary<string, string>> ExtractAllVariablesFromContextAsync(
+        List<string> allVariables,
+        PatientContextBundle context)
+    {
+        var extractedInfo = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        if (allVariables.Count == 0)
+            return extractedInfo;
+
+        System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] ExtractAllVariablesFromContextAsync pour {allVariables.Count} variables");
+
+        // Construire le contexte complet (métadonnées + contexte clinique)
+        var fullContext = context.ToPromptText();
+        var variablesList = string.Join("\n", allVariables.Select(v => $"- {v}"));
+
+        var systemPrompt = @"Tu es un assistant médical expert en extraction d'informations depuis des dossiers patients.
+Ton rôle est d'extraire des informations spécifiques depuis le dossier patient complet fourni.
+
+RÈGLES STRICTES :
+- Pour chaque variable demandée, cherche l'information dans le contexte fourni
+- Si une information n'est PAS présente ou n'est PAS claire, réponds ""NON_TROUVE"" pour cette variable
+- Sois PRÉCIS et CONCIS (maximum 2-3 phrases par variable)
+- N'INVENTE RIEN, ne fais PAS de déductions hasardeuses
+- Utilise le vocabulaire médical approprié";
+
+        var userPrompt = $@"DOSSIER PATIENT COMPLET
+----
+{fullContext}
+
+VARIABLES À EXTRAIRE
+----
+{variablesList}
+
+CONSIGNE
+----
+Pour CHAQUE variable listée ci-dessus, extrais sa valeur depuis le dossier patient.
+Réponds au format JSON strict suivant (un objet avec les variables comme clés) :
+
+{{
+  ""Variable1"": ""valeur ou NON_TROUVE"",
+  ""Variable2"": ""valeur ou NON_TROUVE"",
+  ...
+}}
+
+IMPORTANT : Retourne UNIQUEMENT le JSON, sans commentaire ni texte supplémentaire.";
+
+        try
+        {
+            var (success, result) = await _openAIService.ChatAvecContexteAsync(
+                string.Empty,
+                userPrompt,
+                null,
+                systemPrompt
+            );
+
+            if (success && !string.IsNullOrEmpty(result))
+            {
+                // Extraction robuste du JSON depuis la réponse
+                var jsonResult = ExtractJsonFromResponse(result);
+
+                if (jsonResult != null)
+                {
+                    foreach (var kvp in jsonResult)
+                    {
+                        // Ajouter seulement si trouvé (pas "NON_TROUVE")
+                        if (!string.IsNullOrEmpty(kvp.Value) &&
+                            !kvp.Value.Equals("NON_TROUVE", StringComparison.OrdinalIgnoreCase))
+                        {
+                            extractedInfo[kvp.Key] = kvp.Value;
+                            System.Diagnostics.Debug.WriteLine($"  ✅ LLM extrait '{kvp.Key}': {kvp.Value.Substring(0, Math.Min(50, kvp.Value.Length))}...");
+                        }
+                        else
+                        {
+                            System.Diagnostics.Debug.WriteLine($"  ⚠️ LLM: NON_TROUVE pour '{kvp.Key}'");
+                        }
+                    }
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Échec parsing JSON, réponse brute: {result.Substring(0, Math.Min(200, result.Length))}...");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Erreur extraction LLM: {ex.Message}");
+        }
+
+        return extractedInfo;
+    }
+
+    /// <summary>
+    /// Extraction robuste du JSON depuis une réponse LLM (peut contenir du texte avant/après)
+    /// </summary>
+    private Dictionary<string, string>? ExtractJsonFromResponse(string response)
+    {
+        if (string.IsNullOrWhiteSpace(response))
+            return null;
+
+        try
+        {
+            // Essayer d'abord de parser directement (cas idéal)
+            return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(response);
+        }
+        catch
+        {
+            // Sinon, chercher un bloc JSON dans la réponse
+            try
+            {
+                // Pattern pour trouver un objet JSON { ... }
+                var jsonMatch = Regex.Match(response, @"\{(?:[^{}]|\{[^{}]*\})*\}", RegexOptions.Singleline);
+                if (jsonMatch.Success)
+                {
+                    return System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(jsonMatch.Value);
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ReAdaptationService] Échec extraction JSON: {ex.Message}");
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// ✅ NOUVELLE MÉTHODE : Écrase les valeurs LLM avec les métadonnées fiables
+    /// Les données factuelles (nom, DDN, adresse) sont plus fiables depuis patient.json
+    /// </summary>
+    private Dictionary<string, string> OverrideWithReliableMetadata(
+        Dictionary<string, string> llmExtracted,
+        PatientMetadata? metadata)
+    {
+        // Copier pour ne pas modifier l'original
+        var result = new Dictionary<string, string>(llmExtracted, StringComparer.OrdinalIgnoreCase);
+
+        if (metadata == null)
+            return result;
+
+        // Mapping des données FIABLES (provenant de patient.json)
+        // Ces valeurs ÉCRASENT celles du LLM car elles sont plus précises
+        var reliableMappings = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Identité
+            ["Nom_Patient"] = metadata.NomComplet,
+            ["NomPatient"] = metadata.NomComplet,
+            ["NOM Prénom"] = metadata.NomComplet,
+            ["NOM Prenom"] = metadata.NomComplet,
+            ["Nom Prénom"] = metadata.NomComplet,
+            ["Nom Prenom"] = metadata.NomComplet,
+            ["Nom_Prenom"] = metadata.NomComplet,
+            ["Nom"] = metadata.Nom,
+            ["Prenom"] = metadata.Prenom,
+            ["Prénom"] = metadata.Prenom,
+
+            // Âge et date de naissance
+            ["Age"] = metadata.Age?.ToString(),
+            ["Âge"] = metadata.Age?.ToString(),
+            ["Age_Patient"] = metadata.Age?.ToString(),
+            ["Date_Naissance"] = metadata.DobFormatted,
+            ["Date de naissance"] = metadata.DobFormatted,
+            ["DateNaissance"] = metadata.DobFormatted,
+            ["DDN"] = metadata.DobFormatted,
+
+            // Sexe
+            ["Sexe"] = metadata.Sexe,
+
+            // Scolarité
+            ["Ecole"] = metadata.Ecole,
+            ["École"] = metadata.Ecole,
+            ["Nom de l'école"] = metadata.Ecole,
+            ["Classe"] = metadata.Classe,
+
+            // Adresse
+            ["Adresse"] = !string.IsNullOrEmpty(metadata.AdresseRue)
+                ? $"{metadata.AdresseRue}, {metadata.AdresseCodePostal} {metadata.AdresseVille}"
+                : null,
+            ["Adresse_Rue"] = metadata.AdresseRue,
+            ["Code_Postal"] = metadata.AdresseCodePostal,
+            ["Ville"] = metadata.AdresseVille,
+
+            // Accompagnant
+            ["Accompagnant"] = !string.IsNullOrEmpty(metadata.AccompagnantNom)
+                ? $"{metadata.AccompagnantPrenom} {metadata.AccompagnantNom}"
+                : null,
+            ["Accompagnant_Nom"] = metadata.AccompagnantNom,
+            ["Accompagnant_Lien"] = metadata.AccompagnantLien,
+            ["Accompagnant_Telephone"] = metadata.AccompagnantTelephone,
+            ["Accompagnant_Email"] = metadata.AccompagnantEmail,
+
+            // Date courante (toujours fiable)
+            ["Date"] = DateTime.Now.ToString("dd/MM/yyyy"),
+            ["Date_Courrier"] = DateTime.Now.ToString("dd/MM/yyyy"),
+        };
+
+        // Écraser les valeurs LLM avec les valeurs fiables
+        foreach (var kvp in reliableMappings)
+        {
+            if (!string.IsNullOrEmpty(kvp.Value))
+            {
+                if (result.ContainsKey(kvp.Key))
+                {
+                    System.Diagnostics.Debug.WriteLine($"  📝 Écrasement '{kvp.Key}': LLM→Metadata");
+                }
+                result[kvp.Key] = kvp.Value;
+            }
+        }
+
+        return result;
+    }
+
     
     /// <summary>
     /// Étape 2 : Recherche les variables dans le contexte patient

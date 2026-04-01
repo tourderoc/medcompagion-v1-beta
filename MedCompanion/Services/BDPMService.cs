@@ -44,7 +44,7 @@ public class BDPMService
     /// Vérifie si les fichiers BDPM sont présents dans le dossier
     /// Si oui, retourne succès. Sinon, affiche les instructions pour téléchargement manuel.
     /// </summary>
-    public async Task<(bool success, string message)> DownloadBDPMAsync()
+    public Task<(bool success, string message)> DownloadBDPMAsync()
     {
         try
         {
@@ -81,7 +81,7 @@ public class BDPMService
             if (missingFiles.Count == 0)
             {
                 Debug.WriteLine("[BDPMService] ✅ Tous les fichiers BDPM sont présents");
-                return (true, "✅ Fichiers BDPM trouvés :\n\n" + string.Join("\n", existingFiles));
+                return Task.FromResult((true, "✅ Fichiers BDPM trouvés :\n\n" + string.Join("\n", existingFiles)));
             }
 
             // Si des fichiers manquent, afficher les instructions
@@ -104,12 +104,12 @@ public class BDPMService
 {(existingFiles.Count > 0 ? string.Join("\n", existingFiles) : "   Aucun")}";
 
             Debug.WriteLine($"[BDPMService] Instructions affichées pour téléchargement manuel");
-            return (false, instructions);
+            return Task.FromResult((false, instructions));
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[BDPMService] ❌ Erreur: {ex.Message}");
-            return (false, $"Erreur lors de la vérification des fichiers: {ex.Message}");
+            return Task.FromResult((false, $"Erreur lors de la vérification des fichiers: {ex.Message}"));
         }
     }
 

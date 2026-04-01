@@ -416,20 +416,33 @@ SYNTHESE: [synthèse]";
         /// </summary>
         public async Task<List<PatientDocument>> GetAllDocumentsAsync(string nomComplet)
         {
-            var documentsPath = _pathService.GetDocumentsDirectory(nomComplet);
-            var indexPath = Path.Combine(documentsPath, IndexFileName);
-            
-            if (!File.Exists(indexPath))
-                return new List<PatientDocument>();
-            
+            var result = new List<PatientDocument>();
+
             try
             {
-                var json = await File.ReadAllTextAsync(indexPath);
-                return JsonSerializer.Deserialize<List<PatientDocument>>(json) ?? new List<PatientDocument>();
+                var documentFolders = _pathService.GetAllYearDirectories(nomComplet, "documents");
+
+                foreach (var documentsPath in documentFolders)
+                {
+                    var indexPath = Path.Combine(documentsPath, IndexFileName);
+
+                    if (File.Exists(indexPath))
+                    {
+                        var json = await File.ReadAllTextAsync(indexPath);
+                        var folderDocs = JsonSerializer.Deserialize<List<PatientDocument>>(json);
+                        if (folderDocs != null)
+                        {
+                            result.AddRange(folderDocs);
+                        }
+                    }
+                }
+
+                return result.OrderByDescending(d => d.DateAdded).ToList();
             }
-            catch
+            catch (Exception ex)
             {
-                return new List<PatientDocument>();
+                System.Diagnostics.Debug.WriteLine($"[DocumentService] Erreur GetAllDocumentsAsync: {ex.Message}");
+                return result;
             }
         }
         
@@ -623,26 +636,30 @@ POIDS_SYNTHESE: X.X";
         {
             try
             {
-                // CORRECTION: Utiliser PathService et renommer en syntheses_documents
-                var documentsPath = _pathService.GetDocumentsDirectory(nomComplet);
-                var synthesisFolder = Path.Combine(documentsPath, "syntheses_documents");
-                
-                if (!Directory.Exists(synthesisFolder))
-                    return (false, null);
-                
-                // Chercher un fichier qui commence par le nom du document (sans extension) + "_synthese_"
-                var documentNameWithoutExt = Path.GetFileNameWithoutExtension(document.FileName);
-                var pattern = $"{documentNameWithoutExt}_synthese_*.md";
-                
-                var matchingFiles = Directory.GetFiles(synthesisFolder, pattern);
-                
-                if (matchingFiles.Length > 0)
+                // Chercher dans tous les répertoires d'années potentiels
+                var documentFolders = _pathService.GetAllYearDirectories(nomComplet, "documents");
+
+                foreach (var documentsPath in documentFolders)
                 {
-                    // Retourner le fichier le plus récent (le dernier créé)
-                    var mostRecent = matchingFiles.OrderByDescending(f => File.GetCreationTime(f)).First();
-                    return (true, mostRecent);
+                    var synthesisFolder = Path.Combine(documentsPath, "syntheses_documents");
+
+                    if (!Directory.Exists(synthesisFolder))
+                        continue;
+
+                    // Chercher un fichier qui commence par le nom du document (sans extension) + "_synthese_"
+                    var documentNameWithoutExt = Path.GetFileNameWithoutExtension(document.FileName);
+                    var pattern = $"{documentNameWithoutExt}_synthese_*.md";
+
+                    var matchingFiles = Directory.GetFiles(synthesisFolder, pattern);
+
+                    if (matchingFiles.Length > 0)
+                    {
+                        // Retourner le fichier le plus récent (le dernier créé)
+                        var mostRecent = matchingFiles.OrderByDescending(f => File.GetCreationTime(f)).First();
+                        return (true, mostRecent);
+                    }
                 }
-                
+
                 return (false, null);
             }
             catch
@@ -737,17 +754,22 @@ POIDS_SYNTHESE: X.X";
                     File.Delete(document.FilePath);
                 }
                 
-                // 3. Mettre à jour l'index JSON
-                var documentsPath = _pathService.GetDocumentsDirectory(nomComplet);
-                var indexPath = Path.Combine(documentsPath, IndexFileName);
+                // 3. Mettre à jour l'index JSON (trouver l'index dans le dossier parent du document)
+                var docDir = Path.GetDirectoryName(document.FilePath);
+                if (docDir == null) return (false, "Impossible de déterminer le dossier du document.");
+                
+                var parentDir = Directory.GetParent(docDir)?.FullName;
+                if (parentDir == null) return (false, "Impossible de déterminer le dossier racine des documents.");
+                
+                var indexPath = Path.Combine(parentDir, IndexFileName);
                 
                 if (File.Exists(indexPath))
                 {
                     var json = await File.ReadAllTextAsync(indexPath);
                     var documents = JsonSerializer.Deserialize<List<PatientDocument>>(json) ?? new List<PatientDocument>();
                     
-                    // Retirer le document de la liste (comparaison par FilePath)
-                    documents.RemoveAll(d => d.FilePath == document.FilePath);
+                    // Retirer le document de la liste (comparaison par FileName car FilePath peut être relatif ou changer)
+                    documents.RemoveAll(d => d.FileName == document.FileName);
                     
                     // Réécrire l'index
                     var options = new JsonSerializerOptions { WriteIndented = true };

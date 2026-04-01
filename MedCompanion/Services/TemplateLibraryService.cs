@@ -31,7 +31,7 @@ namespace MedCompanion.Services
         /// Imports a scanned PDF as a new template.
         /// Returns the created ScannedTemplate.
         /// </summary>
-        public ScannedTemplate ImportTemplate(string pdfPath, string displayName = null)
+        public ScannedTemplate ImportTemplate(string pdfPath, string? displayName = null)
         {
             if (!File.Exists(pdfPath))
                 throw new FileNotFoundException($"Template PDF not found: {pdfPath}");
@@ -63,7 +63,7 @@ namespace MedCompanion.Services
             return System.Text.Json.JsonSerializer.Deserialize<List<ScannedTemplate>>(json) ?? new List<ScannedTemplate>();
         }
 
-        public ScannedTemplate GetTemplate(string id)
+        public ScannedTemplate? GetTemplate(string id)
         {
             return GetAllTemplates().FirstOrDefault(t => t.Id == id);
         }

@@ -187,7 +187,7 @@ namespace MedCompanion.Services
                     if (cancellationToken.IsCancellationRequested)
                         return (false, "", "Opération annulée par l'utilisateur");
 
-                    var localResult = await llm.ChatAsync(systemPrompt, messages, maxTokens);
+                    var localResult = await llm.ChatAsync(systemPrompt ?? string.Empty, messages, maxTokens, cancellationToken);
                     System.Diagnostics.Debug.WriteLine($"[LLMGateway] → Réponse locale: {localResult.result?.Length ?? 0} caractères");
                     System.Diagnostics.Debug.WriteLine($"[LLMGateway] ════════════════════════════════════════");
                     return localResult;
@@ -203,7 +203,7 @@ namespace MedCompanion.Services
 
                 // Anonymiser le system prompt
                 System.Diagnostics.Debug.WriteLine($"[LLMGateway] → Anonymisation du system prompt...");
-                var (anonymizedSystemPrompt, systemContext) = await AnonymizeInputAsync(systemPrompt, patientName);
+                var (anonymizedSystemPrompt, systemContext) = await AnonymizeInputAsync(systemPrompt ?? string.Empty, patientName);
                 System.Diagnostics.Debug.WriteLine($"[LLMGateway]   SystemPrompt: {systemContext?.Replacements?.Count ?? 0} remplacements");
 
                 // Vérifier l'annulation après l'anonymisation du system prompt
@@ -235,7 +235,7 @@ namespace MedCompanion.Services
 
                 // Appel LLM avec données anonymisées
                 System.Diagnostics.Debug.WriteLine($"[LLMGateway] → Appel LLM cloud avec données anonymisées...");
-                var (success, result, error) = await llm.ChatAsync(anonymizedSystemPrompt, anonymizedMessages, maxTokens);
+                var (success, result, error) = await llm.ChatAsync(anonymizedSystemPrompt, anonymizedMessages, maxTokens, cancellationToken);
 
                 // Vérifier l'annulation après l'appel LLM
                 if (cancellationToken.IsCancellationRequested)
@@ -253,7 +253,7 @@ namespace MedCompanion.Services
                 System.Diagnostics.Debug.WriteLine($"[LLMGateway] → Désanonymisation de la réponse...");
                 var combinedContext = CombineContexts(systemContext, messagesContexts);
                 System.Diagnostics.Debug.WriteLine($"[LLMGateway]   Contexte combiné: {combinedContext?.Replacements?.Count ?? 0} remplacements");
-                var deanonymizedResult = DeanonymizeOutput(result, combinedContext);
+                var deanonymizedResult = DeanonymizeOutput(result ?? string.Empty, combinedContext);
                 System.Diagnostics.Debug.WriteLine($"[LLMGateway] ✓ Désanonymisation terminée");
                 System.Diagnostics.Debug.WriteLine($"[LLMGateway] ════════════════════════════════════════");
 
@@ -267,6 +267,104 @@ namespace MedCompanion.Services
             catch (Exception ex)
             {
                 return (false, "", $"Erreur LLMGateway: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Chat avec streaming et anonymisation automatique si nécessaire.
+        /// Les tokens sont envoyés via le callback onTokenReceived.
+        /// Note: Les tokens sont envoyés AVANT désanonymisation pour fluidité.
+        /// La réponse finale retournée est désanonymisée.
+        /// </summary>
+        public async Task<(bool success, string result, string? error)> ChatStreamAsync(
+            string systemPrompt,
+            List<(string role, string content)> messages,
+            Action<string> onTokenReceived,
+            string? patientName = null,
+            int maxTokens = 2000,
+            CancellationToken cancellationToken = default)
+        {
+            System.Diagnostics.Debug.WriteLine($"[LLMGateway] ════════════════════════════════════════");
+            System.Diagnostics.Debug.WriteLine($"[LLMGateway] ChatStreamAsync - Début");
+            System.Diagnostics.Debug.WriteLine($"[LLMGateway] Patient: {patientName ?? "(aucun)"}");
+
+            if (messages == null || messages.Count == 0)
+                return (false, "", "Aucun message fourni");
+
+            try
+            {
+                if (cancellationToken.IsCancellationRequested)
+                    return (false, "", "Opération annulée");
+
+                var llm = _llmFactory.GetCurrentProvider();
+                var providerName = _llmFactory.GetActiveProviderName();
+
+                if (!llm.IsConfigured())
+                    return (false, "", "LLM non configuré");
+
+                // Si provider local → Pas d'anonymisation, streaming direct
+                if (IsLocalProvider())
+                {
+                    LogStatus("🖥️ Provider local - Streaming direct");
+
+                    var (success, fullResponse, error) = await llm.ChatStreamAsync(
+                        systemPrompt ?? string.Empty,
+                        messages,
+                        onTokenReceived,
+                        maxTokens,
+                        cancellationToken);
+
+                    return (success, fullResponse, error);
+                }
+
+                // Provider cloud → Anonymisation puis streaming
+                LogStatus("☁️ Provider cloud - Anonymisation + Streaming");
+
+                // Anonymiser le system prompt
+                var (anonymizedSystemPrompt, systemContext) = await AnonymizeInputAsync(systemPrompt ?? string.Empty, patientName);
+
+                if (cancellationToken.IsCancellationRequested)
+                    return (false, "", "Opération annulée");
+
+                // Anonymiser tous les messages
+                var anonymizedMessages = new List<(string role, string content)>();
+                var messagesContexts = new List<AnonymizationContext>();
+
+                foreach (var (role, content) in messages)
+                {
+                    if (cancellationToken.IsCancellationRequested)
+                        return (false, "", "Opération annulée");
+
+                    var (anonymizedContent, msgContext) = await AnonymizeInputAsync(content, patientName);
+                    anonymizedMessages.Add((role, anonymizedContent));
+                    messagesContexts.Add(msgContext);
+                }
+
+                // Streaming avec données anonymisées
+                // Note: Les tokens sont envoyés tels quels (anonymisés), la désanonymisation se fait sur la réponse finale
+                var (streamSuccess, streamResponse, streamError) = await llm.ChatStreamAsync(
+                    anonymizedSystemPrompt,
+                    anonymizedMessages,
+                    onTokenReceived,  // Les tokens arrivent anonymisés
+                    maxTokens,
+                    cancellationToken);
+
+                if (!streamSuccess)
+                    return (false, streamResponse, streamError);
+
+                // Désanonymiser la réponse complète pour le retour final
+                var combinedContext = CombineContexts(systemContext, messagesContexts);
+                var deanonymizedResult = DeanonymizeOutput(streamResponse, combinedContext);
+
+                return (true, deanonymizedResult, null);
+            }
+            catch (OperationCanceledException)
+            {
+                return (false, "", "Opération annulée");
+            }
+            catch (Exception ex)
+            {
+                return (false, "", $"Erreur streaming: {ex.Message}");
             }
         }
 

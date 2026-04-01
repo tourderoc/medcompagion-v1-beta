@@ -60,7 +60,7 @@ namespace MedCompanion.Services
                     contextBundle = new PatientContextBundle 
                     { 
                         Metadata = patient,
-                        ClinicalContext = contextBundle?.ClinicalContext
+                        ClinicalContext = contextBundle?.ClinicalContext ?? string.Empty
                     };
                 }
 

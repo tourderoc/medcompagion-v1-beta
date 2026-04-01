@@ -149,7 +149,7 @@ namespace MedCompanion.Services
         /// Phase 1 : Données patient.json (nom, adresse, ville, école, téléphone)
         /// Phase 2 : Patterns regex (emails, téléphones, codes postaux)
         /// </summary>
-        public async Task<(string anonymizedText, AnonymizationContext context)> AnonymizeAsync(
+        public Task<(string anonymizedText, AnonymizationContext context)> AnonymizeAsync(
             string text,
             PatientMetadata? patientData,
             CancellationToken cancellationToken = default)
@@ -158,7 +158,7 @@ namespace MedCompanion.Services
             if (string.IsNullOrWhiteSpace(text))
             {
                 Log("Info", "Texte vide fourni à AnonymizeAsync");
-                return (text ?? "", new AnonymizationContext { WasAnonymized = false });
+                return Task.FromResult((text ?? "", new AnonymizationContext { WasAnonymized = false }));
             }
 
             Log("Info", $"Début anonymisation - Texte: {text.Length} chars");
@@ -195,7 +195,7 @@ namespace MedCompanion.Services
                 }
             }
 
-            return (anonymizedText, context);
+            return Task.FromResult((anonymizedText, context));
         }
 
         /// <summary>

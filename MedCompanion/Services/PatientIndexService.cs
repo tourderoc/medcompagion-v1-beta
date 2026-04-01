@@ -93,6 +93,7 @@ namespace MedCompanion.Services
                                 newIndex.Add(new PatientIndexEntry
                                 {
                                     Id = Path.GetFileName(patientDir),
+                                    NumeroDossier = metadata.NumeroDossier,
                                     Prenom = metadata.Prenom,
                                     Nom = metadata.Nom,
                                     Dob = metadata.Dob,
@@ -259,6 +260,7 @@ namespace MedCompanion.Services
                 _index.Add(new PatientIndexEntry
                 {
                     Id = id,
+                    NumeroDossier = metadata.NumeroDossier,
                     Prenom = metadata.Prenom,
                     Nom = metadata.Nom,
                     Dob = metadata.Dob,
@@ -524,8 +526,8 @@ namespace MedCompanion.Services
                 {
                     // Convertir l'ID en nom complet pour PathService
                     var patientName = entry.NomComplet;
-                    var notesFolder = _pathService.GetNotesDirectory(patientName);
-                    if (Directory.Exists(notesFolder))
+                    var notesFolders = _pathService.GetAllYearDirectories(patientName, "notes");
+                    foreach (var notesFolder in notesFolders)
                     {
                         foreach (var mdFile in Directory.GetFiles(notesFolder, "*.md"))
                         {
@@ -536,11 +538,14 @@ namespace MedCompanion.Services
                 else
                 {
                     // Fallback : ancienne structure /2025/*.md pour compatibilité
-                    foreach (var yearDir in Directory.GetDirectories(entry.DirectoryPath).Where(d => int.TryParse(Path.GetFileName(d), out _)))
+                    if (Directory.Exists(entry.DirectoryPath))
                     {
-                        foreach (var mdFile in Directory.GetFiles(yearDir, "*.md"))
+                        foreach (var yearDir in Directory.GetDirectories(entry.DirectoryPath).Where(d => int.TryParse(Path.GetFileName(d), out _)))
                         {
-                            AddNoteToList(mdFile, notes);
+                            foreach (var mdFile in Directory.GetFiles(yearDir, "*.md"))
+                            {
+                                AddNoteToList(mdFile, notes);
+                            }
                         }
                     }
                 }

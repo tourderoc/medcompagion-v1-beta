@@ -97,68 +97,94 @@ public class SynthesisService
                 return (false, "", "Aucun contenu trouvé dans le dossier patient");
             }
 
-            // ✅ ÉTAPE 3 : Extraction des entités sensibles via LLM local (Phase 3)
-            busyService.UpdateStep("Extraction des entités sensibles (LLM local)...");
-            busyService.UpdateProgress(20);
+            // ✅ Vérifier si on utilise un LLM local (pas besoin d'anonymisation)
+            bool isLocalProvider = _openAIService.IsCurrentProviderLocal();
+            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Provider local: {isLocalProvider}");
 
-            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Extraction PII via LLM local...");
-            PIIExtractionResult? extractedPii = null;
-            try
-            {
-                extractedPii = await _openAIService.ExtractPIIAsync(allContent);
-                System.Diagnostics.Debug.WriteLine($"[SynthesisService] PII extraites: {extractedPii?.GetAllEntities().Count() ?? 0} entités");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Erreur extraction PII: {ex.Message}");
-                // Continue sans extraction - Phase 1+2 seront toujours appliquées
-            }
-
-            // ✅ ÉTAPE 4 : Construire le prompt (NON anonymisé)
+            // ✅ ÉTAPE 3 : Construire le prompt
             busyService.UpdateStep("Construction du prompt...");
-            busyService.UpdateProgress(35);
+            busyService.UpdateProgress(25);
 
             var promptTemplate = _promptConfigService.GetActivePrompt("synthesis_complete");
             var prompt = promptTemplate
                 .Replace("{{Patient_Name}}", patientName)
                 .Replace("{{Patient_Content}}", allContent);
 
-            // ✅ ÉTAPE 5 : Anonymisation hybride (Phase 1+2+3)
-            busyService.UpdateStep("Anonymisation des données sensibles...");
-            busyService.UpdateProgress(45);
+            string finalPrompt;
+            AnonymizationContext? anonContext = null;
 
-            var anonContext = new AnonymizationContext { WasAnonymized = true };
-            var anonymizedPrompt = _anonymizationService.AnonymizeWithExtractedData(
-                prompt,
-                extractedPii,    // Entités volatiles détectées par LLM
-                metadata,        // Source de vérité (patient.json)
-                anonContext
-            );
+            if (isLocalProvider)
+            {
+                // ✅ MODE LOCAL : Pas d'anonymisation nécessaire (tout reste sur la machine)
+                busyService.UpdateStep("Préparation du prompt (mode local)...");
+                busyService.UpdateProgress(35);
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Mode local - Anonymisation bypassée");
+                finalPrompt = prompt;
+            }
+            else
+            {
+                // ✅ MODE CLOUD : Anonymisation complète requise
+                // Étape 3bis : Extraction des entités sensibles via LLM local (Phase 3)
+                cancellationToken.ThrowIfCancellationRequested();
+                busyService.UpdateStep("Extraction des entités sensibles (LLM local)...");
+                busyService.UpdateProgress(25);
 
-            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Anonymisation terminée: {anonContext.Replacements.Count} remplacements");
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Mode cloud - Extraction PII via LLM local...");
+                PIIExtractionResult? extractedPii = null;
+                try
+                {
+                    extractedPii = await _openAIService.ExtractPIIAsync(allContent, cancellationToken);
+                    System.Diagnostics.Debug.WriteLine($"[SynthesisService] PII extraites: {extractedPii?.GetAllEntities().Count() ?? 0} entités");
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SynthesisService] Erreur extraction PII: {ex.Message}");
+                }
 
-            // ✅ ÉTAPE 6 : Générer la synthèse via LLM cloud
-            busyService.UpdateStep("Génération de la synthèse (LLM cloud)...");
+                // Étape 4 : Anonymisation hybride (Phase 1+2+3)
+                busyService.UpdateStep("Anonymisation des données sensibles...");
+                busyService.UpdateProgress(45);
+
+                anonContext = new AnonymizationContext { WasAnonymized = true };
+                finalPrompt = _anonymizationService.AnonymizeWithExtractedData(
+                    prompt,
+                    extractedPii,
+                    metadata,
+                    anonContext
+                );
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Anonymisation terminée: {anonContext.Replacements.Count} remplacements");
+            }
+
+            // ✅ ÉTAPE 5 : Générer la synthèse via LLM
+            cancellationToken.ThrowIfCancellationRequested();
+            busyService.UpdateStep(isLocalProvider ? "Génération de la synthèse (LLM local)..." : "Génération de la synthèse (LLM cloud)...");
             busyService.UpdateProgress(55);
 
-            var (success, synthesis, error) = await _openAIService.GenerateTextAsync(anonymizedPrompt);
+            var (success, synthesis, error) = await _openAIService.GenerateTextAsync(finalPrompt, maxTokens: 4000, cancellationToken: cancellationToken);
 
             if (!success || string.IsNullOrEmpty(synthesis))
             {
                 return (false, "", error ?? "Erreur génération synthèse");
             }
 
-            // ✅ ÉTAPE 7 : Désanonymiser le résultat
-            busyService.UpdateStep("Désanonymisation du résultat...");
-            busyService.UpdateProgress(90);
+            // ✅ ÉTAPE 6 : Désanonymiser le résultat (seulement si cloud)
+            if (!isLocalProvider && anonContext != null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                busyService.UpdateStep("Désanonymisation du résultat...");
+                busyService.UpdateProgress(90);
+                synthesis = _anonymizationService.Deanonymize(synthesis, anonContext);
+            }
 
-            synthesis = _anonymizationService.Deanonymize(synthesis, anonContext);
-
-            // ✅ ÉTAPE 8 : Logger le prompt (si tracker disponible)
+            // ✅ ÉTAPE 7 : Logger le prompt (si tracker disponible)
             busyService.UpdateStep("Finalisation...");
             busyService.UpdateProgress(95);
 
-            LogPrompt("Synthèse", anonymizedPrompt, synthesis, patientName);
+            LogPrompt("Synthèse", finalPrompt, synthesis, patientName);
 
             // Ajouter les métadonnées YAML
             var finalMarkdown = BuildSynthesisWithMetadata(synthesis, "complete");
@@ -170,7 +196,7 @@ public class SynthesisService
         }
         catch (OperationCanceledException)
         {
-            return (false, "", "Opération annulée par l'utilisateur");
+            throw; // Propager pour gestion silencieuse dans le ViewModel
         }
         catch (Exception ex)
         {
@@ -235,75 +261,100 @@ public class SynthesisService
                 return (true, existingSynthesis, null);
             }
 
-            // ✅ ÉTAPE 3 : Extraction des entités sensibles via LLM local (Phase 3)
-            busyService.UpdateStep("Extraction des entités sensibles (LLM local)...");
-            busyService.UpdateProgress(30);
+            // ✅ Vérifier si on utilise un LLM local (pas besoin d'anonymisation)
+            bool isLocalProvider = _openAIService.IsCurrentProviderLocal();
+            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Provider local (incremental): {isLocalProvider}");
 
-            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Extraction PII incrémentale via LLM local...");
-            PIIExtractionResult? extractedPii = null;
-            try
-            {
-                // Extraire depuis le nouveau contenu seulement
-                extractedPii = await _openAIService.ExtractPIIAsync(newContent);
-                System.Diagnostics.Debug.WriteLine($"[SynthesisService] PII extraites: {extractedPii?.GetAllEntities().Count() ?? 0} entités");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Erreur extraction PII: {ex.Message}");
-                // Continue sans extraction - Phase 1+2 seront toujours appliquées
-            }
-
-            // ✅ ÉTAPE 4 : Nettoyer les métadonnées YAML de l'ancienne synthèse
+            // ✅ ÉTAPE 3 : Nettoyer les métadonnées YAML de l'ancienne synthèse
             busyService.UpdateStep("Préparation de la synthèse existante...");
-            busyService.UpdateProgress(40);
+            busyService.UpdateProgress(30);
 
             var cleanedSynthesis = RemoveYamlFrontMatter(existingSynthesis);
 
-            // ✅ ÉTAPE 5 : Construire le prompt (NON anonymisé)
+            // ✅ ÉTAPE 4 : Construire le prompt
             busyService.UpdateStep("Construction du prompt de mise à jour...");
-            busyService.UpdateProgress(50);
+            busyService.UpdateProgress(40);
 
             var promptTemplate = _promptConfigService.GetActivePrompt("synthesis_incremental");
             var prompt = promptTemplate
                 .Replace("{{Existing_Synthesis}}", cleanedSynthesis)
                 .Replace("{{New_Content}}", newContent);
 
-            // ✅ ÉTAPE 6 : Anonymisation hybride (Phase 1+2+3)
-            busyService.UpdateStep("Anonymisation des données sensibles...");
-            busyService.UpdateProgress(60);
+            string finalPrompt;
+            AnonymizationContext? anonContext = null;
 
-            var anonContext = new AnonymizationContext { WasAnonymized = true };
-            var anonymizedPrompt = _anonymizationService.AnonymizeWithExtractedData(
-                prompt,
-                extractedPii,    // Entités volatiles détectées par LLM
-                metadata,        // Source de vérité (patient.json)
-                anonContext
-            );
+            if (isLocalProvider)
+            {
+                // ✅ MODE LOCAL : Pas d'anonymisation nécessaire (tout reste sur la machine)
+                busyService.UpdateStep("Préparation du prompt (mode local)...");
+                busyService.UpdateProgress(50);
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Mode local - Anonymisation bypassée (incremental)");
+                finalPrompt = prompt;
+            }
+            else
+            {
+                // ✅ MODE CLOUD : Anonymisation complète requise
+                // Étape 4bis : Extraction des entités sensibles via LLM local (Phase 3)
+                cancellationToken.ThrowIfCancellationRequested();
+                busyService.UpdateStep("Extraction des entités sensibles (LLM local)...");
+                busyService.UpdateProgress(40);
 
-            System.Diagnostics.Debug.WriteLine($"[SynthesisService] Anonymisation terminée: {anonContext.Replacements.Count} remplacements");
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Mode cloud - Extraction PII incrémentale via LLM local...");
+                PIIExtractionResult? extractedPii = null;
+                try
+                {
+                    extractedPii = await _openAIService.ExtractPIIAsync(newContent, cancellationToken);
+                    System.Diagnostics.Debug.WriteLine($"[SynthesisService] PII extraites: {extractedPii?.GetAllEntities().Count() ?? 0} entités");
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SynthesisService] Erreur extraction PII: {ex.Message}");
+                }
 
-            // ✅ ÉTAPE 7 : Générer la mise à jour via LLM cloud
-            busyService.UpdateStep("Génération de la mise à jour (LLM cloud)...");
+                // Étape 5 : Anonymisation hybride (Phase 1+2+3)
+                busyService.UpdateStep("Anonymisation des données sensibles...");
+                busyService.UpdateProgress(60);
+
+                anonContext = new AnonymizationContext { WasAnonymized = true };
+                finalPrompt = _anonymizationService.AnonymizeWithExtractedData(
+                    prompt,
+                    extractedPii,
+                    metadata,
+                    anonContext
+                );
+                System.Diagnostics.Debug.WriteLine($"[SynthesisService] Anonymisation terminée: {anonContext.Replacements.Count} remplacements");
+            }
+
+            // ✅ ÉTAPE 6 : Générer la mise à jour via LLM
+            cancellationToken.ThrowIfCancellationRequested();
+            busyService.UpdateStep(isLocalProvider ? "Génération de la mise à jour (LLM local)..." : "Génération de la mise à jour (LLM cloud)...");
             busyService.UpdateProgress(70);
 
-            var (success, updatedSynthesis, error) = await _openAIService.GenerateTextAsync(anonymizedPrompt);
+            var (success, updatedSynthesis, error) = await _openAIService.GenerateTextAsync(finalPrompt, maxTokens: 4000, cancellationToken: cancellationToken);
 
             if (!success || string.IsNullOrEmpty(updatedSynthesis))
             {
                 return (false, "", error ?? "Erreur mise à jour synthèse");
             }
 
-            // ✅ ÉTAPE 8 : Désanonymiser le résultat
-            busyService.UpdateStep("Désanonymisation du résultat...");
-            busyService.UpdateProgress(90);
+            // ✅ ÉTAPE 7 : Désanonymiser le résultat (seulement si cloud)
+            if (!isLocalProvider && anonContext != null)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                busyService.UpdateStep("Désanonymisation du résultat...");
+                busyService.UpdateProgress(90);
+                updatedSynthesis = _anonymizationService.Deanonymize(updatedSynthesis, anonContext);
+            }
 
-            updatedSynthesis = _anonymizationService.Deanonymize(updatedSynthesis, anonContext);
-
-            // ✅ ÉTAPE 9 : Logger le prompt (si tracker disponible)
+            // ✅ ÉTAPE 8 : Logger le prompt (si tracker disponible)
             busyService.UpdateStep("Finalisation...");
             busyService.UpdateProgress(95);
 
-            LogPrompt("Synthèse", anonymizedPrompt, updatedSynthesis, patientName);
+            LogPrompt("Synthèse", finalPrompt, updatedSynthesis, patientName);
 
             // Ajouter les métadonnées YAML
             var finalMarkdown = BuildSynthesisWithMetadata(updatedSynthesis, "incremental");
@@ -315,7 +366,7 @@ public class SynthesisService
         }
         catch (OperationCanceledException)
         {
-            return (false, "", "Opération annulée par l'utilisateur");
+            throw; // Propager pour gestion silencieuse dans le ViewModel
         }
         catch (Exception ex)
         {
@@ -362,57 +413,60 @@ public class SynthesisService
         }
 
         // Courriers
-        var courriersDir = _pathService.GetCourriersDirectory(patientName);
-        if (Directory.Exists(courriersDir))
+        var courrierFolders = _pathService.GetAllYearDirectories(patientName, "courriers");
+        foreach (var dir in courrierFolders)
         {
-            var courriers = Directory.GetFiles(courriersDir, "*.md")
+            var courriers = Directory.GetFiles(dir, "*.md")
                 .Where(f => File.GetLastWriteTime(f) > lastSynthesisDate.Value);
             newItems.AddRange(courriers.Select(f => $"Courrier: {Path.GetFileName(f)}"));
         }
 
         // Attestations
-        var attestationsDir = _pathService.GetAttestationsDirectory(patientName);
-        if (Directory.Exists(attestationsDir))
+        var attestationFolders = _pathService.GetAllYearDirectories(patientName, "attestations");
+        foreach (var dir in attestationFolders)
         {
-            var attestations = Directory.GetFiles(attestationsDir, "*.md")
+            var attestations = Directory.GetFiles(dir, "*.md")
                 .Where(f => File.GetLastWriteTime(f) > lastSynthesisDate.Value);
             newItems.AddRange(attestations.Select(f => $"Attestation: {Path.GetFileName(f)}"));
         }
 
         // Formulaires
-        var formulairesDir = _pathService.GetFormulairesDirectory(patientName);
-        if (Directory.Exists(formulairesDir))
+        var formulaireFolders = _pathService.GetAllYearDirectories(patientName, "formulaires");
+        foreach (var dir in formulaireFolders)
         {
-            var formulaires = Directory.GetFiles(formulairesDir, "*.*")
+            var formulaires = Directory.GetFiles(dir, "*.*")
                 .Where(f => (f.EndsWith(".md") || f.EndsWith(".docx") || f.EndsWith(".json")) && 
                            File.GetLastWriteTime(f) > lastSynthesisDate.Value);
             newItems.AddRange(formulaires.Select(f => $"Formulaire: {Path.GetFileName(f)}"));
         }
 
         // Ordonnances
-        var ordonnancesDir = _pathService.GetOrdonnancesDirectory(patientName);
-        if (Directory.Exists(ordonnancesDir))
+        var ordonnanceFolders = _pathService.GetAllYearDirectories(patientName, "ordonnances");
+        foreach (var dir in ordonnanceFolders)
         {
-            var ordonnances = Directory.GetFiles(ordonnancesDir, "*.md")
+            var ordonnances = Directory.GetFiles(dir, "*.md")
                 .Where(f => File.GetLastWriteTime(f) > lastSynthesisDate.Value);
             newItems.AddRange(ordonnances.Select(f => $"Ordonnance: {Path.GetFileName(f)}"));
         }
 
         // Synthèses de documents
-        var documentsDir = _pathService.GetDocumentsDirectory(patientName);
-        var docSynthesesDir = Path.Combine(documentsDir, "syntheses");
-        if (Directory.Exists(docSynthesesDir))
+        var documentFolders = _pathService.GetAllYearDirectories(patientName, "documents");
+        foreach (var dir in documentFolders)
         {
-            var docSyntheses = Directory.GetFiles(docSynthesesDir, "*.md")
-                .Where(f => File.GetLastWriteTime(f) > lastSynthesisDate.Value);
-            newItems.AddRange(docSyntheses.Select(f => $"Synthèse doc: {Path.GetFileName(f)}"));
+            var docSynthesesDir = Path.Combine(dir, "syntheses_documents"); // Note: Corrected subfolder name
+            if (Directory.Exists(docSynthesesDir))
+            {
+                var docSyntheses = Directory.GetFiles(docSynthesesDir, "*.md")
+                    .Where(f => File.GetLastWriteTime(f) > lastSynthesisDate.Value);
+                newItems.AddRange(docSyntheses.Select(f => $"Synthèse doc: {Path.GetFileName(f)}"));
+            }
         }
 
         // Chats sauvegardés
-        var chatDir = _pathService.GetChatDirectory(patientName);
-        if (Directory.Exists(chatDir))
+        var chatFolders = _pathService.GetAllYearDirectories(patientName, "chat");
+        foreach (var dir in chatFolders)
         {
-            var chats = Directory.GetFiles(chatDir, "*.json")
+            var chats = Directory.GetFiles(dir, "*.md") // Note: Chats are .md now after StorageService update
                 .Where(f => File.GetLastWriteTime(f) > lastSynthesisDate.Value);
             newItems.AddRange(chats.Select(f => $"Discussion: {Path.GetFileName(f)}"));
         }
@@ -482,14 +536,17 @@ public class SynthesisService
         }
 
         // Courriers
-        var courriersDir = _pathService.GetCourriersDirectory(patientName);
-        if (Directory.Exists(courriersDir))
+        var courrierFolders = _pathService.GetAllYearDirectories(patientName, "courriers");
+        if (courrierFolders.Any())
         {
             content.AppendLine("# COURRIERS\n");
-            var courriers = Directory.GetFiles(courriersDir, "*.md")
-                .OrderByDescending(f => File.GetLastWriteTime(f));
+            var allCourriers = new List<string>();
+            foreach (var dir in courrierFolders)
+            {
+                allCourriers.AddRange(Directory.GetFiles(dir, "*.md"));
+            }
 
-            foreach (var courrier in courriers)
+            foreach (var courrier in allCourriers.OrderByDescending(f => File.GetLastWriteTime(f)))
             {
                 content.AppendLine($"## {Path.GetFileName(courrier)}");
                 content.AppendLine(RemoveYamlFrontMatter(File.ReadAllText(courrier)));
@@ -498,14 +555,17 @@ public class SynthesisService
         }
 
         // Attestations
-        var attestationsDir = _pathService.GetAttestationsDirectory(patientName);
-        if (Directory.Exists(attestationsDir))
+        var attestationFolders = _pathService.GetAllYearDirectories(patientName, "attestations");
+        if (attestationFolders.Any())
         {
             content.AppendLine("# ATTESTATIONS\n");
-            var attestations = Directory.GetFiles(attestationsDir, "*.md")
-                .OrderByDescending(f => File.GetLastWriteTime(f));
+            var allAttestations = new List<string>();
+            foreach (var dir in attestationFolders)
+            {
+                allAttestations.AddRange(Directory.GetFiles(dir, "*.md"));
+            }
 
-            foreach (var attestation in attestations)
+            foreach (var attestation in allAttestations.OrderByDescending(f => File.GetLastWriteTime(f)))
             {
                 content.AppendLine($"## {Path.GetFileName(attestation)}");
                 content.AppendLine(RemoveYamlFrontMatter(File.ReadAllText(attestation)));
@@ -514,15 +574,18 @@ public class SynthesisService
         }
 
         // Formulaires (MDPH, PAI, etc.)
-        var formulairesDir = _pathService.GetFormulairesDirectory(patientName);
-        if (Directory.Exists(formulairesDir))
+        var formulaireFolders = _pathService.GetAllYearDirectories(patientName, "formulaires");
+        if (formulaireFolders.Any())
         {
             content.AppendLine("# FORMULAIRES\n");
-            var formulaires = Directory.GetFiles(formulairesDir, "*.*")
-                .Where(f => f.EndsWith(".md") || f.EndsWith(".json"))
-                .OrderByDescending(f => File.GetLastWriteTime(f));
+            var allFormulaires = new List<string>();
+            foreach (var dir in formulaireFolders)
+            {
+                allFormulaires.AddRange(Directory.GetFiles(dir, "*.*")
+                    .Where(f => f.EndsWith(".md") || f.EndsWith(".json")));
+            }
 
-            foreach (var formulaire in formulaires)
+            foreach (var formulaire in allFormulaires.OrderByDescending(f => File.GetLastWriteTime(f)))
             {
                 if (formulaire.EndsWith(".json"))
                 {
@@ -566,14 +629,17 @@ public class SynthesisService
         }
 
         // Ordonnances
-        var ordonnancesDir = _pathService.GetOrdonnancesDirectory(patientName);
-        if (Directory.Exists(ordonnancesDir))
+        var ordonnanceFolders = _pathService.GetAllYearDirectories(patientName, "ordonnances");
+        if (ordonnanceFolders.Any())
         {
             content.AppendLine("# ORDONNANCES\n");
-            var ordonnances = Directory.GetFiles(ordonnancesDir, "*.md")
-                .OrderByDescending(f => File.GetLastWriteTime(f));
+            var allOrdonnances = new List<string>();
+            foreach (var dir in ordonnanceFolders)
+            {
+                allOrdonnances.AddRange(Directory.GetFiles(dir, "*.md"));
+            }
 
-            foreach (var ordonnance in ordonnances)
+            foreach (var ordonnance in allOrdonnances.OrderByDescending(f => File.GetLastWriteTime(f)))
             {
                 content.AppendLine($"## {Path.GetFileName(ordonnance)}");
                 content.AppendLine(RemoveYamlFrontMatter(File.ReadAllText(ordonnance)));
@@ -582,45 +648,60 @@ public class SynthesisService
         }
 
         // Synthèses de documents
-        var documentsDir = _pathService.GetDocumentsDirectory(patientName);
-        var docSynthesesDir = Path.Combine(documentsDir, "syntheses");
-        if (Directory.Exists(docSynthesesDir))
+        var documentFolders = _pathService.GetAllYearDirectories(patientName, "documents");
+        if (documentFolders.Any())
         {
-            content.AppendLine("# SYNTHÈSES DE DOCUMENTS MÉDICAUX\n");
-            var syntheses = Directory.GetFiles(docSynthesesDir, "*.md")
-                .OrderByDescending(f => File.GetLastWriteTime(f));
-
-            foreach (var synthese in syntheses)
+            var allSyntheses = new List<string>();
+            foreach (var dir in documentFolders)
             {
-                content.AppendLine($"## {Path.GetFileName(synthese)}");
-                content.AppendLine(RemoveYamlFrontMatter(File.ReadAllText(synthese)));
-                content.AppendLine();
+                var docSynthesesDir = Path.Combine(dir, "syntheses_documents");
+                if (Directory.Exists(docSynthesesDir))
+                {
+                    allSyntheses.AddRange(Directory.GetFiles(docSynthesesDir, "*.md"));
+                }
+            }
+
+            if (allSyntheses.Any())
+            {
+                content.AppendLine("# SYNTHÈSES DE DOCUMENTS MÉDICAUX\n");
+                foreach (var synthese in allSyntheses.OrderByDescending(f => File.GetLastWriteTime(f)))
+                {
+                    content.AppendLine($"## {Path.GetFileName(synthese)}");
+                    content.AppendLine(RemoveYamlFrontMatter(File.ReadAllText(synthese)));
+                    content.AppendLine();
+                }
             }
         }
 
         // Chats sauvegardés
-        var chatDir = _pathService.GetChatDirectory(patientName);
-        if (Directory.Exists(chatDir))
+        var chatFolders = _pathService.GetAllYearDirectories(patientName, "chat");
+        if (chatFolders.Any())
         {
-            content.AppendLine("# DISCUSSIONS SAUVEGARDÉES\n");
-            var chats = Directory.GetFiles(chatDir, "*.json")
-                .OrderByDescending(f => File.GetLastWriteTime(f));
-
-            foreach (var chat in chats)
+            var allChats = new List<string>();
+            foreach (var dir in chatFolders)
             {
-                try
+                allChats.AddRange(Directory.GetFiles(dir, "*.md"));
+            }
+
+            if (allChats.Any())
+            {
+                content.AppendLine("# DISCUSSIONS SAUVEGARDÉES\n");
+                foreach (var chat in allChats.OrderByDescending(f => File.GetLastWriteTime(f)))
                 {
-                    var jsonContent = File.ReadAllText(chat);
-                    var exchange = System.Text.Json.JsonSerializer.Deserialize<ChatExchange>(jsonContent);
-                    if (exchange != null)
+                    try
                     {
-                        content.AppendLine($"## {exchange.Etiquette ?? "Discussion"}");
-                        content.AppendLine($"**Question:** {exchange.Question}");
-                        content.AppendLine($"**Réponse:** {exchange.Response}");
-                        content.AppendLine();
+                        var markdown = File.ReadAllText(chat);
+                        var exchange = ChatExchange.FromMarkdown(markdown, chat);
+                        if (exchange != null)
+                        {
+                            content.AppendLine($"## {exchange.Etiquette ?? "Discussion"}");
+                            content.AppendLine($"**Question:** {exchange.Question}");
+                            content.AppendLine($"**Réponse:** {exchange.Response}");
+                            content.AppendLine();
+                        }
                     }
+                    catch { /* Ignorer les fichiers invalides */ }
                 }
-                catch { /* Ignorer les fichiers JSON invalides */ }
             }
         }
 
@@ -663,28 +744,39 @@ public class SynthesisService
                 }
                 else if (type == "Courrier")
                 {
-                    filePath = Path.Combine(_pathService.GetCourriersDirectory(patientName), fileName);
+                    filePath = _pathService.GetAllYearDirectories(patientName, "courriers")
+                        .Select(dir => Path.Combine(dir, fileName))
+                        .FirstOrDefault(f => File.Exists(f));
                 }
                 else if (type == "Attestation")
                 {
-                    filePath = Path.Combine(_pathService.GetAttestationsDirectory(patientName), fileName);
+                    filePath = _pathService.GetAllYearDirectories(patientName, "attestations")
+                        .Select(dir => Path.Combine(dir, fileName))
+                        .FirstOrDefault(f => File.Exists(f));
                 }
                 else if (type == "Formulaire")
                 {
-                    filePath = Path.Combine(_pathService.GetFormulairesDirectory(patientName), fileName);
+                    filePath = _pathService.GetAllYearDirectories(patientName, "formulaires")
+                        .Select(dir => Path.Combine(dir, fileName))
+                        .FirstOrDefault(f => File.Exists(f));
                 }
                 else if (type == "Ordonnance")
                 {
-                    filePath = Path.Combine(_pathService.GetOrdonnancesDirectory(patientName), fileName);
+                    filePath = _pathService.GetAllYearDirectories(patientName, "ordonnances")
+                        .Select(dir => Path.Combine(dir, fileName))
+                        .FirstOrDefault(f => File.Exists(f));
                 }
                 else if (type == "Synthèse doc")
                 {
-                    var documentsDir = _pathService.GetDocumentsDirectory(patientName);
-                    filePath = Path.Combine(documentsDir, "syntheses", fileName);
+                    filePath = _pathService.GetAllYearDirectories(patientName, "documents")
+                        .Select(dir => Path.Combine(dir, "syntheses_documents", fileName))
+                        .FirstOrDefault(f => File.Exists(f));
                 }
                 else if (type == "Discussion")
                 {
-                    filePath = Path.Combine(_pathService.GetChatDirectory(patientName), fileName);
+                    filePath = _pathService.GetAllYearDirectories(patientName, "chat")
+                        .Select(dir => Path.Combine(dir, fileName))
+                        .FirstOrDefault(f => File.Exists(f));
                 }
 
                 if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))

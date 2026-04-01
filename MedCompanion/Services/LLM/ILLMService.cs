@@ -33,7 +33,9 @@ namespace MedCompanion.Services.LLM
         /// </summary>
         Task<(bool success, string result, string? error)> GenerateTextAsync(
             string prompt, 
-            int maxTokens = 1500);
+            int maxTokens = 1500,
+            System.Threading.CancellationToken cancellationToken = default,
+            string? forceModel = null);
 
         /// <summary>
         /// Chat avec système prompt + historique de messages
@@ -41,7 +43,28 @@ namespace MedCompanion.Services.LLM
         Task<(bool success, string result, string? error)> ChatAsync(
             string systemPrompt,
             List<(string role, string content)> messages,
-            int maxTokens = 1500);
+            int maxTokens = 1500,
+            System.Threading.CancellationToken cancellationToken = default,
+            string? forceModel = null);
+
+        /// <summary>
+        /// Chat avec streaming - les tokens sont envoyés au fur et à mesure via le callback
+        /// </summary>
+        Task<(bool success, string fullResponse, string? error)> ChatStreamAsync(
+            string systemPrompt,
+            List<(string role, string content)> messages,
+            Action<string> onTokenReceived,
+            int maxTokens = 1500,
+            System.Threading.CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Analyse une image avec un prompt texte
+        /// </summary>
+        Task<(bool success, string result, string? error)> AnalyzeImageAsync(
+            string prompt, 
+            byte[] imageData, 
+            int maxTokens = 1500,
+            System.Threading.CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Indique si le service est configuré et prêt à l'emploi

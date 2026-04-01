@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Threading.Tasks;
 using MedCompanion.Models;
 
 namespace MedCompanion.Services;
@@ -11,6 +12,7 @@ public class OrdonnanceService
 {
     private readonly LetterService _letterService;
     private readonly StorageService _storageService;
+    private readonly PathService _pathService;
     private readonly AppSettings _settings;
     private readonly SynthesisWeightTracker _weightTracker;
     private readonly OrdonnancePDFService _pdfService;
@@ -21,6 +23,7 @@ public class OrdonnanceService
     {
         _letterService = letterService;
         _storageService = storageService;
+        _pathService = pathService;
         _settings = AppSettings.Load();
         _weightTracker = new SynthesisWeightTracker(pathService);
         _pdfService = new OrdonnancePDFService();
@@ -589,17 +592,12 @@ public class OrdonnanceService
         
         try
         {
-            // CORRECTION : Utiliser StorageService.GetPatientDirectory() pour avoir le bon format
-            var patientDir = _storageService.GetPatientDirectory(patientName);
-            var ordonnancesDir = Path.Combine(patientDir, "ordonnances");
+            var ordonnanceFolders = _pathService.GetAllYearDirectories(patientName, "ordonnances");
             
-            if (!Directory.Exists(ordonnancesDir))
+            foreach (var ordonnancesDir in ordonnanceFolders)
             {
-                return result;
-            }
-            
-            // Récupérer tous les fichiers .md
-            var mdFiles = Directory.GetFiles(ordonnancesDir, "*.md", SearchOption.TopDirectoryOnly);
+                // Récupérer tous les fichiers .md
+                var mdFiles = Directory.GetFiles(ordonnancesDir, "*.md", SearchOption.TopDirectoryOnly);
             
             foreach (var mdFile in mdFiles)
             {
@@ -825,13 +823,14 @@ public class OrdonnanceService
             // Trier par date décroissante
             result = result.OrderByDescending(r => r.Item1).ToList();
         }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"[OrdonnanceService] Erreur GetOrdonnances: {ex.Message}");
-        }
-        
-        return result;
     }
+    catch (Exception ex)
+    {
+        System.Diagnostics.Debug.WriteLine($"[OrdonnanceService] Erreur GetOrdonnances: {ex.Message}");
+    }
+    
+    return result;
+}
     
     /// <summary>
     /// Supprime une ordonnance (MD + DOCX + PDF, ou juste DOCX orphelin)
@@ -1047,13 +1046,13 @@ public class OrdonnanceService
             System.Diagnostics.Debug.WriteLine(
                 $"[OrdonnanceService] Dernière ordonnance trouvée: {medicaments.Count} médicaments, date: {lastOrdonnance.date:dd/MM/yyyy}");
 
-            return (true, medicaments, string.Empty);
-        }
-        catch (Exception ex)
-        {
-            return (false, new List<MedicamentPrescrit>(), $"Erreur: {ex.Message}");
-        }
-        }
+        return (true, medicaments, string.Empty);
+    }
+    catch (Exception ex)
+    {
+        return (false, new List<MedicamentPrescrit>(), $"Erreur: {ex.Message}");
+    }
+}
 
     /// <summary>
     /// Convertit un fichier Markdown existant en DOCX et PDF

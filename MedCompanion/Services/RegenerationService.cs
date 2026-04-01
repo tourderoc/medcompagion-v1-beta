@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using MedCompanion.Models;
 using MedCompanion.Services.LLM;
@@ -41,6 +43,7 @@ namespace MedCompanion.Services
         /// <param name="providerName">Nom du provider (Ollama ou OpenAI)</param>
         /// <param name="modelName">Nom du modèle à utiliser</param>
         /// <param name="patientMetadata">Métadonnées patient pour anonymisation (optionnel)</param>
+        /// <param name="cancellationToken">Token d'annulation</param>
         /// <returns>Tuple (succès, contenu régénéré, message d'erreur)</returns>
         public async Task<(bool success, string result, string? error)> RegenerateAsync(
             string originalContent,
@@ -48,7 +51,8 @@ namespace MedCompanion.Services
             string contentType,
             string providerName,
             string modelName,
-            PatientMetadata? patientMetadata = null)
+            PatientMetadata? patientMetadata = null,
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(originalContent))
             {
@@ -64,14 +68,19 @@ namespace MedCompanion.Services
             {
                 System.Diagnostics.Debug.WriteLine($"[RegenerationService] Début régénération - Type: {contentType}, Provider: {providerName}, Modèle: {modelName}");
 
-                // Étape 1 : Anonymiser le contenu si provider cloud (OpenAI)
-                // Utilise Phase 1 (patient.json) + Phase 2 (regex) + Phase 3 (LLM local)
-                string contentToProcess = originalContent;
+                // Vérifier l'annulation au début
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Étape 1 : Préparer le contenu (Anonymisation si nécessaire)
+                string contentToProcess = RemoveYamlHeader(originalContent);
                 AnonymizationContext? anonContext = null;
 
-                if (providerName.Equals("OpenAI", StringComparison.OrdinalIgnoreCase))
+                if (providerName.Equals("OpenAI", StringComparison.OrdinalIgnoreCase)) // Assuming this is the intended condition for anonymization
                 {
                     System.Diagnostics.Debug.WriteLine($"[RegenerationService] Provider cloud détecté → Anonymisation Phase 1+2+3");
+
+                    // Vérifier l'annulation avant Phase 3
+                    cancellationToken.ThrowIfCancellationRequested();
 
                     // Phase 3 : Extraction des entités sensibles via LLM local (si disponible)
                     PIIExtractionResult? extractedPii = null;
@@ -80,8 +89,12 @@ namespace MedCompanion.Services
                         try
                         {
                             System.Diagnostics.Debug.WriteLine($"[RegenerationService] Phase 3: Extraction PII via LLM local...");
-                            extractedPii = await _openAIService.ExtractPIIAsync(originalContent);
+                            extractedPii = await _openAIService.ExtractPIIAsync(originalContent, cancellationToken);
                             System.Diagnostics.Debug.WriteLine($"[RegenerationService] Phase 3: {extractedPii?.GetAllEntities().Count() ?? 0} entités extraites");
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            throw; // Propager l'annulation
                         }
                         catch (Exception ex)
                         {
@@ -114,6 +127,9 @@ namespace MedCompanion.Services
                 string systemPrompt = BuildSystemPrompt(contentType);
                 string userPrompt = BuildUserPrompt(contentToProcess, instructions, contentType);
 
+                // Vérifier l'annulation avant l'appel LLM
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // Étape 3 : Créer le provider LLM approprié
                 ILLMService llmProvider = CreateProvider(providerName, modelName);
 
@@ -125,15 +141,20 @@ namespace MedCompanion.Services
                     ("user", userPrompt)
                 };
 
-                var (success, result, error) = await llmProvider.ChatAsync(systemPrompt, messages);
+                var (success, result, error) = await llmProvider.ChatAsync(systemPrompt, messages, 4000, cancellationToken);
 
                 if (!success)
                 {
                     return (false, "", error ?? "Erreur lors de la régénération.");
                 }
 
+                // Vérifier l'annulation après l'appel LLM
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // Nettoyage du résultat (blocs de code markdown, etc.)
+                string finalResult = CleanLLMResponse(result ?? "");
+
                 // Étape 5 : Désanonymiser si nécessaire (restaurer les vraies données)
-                string finalResult = result ?? "";
                 if (anonContext != null && anonContext.WasAnonymized)
                 {
                     finalResult = _anonymizationService.Deanonymize(finalResult, anonContext);
@@ -143,9 +164,22 @@ namespace MedCompanion.Services
                 // Étape 6 : Post-traitement - Restaurer les sauts de ligne si le LLM les a supprimés
                 finalResult = RestoreMarkdownLineBreaks(finalResult);
 
+                // Étape 7 : Restaurer le YAML original si présent
+                string yamlHeader = ExtractYamlHeader(originalContent);
+                if (!string.IsNullOrEmpty(yamlHeader))
+                {
+                    finalResult = yamlHeader + "\n\n" + finalResult;
+                    System.Diagnostics.Debug.WriteLine($"[RegenerationService] YAML restauré");
+                }
+
                 System.Diagnostics.Debug.WriteLine($"[RegenerationService] Régénération réussie - {finalResult.Length} caractères");
 
                 return (true, finalResult, null);
+            }
+            catch (OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine($"[RegenerationService] Régénération annulée par l'utilisateur");
+                throw; // Propager pour que l'appelant puisse gérer l'annulation
             }
             catch (Exception ex)
             {
@@ -231,6 +265,7 @@ CONSIGNES IMPORTANTES :
 - Ne change que ce qui est explicitement demandé dans les instructions
 - Conserve les informations médicales importantes non concernées par les modifications
 - Retourne UNIQUEMENT le contenu modifié en markdown valide, sans commentaires ni explications
+- INTERDICTION ABSOLUE : ne rajoute AUCUNE ligne de métadonnées au début (ex: patient: ..., date: ..., type: ..., status: ...). Commence directement par le contenu ou le titre.
 - Ne rajoute pas de texte avant ou après le document
 - NE PAS inclure les balises <document></document> dans ta réponse";
         }
@@ -273,6 +308,91 @@ CONSIGNES IMPORTANTES :
         /// Restaure les sauts de ligne dans le markdown si le LLM les a supprimés
         /// Ajoute un saut de ligne AVANT les marqueurs markdown courants
         /// </summary>
+        /// <summary>
+        /// Nettoie la réponse du LLM (supprime les blocs de code markdown ```)
+        /// </summary>
+        private string CleanLLMResponse(string response)
+        {
+            if (string.IsNullOrWhiteSpace(response)) return response;
+
+            var cleaned = response.Trim();
+
+            // 1. Supprimer les blocs de code markdown style ```markdown ... ```
+            if (cleaned.StartsWith("```"))
+            {
+                int firstLineEnd = cleaned.IndexOf('\n');
+                if (firstLineEnd > 0)
+                {
+                    cleaned = cleaned.Substring(firstLineEnd).Trim();
+                }
+
+                if (cleaned.EndsWith("```"))
+                {
+                    cleaned = cleaned.Substring(0, cleaned.Length - 3).Trim();
+                }
+            }
+
+            // 2. Nettoyage agressif des métadonnées (si le LLM n'a pas écouté les instructions)
+            cleaned = RemoveYamlHeader(cleaned);
+
+            return cleaned;
+        }
+
+        private string ExtractYamlHeader(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content)) return "";
+            
+            // On ne prend que le PREMIER bloc YAML valide s'il existe
+            var yamlRegex = new Regex(@"^\s*(---\s*[\s\S]*?---)", RegexOptions.Multiline);
+            var match = yamlRegex.Match(content);
+            
+            return match.Success ? match.Groups[1].Value : "";
+        }
+
+        private string RemoveYamlHeader(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content)) return content;
+
+            var result = content;
+
+            // 1. Supprimer TOUS les blocs délimités par ---
+            var blockRegex = new Regex(@"^\s*---\s*[\s\S]*?---\s*", RegexOptions.Multiline);
+            while (blockRegex.IsMatch(result))
+            {
+                result = blockRegex.Replace(result, "");
+            }
+
+            // 2. Supprimer les lignes de métadonnées "orphelines" au début (key: value)
+            var lines = result.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
+            var metadataRegex = new Regex(@"^\s*[\w\s-]+:\s*[""'].*?[""']|^\s*[\w\s-]+:\s*[^#\s]+", RegexOptions.IgnoreCase);
+            
+            int skipLines = 0;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                if (string.IsNullOrWhiteSpace(line))
+                {
+                    skipLines++;
+                    continue;
+                }
+
+                if (metadataRegex.IsMatch(line))
+                {
+                    skipLines++;
+                    continue;
+                }
+
+                break;
+            }
+
+            if (skipLines > 0)
+            {
+                result = string.Join("\n", lines.Skip(skipLines));
+            }
+
+            return result.TrimStart();
+        }
+
         private string RestoreMarkdownLineBreaks(string content)
         {
             if (string.IsNullOrWhiteSpace(content))

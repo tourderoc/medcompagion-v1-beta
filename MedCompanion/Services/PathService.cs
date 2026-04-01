@@ -123,6 +123,25 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Obtient le chemin du dossier des messages parents (à la racine du patient, transversal)
+        /// Ex: Documents/MedCompanion/patients/DUPONT_Yanis/messages
+        /// </summary>
+        public string GetMessagesDirectory(string nomComplet)
+        {
+            return Path.Combine(GetPatientRootDirectory(nomComplet), "messages");
+        }
+
+        /// <summary>
+        /// Obtient le chemin du dossier messages pour une année spécifique
+        /// Ex: Documents/MedCompanion/patients/DUPONT_Yanis/messages/2026
+        /// </summary>
+        public string GetMessagesYearDirectory(string nomComplet, int? year = null)
+        {
+            var yearStr = (year ?? DateTime.Now.Year).ToString();
+            return Path.Combine(GetMessagesDirectory(nomComplet), yearStr);
+        }
+
+        /// <summary>
         /// Obtient le chemin du dossier des synthèses
         /// Ex: Documents/MedCompanion/patients/DUPONT_Yanis/synthese
         /// Note: La synthèse est transversale (couvre toutes les années), donc à la racine du patient
@@ -240,6 +259,26 @@ namespace MedCompanion.Services
             {
                 return new List<int>();
             }
+        }
+
+        /// <summary>
+        /// Récupère les chemins d'un sous-dossier spécifique (ex: "notes") pour toutes les années disponibles
+        /// </summary>
+        public List<string> GetAllYearDirectories(string nomComplet, string subFolder)
+        {
+            var years = GetAvailableYears(nomComplet);
+            var result = new List<string>();
+
+            foreach (var year in years)
+            {
+                var path = Path.Combine(GetPatientYearDirectory(nomComplet, year), subFolder);
+                if (Directory.Exists(path))
+                {
+                    result.Add(path);
+                }
+            }
+
+            return result;
         }
 
         /// <summary>

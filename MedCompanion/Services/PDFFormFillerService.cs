@@ -682,7 +682,7 @@ namespace MedCompanion.Services
                 // Valeur actuelle
                 if (field.Value != null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"  Valeur: {field.Value.ToString().Substring(0, Math.Min(100, field.Value.ToString().Length))}");
+                    System.Diagnostics.Debug.WriteLine($"  Valeur: {field.Value.ToString()?.Substring(0, Math.Min(100, field.Value.ToString()?.Length ?? 0))}");
                 }
 
                 // Alignement

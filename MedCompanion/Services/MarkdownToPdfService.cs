@@ -23,7 +23,7 @@ namespace MedCompanion.Services
         /// <summary>
         /// Convertit directement du Markdown en PDF professionnel
         /// </summary>
-        public async Task<(bool success, string? pdfPath, string? error)> ConvertMarkdownToPdfAsync(
+        public Task<(bool success, string? pdfPath, string? error)> ConvertMarkdownToPdfAsync(
             string markdown,
             string outputPath,
             PatientMetadata? patientMetadata = null,
@@ -50,12 +50,12 @@ namespace MedCompanion.Services
                 document.GeneratePdf(outputPath);
 
                 System.Diagnostics.Debug.WriteLine($"[MarkdownToPdfService] ✅ PDF généré avec succès: {outputPath}");
-                return (true, outputPath, null);
+                return Task.FromResult<(bool success, string? pdfPath, string? error)>((true, outputPath, null));
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[MarkdownToPdfService] ❌ Erreur conversion: {ex.Message}");
-                return (false, null, $"Erreur lors de la conversion Markdown→PDF: {ex.Message}");
+                return Task.FromResult<(bool success, string? pdfPath, string? error)>((false, null, $"Erreur lors de la conversion Markdown→PDF: {ex.Message}"));
             }
         }
 
