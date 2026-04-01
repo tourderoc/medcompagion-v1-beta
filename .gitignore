@@ -11,6 +11,9 @@ obj/
 
 # Rider
 .idea/
+.claude/
+TestRunner/obj/
+TestRunner/bin/
 
 # User-specific files
 *.rsuser

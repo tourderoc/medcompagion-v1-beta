@@ -48,9 +48,17 @@ exports.onNotificationCreated = onDocumentCreated("notifications/{notificationId
         const message = buildFcmMessage(notification, fcmTokens);
 
         // Envoyer la notification
+        console.log(`[onNotificationCreated] Envoi à ${fcmTokens.length} tokens. Payload:`, JSON.stringify(message.data));
         const response = await messaging.sendEachForMulticast(message);
 
-        console.log(`[onNotificationCreated] Envoyé: ${response.successCount} succès, ${response.failureCount} échecs`);
+        console.log(`[onNotificationCreated] Réponse FCM: ${response.successCount} succès, ${response.failureCount} échecs`);
+        if (response.failureCount > 0) {
+            response.responses.forEach((resp, idx) => {
+                if (!resp.success) {
+                    console.log(`[onNotificationCreated] Échec token ${fcmTokens[idx].tokenId}:`, resp.error?.message);
+                }
+            });
+        }
 
         // Nettoyer les tokens invalides
         await cleanupInvalidTokens(fcmTokens, response);
@@ -83,7 +91,24 @@ exports.onNotificationCreated = onDocumentCreated("notifications/{notificationId
 async function getFcmTokensForNotification(notification) {
     const fcmTokens = [];
 
-    if (notification.type === "Broadcast" || notification.targetParentId === "all") {
+    // Si la notification a un tokenId spécifique, envoyer UNIQUEMENT à ce token.
+    // Cela évite la multiplication N×N pour les broadcasts :
+    // MedCompanion crée 1 notification par token, chacune avec son tokenId,
+    // donc chaque trigger envoie à 1 seul destinataire.
+    if (notification.tokenId) {
+        const tokenDoc = await db.collection("tokens").doc(notification.tokenId).get();
+
+        if (tokenDoc.exists) {
+            const data = tokenDoc.data();
+            if (data.fcmToken) {
+                fcmTokens.push({
+                    tokenId: tokenDoc.id,
+                    fcmToken: data.fcmToken
+                });
+            }
+        }
+    } else if (notification.targetParentId === "all") {
+        // Fallback : broadcast sans tokenId spécifique → envoyer à tous
         const tokensSnapshot = await db.collection("tokens")
             .where("status", "==", "used")
             .get();
@@ -97,18 +122,6 @@ async function getFcmTokensForNotification(notification) {
                 });
             }
         });
-    } else if (notification.tokenId) {
-        const tokenDoc = await db.collection("tokens").doc(notification.tokenId).get();
-
-        if (tokenDoc.exists) {
-            const data = tokenDoc.data();
-            if (data.fcmToken) {
-                fcmTokens.push({
-                    tokenId: tokenDoc.id,
-                    fcmToken: data.fcmToken
-                });
-            }
-        }
     }
 
     return fcmTokens;
@@ -205,6 +218,16 @@ async function cleanupInvalidTokens(fcmTokens, response) {
  * Fonction HTTP pour tester l'envoi de notifications
  */
 exports.testNotification = onRequest(async (req, res) => {
+    // Ajouter les headers CORS pour permettre l'appel depuis le PWA
+    res.set("Access-Control-Allow-Origin", "*");
+    res.set("Access-Control-Allow-Methods", "POST");
+    res.set("Access-Control-Allow-Headers", "Content-Type");
+
+    if (req.method === "OPTIONS") {
+        res.status(204).send("");
+        return;
+    }
+
     if (req.method !== "POST") {
         res.status(405).send("Method not allowed");
         return;

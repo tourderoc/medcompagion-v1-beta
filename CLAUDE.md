@@ -101,3 +101,8 @@ if (!success) { MessageBox.Show(error); return; }
 5. **MVVM**: ViewModels with INotifyPropertyChanged
 6. **Events**: UserControls use `StatusChanged` event
 7. **Docs**: Check INTEGRATION_*.md, BUGFIX_*.md for details
+
+## Documents Liés
+
+- [VISION_V3.md](VISION_V3.md) — Vision écosystème Parent'aile + MedCompanion (V0 en cours)
+- [VISION_V2.md](VISION_V2.md) — Vision MedCompanion V2 (Focus Med, Mémoire, Mode Consultation)
