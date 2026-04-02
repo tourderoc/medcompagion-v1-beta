@@ -20,6 +20,9 @@ namespace MedCompanion.Views.Messages
         private PatientMessageService? _messageService;
         private FirebaseService? _firebaseService;
         private PilotageEmailService? _emailService;
+        private PatientContextService? _contextService;
+        private OpenAIService? _openAIService;
+        private TokenService? _tokenService;
         private PatientIndexEntry? _currentPatient;
         private ArchivedMessage? _selectedMessage;
 
@@ -40,11 +43,20 @@ namespace MedCompanion.Views.Messages
         /// <summary>
         /// Initialise le contrôle avec les services nécessaires
         /// </summary>
-        public void Initialize(PatientMessageService messageService, FirebaseService firebaseService, PilotageEmailService? emailService = null)
+        public void Initialize(
+            PatientMessageService messageService, 
+            FirebaseService firebaseService, 
+            PilotageEmailService? emailService = null,
+            PatientContextService? contextService = null,
+            OpenAIService? openAIService = null,
+            TokenService? tokenService = null)
         {
             _messageService = messageService;
             _firebaseService = firebaseService;
             _emailService = emailService;
+            _contextService = contextService;
+            _openAIService = openAIService;
+            _tokenService = tokenService;
         }
 
         /// <summary>
@@ -285,6 +297,139 @@ namespace MedCompanion.Views.Messages
             else
             {
                 StatusChanged?.Invoke(this, $"Erreur archivage: {error}");
+            }
+        }
+
+        // ===== NOUVELLES FONCTIONNALITÉS IA & NOTIF =====
+
+        private async void BtnNotifyParent_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPatient == null || _openAIService == null || _contextService == null || _tokenService == null)
+            {
+                MessageBox.Show("Services non disponibles ou aucun patient sélectionné.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            try
+            {
+                var dialog = new MedCompanion.Dialogs.ComposeNotificationDialog(_openAIService, _contextService, _currentPatient)
+                {
+                    Owner = Window.GetWindow(this)
+                };
+
+                if (dialog.ShowDialog() == true)
+                {
+                    var result = dialog.Result;
+                    if (result.Success)
+                    {
+                        StatusChanged?.Invoke(this, "Envoi du message direct...");
+                        
+                        // 1. Récupérer le token du patient
+                        var allTokens = await _tokenService.GetAllTokensAsync();
+                        var activeToken = allTokens.FirstOrDefault(t => t.PatientId == _currentPatient.NomComplet && t.Active);
+                        
+                        // 2. Envoi Notification Push
+                        if (result.SendPush)
+                        {
+                            if (activeToken != null && _firebaseService != null)
+                            {
+                                var notif = new PilotageNotification
+                                {
+                                    Id = Guid.NewGuid().ToString(),
+                                    Type = NotificationType.Info,
+                                    Title = "Nouveau message du Dr.",
+                                    Body = result.Message,
+                                    TargetParentId = activeToken.TokenId,
+                                    TokenId = activeToken.TokenId,
+                                    CreatedAt = DateTime.UtcNow,
+                                    SenderName = "Médecin"
+                                };
+                                await _firebaseService.WriteNotificationAsync(notif);
+                            }
+                            else if (activeToken == null)
+                            {
+                                MessageBox.Show("Impossible d'envoyer la notification Push : aucun token actif trouvé pour ce patient.\n\nLe parent doit être inscrit via l'onglet Pilotage.", "Attention", MessageBoxButton.OK, MessageBoxImage.Warning);
+                            }
+                        }
+
+                        // 3. Envoi E-mail
+                        if (result.SendEmail && _emailService != null)
+                        {
+                            // On tente de trouver l'email dans les métadonnées ou le dernier message
+                            string? targetEmail = null;
+                            if (_allMessages.Count > 0)
+                            {
+                                targetEmail = _allMessages.FirstOrDefault(m => !string.IsNullOrEmpty(m.ParentEmail))?.ParentEmail;
+                            }
+
+                            if (!string.IsNullOrEmpty(targetEmail))
+                            {
+                                await _emailService.SendEmailAsync(targetEmail, $"Message de votre médecin - {_currentPatient.NomComplet}", result.Message);
+                            }
+                            else
+                            {
+                                MessageBox.Show("Impossible d'envoyer l'e-mail : aucune adresse e-mail trouvée pour ce patient dans l'historique des messages.", "Attention", MessageBoxButton.OK, MessageBoxImage.Warning);
+                                return;
+                            }
+                        }
+
+                        StatusChanged?.Invoke(this, "✅ Message envoyé avec succès");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private async void BtnSuggestionIA_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedMessage == null || _currentPatient == null || _openAIService == null || _contextService == null) return;
+
+            try
+            {
+                BtnSuggestionIA.IsEnabled = false;
+                StatusChanged?.Invoke(this, "🪄 L'IA analyse le dossier et prépare une réponse...");
+
+                // 1. Récupérer contexte
+                var context = _contextService.GetCompleteContext(_currentPatient.NomComplet);
+                
+                // 2. Prompt
+                string prompt = $@"Tu es un assistant médical pour un médecin. Le patient est {_currentPatient.NomComplet}.
+Voici le contexte médical du patient (synthèse/notes) :
+{context.ClinicalContext}
+
+Le parent a envoyé ce message :
+""{_selectedMessage.Content}""
+
+PROPOSE UNE RÉPONSE :
+- Ton bienveillant, rassurant et professionnel.
+- Basée sur les éléments médicaux fournis si cela peut aider à répondre spécifiquement (prévention, conseils, rendez-vous).
+- Concise mais complète.
+- Ne mentionne pas que tu es une IA.
+- Ne donne QUE le texte de la réponse, sans aucun enrobage.";
+
+                // 3. IA
+                var (success, suggestion, error) = await _openAIService.GenerateTextAsync(prompt);
+                
+                if (success && !string.IsNullOrEmpty(suggestion))
+                {
+                    ReplyTextBox.Text = suggestion.Trim();
+                    StatusChanged?.Invoke(this, "✨ Suggestion IA appliquée");
+                }
+                else if (!success)
+                {
+                    StatusChanged?.Invoke(this, $"Erreur IA: {error}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur IA: {ex.Message}");
+            }
+            finally
+            {
+                BtnSuggestionIA.IsEnabled = true;
             }
         }
     }

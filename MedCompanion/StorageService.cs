@@ -265,32 +265,33 @@ namespace MedCompanion
             
             try
             {
-                var chatDir = _pathService.GetChatDirectory(nomComplet);
+                var chatFolders = _pathService.GetAllYearDirectories(nomComplet, "chat");
                 
-                if (!Directory.Exists(chatDir))
-                    return exchanges;
-
-                var files = Directory.GetFiles(chatDir, "chat_*.md")
-                    .OrderByDescending(f => File.GetLastWriteTime(f));
-
-                foreach (var file in files)
+                foreach (var chatDir in chatFolders)
                 {
-                    try
+                    var files = Directory.GetFiles(chatDir, "chat_*.md");
+
+                    foreach (var file in files)
                     {
-                        var markdown = File.ReadAllText(file, Encoding.UTF8);
-                        var exchange = ChatExchange.FromMarkdown(markdown, file);
-                        
-                        if (exchange != null)
+                        try
                         {
-                            exchanges.Add(exchange);
+                            var markdown = File.ReadAllText(file, Encoding.UTF8);
+                            var exchange = ChatExchange.FromMarkdown(markdown, file);
+                            
+                            if (exchange != null)
+                            {
+                                exchanges.Add(exchange);
+                            }
+                        }
+                        catch
+                        {
+                            // Ignorer les fichiers mal formatés
+                            continue;
                         }
                     }
-                    catch
-                    {
-                        // Ignorer les fichiers mal formatés
-                        continue;
-                    }
                 }
+
+                return exchanges.OrderByDescending(e => e.Timestamp).ToList();
             }
             catch
             {
@@ -307,20 +308,22 @@ namespace MedCompanion
         {
             try
             {
-                var chatDir = _pathService.GetChatDirectory(nomComplet);
+                var chatFolders = _pathService.GetAllYearDirectories(nomComplet, "chat");
                 
-                if (!Directory.Exists(chatDir))
-                    return (false, "Dossier chat introuvable");
+                foreach (var chatDir in chatFolders)
+                {
+                    // Chercher le fichier dont le nom (sans extension) correspond exactement à l'ID
+                    var file = Directory.GetFiles(chatDir, "*.md")
+                        .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f) == exchangeId);
 
-                // Chercher le fichier dont le nom (sans extension) correspond exactement à l'ID
-                var file = Directory.GetFiles(chatDir, "*.md")
-                    .FirstOrDefault(f => Path.GetFileNameWithoutExtension(f) == exchangeId);
+                    if (file != null && File.Exists(file))
+                    {
+                        File.Delete(file);
+                        return (true, $"🗑️ Échange supprimé");
+                    }
+                }
 
-                if (file == null || !File.Exists(file))
-                    return (false, "Échange introuvable");
-
-                File.Delete(file);
-                return (true, $"🗑️ Échange supprimé");
+                return (false, "Échange introuvable");
             }
             catch (Exception ex)
             {

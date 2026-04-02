@@ -33,9 +33,14 @@
             <TextBlock x:Name="MessageCountLabel" Grid.Column="1" Text="0 messages" FontSize="12" Foreground="#7F8C8D" VerticalAlignment="Center"/>
         </Grid>
 
-        <!-- ═══ BOUTONS FILTRE ═══ -->
+        <!-- ═══ BOUTONS FILTRE + NOTIFIER ═══ -->
         <Grid Grid.Row="2">
-            <Border Background="#F0F0F0" CornerRadius="8" Padding="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            
+            <Border Grid.Column="0" Background="#F0F0F0" CornerRadius="8" Padding="3">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
@@ -89,6 +94,24 @@
                     </Button>
                 </Grid>
             </Border>
+
+            <!-- BOUTON NOTIFIER DIRECTEMENT -->
+            <Button x:Name="BtnNotifyParent" Grid.Column="1"
+                    Height="40" Margin="10,0,0,0" Padding="15,0"
+                    FontSize="12" FontWeight="Bold"
+                    Background="#34495E" Foreground="White"
+                    BorderThickness="0" Cursor="Hand"
+                    Click="BtnNotifyParent_Click">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="📧 Notifier le parent" VerticalAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+                    </ControlTemplate>
+                </Button.Template>
+            </Button>
         </Grid>
 
         <!-- Liste des messages du patient -->
@@ -193,26 +216,19 @@
             </TextBox>
 
             <!-- Boutons d'action -->
-            <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="ArchiveBtn" Content="Archiver"
-                        Height="36" Padding="15,0" Margin="0,0,8,0"
-                        FontSize="12" Background="#95A5A6" Foreground="White"
-                        BorderThickness="0" Cursor="Hand"
-                        Click="ArchiveBtn_Click">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
-                <Button x:Name="ReplyBtn" Content="Envoyer la réponse"
-                        Height="36" Padding="15,0"
+            <Grid Grid.Row="4">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+
+                <Button x:Name="BtnSuggestionIA" Grid.Column="0"
+                        Content="💡 Suggestion IA"
+                        Height="36" Padding="12,0"
                         FontSize="12" FontWeight="SemiBold"
-                        Background="#27AE60" Foreground="White"
+                        Background="#3498DB" Foreground="White"
                         BorderThickness="0" Cursor="Hand"
-                        Click="ReplyBtn_Click">
+                        Click="BtnSuggestionIA_Click">
                     <Button.Template>
                         <ControlTemplate TargetType="Button">
                             <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
@@ -221,7 +237,37 @@
                         </ControlTemplate>
                     </Button.Template>
                 </Button>
-            </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="ArchiveBtn" Content="Archiver"
+                            Height="36" Padding="15,0" Margin="0,0,8,0"
+                            FontSize="12" Background="#95A5A6" Foreground="White"
+                            BorderThickness="0" Cursor="Hand"
+                            Click="ArchiveBtn_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <Button x:Name="ReplyBtn" Content="Envoyer la réponse"
+                            Height="36" Padding="15,0"
+                            FontSize="12" FontWeight="SemiBold"
+                            Background="#27AE60" Foreground="White"
+                            BorderThickness="0" Cursor="Hand"
+                            Click="ReplyBtn_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                </StackPanel>
+            </Grid>
         </Grid>
     </Grid>
 </UserControl>

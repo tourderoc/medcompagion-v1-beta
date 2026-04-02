@@ -111,7 +111,7 @@ namespace MedCompanion.Converters
         {
             if (value is bool isChecked && isChecked && parameter != null)
             {
-                return parameter.ToString();
+                return parameter.ToString() ?? Binding.DoNothing;
             }
 
             return Binding.DoNothing;
@@ -143,6 +143,58 @@ namespace MedCompanion.Converters
             throw new NotImplementedException();
         }
     }
+    /// <summary>
+    /// Convertit une DateTime en indicateur de pression temporelle
+    /// &lt; 2h → "", 2-8h → "⏰", &gt; 8h → "🔥"
+    /// </summary>
+    public class TimePressureConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is DateTime createdAt)
+            {
+                var hours = (DateTime.Now - createdAt).TotalHours;
+                if (hours < 2) return "";
+                if (hours < 8) return "⏰";
+                return "🔥";
+            }
+            return "";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>
+    /// Convertit une DateTime en couleur de pression temporelle
+    /// &lt; 2h → vert, 2-8h → orange, &gt; 8h → rouge
+    /// </summary>
+    public class TimePressureColorConverter : IValueConverter
+    {
+        private static readonly System.Windows.Media.SolidColorBrush Green = new(System.Windows.Media.Color.FromRgb(0x27, 0xAE, 0x60));
+        private static readonly System.Windows.Media.SolidColorBrush Orange = new(System.Windows.Media.Color.FromRgb(0xF3, 0x9C, 0x12));
+        private static readonly System.Windows.Media.SolidColorBrush Red = new(System.Windows.Media.Color.FromRgb(0xE7, 0x4C, 0x3C));
+
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is DateTime createdAt)
+            {
+                var hours = (DateTime.Now - createdAt).TotalHours;
+                if (hours < 2) return Green;
+                if (hours < 8) return Orange;
+                return Red;
+            }
+            return Green;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
     /// <summary>
     /// Convertit une chaîne de caractères en Visibility
     /// Si chaîne non vide (ni espace) → Visible, sinon → Collapsed

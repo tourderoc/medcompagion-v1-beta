@@ -404,7 +404,13 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         };
 
         // Initialiser MessagesControl (onglet Messages dans Console)
-        MessagesControlPanel.Initialize(_patientMessageService, _firebaseService, _pilotageEmailService);
+        MessagesControlPanel.Initialize(
+            _patientMessageService, 
+            _firebaseService, 
+            _pilotageEmailService,
+            _patientContextService,
+            _openAIService,
+            _tokenService);
         MessagesControlPanel.StatusChanged += (s, msg) => {
             StatusTextBlock.Text = msg;
         };
