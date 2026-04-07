@@ -237,6 +237,23 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Compte les messages non traités pour TOUS les patients (pour le badge global)
+        /// </summary>
+        public int GetGlobalUnreadCount()
+        {
+            int total = 0;
+            var basePatientsDir = _pathService.GetBasePatientsDirectory();
+            if (!Directory.Exists(basePatientsDir)) return 0;
+
+            foreach (var patientDir in Directory.GetDirectories(basePatientsDir))
+            {
+                var patientName = Path.GetFileName(patientDir);
+                total += GetUnreadCount(patientName);
+            }
+            return total;
+        }
+
+        /// <summary>
         /// Fetch Firebase → résoudre tokens → archiver TOUS les messages localement → retourner les non traités.
         /// Bouton "Messages" du header utilise cette méthode.
         /// </summary>

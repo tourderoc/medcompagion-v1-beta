@@ -402,17 +402,29 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 System.Diagnostics.Debug.WriteLine($"[MainWindow] Badge Messages mis à jour: {count} non traité(s)");
             });
         };
+        PilotageContent.TokenModified += async (s, _) => {
+            if (_selectedPatient != null)
+            {
+                await Dispatcher.InvokeAsync(async () => {
+                    await UpdatePatientTokenStatusAsync(_selectedPatient.Id);
+                });
+            }
+        };
 
         // Initialiser MessagesControl (onglet Messages dans Console)
         MessagesControlPanel.Initialize(
-            _patientMessageService, 
-            _firebaseService, 
+            _patientMessageService,
+            _firebaseService,
             _pilotageEmailService,
             _patientContextService,
             _openAIService,
-            _tokenService);
+            _tokenService,
+            _pilotageAttachmentService);
         MessagesControlPanel.StatusChanged += (s, msg) => {
             StatusTextBlock.Text = msg;
+        };
+        MessagesControlPanel.UnreadCountChanged += (s, count) => {
+            Dispatcher.Invoke(() => PatientSearchViewModel.UnreadMessageCount = count);
         };
 
         PatientSearchViewModel.PatientSelected += (s, patient) => {
@@ -1433,6 +1445,9 @@ private async void OnSendToPilotageRequested(object? sender, string filePath)
         var format = fileToSend.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? "PDF" : "DOCX";
         StatusTextBlock.Text = $"✅ {docType} ({format}) envoyé vers Pilotage";
         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+
+        // Rafraîchir aussi le panneau PJ dans la console Messages
+        MessagesControlPanel.RefreshAttachments();
     }
     catch (Exception ex)
     {

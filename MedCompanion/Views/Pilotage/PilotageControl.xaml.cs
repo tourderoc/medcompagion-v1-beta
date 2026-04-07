@@ -69,6 +69,11 @@ namespace MedCompanion.Views.Pilotage
         /// </summary>
         public event EventHandler<int>? NewMessagesDetected;
 
+        /// <summary>
+        /// Déclenché quand un token est créé, révoqué ou modifié (pour rafraîchir le header MainWindow)
+        /// </summary>
+        public event EventHandler? TokenModified;
+
         public PilotageControl()
         {
             InitializeComponent();
@@ -913,6 +918,7 @@ namespace MedCompanion.Views.Pilotage
                 var patientName = _selectedPatientAgg.PatientName;
 
                 OnStatusChanged($"Token généré pour {patientName}");
+                TokenModified?.Invoke(this, EventArgs.Empty);
                 RefreshPatientsTab();
 
                 // Re-sélectionner le patient après refresh
@@ -1109,6 +1115,7 @@ namespace MedCompanion.Views.Pilotage
                     firebaseOk ? MessageBoxImage.Information : MessageBoxImage.Warning);
 
                 OnStatusChanged($"Token {token.PatientDisplayName} révoqué");
+                TokenModified?.Invoke(this, EventArgs.Empty);
 
                 // Rafraîchir et re-sélectionner
                 var patientId = _selectedPatientAgg.PatientId;
@@ -1170,6 +1177,7 @@ namespace MedCompanion.Views.Pilotage
                 }
 
                 OnStatusChanged($"Nouveau token généré pour {patientName}");
+                TokenModified?.Invoke(this, EventArgs.Empty);
                 RefreshPatientsTab();
 
                 // Re-sélectionner le patient après refresh
@@ -1361,6 +1369,7 @@ namespace MedCompanion.Views.Pilotage
                     firebaseOk ? MessageBoxImage.Information : MessageBoxImage.Warning);
 
                 RefreshTokensTab();
+                TokenModified?.Invoke(this, EventArgs.Empty);
                 OnStatusChanged($"Token {_selectedToken.PatientDisplayName} révoqué");
             }
             catch (Exception ex)
@@ -1393,6 +1402,7 @@ namespace MedCompanion.Views.Pilotage
                 _selectedToken = null;
                 HideUserDetail();
                 RefreshTokensTab();
+                TokenModified?.Invoke(this, EventArgs.Empty);
                 OnStatusChanged("Token supprimé");
             }
             catch (Exception ex)
@@ -1745,6 +1755,9 @@ namespace MedCompanion.Views.Pilotage
             {
                 RefreshTokensTab();
             }
+
+            // Notifier MainWindow pour rafraîchir le rectangle token
+            TokenModified?.Invoke(this, EventArgs.Empty);
 
             OnStatusChanged("Gestion des tokens");
         }

@@ -9,6 +9,9 @@
 
     <UserControl.Resources>
         <local:StatusToColorConverter x:Key="StatusToColorConverter"/>
+        <local:UrgencyToColorConverter x:Key="UrgencyToColorConverter"/>
+        <local:TimePressureConverter x:Key="TimePressureConverter"/>
+        <local:TimePressureColorConverter x:Key="TimePressureColorConverter"/>
     </UserControl.Resources>
 
     <Grid>
@@ -45,6 +48,7 @@
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Bouton Non traités (actif par défaut) -->
@@ -74,8 +78,35 @@
                         </StackPanel>
                     </Button>
 
+                    <!-- Bouton Urgents -->
+                    <Button x:Name="FilterUrgentBtn" Grid.Column="1"
+                            Height="34" Margin="2"
+                            FontSize="12" FontWeight="SemiBold"
+                            BorderThickness="0" Cursor="Hand"
+                            Click="FilterUrgentBtn_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border x:Name="FilterBd"
+                                        Background="{TemplateBinding Background}"
+                                        CornerRadius="6"
+                                        Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="🔴 Urgents" VerticalAlignment="Center"/>
+                            <Border x:Name="UrgentBadge" CornerRadius="8" Background="#C0392B"
+                                    Padding="6,1" Margin="6,0,0,0" VerticalAlignment="Center"
+                                    Visibility="Collapsed">
+                                <TextBlock x:Name="UrgentBadgeText" Text="0" FontSize="10"
+                                           Foreground="White" FontWeight="Bold"/>
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
                     <!-- Bouton Traités / Archivés -->
-                    <Button x:Name="FilterArchivedBtn" Grid.Column="1"
+                    <Button x:Name="FilterArchivedBtn" Grid.Column="2"
                             Height="34" Margin="2"
                             FontSize="12" FontWeight="SemiBold"
                             BorderThickness="0" Cursor="Hand"
@@ -90,7 +121,7 @@
                                 </Border>
                             </ControlTemplate>
                         </Button.Template>
-                        <TextBlock Text="✅ Traités / Archivés" VerticalAlignment="Center"/>
+                        <TextBlock Text="✅ Traités" VerticalAlignment="Center"/>
                     </Button>
                 </Grid>
             </Border>
@@ -139,13 +170,17 @@
                                         <ColumnDefinition Width="Auto"/>
                                     </Grid.ColumnDefinitions>
 
-                                    <!-- Nom parent + date -->
-                                    <TextBlock Grid.Row="0" Grid.Column="0"
-                                               Text="{Binding ParentName}"
-                                               FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                    <!-- Nom parent + dot urgence + date -->
+                                    <StackPanel Grid.Row="0" Grid.Column="0" Orientation="Horizontal">
+                                        <Ellipse Width="8" Height="8" Margin="0,0,6,0" VerticalAlignment="Center"
+                                                 Fill="{Binding Urgency, Converter={StaticResource UrgencyToColorConverter}}"/>
+                                        <TextBlock Text="{Binding ParentName}"
+                                                   FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                    </StackPanel>
                                     <TextBlock Grid.Row="0" Grid.Column="1"
-                                               Text="{Binding RelativeTimeString}"
-                                               FontSize="11" Foreground="#95A5A6"/>
+                                               Text="{Binding ReceivedAt, Converter={StaticResource TimePressureConverter}}"
+                                               FontSize="11"
+                                               Foreground="{Binding ReceivedAt, Converter={StaticResource TimePressureColorConverter}}"/>
 
                                     <!-- Résumé du message -->
                                     <TextBlock Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
@@ -178,96 +213,232 @@
 
         <!-- Zone de détail + réponse -->
         <Grid x:Name="DetailPanel" Grid.Row="6" Visibility="Collapsed">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="8"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="8"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="10"/>
+                <ColumnDefinition Width="200"/>
+            </Grid.ColumnDefinitions>
 
-            <!-- Contenu complet du message sélectionné -->
-            <Border Grid.Row="0" Background="#F8F9FA" CornerRadius="6" Padding="12" MaxHeight="200">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <TextBlock x:Name="FullMessageText" TextWrapping="Wrap" FontSize="13" Foreground="#333333"/>
-                </ScrollViewer>
-            </Border>
+            <!-- COLONNE GAUCHE : message + réponse -->
+            <Grid Grid.Column="0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="8"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="8"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
 
-            <!-- Zone de réponse -->
-            <TextBox x:Name="ReplyTextBox" Grid.Row="2"
-                     AcceptsReturn="True" TextWrapping="Wrap"
-                     Height="100" FontSize="13"
-                     Padding="10" BorderBrush="#BDC3C7" BorderThickness="1"
-                     VerticalScrollBarVisibility="Auto">
-                <TextBox.Style>
-                    <Style TargetType="TextBox">
-                        <Setter Property="Template">
-                            <Setter.Value>
-                                <ControlTemplate TargetType="TextBox">
-                                    <Border Background="White" BorderBrush="{TemplateBinding BorderBrush}"
-                                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
-                                        <ScrollViewer x:Name="PART_ContentHost"/>
+                <!-- Contenu complet du message sélectionné -->
+                <Border Grid.Row="0" Background="#F8F9FA" CornerRadius="6" Padding="12" MaxHeight="200">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <TextBlock x:Name="FullMessageText" TextWrapping="Wrap" FontSize="13" Foreground="#333333"/>
+                    </ScrollViewer>
+                </Border>
+
+                <!-- Zone de réponse -->
+                <TextBox x:Name="ReplyTextBox" Grid.Row="2"
+                         AcceptsReturn="True" TextWrapping="Wrap"
+                         Height="100" FontSize="13"
+                         Padding="10" BorderBrush="#BDC3C7" BorderThickness="1"
+                         VerticalScrollBarVisibility="Auto">
+                    <TextBox.Style>
+                        <Style TargetType="TextBox">
+                            <Setter Property="Template">
+                                <Setter.Value>
+                                    <ControlTemplate TargetType="TextBox">
+                                        <Border Background="White" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="6">
+                                            <ScrollViewer x:Name="PART_ContentHost"/>
+                                        </Border>
+                                    </ControlTemplate>
+                                </Setter.Value>
+                            </Setter>
+                        </Style>
+                    </TextBox.Style>
+                </TextBox>
+
+                <!-- Boutons d'action -->
+                <Grid Grid.Row="4">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Button x:Name="BtnSuggestionIA" Grid.Column="0"
+                            Content="💡 Suggestion IA"
+                            Height="36" Padding="12,0"
+                            FontSize="12" FontWeight="SemiBold"
+                            Background="#3498DB" Foreground="White"
+                            BorderThickness="0" Cursor="Hand"
+                            Click="BtnSuggestionIA_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <!-- Bouton Notification rapide -->
+                    <Button x:Name="BtnQuickReply" Grid.Column="1"
+                            Height="36" Padding="12,0" Margin="8,0,0,0"
+                            FontSize="12" FontWeight="SemiBold"
+                            Background="#E67E22" Foreground="White"
+                            BorderThickness="0" Cursor="Hand"
+                            Click="BtnQuickReply_Click">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock Text="⚡ Notif rapide" VerticalAlignment="Center"/>
+                    </Button>
+
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="MarkReadBtn" Content="✓ Traité"
+                                Height="36" Padding="15,0" Margin="0,0,8,0"
+                                FontSize="12" Background="#16A085" Foreground="White"
+                                BorderThickness="0" Cursor="Hand"
+                                Click="MarkReadBtn_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                 </ControlTemplate>
-                            </Setter.Value>
-                        </Setter>
-                    </Style>
-                </TextBox.Style>
-            </TextBox>
-
-            <!-- Boutons d'action -->
-            <Grid Grid.Row="4">
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto"/>
-                    <ColumnDefinition Width="*"/>
-                </Grid.ColumnDefinitions>
-
-                <Button x:Name="BtnSuggestionIA" Grid.Column="0"
-                        Content="💡 Suggestion IA"
-                        Height="36" Padding="12,0"
-                        FontSize="12" FontWeight="SemiBold"
-                        Background="#3498DB" Foreground="White"
-                        BorderThickness="0" Cursor="Hand"
-                        Click="BtnSuggestionIA_Click">
-                    <Button.Template>
-                        <ControlTemplate TargetType="Button">
-                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                            </Border>
-                        </ControlTemplate>
-                    </Button.Template>
-                </Button>
-
-                <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="ArchiveBtn" Content="Archiver"
-                            Height="36" Padding="15,0" Margin="0,0,8,0"
-                            FontSize="12" Background="#95A5A6" Foreground="White"
-                            BorderThickness="0" Cursor="Hand"
-                            Click="ArchiveBtn_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                    <Button x:Name="ReplyBtn" Content="Envoyer la réponse"
-                            Height="36" Padding="15,0"
-                            FontSize="12" FontWeight="SemiBold"
-                            Background="#27AE60" Foreground="White"
-                            BorderThickness="0" Cursor="Hand"
-                            Click="ReplyBtn_Click">
-                        <Button.Template>
-                            <ControlTemplate TargetType="Button">
-                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                </Border>
-                            </ControlTemplate>
-                        </Button.Template>
-                    </Button>
-                </StackPanel>
+                            </Button.Template>
+                        </Button>
+                        <Button x:Name="ArchiveBtn" Content="📦 Archiver"
+                                Height="36" Padding="15,0" Margin="0,0,8,0"
+                                FontSize="12" Background="#95A5A6" Foreground="White"
+                                BorderThickness="0" Cursor="Hand"
+                                Click="ArchiveBtn_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <Button x:Name="ReplyBtn" Content="Envoyer la réponse"
+                                Height="36" Padding="15,0"
+                                FontSize="12" FontWeight="SemiBold"
+                                Background="#27AE60" Foreground="White"
+                                BorderThickness="0" Cursor="Hand"
+                                Click="ReplyBtn_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </StackPanel>
+                </Grid>
             </Grid>
+
+            <!-- COLONNE DROITE : Pièces jointes -->
+            <Border Grid.Column="2" Background="#F8F9FA" CornerRadius="6" BorderBrush="#E0E0E0" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Header -->
+                    <Border Grid.Row="0" Padding="10,8" BorderBrush="#E0E0E0" BorderThickness="0,0,0,1">
+                        <TextBlock Text="📎 Pièces jointes" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                    </Border>
+
+                    <!-- Liste des pièces jointes -->
+                    <Grid Grid.Row="1">
+                        <!-- État vide -->
+                        <StackPanel x:Name="NoAttachmentsPanel" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock Text="📄" FontSize="28" HorizontalAlignment="Center" Opacity="0.3"/>
+                            <TextBlock Text="Aucun document" FontSize="11"
+                                       Foreground="#95A5A6" HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                        </StackPanel>
+
+                        <!-- Liste documents -->
+                        <ListBox x:Name="AttachmentsListBox" Background="Transparent" BorderThickness="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled" Margin="5,3">
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Margin" Value="0,2"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        CornerRadius="4" Padding="6,5">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#E8E8E8"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding IsSelected}"
+                                                  VerticalAlignment="Center" Margin="0,0,5,0"/>
+
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding FileName}" Foreground="#333333" FontSize="11"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding FileSize}" Foreground="#999999" FontSize="9"/>
+                                        </StackPanel>
+
+                                        <Button Grid.Column="2" Content="✕" Padding="4,1"
+                                                FontSize="10" Background="Transparent" Foreground="#999999"
+                                                BorderThickness="0" Cursor="Hand"
+                                                ToolTip="Retirer" Tag="{Binding FilePath}"
+                                                Click="RemoveAttachment_Click"/>
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </Grid>
+
+                    <!-- Bouton ajouter -->
+                    <Border Grid.Row="2" Padding="8,6" BorderBrush="#E0E0E0" BorderThickness="0,1,0,0">
+                        <Button Content="📁 Ajouter..." Padding="8,5"
+                                FontSize="11" Background="#ECF0F1" Foreground="#2C3E50"
+                                BorderThickness="0" Cursor="Hand" HorizontalAlignment="Stretch"
+                                Click="AddAttachment_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Border>
+                </Grid>
+            </Border>
         </Grid>
     </Grid>
 </UserControl>

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Globalization;
 using System.Linq;
 using System.Windows;
@@ -23,20 +24,26 @@ namespace MedCompanion.Views.Messages
         private PatientContextService? _contextService;
         private OpenAIService? _openAIService;
         private TokenService? _tokenService;
+        private PilotageAttachmentService? _attachmentService;
         private PatientIndexEntry? _currentPatient;
         private ArchivedMessage? _selectedMessage;
 
         // Tous les messages chargés (non filtrés)
         private List<ArchivedMessage> _allMessages = new();
 
-        // Filtre actif : true = non traités, false = traités/archivés
-        private bool _showUnread = true;
+        // Pièces jointes du patient courant
+        public ObservableCollection<PilotageAttachment> Attachments { get; } = new();
+
+        // Filtre actif
+        private MessageFilter _activeFilter = MessageFilter.Unread;
 
         public event EventHandler<string>? StatusChanged;
+        public event EventHandler<int>? UnreadCountChanged;
 
         public MessagesControl()
         {
             InitializeComponent();
+            AttachmentsListBox.ItemsSource = Attachments;
             UpdateFilterButtons();
         }
 
@@ -44,12 +51,13 @@ namespace MedCompanion.Views.Messages
         /// Initialise le contrôle avec les services nécessaires
         /// </summary>
         public void Initialize(
-            PatientMessageService messageService, 
-            FirebaseService firebaseService, 
+            PatientMessageService messageService,
+            FirebaseService firebaseService,
             PilotageEmailService? emailService = null,
             PatientContextService? contextService = null,
             OpenAIService? openAIService = null,
-            TokenService? tokenService = null)
+            TokenService? tokenService = null,
+            PilotageAttachmentService? attachmentService = null)
         {
             _messageService = messageService;
             _firebaseService = firebaseService;
@@ -57,6 +65,7 @@ namespace MedCompanion.Views.Messages
             _contextService = contextService;
             _openAIService = openAIService;
             _tokenService = tokenService;
+            _attachmentService = attachmentService;
         }
 
         /// <summary>
@@ -75,14 +84,16 @@ namespace MedCompanion.Views.Messages
                 MessagesList.ItemsSource = null;
                 EmptyLabel.Visibility = Visibility.Visible;
                 MessageCountLabel.Text = "0 messages";
-                UpdateBadge();
+                UpdateBadges();
+                ClearAttachments();
                 return;
             }
 
             // Par défaut, afficher les non traités
-            _showUnread = true;
+            _activeFilter = MessageFilter.Unread;
             LoadMessages();
             UpdateFilterButtons();
+            LoadAttachmentsForPatient(patient.NomComplet);
         }
 
         private void LoadMessages()
@@ -97,8 +108,13 @@ namespace MedCompanion.Views.Messages
                 return;
             }
 
+
             _allMessages = messages;
             ApplyFilter();
+
+            // Mettre à jour le badge global dans le header
+            var globalUnread = _messageService.GetGlobalUnreadCount();
+            UnreadCountChanged?.Invoke(this, globalUnread);
         }
 
         /// <summary>
@@ -106,40 +122,38 @@ namespace MedCompanion.Views.Messages
         /// </summary>
         private void ApplyFilter()
         {
-            List<ArchivedMessage> filtered;
-
-            if (_showUnread)
+            List<ArchivedMessage> filtered = _activeFilter switch
             {
-                // Non traités = received, read (tout sauf replied et archived)
-                filtered = _allMessages
+                MessageFilter.Unread => _allMessages
                     .Where(m => m.Status != "replied" && m.Status != "archived")
-                    .ToList();
-            }
-            else
-            {
-                // Traités / Archivés = replied, archived
-                filtered = _allMessages
+                    .ToList(),
+                MessageFilter.Urgent => _allMessages
+                    .Where(m => m.Status != "replied" && m.Status != "archived"
+                        && (m.Urgency == MessageUrgency.Urgent || m.Urgency == MessageUrgency.Critical))
+                    .ToList(),
+                MessageFilter.Archived => _allMessages
                     .Where(m => m.Status == "replied" || m.Status == "archived")
-                    .ToList();
-            }
+                    .ToList(),
+                _ => _allMessages.ToList()
+            };
 
             MessagesList.ItemsSource = filtered;
             EmptyLabel.Visibility = filtered.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
 
-            // Adapter le texte vide selon le filtre
-            EmptyLabel.Text = _showUnread
-                ? "Aucun message non traité 👍"
-                : "Aucun message traité";
+            EmptyLabel.Text = _activeFilter switch
+            {
+                MessageFilter.Unread => "Aucun message non traité 👍",
+                MessageFilter.Urgent => "Aucun message urgent",
+                MessageFilter.Archived => "Aucun message traité",
+                _ => "Aucun message"
+            };
 
-            // Compteur contextuel
             MessageCountLabel.Text = filtered.Count == 0 ? "" :
                 filtered.Count == 1 ? "1 message" :
                 $"{filtered.Count} message(s)";
 
-            // Mettre à jour le badge
-            UpdateBadge();
+            UpdateBadges();
 
-            // Réinitialiser le détail
             _selectedMessage = null;
             DetailPanel.Visibility = Visibility.Collapsed;
         }
@@ -147,38 +161,47 @@ namespace MedCompanion.Views.Messages
         /// <summary>
         /// Met à jour le badge de compteur sur le bouton Non traités
         /// </summary>
-        private void UpdateBadge()
+        private void UpdateBadges()
         {
             var unreadCount = _allMessages.Count(m => m.Status != "replied" && m.Status != "archived");
-            if (unreadCount > 0)
-            {
-                UnreadBadge.Visibility = Visibility.Visible;
-                UnreadBadgeText.Text = unreadCount.ToString();
-            }
-            else
-            {
-                UnreadBadge.Visibility = Visibility.Collapsed;
-            }
+            var urgentCount = _allMessages.Count(m =>
+                m.Status != "replied" && m.Status != "archived"
+                && (m.Urgency == MessageUrgency.Urgent || m.Urgency == MessageUrgency.Critical));
+
+            UnreadBadge.Visibility = unreadCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+            UnreadBadgeText.Text = unreadCount.ToString();
+
+            UrgentBadge.Visibility = urgentCount > 0 ? Visibility.Visible : Visibility.Collapsed;
+            UrgentBadgeText.Text = urgentCount.ToString();
         }
 
-        /// <summary>
-        /// Met à jour l'apparence visuelle des boutons filtre (actif/inactif)
-        /// </summary>
         private void UpdateFilterButtons()
         {
-            if (_showUnread)
+            var inactive = new SolidColorBrush(Color.FromRgb(127, 140, 141));
+
+            // Reset all
+            FilterUnreadBtn.Background = Brushes.Transparent;
+            FilterUnreadBtn.Foreground = inactive;
+            FilterUrgentBtn.Background = Brushes.Transparent;
+            FilterUrgentBtn.Foreground = inactive;
+            FilterArchivedBtn.Background = Brushes.Transparent;
+            FilterArchivedBtn.Foreground = inactive;
+
+            // Set active
+            switch (_activeFilter)
             {
-                FilterUnreadBtn.Background = new SolidColorBrush(Color.FromRgb(52, 152, 219));   // Bleu actif
-                FilterUnreadBtn.Foreground = Brushes.White;
-                FilterArchivedBtn.Background = Brushes.Transparent;
-                FilterArchivedBtn.Foreground = new SolidColorBrush(Color.FromRgb(127, 140, 141)); // Gris inactif
-            }
-            else
-            {
-                FilterUnreadBtn.Background = Brushes.Transparent;
-                FilterUnreadBtn.Foreground = new SolidColorBrush(Color.FromRgb(127, 140, 141));
-                FilterArchivedBtn.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96));    // Vert actif
-                FilterArchivedBtn.Foreground = Brushes.White;
+                case MessageFilter.Unread:
+                    FilterUnreadBtn.Background = new SolidColorBrush(Color.FromRgb(52, 152, 219));
+                    FilterUnreadBtn.Foreground = Brushes.White;
+                    break;
+                case MessageFilter.Urgent:
+                    FilterUrgentBtn.Background = new SolidColorBrush(Color.FromRgb(192, 57, 43));
+                    FilterUrgentBtn.Foreground = Brushes.White;
+                    break;
+                case MessageFilter.Archived:
+                    FilterArchivedBtn.Background = new SolidColorBrush(Color.FromRgb(39, 174, 96));
+                    FilterArchivedBtn.Foreground = Brushes.White;
+                    break;
             }
         }
 
@@ -186,16 +209,24 @@ namespace MedCompanion.Views.Messages
 
         private void FilterUnreadBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (_showUnread) return; // Déjà actif
-            _showUnread = true;
+            if (_activeFilter == MessageFilter.Unread) return;
+            _activeFilter = MessageFilter.Unread;
+            UpdateFilterButtons();
+            ApplyFilter();
+        }
+
+        private void FilterUrgentBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeFilter == MessageFilter.Urgent) return;
+            _activeFilter = MessageFilter.Urgent;
             UpdateFilterButtons();
             ApplyFilter();
         }
 
         private void FilterArchivedBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (!_showUnread) return; // Déjà actif
-            _showUnread = false;
+            if (_activeFilter == MessageFilter.Archived) return;
+            _activeFilter = MessageFilter.Archived;
             UpdateFilterButtons();
             ApplyFilter();
         }
@@ -251,11 +282,14 @@ namespace MedCompanion.Views.Messages
                     await _firebaseService.UpdateMessageReplyAsync(_selectedMessage.FirebaseMessageId, replyText);
                 }
 
-                // 2. Envoyer par email si possible
+                // 2. Envoyer par email si possible (avec PJ sélectionnées)
                 if (_emailService != null && !string.IsNullOrEmpty(_selectedMessage.ParentEmail))
                 {
                     var subject = $"Réponse - {_currentPatient.NomComplet}";
-                    await _emailService.SendEmailAsync(_selectedMessage.ParentEmail, subject, replyText);
+                    var selectedPJ = Attachments.Where(a => a.IsSelected).Select(a => a.FilePath).ToList();
+                    await _emailService.SendEmailAsync(
+                        _selectedMessage.ParentEmail, subject, replyText,
+                        selectedPJ.Count > 0 ? selectedPJ : null);
                 }
 
                 // 3. Mettre à jour l'archive locale
@@ -279,6 +313,31 @@ namespace MedCompanion.Views.Messages
             finally
             {
                 ReplyBtn.IsEnabled = true;
+            }
+        }
+
+        private async void MarkReadBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedMessage == null || _currentPatient == null || _messageService == null) return;
+
+            // Marquer comme traité (replied) sans texte de réponse
+            var (success, error) = _messageService.MarkAsReplied(
+                _currentPatient.NomComplet, _selectedMessage.FirebaseMessageId, "[Traité sans réponse]");
+
+            if (success)
+            {
+                // Mettre à jour Firebase aussi
+                if (_firebaseService != null && _firebaseService.IsConfigured)
+                {
+                    await _firebaseService.UpdateMessageReplyAsync(_selectedMessage.FirebaseMessageId, "[Traité]");
+                }
+
+                StatusChanged?.Invoke(this, "✅ Message marqué comme traité");
+                LoadMessages();
+            }
+            else
+            {
+                StatusChanged?.Invoke(this, $"Erreur: {error}");
             }
         }
 
@@ -383,6 +442,145 @@ namespace MedCompanion.Views.Messages
             }
         }
 
+        // ===== NOTIFICATION RAPIDE =====
+
+        private async void BtnQuickReply_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedMessage == null || _currentPatient == null) return;
+
+            if (_firebaseService == null || !_firebaseService.IsConfigured)
+            {
+                MessageBox.Show("Firebase n'est pas configuré.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            var recipientName = _selectedMessage.ParentName ?? _currentPatient.NomComplet;
+            var dialog = new Dialogs.QuickReplyDialog(recipientName, isBroadcast: false, openAIService: _openAIService);
+            dialog.Owner = Window.GetWindow(this);
+
+            if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.SelectedTitle))
+            {
+                StatusChanged?.Invoke(this, "Envoi de la notification...");
+
+                try
+                {
+                    // Récupérer le token du patient
+                    string? tokenId = null;
+                    if (_tokenService != null)
+                    {
+                        var allTokens = await _tokenService.GetAllTokensAsync();
+                        var activeToken = allTokens.FirstOrDefault(t => t.PatientId == _currentPatient.NomComplet && t.Active);
+                        tokenId = activeToken?.TokenId;
+                    }
+
+                    var notification = new PilotageNotification
+                    {
+                        Type = dialog.SelectedType,
+                        Title = dialog.SelectedTitle,
+                        Body = dialog.SelectedBody ?? "",
+                        TargetParentId = tokenId ?? "",
+                        TokenId = tokenId,
+                        ReplyToMessageId = _selectedMessage.FirebaseMessageId,
+                        SenderName = "Médecin"
+                    };
+
+                    var (success, error) = await _firebaseService.WriteNotificationAsync(notification);
+
+                    if (success)
+                    {
+                        // Mettre à jour Firebase
+                        await _firebaseService.UpdateMessageReplyAsync(_selectedMessage.FirebaseMessageId, dialog.SelectedTitle);
+
+                        // Mettre à jour l'archive locale
+                        _messageService?.MarkAsReplied(_currentPatient.NomComplet, _selectedMessage.FirebaseMessageId, dialog.SelectedTitle);
+
+                        StatusChanged?.Invoke(this, $"✅ Notification envoyée à {recipientName}");
+                        LoadMessages();
+                    }
+                    else
+                    {
+                        MessageBox.Show($"Erreur: {error}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                        StatusChanged?.Invoke(this, $"Erreur: {error}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Erreur: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                    StatusChanged?.Invoke(this, $"Erreur: {ex.Message}");
+                }
+            }
+        }
+
+        // ===== PIECES JOINTES =====
+
+        /// <summary>
+        /// Rafraîchit la liste des pièces jointes (appelé après ajout externe depuis Attestations/Courriers)
+        /// </summary>
+        public void RefreshAttachments()
+        {
+            if (_currentPatient != null)
+                LoadAttachmentsForPatient(_currentPatient.NomComplet);
+        }
+
+        private void LoadAttachmentsForPatient(string patientId)
+        {
+            Attachments.Clear();
+
+            if (string.IsNullOrEmpty(patientId) || _attachmentService == null)
+            {
+                NoAttachmentsPanel.Visibility = Visibility.Visible;
+                return;
+            }
+
+            var attachments = _attachmentService.GetAttachmentsForPatient(patientId);
+            foreach (var att in attachments)
+            {
+                Attachments.Add(att);
+            }
+
+            NoAttachmentsPanel.Visibility = Attachments.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        private void ClearAttachments()
+        {
+            Attachments.Clear();
+            NoAttachmentsPanel.Visibility = Visibility.Visible;
+        }
+
+        private async void AddAttachment_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPatient == null || _attachmentService == null) return;
+
+            try
+            {
+                var attachment = await _attachmentService.AddManualFileAsync(_currentPatient.NomComplet);
+                if (attachment != null)
+                {
+                    Attachments.Add(attachment);
+                    NoAttachmentsPanel.Visibility = Visibility.Collapsed;
+                    StatusChanged?.Invoke(this, $"Document ajouté: {attachment.FileName}");
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur: {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void RemoveAttachment_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is Button btn && btn.Tag is string filePath && _attachmentService != null)
+            {
+                _attachmentService.RemoveAttachment(filePath);
+                var toRemove = Attachments.FirstOrDefault(a => a.FilePath == filePath);
+                if (toRemove != null)
+                {
+                    Attachments.Remove(toRemove);
+                }
+                NoAttachmentsPanel.Visibility = Attachments.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+            }
+        }
+
         private async void BtnSuggestionIA_Click(object sender, RoutedEventArgs e)
         {
             if (_selectedMessage == null || _currentPatient == null || _openAIService == null || _contextService == null) return;
@@ -434,26 +632,92 @@ PROPOSE UNE RÉPONSE :
         }
     }
 
-    /// <summary>
-    /// Convertisseur de statut en couleur pour les badges
-    /// </summary>
+    public enum MessageFilter
+    {
+        Unread,
+        Urgent,
+        Archived
+    }
+
     public class StatusToColorConverter : IValueConverter
     {
         public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
             return (value as string) switch
             {
-                "received" => new SolidColorBrush(Color.FromRgb(231, 76, 60)),   // Rouge
-                "read" => new SolidColorBrush(Color.FromRgb(243, 156, 18)),      // Orange
-                "replied" => new SolidColorBrush(Color.FromRgb(39, 174, 96)),    // Vert
-                "archived" => new SolidColorBrush(Color.FromRgb(149, 165, 166)), // Gris
+                "received" => new SolidColorBrush(Color.FromRgb(231, 76, 60)),
+                "read" => new SolidColorBrush(Color.FromRgb(243, 156, 18)),
+                "replied" => new SolidColorBrush(Color.FromRgb(39, 174, 96)),
+                "archived" => new SolidColorBrush(Color.FromRgb(149, 165, 166)),
                 _ => new SolidColorBrush(Color.FromRgb(149, 165, 166))
             };
         }
 
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// Dot coloré selon le niveau d'urgence du message
+    /// </summary>
+    public class UrgencyToColorConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
         {
-            throw new NotImplementedException();
+            return value is MessageUrgency urgency ? urgency switch
+            {
+                MessageUrgency.Critical => new SolidColorBrush(Color.FromRgb(192, 57, 43)),  // Rouge foncé
+                MessageUrgency.Urgent => new SolidColorBrush(Color.FromRgb(231, 76, 60)),    // Rouge
+                MessageUrgency.Moderate => new SolidColorBrush(Color.FromRgb(243, 156, 18)), // Orange
+                MessageUrgency.Low => new SolidColorBrush(Color.FromRgb(39, 174, 96)),       // Vert
+                _ => new SolidColorBrush(Color.FromRgb(189, 195, 199))                       // Gris clair
+            } : new SolidColorBrush(Color.FromRgb(189, 195, 199));
         }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// Texte de pression temporelle : "Il y a Xh" avec icône selon la durée
+    /// </summary>
+    public class TimePressureConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is not DateTime receivedAt) return "";
+
+            var diff = DateTime.Now - receivedAt;
+            if (diff.TotalMinutes < 1) return "À l'instant";
+            if (diff.TotalMinutes < 60) return $"Il y a {(int)diff.TotalMinutes}m";
+            if (diff.TotalHours < 2) return $"Il y a {(int)diff.TotalHours}h";
+            if (diff.TotalHours < 8) return $"⏰ {(int)diff.TotalHours}h en attente";
+            if (diff.TotalHours < 24) return $"🔥 {(int)diff.TotalHours}h en attente";
+            if (diff.TotalDays < 7) return $"🔥 {(int)diff.TotalDays}j en attente";
+            return receivedAt.ToString("dd/MM/yyyy");
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
+    }
+
+    /// <summary>
+    /// Couleur du texte de pression temporelle
+    /// </summary>
+    public class TimePressureColorConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is not DateTime receivedAt)
+                return new SolidColorBrush(Color.FromRgb(149, 165, 166));
+
+            var hours = (DateTime.Now - receivedAt).TotalHours;
+            if (hours > 8) return new SolidColorBrush(Color.FromRgb(231, 76, 60));    // Rouge
+            if (hours > 2) return new SolidColorBrush(Color.FromRgb(243, 156, 18));   // Orange
+            return new SolidColorBrush(Color.FromRgb(149, 165, 166));                  // Gris
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
     }
 }
