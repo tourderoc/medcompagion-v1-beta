@@ -29,6 +29,7 @@ namespace MedCompanion.Dialogs
         private readonly SecureStorageService _secureStorage;
         private const string OLLAMA_WEB_API_KEY = "ollama_web_api_key";
         private const string SMTP_PASSWORD_KEY = "pilotage_smtp_password";
+        private const string VPS_TOKEN_KEY = "vps_monitoring_token";
         public bool SettingsSaved { get; private set; }
 
         public ParametresDialog(
@@ -86,6 +87,9 @@ namespace MedCompanion.Dialogs
             // Charger le mot de passe SMTP Pilotage
             LoadSmtpPassword();
 
+            // Charger les paramètres VPS Monitoring
+            LoadVpsSettings();
+
             // Charger les paramètres Handy (dictée vocale)
             LoadHandySettings();
 
@@ -105,6 +109,7 @@ namespace MedCompanion.Dialogs
                 SavePilotageAgentSettings();
                 SaveOllamaWebApiKey();
                 SaveSmtpPassword();
+                SaveVpsSettings();
                 SaveHandySettings();
 
                 // Ensuite sauvegarder dans le fichier JSON
@@ -939,6 +944,81 @@ namespace MedCompanion.Dialogs
             finally
             {
                 TestSmtpBtn.IsEnabled = true;
+            }
+        }
+
+        // ===== VPS MONITORING =====
+
+        private void LoadVpsSettings()
+        {
+            try
+            {
+                VpsUrlTextBox.Text = _viewModel.Settings.VpsMonitoringUrl;
+                VpsEnabledCheckBox.IsChecked = _viewModel.Settings.VpsMonitoringEnabled;
+
+                var token = _secureStorage.GetApiKey(VPS_TOKEN_KEY);
+                if (!string.IsNullOrEmpty(token))
+                    VpsTokenBox.Password = token;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ParametresDialog] Erreur chargement VPS : {ex.Message}");
+            }
+        }
+
+        private void SaveVpsSettings()
+        {
+            try
+            {
+                _viewModel.Settings.VpsMonitoringUrl = VpsUrlTextBox.Text.Trim();
+                _viewModel.Settings.VpsMonitoringEnabled = VpsEnabledCheckBox.IsChecked == true;
+
+                var token = VpsTokenBox.Password;
+                if (!string.IsNullOrEmpty(token))
+                    _secureStorage.SaveApiKey(VPS_TOKEN_KEY, token);
+                else
+                    _secureStorage.DeleteApiKey(VPS_TOKEN_KEY);
+
+                System.Diagnostics.Debug.WriteLine("[ParametresDialog] Paramètres VPS sauvegardés");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ParametresDialog] Erreur sauvegarde VPS : {ex.Message}");
+            }
+        }
+
+        private async void TestVpsConnection_Click(object sender, RoutedEventArgs e)
+        {
+            TestVpsBtn.IsEnabled = false;
+            try
+            {
+                var url = VpsUrlTextBox.Text.Trim();
+                var token = VpsTokenBox.Password;
+
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    MessageBox.Show("Veuillez entrer l'URL du VPS.", "Test connexion", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                using var http = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                if (!string.IsNullOrWhiteSpace(token))
+                    http.DefaultRequestHeaders.Add("X-Token", token);
+
+                var response = await http.GetAsync($"{url.TrimEnd('/')}/metrics");
+
+                if (response.IsSuccessStatusCode)
+                    MessageBox.Show("✅ Connexion réussie ! Le serveur VPS répond correctement.", "Test VPS", MessageBoxButton.OK, MessageBoxImage.Information);
+                else
+                    MessageBox.Show($"⚠️ Le serveur a répondu avec le code {(int)response.StatusCode}.\nVérifiez le token ou l'URL.", "Test VPS", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"❌ Impossible de joindre le VPS :\n{ex.Message}", "Test VPS", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+            finally
+            {
+                TestVpsBtn.IsEnabled = true;
             }
         }
 

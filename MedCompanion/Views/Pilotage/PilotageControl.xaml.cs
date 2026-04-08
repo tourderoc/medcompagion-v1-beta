@@ -5,6 +5,7 @@ using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Shapes;
 using System.Windows.Threading;
 using MedCompanion.Models;
 using MedCompanion.Services;
@@ -2176,5 +2177,317 @@ namespace MedCompanion.Views.Pilotage
         }
 
         #endregion
+
+        // ═══════════════════════════════════════════════════════════════
+        // ONGLET VPS
+        // ═══════════════════════════════════════════════════════════════
+
+        private VpsMonitoringService? _vpsService;
+
+        private void InitVpsService()
+        {
+            if (_vpsService != null || _settings == null) return;
+            if (!_settings.VpsMonitoringEnabled) return;
+
+            var secureStorage = new SecureStorageService();
+            _vpsService = new VpsMonitoringService(_settings, secureStorage);
+            _vpsService.MetricsUpdated += (_, m) => Dispatcher.Invoke(() => ApplyMetrics(m));
+            _vpsService.ConnectionChanged += (_, ok) => Dispatcher.Invoke(() => SetVpsOnline(ok));
+            _vpsService.StartPolling();
+        }
+
+        private async void VpsRefresh_Click(object sender, RoutedEventArgs e)
+        {
+            if (_settings == null) return;
+
+            // Initialisation paresseuse au premier clic
+            if (_vpsService == null)
+            {
+                var secureStorage = new SecureStorageService();
+                _vpsService = new VpsMonitoringService(_settings, secureStorage);
+                _vpsService.MetricsUpdated += (_, m) => Dispatcher.Invoke(() => ApplyMetrics(m));
+                _vpsService.ConnectionChanged += (_, ok) => Dispatcher.Invoke(() => SetVpsOnline(ok));
+            }
+
+            VpsRefreshBtn.IsEnabled = false;
+            VpsStatusText.Text = "Connexion en cours...";
+
+            var (success, metrics, error) = await _vpsService.FetchNowAsync();
+
+            if (success && metrics != null)
+                ApplyMetrics(metrics);
+            else
+                VpsStatusText.Text = $"Erreur : {error}";
+
+            VpsRefreshBtn.IsEnabled = true;
+        }
+
+        private void ApplyMetrics(VpsMetrics m)
+        {
+            // Barres de progression + couleur adaptative
+            UpdateBar(CpuBar, CpuText, m.Cpu);
+            UpdateBar(RamBar, RamText, m.Ram);
+            UpdateBar(DiskBar, DiskText, m.Disk);
+
+            // Statut connexion
+            SetVpsOnline(true);
+            VpsLastUpdateText.Text = $"· Mis à jour à {m.FetchedAt:HH:mm:ss}  ·  Uptime {m.Uptime}";
+
+            // Services
+            ServicesPanel.Children.Clear();
+            foreach (var svc in m.Services)
+            {
+                var status = VpsMonitoringService.ParseStatus(svc.Value);
+                var color = status switch
+                {
+                    ServiceStatus.Active => "#27AE60",
+                    ServiceStatus.Warning => "#F39C12",
+                    _ => "#E74C3C"
+                };
+
+                var chip = new Border
+                {
+                    Background = new SolidColorBrush((Color)new ColorConverter().ConvertFrom("#2D2D2D")!),
+                    BorderBrush = new SolidColorBrush((Color)new ColorConverter().ConvertFrom(color)!),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(4),
+                    Padding = new Thickness(10, 6, 10, 6),
+                    Margin = new Thickness(0, 0, 8, 8)
+                };
+                var sp = new StackPanel { Orientation = Orientation.Horizontal };
+                sp.Children.Add(new Ellipse
+                {
+                    Width = 8, Height = 8,
+                    Fill = new SolidColorBrush((Color)new ColorConverter().ConvertFrom(color)!),
+                    Margin = new Thickness(0, 0, 6, 0)
+                });
+                sp.Children.Add(new TextBlock
+                {
+                    Text = svc.Key,
+                    Foreground = Brushes.White,
+                    FontSize = 12
+                });
+                chip.Child = sp;
+                ServicesPanel.Children.Add(chip);
+            }
+        }
+
+        private void UpdateBar(ProgressBar bar, TextBlock label, double value)
+        {
+            bar.Value = value;
+            label.Text = $"{value:0}%";
+            bar.Foreground = value switch
+            {
+                > 85 => new SolidColorBrush((Color)new ColorConverter().ConvertFrom("#E74C3C")!),
+                > 70 => new SolidColorBrush((Color)new ColorConverter().ConvertFrom("#F39C12")!),
+                _ => new SolidColorBrush((Color)new ColorConverter().ConvertFrom("#27AE60")!)
+            };
+        }
+
+        private void SetVpsOnline(bool online)
+        {
+            var color = online ? "#27AE60" : "#555555";
+            var brush = new SolidColorBrush((Color)new ColorConverter().ConvertFrom(color)!);
+            VpsOnlineDot.Fill = brush;
+            VpsStatusDot.Fill = brush;
+            if (!online)
+            {
+                VpsStatusText.Text = "Non connecté";
+                VpsLastUpdateText.Text = "";
+            }
+            else
+            {
+                VpsStatusText.Text = "Serveur Parent'aile — en ligne";
+            }
+        }
+
+        private async void VpsAiAnalysis_Click(object sender, RoutedEventArgs e)
+        {
+            if (_vpsService?.LastMetrics == null || _openAIService == null)
+            {
+                MessageBox.Show("Rafraîchissez d'abord les métriques.", "Avis IA", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            VpsAiBtn.IsEnabled = false;
+            AiAnalysisPanel.Visibility = Visibility.Visible;
+            AiAnalysisText.Text = "Analyse en cours...";
+
+            var m = _vpsService.LastMetrics;
+            var services = string.Join(", ", m.Services.Select(s => $"{s.Key}:{s.Value}"));
+            var prompt = $@"Tu es un assistant technique. Analyse ces métriques de serveur Linux et donne un résumé clair en 3-4 phrases maximum, en français simple (pas de jargon). Si quelque chose mérite attention, dis-le directement.
+
+Métriques :
+- CPU : {m.Cpu}%
+- RAM : {m.Ram}%
+- Disque : {m.Disk}%
+- Uptime : {m.Uptime}
+- Services : {services}
+
+Réponds de façon directe et lisible, comme si tu parlais à quelqu'un de non-technique.";
+
+            var (success, result, error) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 300);
+            AiAnalysisText.Text = success ? result : $"Erreur : {error}";
+            VpsAiBtn.IsEnabled = true;
+        }
+
+        private async void VpsLoadLogs_Click(object sender, RoutedEventArgs e)
+        {
+            if (_vpsService == null || _settings == null)
+            {
+                var secureStorage = new SecureStorageService();
+                _vpsService = new VpsMonitoringService(_settings!, secureStorage);
+            }
+
+            var service = (LogServiceCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "nginx";
+            LogsText.Text = "Chargement...";
+
+            var (success, logs, error) = await _vpsService.FetchLogsAsync(service);
+            LogsText.Text = success ? (string.IsNullOrWhiteSpace(logs) ? "(aucun log)" : logs) : $"Erreur : {error}";
+        }
+
+        private async void VpsAnalyzeCleanup_Click(object sender, RoutedEventArgs e)
+        {
+            if (_settings == null) return;
+
+            if (_vpsService == null)
+            {
+                var secureStorage = new SecureStorageService();
+                _vpsService = new VpsMonitoringService(_settings, secureStorage);
+            }
+
+            VpsCleanupAnalyzeBtn.IsEnabled = false;
+            CleanupPanel.Visibility = Visibility.Visible;
+            CleanupResultBorder.Visibility = Visibility.Collapsed;
+            CleanupAiText.Text = "Analyse de l'espace disque en cours...";
+
+            var (success, data, error) = await _vpsService.FetchDiskUsageAsync();
+
+            if (!success || data == null)
+            {
+                CleanupAiText.Text = $"Erreur : {error}";
+                VpsCleanupAnalyzeBtn.IsEnabled = true;
+                return;
+            }
+
+            // Pré-cocher les cases selon les données
+            CleanJournal7d.IsChecked = true;
+            CleanDockerLogs.IsChecked = true;
+            CleanAptCache.IsChecked = true;
+            CleanJournal30d.IsChecked = false;
+            CleanTmpFiles.IsChecked = false;
+
+            if (_openAIService != null)
+            {
+                CleanupAiText.Text = "L'IA analyse les données...";
+                var journal = data.GetValueOrDefault("journal", "inconnu");
+                var docker = data.GetValueOrDefault("docker", "inconnu");
+                var varlog = data.GetValueOrDefault("varlog", "inconnu");
+                var apt = data.GetValueOrDefault("apt_cache", "inconnu");
+                var freeGb = data.GetValueOrDefault("disk_free_gb", "?");
+                var totalGb = data.GetValueOrDefault("disk_total_gb", "?");
+
+                var prompt = $@"Tu es un assistant technique. Analyse ces informations d'espace disque d'un serveur Linux et donne en 4-5 phrases simples :
+1. L'état général du disque
+2. Ce qui peut être nettoyé sans risque
+3. Ce qu'il vaut mieux éviter de supprimer
+
+Données :
+- Espace libre : {freeGb} Go / {totalGb} Go
+- Journaux système : {journal}
+- Docker : {docker}
+- /var/log : {varlog}
+- Cache apt : {apt}
+
+Réponds en français simple, sans jargon technique.";
+
+                var (ok, result, err) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 350);
+                CleanupAiText.Text = ok ? result : $"Analyse indisponible : {err}";
+            }
+            else
+            {
+                CleanupAiText.Text = $"Espace libre : {data.GetValueOrDefault("disk_free_gb", "?")} Go\nJournaux : {data.GetValueOrDefault("journal", "?")}\nCache apt : {data.GetValueOrDefault("apt_cache", "?")}";
+            }
+
+            VpsCleanupAnalyzeBtn.IsEnabled = true;
+        }
+
+        private async void VpsExecuteCleanup_Click(object sender, RoutedEventArgs e)
+        {
+            var actions = new List<string>();
+            if (CleanJournal7d.IsChecked == true) actions.Add("journal_7d");
+            if (CleanJournal30d.IsChecked == true) actions.Add("journal_30d");
+            if (CleanDockerLogs.IsChecked == true) actions.Add("docker_logs");
+            if (CleanAptCache.IsChecked == true) actions.Add("apt_cache");
+            if (CleanTmpFiles.IsChecked == true) actions.Add("tmp_files");
+
+            if (actions.Count == 0)
+            {
+                MessageBox.Show("Sélectionnez au moins une action.", "Nettoyage", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var confirm = MessageBox.Show(
+                $"Exécuter {actions.Count} action(s) de nettoyage sur le serveur ?\nCette opération est irréversible.",
+                "Confirmer le nettoyage",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (confirm != MessageBoxResult.Yes) return;
+
+            VpsCleanupExecuteBtn.IsEnabled = false;
+            CleanupResultBorder.Visibility = Visibility.Visible;
+            CleanupResultText.Text = "Nettoyage en cours...";
+            CleanupResultText.Foreground = new SolidColorBrush((Color)new ColorConverter().ConvertFrom("#F39C12")!);
+
+            var (success, results, error) = await _vpsService!.ExecuteCleanupAsync(actions);
+
+            if (!success)
+            {
+                CleanupResultText.Text = $"Erreur : {error}";
+                CleanupResultText.Foreground = new SolidColorBrush((Color)new ColorConverter().ConvertFrom("#E74C3C")!);
+            }
+            else
+            {
+                var sb = new System.Text.StringBuilder("✅ Nettoyage terminé :\n");
+                foreach (var r in results!)
+                    sb.AppendLine($"  • {r.Key} : {(r.Value == "ok" ? "✅ succès" : $"⚠️ {r.Value}")}");
+                CleanupResultText.Text = sb.ToString();
+                CleanupResultText.Foreground = new SolidColorBrush((Color)new ColorConverter().ConvertFrom("#27AE60")!);
+
+                // Rafraîchir les métriques après nettoyage
+                await Task.Delay(1000);
+                var (s, m, _) = await _vpsService.FetchNowAsync();
+                if (s && m != null) ApplyMetrics(m);
+            }
+
+            VpsCleanupExecuteBtn.IsEnabled = true;
+        }
+
+        private async void VpsAnalyzeLogs_Click(object sender, RoutedEventArgs e)
+        {
+            var logs = LogsText.Text;
+            if (string.IsNullOrWhiteSpace(logs) || logs == "Sélectionnez un service et cliquez sur Charger." || _openAIService == null)
+            {
+                MessageBox.Show("Chargez d'abord les logs d'un service.", "Analyser logs", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            AiAnalysisPanel.Visibility = Visibility.Visible;
+            AiAnalysisText.Text = "Analyse des logs en cours...";
+
+            var service = (LogServiceCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "service";
+            var extrait = logs.Length > 3000 ? logs[^3000..] : logs;
+            var prompt = $@"Tu es un assistant technique. Analyse ces logs du service ""{service}"" et explique en français simple :
+1. Est-ce qu'il y a des erreurs ou problèmes ?
+2. Si oui, lesquels et que faire ?
+3. Si tout va bien, dis-le brièvement.
+
+Logs :
+{extrait}";
+
+            var (success, result, error) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 400);
+            AiAnalysisText.Text = success ? result : $"Erreur : {error}";
+        }
     }
 }

@@ -1332,6 +1332,282 @@
                     </Border>
                 </Grid>
             </TabItem>
+
+            <!-- ═══════════════════════════════════════════════════════════════ -->
+            <!-- ONGLET 4 : SERVEUR VPS                                         -->
+            <!-- ═══════════════════════════════════════════════════════════════ -->
+            <TabItem Style="{StaticResource PilotageTabItemStyle}">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="🖥️ Serveur" FontSize="14" FontWeight="SemiBold"/>
+                        <Ellipse x:Name="VpsStatusDot" Width="8" Height="8" Margin="8,0,0,0"
+                                 VerticalAlignment="Center" Fill="#555555"/>
+                    </StackPanel>
+                </TabItem.Header>
+
+                <Grid Background="{StaticResource PilotageBackground}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- En-tête -->
+                    <Border Grid.Row="0" Background="{StaticResource PilotageCardBackground}"
+                            BorderBrush="{StaticResource PilotageBorder}" BorderThickness="0,0,0,1"
+                            Padding="20,12">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <Ellipse x:Name="VpsOnlineDot" Width="12" Height="12" Fill="#555555" Margin="0,0,10,0"/>
+                                <TextBlock x:Name="VpsStatusText" Text="Non connecté"
+                                           Foreground="{StaticResource PilotageTextSecondary}" FontSize="13"/>
+                                <TextBlock x:Name="VpsLastUpdateText" Text=""
+                                           Foreground="{StaticResource PilotageTextSecondary}"
+                                           FontSize="11" Margin="15,0,0,0" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button x:Name="VpsRefreshBtn" Content="🔄 Rafraîchir"
+                                        Padding="12,6" Margin="0,0,8,0"
+                                        Style="{StaticResource PilotageButtonStyle}"
+                                        Click="VpsRefresh_Click"/>
+                                <Button x:Name="VpsAiBtn" Content="🤖 Avis IA"
+                                        Padding="12,6"
+                                        Style="{StaticResource PilotageAccentButtonStyle}"
+                                        Click="VpsAiAnalysis_Click"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- Contenu scrollable -->
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20">
+                        <StackPanel>
+
+                            <!-- MÉTRIQUES SYSTÈME -->
+                            <Border Background="{StaticResource PilotageCardBackground}"
+                                    BorderBrush="{StaticResource PilotageBorder}" BorderThickness="1"
+                                    CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                                <StackPanel>
+                                    <TextBlock Text="RESSOURCES SYSTÈME"
+                                               Foreground="{StaticResource PilotageTextSecondary}"
+                                               FontSize="11" FontWeight="Bold" Margin="0,0,0,15"/>
+
+                                    <!-- CPU -->
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="50"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="CPU" Foreground="{StaticResource PilotageTextPrimary}"
+                                                   FontSize="13" VerticalAlignment="Center"/>
+                                        <ProgressBar x:Name="CpuBar" Grid.Column="1" Height="10"
+                                                     Minimum="0" Maximum="100" Value="0"
+                                                     Foreground="#27AE60" Background="#3D3D3D"
+                                                     VerticalAlignment="Center" Margin="10,0"/>
+                                        <TextBlock x:Name="CpuText" Grid.Column="2" Text="0%"
+                                                   Foreground="{StaticResource PilotageTextPrimary}"
+                                                   FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+
+                                    <!-- RAM -->
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="50"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="RAM" Foreground="{StaticResource PilotageTextPrimary}"
+                                                   FontSize="13" VerticalAlignment="Center"/>
+                                        <ProgressBar x:Name="RamBar" Grid.Column="1" Height="10"
+                                                     Minimum="0" Maximum="100" Value="0"
+                                                     Foreground="#27AE60" Background="#3D3D3D"
+                                                     VerticalAlignment="Center" Margin="10,0"/>
+                                        <TextBlock x:Name="RamText" Grid.Column="2" Text="0%"
+                                                   Foreground="{StaticResource PilotageTextPrimary}"
+                                                   FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+
+                                    <!-- Disque -->
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="80"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="50"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="Disque" Foreground="{StaticResource PilotageTextPrimary}"
+                                                   FontSize="13" VerticalAlignment="Center"/>
+                                        <ProgressBar x:Name="DiskBar" Grid.Column="1" Height="10"
+                                                     Minimum="0" Maximum="100" Value="0"
+                                                     Foreground="#27AE60" Background="#3D3D3D"
+                                                     VerticalAlignment="Center" Margin="10,0"/>
+                                        <TextBlock x:Name="DiskText" Grid.Column="2" Text="0%"
+                                                   Foreground="{StaticResource PilotageTextPrimary}"
+                                                   FontSize="13" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- SERVICES -->
+                            <Border Background="{StaticResource PilotageCardBackground}"
+                                    BorderBrush="{StaticResource PilotageBorder}" BorderThickness="1"
+                                    CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                                <StackPanel>
+                                    <TextBlock Text="SERVICES"
+                                               Foreground="{StaticResource PilotageTextSecondary}"
+                                               FontSize="11" FontWeight="Bold" Margin="0,0,0,15"/>
+                                    <WrapPanel x:Name="ServicesPanel"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- AVIS IA -->
+                            <Border x:Name="AiAnalysisPanel"
+                                    Background="{StaticResource PilotageCardBackground}"
+                                    BorderBrush="{StaticResource PilotageBorder}" BorderThickness="1"
+                                    CornerRadius="8" Padding="20" Margin="0,0,0,15"
+                                    Visibility="Collapsed">
+                                <StackPanel>
+                                    <TextBlock Text="ANALYSE IA"
+                                               Foreground="{StaticResource PilotageTextSecondary}"
+                                               FontSize="11" FontWeight="Bold" Margin="0,0,0,10"/>
+                                    <TextBlock x:Name="AiAnalysisText"
+                                               Foreground="{StaticResource PilotageTextPrimary}"
+                                               FontSize="13" TextWrapping="Wrap" LineHeight="20"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- NETTOYAGE -->
+                            <Border Background="{StaticResource PilotageCardBackground}"
+                                    BorderBrush="{StaticResource PilotageBorder}" BorderThickness="1"
+                                    CornerRadius="8" Padding="20" Margin="0,0,0,15">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="NETTOYAGE"
+                                                   Foreground="{StaticResource PilotageTextSecondary}"
+                                                   FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <Button Grid.Column="1" Content="🧹 Analyser pour nettoyage"
+                                                Padding="12,6"
+                                                Style="{StaticResource PilotageButtonStyle}"
+                                                Click="VpsAnalyzeCleanup_Click"
+                                                x:Name="VpsCleanupAnalyzeBtn"/>
+                                    </Grid>
+
+                                    <!-- Panel résultat analyse (caché par défaut) -->
+                                    <StackPanel x:Name="CleanupPanel" Visibility="Collapsed">
+
+                                        <!-- Avis IA -->
+                                        <Border Background="#1A1A1A" CornerRadius="4" Padding="12" Margin="0,0,0,12">
+                                            <TextBlock x:Name="CleanupAiText"
+                                                       Foreground="#AAAAAA" FontSize="12"
+                                                       TextWrapping="Wrap" LineHeight="20"/>
+                                        </Border>
+
+                                        <!-- Cases à cocher -->
+                                        <TextBlock Text="Sélectionnez les actions à exécuter :"
+                                                   Foreground="{StaticResource PilotageTextSecondary}"
+                                                   FontSize="11" Margin="0,0,0,8"/>
+
+                                        <CheckBox x:Name="CleanJournal7d"
+                                                  Content="Journaux système &gt; 7 jours"
+                                                  Foreground="White" Margin="0,0,0,6"/>
+                                        <CheckBox x:Name="CleanJournal30d"
+                                                  Content="Journaux système &gt; 30 jours (nettoyage léger)"
+                                                  Foreground="White" Margin="0,0,0,6"/>
+                                        <CheckBox x:Name="CleanDockerLogs"
+                                                  Content="Logs Docker (livekit)"
+                                                  Foreground="White" Margin="0,0,0,6"/>
+                                        <CheckBox x:Name="CleanAptCache"
+                                                  Content="Cache apt (paquets téléchargés)"
+                                                  Foreground="White" Margin="0,0,0,6"/>
+                                        <CheckBox x:Name="CleanTmpFiles"
+                                                  Content="Fichiers temporaires /tmp &gt; 7 jours"
+                                                  Foreground="White" Margin="0,0,0,12"/>
+
+                                        <!-- Résultat exécution -->
+                                        <Border x:Name="CleanupResultBorder" Background="#1A1A1A"
+                                                CornerRadius="4" Padding="12" Margin="0,0,0,12"
+                                                Visibility="Collapsed">
+                                            <TextBlock x:Name="CleanupResultText"
+                                                       Foreground="#27AE60" FontSize="12"
+                                                       TextWrapping="Wrap"/>
+                                        </Border>
+
+                                        <Button x:Name="VpsCleanupExecuteBtn"
+                                                Content="✅ Exécuter le nettoyage sélectionné"
+                                                Padding="12,8" HorizontalAlignment="Left"
+                                                Style="{StaticResource PilotageAccentButtonStyle}"
+                                                Click="VpsExecuteCleanup_Click"/>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- LOGS -->
+                            <Border Background="{StaticResource PilotageCardBackground}"
+                                    BorderBrush="{StaticResource PilotageBorder}" BorderThickness="1"
+                                    CornerRadius="8" Padding="20">
+                                <StackPanel>
+                                    <Grid Margin="0,0,0,12">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="LOGS"
+                                                   Foreground="{StaticResource PilotageTextSecondary}"
+                                                   FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <ComboBox x:Name="LogServiceCombo" Width="140" Margin="0,0,8,0"
+                                                      Background="#3D3D3D" Foreground="White"
+                                                      BorderBrush="{StaticResource PilotageBorder}">
+                                                <ComboBox.Resources>
+                                                    <SolidColorBrush x:Key="{x:Static SystemColors.WindowBrushKey}" Color="#2D2D2D"/>
+                                                    <SolidColorBrush x:Key="{x:Static SystemColors.WindowTextBrushKey}" Color="White"/>
+                                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightBrushKey}" Color="#E67E22"/>
+                                                    <SolidColorBrush x:Key="{x:Static SystemColors.HighlightTextBrushKey}" Color="White"/>
+                                                    <Style TargetType="ComboBoxItem">
+                                                        <Setter Property="Background" Value="#2D2D2D"/>
+                                                        <Setter Property="Foreground" Value="White"/>
+                                                        <Setter Property="Padding" Value="8,6"/>
+                                                        <Style.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#4D4D4D"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsSelected" Value="True">
+                                                                <Setter Property="Background" Value="#E67E22"/>
+                                                            </Trigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Resources>
+                                                <ComboBoxItem Content="livekit" IsSelected="True"/>
+                                                <ComboBoxItem Content="nginx"/>
+                                            </ComboBox>
+                                            <Button Content="📋 Charger" Padding="10,5"
+                                                    Style="{StaticResource PilotageButtonStyle}"
+                                                    Click="VpsLoadLogs_Click" Margin="0,0,8,0"/>
+                                            <Button Content="🤖 Analyser" Padding="10,5"
+                                                    Style="{StaticResource PilotageButtonStyle}"
+                                                    Click="VpsAnalyzeLogs_Click"/>
+                                        </StackPanel>
+                                    </Grid>
+                                    <Border Background="#1A1A1A" CornerRadius="4" Padding="12">
+                                        <TextBlock x:Name="LogsText"
+                                                   Foreground="#AAAAAA" FontSize="11"
+                                                   FontFamily="Consolas" TextWrapping="Wrap"
+                                                   Text="Sélectionnez un service et cliquez sur Charger."/>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+
+                        </StackPanel>
+                    </ScrollViewer>
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
         <!-- ═══════════════════════════════════════════════════════════════ -->

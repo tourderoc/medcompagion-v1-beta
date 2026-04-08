@@ -441,7 +441,15 @@ POIDS_SYNTHESE: X.X
         /// <summary>
         /// Génère du texte à partir d'un prompt personnalisé (pour synthèses, etc.)
         /// </summary>
-        public async Task<(bool success, string result, string? error)> GenerateTextAsync(string prompt, int maxTokens = 3000)
+        /// <summary>
+        /// Indique si le provider LLM actuel est local (Ollama).
+        /// </summary>
+        public bool IsCurrentProviderLocal()
+        {
+            return _settings.LLMProvider == "Ollama";
+        }
+
+        public async Task<(bool success, string result, string? error)> GenerateTextAsync(string prompt, int maxTokens = 3000, System.Threading.CancellationToken cancellationToken = default)
         {
             if (!IsApiKeyConfigured())
             {
@@ -456,13 +464,13 @@ POIDS_SYNTHESE: X.X
             try
             {
                 var systemPrompt = BuildSystemPrompt();
-                
+
                 // Utiliser le LLM service unifié (provider actuel)
                 var messages = new List<(string role, string content)>
                 {
                     ("user", prompt)
                 };
-                var (success, result, error) = await GetCurrentLLM().ChatAsync(systemPrompt, messages);
+                var (success, result, error) = await GetCurrentLLM().ChatAsync(systemPrompt, messages, maxTokens, cancellationToken);
 
                 if (success)
                 {
@@ -481,7 +489,7 @@ POIDS_SYNTHESE: X.X
         /// <summary>
         /// Extrait les entités sensibles (PII) d'un texte via le LLM actif.
         /// </summary>
-        public async Task<PIIExtractionResult> ExtractPIIAsync(string text)
+        public async Task<PIIExtractionResult> ExtractPIIAsync(string text, System.Threading.CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return new PIIExtractionResult();
@@ -542,7 +550,7 @@ Format JSON attendu :
                 ILLMService piiProvider = new OllamaLLMProvider(_settings.OllamaBaseUrl, _settings.AnonymizationModel);
                 System.Diagnostics.Debug.WriteLine($"[OpenAIService] ✅ Extraction PII via modèle LOCAL Ollama : {_settings.AnonymizationModel}");
 
-                var (success, result, error) = await piiProvider.ChatAsync(systemPrompt, messages);
+                var (success, result, error) = await piiProvider.ChatAsync(systemPrompt, messages, cancellationToken: cancellationToken);
 
                 if (!success || string.IsNullOrWhiteSpace(result))
                 {

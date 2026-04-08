@@ -42,6 +42,10 @@ namespace MedCompanion
         public string HandyHotkey { get; set; } = "Ctrl+Space";
         public bool HandyEnabled { get; set; } = true;
 
+        // Configuration VPS Monitoring (Parent'aile)
+        public string VpsMonitoringUrl { get; set; } = "http://145.223.117.145:5050";
+        public bool VpsMonitoringEnabled { get; set; } = false;
+
         // Configuration SMTP Pilotage (Gmail)
         public string SmtpHost { get; set; } = "smtp.gmail.com";
         public int SmtpPort { get; set; } = 587;
