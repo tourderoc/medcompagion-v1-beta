@@ -755,8 +755,11 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
 
         try
         {
+            // Synchroniser les statuts depuis Firebase avant d'afficher
+            await _tokenService.SyncFromFirebaseAsync();
+
             var token = await _tokenService.GetTokenByPatientIdAsync(patientId);
-            
+
             if (token == null)
             {
                 GenerateTokenCardBtn.Visibility = Visibility.Visible;

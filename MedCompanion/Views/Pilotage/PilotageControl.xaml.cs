@@ -27,6 +27,8 @@ namespace MedCompanion.Views.Pilotage
         private PilotageEmailService? _emailService;
         private OpenAIService? _openAIService;
         private AppSettings? _settings;
+        private AvatarSyncService? _avatarSyncService;
+        private int _newAvatarsCount = 0;
 
         // Architecture polling : 3 tentatives × 30 min, puis arrêt
         private int _retryCount = 0;
@@ -123,6 +125,7 @@ namespace MedCompanion.Views.Pilotage
 
             OnStatusChanged("Mode Pilotage prêt");
             RefreshTokensTab();
+            InitAvatarSyncService();
         }
 
         /// <summary>
@@ -145,6 +148,22 @@ namespace MedCompanion.Views.Pilotage
 
             OnStatusChanged("Mode Pilotage prêt (sans cache)");
             RefreshTokensTab();
+            InitAvatarSyncService();
+        }
+
+        private void InitAvatarSyncService()
+        {
+            if (_avatarSyncService != null || _firebaseService == null) return;
+
+            _avatarSyncService = new AvatarSyncService(_firebaseService);
+            _avatarSyncService.NewAvatarsSynced += (s, count) => Dispatcher.Invoke(() => {
+                _newAvatarsCount += count;
+                NewAvatarCountText.Text = $"{_newAvatarsCount}";
+                NewAvatarBadge.Visibility = Visibility.Visible;
+            });
+
+            // Une petite synchro initiale discrète
+            System.Threading.Tasks.Task.Run(async () => await _avatarSyncService.SyncAvatarsAsync());
         }
 
         /// <summary>
@@ -332,7 +351,15 @@ namespace MedCompanion.Views.Pilotage
                     RefreshTokensTab();
                     SelectionInfoText.Text = "Gestion des utilisateurs Parent'aile";
                     break;
-                // case 1: Serveur VPS — pas d'action nécessaire
+                case 1: // Serveur VPS
+                    InitVpsService();
+                    SelectionInfoText.Text = "Pilotage du serveur VPS";
+                    // Déclencher aussi une synchro d'avatars
+                    if (_avatarSyncService != null)
+                    {
+                        System.Threading.Tasks.Task.Run(async () => await _avatarSyncService.SyncAvatarsAsync());
+                    }
+                    break;
             }
         }
 
@@ -350,6 +377,11 @@ namespace MedCompanion.Views.Pilotage
 
             try
             {
+                // Synchroniser les statuts depuis Firebase avant d'afficher
+                var synced = await _tokenService.SyncFromFirebaseAsync();
+                if (synced > 0)
+                    System.Diagnostics.Debug.WriteLine($"[Pilotage] {synced} token(s) synchronisé(s) depuis Firebase");
+
                 var allTokens = await _tokenService.GetAllTokensAsync();
                 Tokens.Clear();
 
@@ -741,6 +773,29 @@ namespace MedCompanion.Views.Pilotage
         private async void VpsRefresh_Click(object sender, RoutedEventArgs e)
         {
             if (_settings == null) return;
+            
+            // Sync avatars en arrière-plan pour ne pas bloquer les métriques
+            if (_avatarSyncService != null)
+            {
+                _ = System.Threading.Tasks.Task.Run(async () => 
+                {
+                    await Dispatcher.InvokeAsync(() => OnStatusChanged("🔍 Synchronisation des avatars..."));
+                    var (totalA, newA, errorA) = await _avatarSyncService.SyncAvatarsAsync();
+                    
+                    await Dispatcher.InvokeAsync(() => {
+                        if (errorA != null)
+                        {
+                            OnStatusChanged($"❌ Erreur synchro avatars : {errorA}");
+                        }
+                        else
+                        {
+                            OnStatusChanged($"✅ Synchro avatars terminée ({totalA} au total)");
+                            NewAvatarCountText.Text = newA > 0 ? $"{newA} (+)" : $"{totalA}";
+                            NewAvatarBadge.Visibility = Visibility.Visible;
+                        }
+                    });
+                });
+            }
 
             // Initialisation paresseuse au premier clic
             if (_vpsService == null)
@@ -794,8 +849,41 @@ namespace MedCompanion.Views.Pilotage
                     BorderThickness = new Thickness(1),
                     CornerRadius = new CornerRadius(4),
                     Padding = new Thickness(10, 6, 10, 6),
-                    Margin = new Thickness(0, 0, 8, 8)
+                    Margin = new Thickness(0, 0, 8, 8),
+                    Cursor = System.Windows.Input.Cursors.Hand,
+                    ToolTip = "Clique droit pour piloter le service"
                 };
+
+                // Menu contextuel pour le pilotage
+                var cm = new ContextMenu 
+                { 
+                    Background = new SolidColorBrush((Color)new ColorConverter().ConvertFrom("#2D2D2D")!), 
+                    Foreground = Brushes.White,
+                    PlacementTarget = chip,
+                    Placement = System.Windows.Controls.Primitives.PlacementMode.Bottom
+                };
+
+                var startItem = new MenuItem { Header = "D\u00e9marrer", Foreground = Brushes.White };
+                startItem.Click += async (s, e) => await HandleServiceAction(svc.Key, "start");
+                
+                var stopItem = new MenuItem { Header = "Arr\u00eater", Foreground = Brushes.White };
+                stopItem.Click += async (s, e) => await HandleServiceAction(svc.Key, "stop");
+                
+                var restartItem = new MenuItem { Header = "Red\u00e9marrer", Foreground = Brushes.White };
+                restartItem.Click += async (s, e) => await HandleServiceAction(svc.Key, "restart");
+                
+                cm.Items.Add(startItem);
+                cm.Items.Add(stopItem);
+                cm.Items.Add(restartItem);
+                chip.ContextMenu = cm;
+
+                // Clic gauche ouvre aussi le menu (plus robuste avec Preview)
+                chip.PreviewMouseLeftButtonDown += (s, e) => 
+                { 
+                    chip.ContextMenu.IsOpen = true; 
+                    e.Handled = true; 
+                };
+
                 var sp = new StackPanel { Orientation = Orientation.Horizontal };
                 sp.Children.Add(new Ellipse
                 {
@@ -811,6 +899,28 @@ namespace MedCompanion.Views.Pilotage
                 });
                 chip.Child = sp;
                 ServicesPanel.Children.Add(chip);
+            }
+        }
+
+        private async System.Threading.Tasks.Task HandleServiceAction(string serviceName, string action)
+        {
+            if (_vpsService == null) return;
+
+            OnStatusChanged($"Action {action} sur {serviceName}...");
+            var (success, error) = await _vpsService.ExecuteServiceActionAsync(serviceName, action);
+
+            if (success)
+            {
+                OnStatusChanged($"✅ {serviceName} : {action} termin\u00e9");
+                // Attendre un peu que le système linux applique et rafraîchir
+                await System.Threading.Tasks.Task.Delay(2000);
+                var (s, m, _) = await _vpsService.FetchNowAsync();
+                if (s && m != null) ApplyMetrics(m);
+            }
+            else
+            {
+                MessageBox.Show($"Erreur lors de l'action {action} : {error}", "Erreur VPS", MessageBoxButton.OK, MessageBoxImage.Error);
+                OnStatusChanged($"❌ Erreur {serviceName}");
             }
         }
 
