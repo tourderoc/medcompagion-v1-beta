@@ -36,6 +36,7 @@ namespace MedCompanion.Views.Messages
 
         // Filtre actif
         private MessageFilter _activeFilter = MessageFilter.Unread;
+        private bool _isRefreshing = false;
 
         public event EventHandler<string>? StatusChanged;
         public event EventHandler<int>? UnreadCountChanged;
@@ -115,6 +116,73 @@ namespace MedCompanion.Views.Messages
             // Mettre à jour le badge global dans le header
             var globalUnread = _messageService.GetGlobalUnreadCount();
             UnreadCountChanged?.Invoke(this, globalUnread);
+        }
+
+        private async void BtnRefresh_Click(object sender, System.Windows.RoutedEventArgs e)
+        {
+            await RefreshFromFirebaseAsync();
+        }
+
+        /// <summary>
+        /// Récupère tous les messages depuis Firebase, archive les nouveaux pour le patient courant, recharge l'affichage.
+        /// </summary>
+        private async System.Threading.Tasks.Task RefreshFromFirebaseAsync()
+        {
+            if (_isRefreshing || _firebaseService == null || _currentPatient == null || _tokenService == null || _messageService == null) return;
+
+            _isRefreshing = true;
+            BtnRefresh.IsEnabled = false;
+            BtnRefresh.ToolTip = "Actualisation en cours...";
+            StatusChanged?.Invoke(this, "🔄 Récupération des messages depuis Firebase...");
+
+            try
+            {
+                var (firebaseMessages, fetchError) = await _firebaseService.FetchMessagesAsync();
+
+                if (fetchError != null)
+                {
+                    StatusChanged?.Invoke(this, $"Erreur Firebase : {fetchError}");
+                    return;
+                }
+
+                if (firebaseMessages == null || firebaseMessages.Count == 0)
+                {
+                    StatusChanged?.Invoke(this, "Aucun message trouvé sur Firebase");
+                    LoadMessages();
+                    return;
+                }
+
+                // Tokens actifs du patient courant
+                var allTokens = await _tokenService.GetAllTokensAsync();
+                var patientTokenIds = allTokens
+                    .Where(t => t.PatientId == _currentPatient.NomComplet && t.Active)
+                    .Select(t => t.TokenId)
+                    .ToHashSet();
+
+                int newCount = 0;
+                foreach (var msg in firebaseMessages)
+                {
+                    if (!patientTokenIds.Contains(msg.TokenId)) continue;
+
+                    var (ok, _) = _messageService.ArchiveMessage(_currentPatient.NomComplet, msg);
+                    if (ok) newCount++;
+                }
+
+                LoadMessages();
+                StatusChanged?.Invoke(this, newCount > 0
+                    ? $"✅ {newCount} message(s) synchronisés"
+                    : "✅ Messages à jour");
+            }
+            catch (Exception ex)
+            {
+                StatusChanged?.Invoke(this, $"Erreur: {ex.Message}");
+            }
+            finally
+            {
+                _isRefreshing = false;
+                BtnRefresh.IsEnabled = true;
+                BtnRefresh.ToolTip = "Rafraîchir les messages depuis Firebase";
+            }
         }
 
         /// <summary>

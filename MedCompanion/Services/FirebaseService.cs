@@ -1,8 +1,14 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Google.Apis.Auth.OAuth2;
+using Google.Cloud.Firestore;
+using Google.Cloud.Firestore.V1;
+using System.Diagnostics;
 
 namespace MedCompanion.Services
 {
@@ -18,6 +24,12 @@ namespace MedCompanion.Services
         private readonly string _configPath;
         private bool _isConfigured;
 
+        // SDK Firestore pour listeners temps réel
+        private FirestoreDb? _firestoreDb;
+        private bool _isListenerConfigured;
+
+        public bool IsListenerConfigured => _isListenerConfigured;
+
         public FirebaseService()
         {
             _httpClient = new HttpClient();
@@ -26,6 +38,7 @@ namespace MedCompanion.Services
             _configPath = System.IO.Path.Combine(documentsPath, "MedCompanion", "pilotage", "firebase_config.json");
 
             LoadConfiguration();
+            LoadServiceAccount();
         }
 
         /// <summary>
@@ -92,9 +105,116 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
-        /// Vérifie si Firebase est configuré
+        /// Vérifie si Firebase REST est configuré
         /// </summary>
         public bool IsConfigured => _isConfigured;
+
+        /// <summary>
+        /// Initialise le SDK Firestore depuis le fichier compte de service.
+        /// Silencieux si le fichier est absent — l'app bascule sur le polling.
+        /// </summary>
+        private void LoadServiceAccount()
+        {
+            try
+            {
+                var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+                var saPath = Path.Combine(documentsPath, "MedCompanion", "pilotage", "firebase_service_account.json");
+
+                if (!File.Exists(saPath) || string.IsNullOrEmpty(_projectId)) return;
+
+                var credential = GoogleCredential
+                    .FromFile(saPath)
+                    .CreateScoped(FirestoreClient.DefaultScopes);
+
+                var builder = new FirestoreClientBuilder { Credential = credential };
+                _firestoreDb = FirestoreDb.Create(_projectId, builder.Build());
+                _isListenerConfigured = true;
+
+                Debug.WriteLine("[FirebaseService] ✅ Listener Firestore SDK initialisé");
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[FirebaseService] ⚠️ SDK non disponible, mode REST: {ex.Message}");
+                _isListenerConfigured = false;
+            }
+        }
+
+        /// <summary>
+        /// Parse un DocumentSnapshot Firestore SDK → PatientMessage (mêmes champs que le parsing REST)
+        /// </summary>
+        private Models.PatientMessage ParseSnapshotDocument(DocumentSnapshot doc)
+        {
+            return new Models.PatientMessage
+            {
+                Id = doc.Id,
+                TokenId = doc.ContainsField("tokenId") ? doc.GetValue<string>("tokenId") : "",
+                Content = doc.ContainsField("content") ? doc.GetValue<string>("content") : "",
+                ParentEmail = doc.ContainsField("parentEmail") ? doc.GetValue<string>("parentEmail") : null,
+                ChildNickname = doc.ContainsField("childNickname") ? doc.GetValue<string>("childNickname") : "",
+                Status = doc.ContainsField("status") ? doc.GetValue<string>("status") : "sent",
+                CreatedAt = doc.ContainsField("createdAt")
+                    ? doc.GetValue<Timestamp>("createdAt").ToDateTime()
+                    : doc.CreateTime?.ToDateTime() ?? DateTime.UtcNow,
+                ReplyContent = doc.ContainsField("replyContent") ? doc.GetValue<string>("replyContent") : null,
+                RepliedAt = doc.ContainsField("repliedAt")
+                    ? doc.GetValue<Timestamp>("repliedAt").ToDateTime()
+                    : (DateTime?)null
+            };
+        }
+
+        /// <summary>
+        /// Démarre un listener temps réel sur la collection 'messages'.
+        /// Utilise snapshot.Changes pour ne traiter que les ajouts/modifications.
+        /// Le premier appel retourne tous les documents existants comme "Added".
+        /// </summary>
+        public FirestoreChangeListener ListenToMessages(
+            Action<List<Models.PatientMessage>> onNewMessages,
+            Action<Exception>? onError = null)
+        {
+            if (_firestoreDb == null) throw new InvalidOperationException("FirestoreDb non initialisé");
+
+            return _firestoreDb.Collection("messages").Listen(
+                async (snapshot, ct) =>
+                {
+                    await System.Threading.Tasks.Task.Yield();
+                    try
+                    {
+                        var messages = new List<Models.PatientMessage>();
+                        foreach (var change in snapshot.Changes)
+                        {
+                            if (change.ChangeType == Google.Cloud.Firestore.DocumentChange.Type.Removed) continue;
+                            messages.Add(ParseSnapshotDocument(change.Document));
+                        }
+                        if (messages.Count > 0) onNewMessages(messages);
+                    }
+                    catch (Exception ex) { onError?.Invoke(ex); }
+                });
+        }
+
+        /// <summary>
+        /// Démarre un listener temps réel sur la collection 'tokens'.
+        /// Retourne le dictionnaire complet tokenId → status à chaque changement.
+        /// </summary>
+        public FirestoreChangeListener ListenToTokens(
+            Action<Dictionary<string, string>> onStatusChange,
+            Action<Exception>? onError = null)
+        {
+            if (_firestoreDb == null) throw new InvalidOperationException("FirestoreDb non initialisé");
+
+            return _firestoreDb.Collection("tokens").Listen(
+                async (snapshot, ct) =>
+                {
+                    await System.Threading.Tasks.Task.Yield();
+                    try
+                    {
+                        var statuses = new Dictionary<string, string>();
+                        foreach (var doc in snapshot.Documents)
+                            statuses[doc.Id] = doc.ContainsField("status") ? doc.GetValue<string>("status") : "pending";
+                        onStatusChange(statuses);
+                    }
+                    catch (Exception ex) { onError?.Invoke(ex); }
+                });
+        }
 
         /// <summary>
         /// Obtient le chemin du fichier de configuration
@@ -238,9 +358,11 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
-        /// Récupère tous les messages de la collection 'messages'
+        /// Récupère les messages de la collection 'messages'.
+        /// Si <paramref name="since"/> est fourni, seuls les messages créés après cette date sont retournés (sync incrémentale).
+        /// Passer null pour récupérer tous les messages (refresh manuel).
         /// </summary>
-        public async Task<(List<Models.PatientMessage> Messages, string? Error)> FetchMessagesAsync()
+        public async Task<(List<Models.PatientMessage> Messages, string? Error)> FetchMessagesAsync(DateTime? since = null)
         {
             if (!_isConfigured) return (new(), "Firebase non configuré");
 
@@ -248,18 +370,46 @@ namespace MedCompanion.Services
             {
                 // Utilisation de runQuery pour pouvoir trier et filtrer proprement via les index
                 var url = $"https://firestore.googleapis.com/v1/projects/{_projectId}/databases/(default)/documents:runQuery?key={_apiKey}";
-                
-                var query = new
+
+                object query;
+                if (since.HasValue)
                 {
-                    structuredQuery = new
+                    var sinceUtc = since.Value.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ");
+                    query = new
                     {
-                        from = new[] { new { collectionId = "messages" } },
-                        orderBy = new[]
+                        structuredQuery = new
                         {
-                            new { field = new { fieldPath = "createdAt" }, direction = "DESCENDING" }
+                            from = new[] { new { collectionId = "messages" } },
+                            where = new
+                            {
+                                fieldFilter = new
+                                {
+                                    field = new { fieldPath = "createdAt" },
+                                    op = "GREATER_THAN_OR_EQUAL",
+                                    value = new { timestampValue = sinceUtc }
+                                }
+                            },
+                            orderBy = new[]
+                            {
+                                new { field = new { fieldPath = "createdAt" }, direction = "DESCENDING" }
+                            }
                         }
-                    }
-                };
+                    };
+                }
+                else
+                {
+                    query = new
+                    {
+                        structuredQuery = new
+                        {
+                            from = new[] { new { collectionId = "messages" } },
+                            orderBy = new[]
+                            {
+                                new { field = new { fieldPath = "createdAt" }, direction = "DESCENDING" }
+                            }
+                        }
+                    };
+                }
 
                 var jsonQuery = JsonSerializer.Serialize(query);
                 var contentQuery = new StringContent(jsonQuery, System.Text.Encoding.UTF8, "application/json");
@@ -462,9 +612,28 @@ namespace MedCompanion.Services
 
             try
             {
-                // Récupérer tous les tokens actifs
-                var url = $"https://firestore.googleapis.com/v1/projects/{_projectId}/databases/(default)/documents/tokens?key={_apiKey}";
-                var response = await _httpClient.GetAsync(url);
+                // Récupérer uniquement les tokens status="used" via runQuery (filtre côté Firestore)
+                var queryUrl = $"https://firestore.googleapis.com/v1/projects/{_projectId}/databases/(default)/documents:runQuery?key={_apiKey}";
+                var query = new
+                {
+                    structuredQuery = new
+                    {
+                        from = new[] { new { collectionId = "tokens" } },
+                        where = new
+                        {
+                            fieldFilter = new
+                            {
+                                field = new { fieldPath = "status" },
+                                op = "EQUAL",
+                                value = new { stringValue = "used" }
+                            }
+                        }
+                    }
+                };
+
+                var queryJson = JsonSerializer.Serialize(query);
+                var queryContent = new StringContent(queryJson, Encoding.UTF8, "application/json");
+                var response = await _httpClient.PostAsync(queryUrl, queryContent);
 
                 if (!response.IsSuccessStatusCode)
                 {
@@ -472,33 +641,31 @@ namespace MedCompanion.Services
                 }
 
                 var json = await response.Content.ReadAsStringAsync();
-                var tokensDoc = JsonSerializer.Deserialize<FirebaseDocumentList>(json);
+                var queryResults = JsonSerializer.Deserialize<List<FirebaseQueryResult>>(json);
 
                 int sent = 0, failed = 0;
 
-                if (tokensDoc?.documents != null)
+                if (queryResults != null)
                 {
-                    foreach (var doc in tokensDoc.documents)
+                    foreach (var item in queryResults)
                     {
+                        var doc = item.document;
+                        if (doc == null) continue;
+
                         var tokenId = doc.name.Substring(doc.name.LastIndexOf('/') + 1);
-                        var status = doc.fields?.status?.stringValue;
 
-                        // Ne notifier que les tokens utilisés (parents connectés)
-                        if (status == "used")
+                        var notification = new Models.PilotageNotification
                         {
-                            var notification = new Models.PilotageNotification
-                            {
-                                Type = Models.NotificationType.Broadcast,
-                                Title = title,
-                                Body = body,
-                                TargetParentId = "all",
-                                TokenId = tokenId,
-                                SenderName = senderName
-                            };
+                            Type = Models.NotificationType.Broadcast,
+                            Title = title,
+                            Body = body,
+                            TargetParentId = "all",
+                            TokenId = tokenId,
+                            SenderName = senderName
+                        };
 
-                            var (success, _) = await WriteNotificationAsync(notification);
-                            if (success) sent++; else failed++;
-                        }
+                        var (success, _) = await WriteNotificationAsync(notification);
+                        if (success) sent++; else failed++;
                     }
                 }
 
@@ -545,8 +712,8 @@ namespace MedCompanion.Services
             {
                 var result = new Dictionary<string, string>();
 
-                // Stratégie 1 : lister la collection entière
-                var url = $"https://firestore.googleapis.com/v1/projects/{_projectId}/databases/(default)/documents/tokens?key={_apiKey}";
+                // Stratégie 1 : lister la collection entière (limitée à 100 documents)
+                var url = $"https://firestore.googleapis.com/v1/projects/{_projectId}/databases/(default)/documents/tokens?pageSize=100&key={_apiKey}";
                 System.Diagnostics.Debug.WriteLine($"[FirebaseService] FetchTokenStatuses: tentative listing collection...");
                 var response = await _httpClient.GetAsync(url);
 
@@ -632,8 +799,8 @@ namespace MedCompanion.Services
 
             try
             {
-                // Lire tous les comptes parents
-                var url = $"https://firestore.googleapis.com/v1/projects/{_projectId}/databases/(default)/documents/accounts?key={_apiKey}";
+                // Lire tous les comptes parents (limité à 100)
+                var url = $"https://firestore.googleapis.com/v1/projects/{_projectId}/databases/(default)/documents/accounts?pageSize=100&key={_apiKey}";
                 var response = await _httpClient.GetAsync(url);
 
                 if (!response.IsSuccessStatusCode)

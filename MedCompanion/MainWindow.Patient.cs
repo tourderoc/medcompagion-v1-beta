@@ -356,7 +356,7 @@ public partial class MainWindow : Window
                     }
                     else
                     {
-                        PilotageContent.RefreshMessages();
+                        PilotageContent.RefreshTokensTab();
                     }
                     if (StatusTextBlock != null)
                     {
