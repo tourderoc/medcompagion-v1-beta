@@ -38,7 +38,9 @@ namespace MedCompanion.Views.Pilotage
 
         // Listeners Firestore temps réel (SDK)
         private Google.Cloud.Firestore.FirestoreChangeListener? _messagesListener;
-        private Google.Cloud.Firestore.FirestoreChangeListener? _tokensListener;
+
+        // Polling tokens (remplace le listener temps réel — 60s interval)
+        private System.Windows.Threading.DispatcherTimer? _tokensPollTimer;
 
         // Onglet Utilisateurs : tokens
         // (les collections Messages/Patients ont été migrées vers ConsoleMessages)
@@ -279,9 +281,25 @@ namespace MedCompanion.Views.Pilotage
             _pollingExhausted = true;
             _messagesListener?.StopAsync();
             _messagesListener = null;
-            _tokensListener?.StopAsync();
-            _tokensListener = null;
+            _tokensPollTimer?.Stop();
+            _tokensPollTimer = null;
             System.Diagnostics.Debug.WriteLine("[Pilotage] ⏹️ Polling + listeners arrêtés");
+        }
+
+        /// <summary>
+        /// Démarre un timer de polling toutes les 60s pour les tokens.
+        /// Remplace le listener temps réel Firestore (trop coûteux en lectures).
+        /// </summary>
+        private void StartTokensPollingTimer()
+        {
+            _tokensPollTimer?.Stop();
+            _tokensPollTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(60)
+            };
+            _tokensPollTimer.Tick += (_, _) => RefreshTokensTab();
+            _tokensPollTimer.Start();
+            System.Diagnostics.Debug.WriteLine("[Pilotage] ⏱️ Polling tokens démarré (60s)");
         }
 
         /// <summary>
@@ -305,14 +323,7 @@ namespace MedCompanion.Views.Pilotage
                     StartInitialSyncWithRetry();
                 }));
 
-            _tokensListener = _firebaseService.ListenToTokens(
-                onStatusChange: statuses => Dispatcher.InvokeAsync(() =>
-                {
-                    System.Diagnostics.Debug.WriteLine($"[Pilotage] Tokens mis à jour: {statuses.Count}");
-                    RefreshTokensTab();
-                }),
-                onError: ex =>
-                    System.Diagnostics.Debug.WriteLine($"[Pilotage] Listener tokens erreur: {ex.Message}"));
+            StartTokensPollingTimer();
 
             OnStatusChanged("Listeners Firestore actifs ✅");
         }
