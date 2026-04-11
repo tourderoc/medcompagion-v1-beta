@@ -115,15 +115,18 @@ input_name = session.get_inputs()[0].name
 print("Model loaded OK")
 
 def transform_image(img: Image.Image) -> np.ndarray:
-    """Prépare l'image pour le modèle ONNX."""
-    img = img.convert("RGB").resize((256, 256))
-    arr = np.array(img).astype(np.float32) / 127.5 - 1.0  # [-1, 1]
-    return np.expand_dims(arr, axis=0)  # (1, 256, 256, 3)
+    """Prépare l'image pour le modèle ONNX paprika [1, 3, 512, 512]."""
+    img = img.convert("RGB").resize((512, 512))
+    arr = np.array(img).astype(np.float32) / 127.5 - 1.0  # [-1, 1] (512, 512, 3)
+    arr = np.transpose(arr, (2, 0, 1))  # Channels first: (3, 512, 512)
+    return np.expand_dims(arr, axis=0)  # (1, 3, 512, 512)
 
 def postprocess(output: np.ndarray) -> Image.Image:
-    """Convertit la sortie du modèle en image."""
-    img = (output.squeeze() + 1.0) * 127.5
+    """Convertit la sortie du modèle [1, 3, 512, 512] en image PIL."""
+    img = output.squeeze()  # (3, 512, 512)
+    img = (img + 1.0) * 127.5
     img = np.clip(img, 0, 255).astype(np.uint8)
+    img = np.transpose(img, (1, 2, 0))  # (512, 512, 3) pour PIL
     return Image.fromarray(img)
 
 # === Auth ===
@@ -151,23 +154,24 @@ async def root():
     return {"status": "ok", "service": "parentaile-avatar", "model": "paprika.onnx", "version": "v1-quota"}
 
 @app.get("/avatar/{user_id}/quota")
-async def check_quota_endpoint(user_id: str, _: str = Depends(verify_api_key)):
+async def check_quota_endpoint(user_id: str, email: str = "", _: str = Depends(verify_api_key)):
     """Vérifie le quota d'un utilisateur (authentification requise)."""
-    quota = get_quota(user_id, is_admin=False)
+    is_admin = email.lower() in [e.lower() for e in ADMIN_EMAILS] if email else False
+    quota = get_quota(user_id, is_admin=is_admin)
     return quota
 
 @app.post("/avatar/{user_id}/generate")
-async def generate_avatar(user_id: str, file: UploadFile = File(...), _: str = Depends(verify_api_key)):
+async def generate_avatar(user_id: str, file: UploadFile = File(...), email: str = "", _: str = Depends(verify_api_key)):
     """
     Génère un avatar IA. Vérifie et incrémente le quota automatiquement.
 
     Authentification: Header X-Api-Key requise
+    Query param: email (pour vérifier si admin)
     Quota: Géré en SQLite (2/jour, illimité pour admins)
     """
     try:
-        # Chercher si l'utilisateur est admin (via email stocké en Firebase ou BD)
-        # Pour maintenant, on suppose que le quota SQLite gère tout
-        quota = get_quota(user_id, is_admin=False)
+        is_admin = email.lower() in [e.lower() for e in ADMIN_EMAILS] if email else False
+        quota = get_quota(user_id, is_admin=is_admin)
 
         if not quota["canGenerate"]:
             return JSONResponse(
