@@ -140,6 +140,13 @@
                             <TextBlock Text=" total" Foreground="{StaticResource PilotageTextSecondary}" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Border>
+                    <Border x:Name="NewAvatarBadge" Background="#3D3D3D" CornerRadius="4" Padding="10,5" Margin="5,0" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="👤" VerticalAlignment="Center" Margin="0,0,5,0"/>
+                            <TextBlock x:Name="NewAvatarCountText" Text="0" Foreground="{StaticResource PilotageAccent}" FontWeight="Bold" VerticalAlignment="Center"/>
+                            <TextBlock Text=" avatars" Foreground="{StaticResource PilotageTextSecondary}" VerticalAlignment="Center" Margin="3,0,0,0"/>
+                        </StackPanel>
+                    </Border>
                 </StackPanel>
 
                 <!-- Boutons -->
@@ -532,9 +539,15 @@
                                     BorderBrush="{StaticResource PilotageBorder}" BorderThickness="1"
                                     CornerRadius="8" Padding="20" Margin="0,0,0,15">
                                 <StackPanel>
-                                    <TextBlock Text="SERVICES"
-                                               Foreground="{StaticResource PilotageTextSecondary}"
-                                               FontSize="11" FontWeight="Bold" Margin="0,0,0,15"/>
+                                    <Grid Margin="0,0,0,15">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="SERVICES"
+                                                   Foreground="{StaticResource PilotageTextSecondary}"
+                                                   FontSize="11" FontWeight="Bold" VerticalAlignment="Center"/>
+                                    </Grid>
                                     <WrapPanel x:Name="ServicesPanel"/>
                                 </StackPanel>
                             </Border>
@@ -662,6 +675,7 @@
                                                 </ComboBox.Resources>
                                                 <ComboBoxItem Content="livekit" IsSelected="True"/>
                                                 <ComboBoxItem Content="nginx"/>
+                                                <ComboBoxItem Content="parentaile-avatar"/>
                                             </ComboBox>
                                             <Button Content="📋 Charger" Padding="10,5"
                                                     Style="{StaticResource PilotageButtonStyle}"

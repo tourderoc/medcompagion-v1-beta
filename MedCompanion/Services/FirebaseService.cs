@@ -889,6 +889,56 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Récupère tous les URLs d'avatars IA configurés par les parents
+        /// </summary>
+        public async Task<(Dictionary<string, string> AiUrls, string? Error)> FetchAIUrlsAsync()
+        {
+            if (!_isConfigured) return (new(), "Firebase non configuré");
+
+            try
+            {
+                var url = $"https://firestore.googleapis.com/v1/projects/{_projectId}/databases/(default)/documents/accounts?pageSize=100&key={_apiKey}";
+                var response = await _httpClient.GetAsync(url);
+                
+                if (!response.IsSuccessStatusCode)
+                    return (new(), $"Erreur Firebase: {response.StatusCode}");
+
+                var json = await response.Content.ReadAsStringAsync();
+                var accountsDoc = JsonSerializer.Deserialize<JsonElement>(json);
+
+                var result = new Dictionary<string, string>();
+                if (accountsDoc.TryGetProperty("documents", out var documents))
+                {
+                    foreach (var doc in documents.EnumerateArray())
+                    {
+                        var name = doc.GetProperty("name").GetString();
+                        var uid = name.Substring(name.LastIndexOf('/') + 1);
+                        
+                        // Chercher fields -> avatar -> mapValue -> fields -> aiUrl -> stringValue
+                        if (doc.TryGetProperty("fields", out var fields) && 
+                            fields.TryGetProperty("avatar", out var avatar) &&
+                            avatar.TryGetProperty("mapValue", out var mapValue) &&
+                            mapValue.TryGetProperty("fields", out var avatarFields) &&
+                            avatarFields.TryGetProperty("aiUrl", out var aiUrl))
+                        {
+                            var urlString = aiUrl.GetProperty("stringValue").GetString();
+                            if (!string.IsNullOrEmpty(urlString))
+                            {
+                                result[uid] = urlString;
+                            }
+                        }
+                    }
+                }
+
+                return (result, null);
+            }
+            catch (Exception ex)
+            {
+                return (new(), ex.Message);
+            }
+        }
+
+        /// <summary>
         /// Teste la connexion à Firebase
         /// </summary>
         public async Task<(bool Success, string Message)> TestConnectionAsync()

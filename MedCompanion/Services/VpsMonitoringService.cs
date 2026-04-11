@@ -176,6 +176,29 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Exécute une action (start/stop/restart) sur un service Linux
+        /// </summary>
+        public async Task<(bool success, string? error)> ExecuteServiceActionAsync(string serviceName, string action)
+        {
+            try
+            {
+                ConfigureHttpToken();
+                var url = $"{_settings.VpsMonitoringUrl.TrimEnd('/')}/service/{action}/{serviceName}";
+                var response = await _http.PostAsync(url, null);
+
+                if (response.IsSuccessStatusCode)
+                    return (true, null);
+
+                var errorJson = await response.Content.ReadAsStringAsync();
+                return (false, errorJson);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
+        /// <summary>
         /// Convertit "active" / "inactive" / "failed" en ServiceStatus
         /// </summary>
         public static ServiceStatus ParseStatus(string raw) => raw switch
