@@ -206,6 +206,23 @@ async def generate_avatar(user_id: str, file: UploadFile = File(...), email: str
             content={"status": "error", "message": str(e)}
         )
 
+@app.get("/avatar/list")
+async def list_avatars(_: str = Depends(verify_api_key)):
+    """Retourne la liste des avatars générés."""
+    try:
+        avatars = {}
+        if STATIC_DIR.exists():
+            for img_file in STATIC_DIR.glob("*.jpg"):
+                user_id = img_file.stem  # nom sans extension
+                url = f"{VPS_URL}/static/avatars/{img_file.name}"
+                avatars[user_id] = url
+        return {"status": "success", "avatars": avatars}
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"status": "error", "message": str(e)}
+        )
+
 @app.get("/health")
 async def health():
     """Health check endpoint."""

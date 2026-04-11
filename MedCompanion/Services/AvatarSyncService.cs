@@ -37,24 +37,35 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
-        /// Lance une synchronisation des avatars
+        /// Lance une synchronisation des avatars depuis le VPS directement
         /// </summary>
         public async Task<(int TotalSynced, int NewDownloads, string? Error)> SyncAvatarsAsync()
         {
             try
             {
-                var (aiUrls, error) = await _firebaseService.FetchAIUrlsAsync();
-                if (error != null) return (0, 0, error);
+                // Récupérer la liste des avatars du VPS
+                var request = new HttpRequestMessage(HttpMethod.Get, "https://avatar.parentaile.fr/avatar/list");
+                request.Headers.Add("X-Api-Key", "cf119d4189909886d318d30c96bc9495399ce7f2339579ce7d5779c55204f12d");
 
-                int totalCount = aiUrls.Count;
+                var response = await _httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                    return (0, 0, $"VPS error: {response.StatusCode}");
+
+                var json = await response.Content.ReadAsStringAsync();
+                var jsonDoc = System.Text.Json.JsonDocument.Parse(json);
+                var avatarsObj = jsonDoc.RootElement.GetProperty("avatars");
+
+                int totalCount = 0;
                 int newDownloads = 0;
 
-                foreach (var kvp in aiUrls)
+                foreach (var prop in avatarsObj.EnumerateObject())
                 {
-                    var uid = kvp.Key;
-                    var url = kvp.Value;
-                    
-                    // On extrait l'extension ou on force .jpg
+                    var uid = prop.Name;
+                    var url = prop.Value.GetString();
+
+                    if (string.IsNullOrEmpty(url)) continue;
+
+                    totalCount++;
                     var localPath = Path.Combine(_avatarBaseDir, $"{uid}.jpg");
 
                     if (!File.Exists(localPath))
@@ -63,6 +74,7 @@ namespace MedCompanion.Services
                         if (downloaded)
                         {
                             newDownloads++;
+                            System.Diagnostics.Debug.WriteLine($"[AvatarSync] Downloaded {uid}.jpg from VPS");
                         }
                     }
                 }
@@ -76,6 +88,7 @@ namespace MedCompanion.Services
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine($"[AvatarSync] Error: {ex.Message}");
                 return (0, 0, ex.Message);
             }
         }

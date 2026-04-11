@@ -34,7 +34,11 @@
       "Bash(cat:*)",
       "Bash(tee:*)",
       "Bash(git remote set-url:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(ssh -o StrictHostKeyChecking=no root@145.223.117.145 \"ls /root/avatar-service/static/avatars/ | head -5 && echo '---' && ls /root/avatar-service/static/avatars/ | wc -l\")",
+      "Bash(cp -v \"/c/Users/nair/Desktop/strage medciompagnion/MedCompagion V1 béta/MedCompanion/Services/AvatarSyncService.cs\" \"/c/Users/nair/Desktop/MedCompagion V1 béta/MedCompanion/Services/\")",
+      "Bash(cp -v \"/c/Users/nair/Desktop/strage medciompagnion/MedCompagion V1 béta/MedCompanion/Services/FirebaseService.cs\" \"/c/Users/nair/Desktop/MedCompagion V1 béta/MedCompanion/Services/\")",
+      "Bash(cp -v \"/c/Users/nair/Desktop/strage medciompagnion/MedCompagion V1 béta/MedCompanion/Services/VpsMonitoringService.cs\" \"/c/Users/nair/Desktop/MedCompagion V1 béta/MedCompanion/Services/\")"
     ],
     "deny": [],
     "ask": []
