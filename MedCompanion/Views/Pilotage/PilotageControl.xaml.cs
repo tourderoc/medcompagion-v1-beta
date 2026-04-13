@@ -879,6 +879,21 @@ namespace MedCompanion.Views.Pilotage
                 cm.Items.Add(startItem);
                 cm.Items.Add(stopItem);
                 cm.Items.Add(restartItem);
+
+                // Option supplémentaire spécifique pour le Account Service
+                if (svc.Key == "parentaile-account")
+                {
+                    cm.Items.Add(new Separator());
+                    var explorerItem = new MenuItem { Header = "\ud83d\udee0\ufe0f Explorer les comptes...", Foreground = Brushes.White };
+                    explorerItem.Click += (s, e) =>
+                    {
+                        var dialog = new Dialogs.VpsAccountsDialog(_settings);
+                        dialog.Owner = Window.GetWindow(this);
+                        dialog.ShowDialog();
+                    };
+                    cm.Items.Add(explorerItem);
+                }
+
                 chip.ContextMenu = cm;
 
                 // Clic gauche ouvre aussi le menu (plus robuste avec Preview)
@@ -895,9 +910,14 @@ namespace MedCompanion.Views.Pilotage
                     Fill = new SolidColorBrush((Color)new ColorConverter().ConvertFrom(color)!),
                     Margin = new Thickness(0, 0, 6, 0)
                 });
+                var displayName = svc.Key switch
+                {
+                    "parentaile-account" => "parentaile-account (comptes + groupes)",
+                    _ => svc.Key
+                };
                 sp.Children.Add(new TextBlock
                 {
-                    Text = svc.Key,
+                    Text = displayName,
                     Foreground = Brushes.White,
                     FontSize = 12
                 });

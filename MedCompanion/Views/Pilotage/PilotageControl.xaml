@@ -676,6 +676,7 @@
                                                 <ComboBoxItem Content="livekit" IsSelected="True"/>
                                                 <ComboBoxItem Content="nginx"/>
                                                 <ComboBoxItem Content="parentaile-avatar"/>
+                                                <ComboBoxItem Content="parentaile-account"/>
                                             </ComboBox>
                                             <Button Content="📋 Charger" Padding="10,5"
                                                     Style="{StaticResource PilotageButtonStyle}"
