@@ -892,6 +892,15 @@ namespace MedCompanion.Views.Pilotage
                         dialog.ShowDialog();
                     };
                     cm.Items.Add(explorerItem);
+
+                    var groupsItem = new MenuItem { Header = "\ud83c\udf99\ufe0f Explorer les groupes...", Foreground = Brushes.White };
+                    groupsItem.Click += (s, e) =>
+                    {
+                        var dialog = new Dialogs.VpsGroupsDialog(_settings);
+                        dialog.Owner = Window.GetWindow(this);
+                        dialog.ShowDialog();
+                    };
+                    cm.Items.Add(groupsItem);
                 }
 
                 chip.ContextMenu = cm;

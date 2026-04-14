@@ -1,0 +1,122 @@
+<Window x:Class="MedCompanion.Dialogs.VpsGroupsDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Explorateur de Groupes VPS" Height="720" Width="1150"
+        WindowStartupLocation="CenterOwner"
+        Background="#1E1E1E" Foreground="White">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="AccentColor" Color="#27AE60"/>
+        <SolidColorBrush x:Key="CardBackground" Color="#2D2D2D"/>
+        <Style x:Key="HeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <StackPanel Grid.Row="0" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,20">
+            <TextBlock Text="🎙️ Groupes de parole" Style="{StaticResource HeaderStyle}"/>
+            <TextBlock Text="(Base PostgreSQL VPS)" Foreground="#888888" VerticalAlignment="Bottom" Margin="10,0,0,14" FontSize="14"/>
+        </StackPanel>
+
+        <Grid Grid.Row="1" Margin="0,0,0,15">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="Rechercher :" VerticalAlignment="Center" Margin="0,0,10,0" Foreground="#AAAAAA"/>
+                <TextBox x:Name="SearchBox" Width="250" Height="30" Padding="5,5"
+                         Background="#2D2D2D" Foreground="White" BorderThickness="1" BorderBrush="#444444"
+                         TextChanged="SearchBox_TextChanged" IsEnabled="False"/>
+                <CheckBox x:Name="IncludeEndedBox" Content="Inclure annulés/terminés" Foreground="#AAAAAA"
+                          VerticalAlignment="Center" Margin="15,0,0,0" IsChecked="True"
+                          Checked="IncludeEndedBox_Changed" Unchecked="IncludeEndedBox_Changed"/>
+            </StackPanel>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <TextBlock x:Name="CountText" Text="0 groupe(s)" VerticalAlignment="Center" Foreground="#AAAAAA" Margin="0,0,20,0"/>
+                <Button x:Name="RefreshBtn" Content="🔄 Actualiser" Padding="15,6"
+                        Background="#3D3D3D" Foreground="White" BorderThickness="0"
+                        Click="RefreshBtn_Click"/>
+            </StackPanel>
+        </Grid>
+
+        <Border Grid.Row="2" Background="{StaticResource CardBackground}" CornerRadius="8" Padding="2" BorderThickness="1" BorderBrush="#333333">
+            <Grid>
+                <DataGrid x:Name="GroupsGrid"
+                          AutoGenerateColumns="False"
+                          Background="Transparent"
+                          Foreground="White"
+                          BorderThickness="0"
+                          GridLinesVisibility="Horizontal"
+                          HorizontalGridLinesBrush="#383838"
+                          RowBackground="Transparent"
+                          AlternatingRowBackground="#313131"
+                          CanUserAddRows="False"
+                          IsReadOnly="True"
+                          FontSize="13"
+                          RowHeight="40"
+                          SelectionMode="Single"
+                          HeadersVisibility="Column"
+                          MouseDoubleClick="GroupsGrid_MouseDoubleClick">
+
+                    <DataGrid.ColumnHeaderStyle>
+                        <Style TargetType="DataGridColumnHeader">
+                            <Setter Property="Background" Value="#252525"/>
+                            <Setter Property="Foreground" Value="#AAAAAA"/>
+                            <Setter Property="Padding" Value="10,8"/>
+                            <Setter Property="FontWeight" Value="SemiBold"/>
+                            <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                            <Setter Property="BorderBrush" Value="#444444"/>
+                        </Style>
+                    </DataGrid.ColumnHeaderStyle>
+
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="TITRE" Binding="{Binding Titre}" Width="220"/>
+                        <DataGridTextColumn Header="CRÉATEUR" Binding="{Binding CreateurPseudo}" Width="130"/>
+                        <DataGridTextColumn Header="DATE VOCAL" Binding="{Binding DateVocalDisplay}" Width="150"/>
+                        <DataGridTextColumn Header="PART." Binding="{Binding ParticipantsDisplay}" Width="70"/>
+                        <DataGridTextColumn Header="MSGS" Binding="{Binding MessageCount}" Width="60"/>
+                        <DataGridTextColumn Header="THEME" Binding="{Binding Theme}" Width="110"/>
+                        <DataGridTextColumn Header="STATUS" Binding="{Binding StatusDisplay}" Width="100"/>
+                        <DataGridTextColumn Header="CRÉÉ LE" Binding="{Binding CreatedAtDisplay}" Width="140"/>
+                        <DataGridTextColumn Header="ID" Binding="{Binding Id}" Width="*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+
+                <Border x:Name="LoadingOverlay" Background="#AA000000" CornerRadius="8" Visibility="Collapsed">
+                    <TextBlock Text="Chargement des données..." HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="White"/>
+                </Border>
+
+                <TextBlock x:Name="EmptyText" Text="Aucun groupe trouvé."
+                           VerticalAlignment="Center" HorizontalAlignment="Center"
+                           Foreground="#666666" FontSize="16" Visibility="Collapsed"/>
+            </Grid>
+        </Border>
+
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,20,0,0">
+            <TextBlock Text="Double-clic pour modifier · " Foreground="#666666" VerticalAlignment="Center" Margin="0,0,15,0"/>
+            <Button x:Name="EditBtn" Content="✏️ Modifier" Padding="20,10" Margin="0,0,10,0"
+                    Background="#27AE60" Foreground="White" BorderThickness="0"
+                    Click="EditBtn_Click"/>
+            <Button x:Name="DeleteBtn" Content="🗑️ Supprimer" Padding="20,10" Margin="0,0,10,0"
+                    Background="#C0392B" Foreground="White" BorderThickness="0"
+                    Click="DeleteBtn_Click"/>
+            <Button Content="Fermer" Padding="25,10"
+                    Background="#3D3D3D" Foreground="White" BorderThickness="0"
+                    Click="Close_Click" Cursor="Hand"/>
+        </StackPanel>
+    </Grid>
+</Window>
