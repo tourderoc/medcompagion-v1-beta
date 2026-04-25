@@ -83,6 +83,41 @@ namespace MedCompanion.Dialogs
         {
             if (MessagesDataGrid.SelectedItem is PatientMessage msg)
             {
+                // Message orphelin (token introuvable) : proposer une assignation manuelle
+                if (string.IsNullOrEmpty(msg.PatientId))
+                {
+                    var result = MessageBox.Show(
+                        $"Ce message n'est lié à aucun patient connu.\n\n" +
+                        $"Parent: {msg.ChildNickname}\n" +
+                        $"Token: {msg.TokenId}\n\n" +
+                        $"Voulez-vous l'associer manuellement à un patient pour pouvoir y répondre ?",
+                        "Message orphelin",
+                        MessageBoxButton.YesNo,
+                        MessageBoxImage.Question);
+
+                    if (result != MessageBoxResult.Yes) return;
+
+                    var picker = new PatientListDialog(_patientIndex) { Owner = this };
+                    if (picker.ShowDialog() != true || picker.SelectedPatient == null) return;
+
+                    msg.PatientId = picker.SelectedPatient.Id;
+                    msg.PatientName = picker.SelectedPatient.NomComplet;
+
+                    // Archiver le message dans le dossier du patient choisi pour qu'il
+                    // apparaisse dans l'onglet Messages et que la réponse soit possible.
+                    var (archiveOk, archiveError) = _messageService.ArchiveMessage(
+                        picker.SelectedPatient.NomComplet, msg);
+                    if (!archiveOk)
+                    {
+                        MessageBox.Show(
+                            $"Impossible d'archiver le message localement:\n{archiveError}",
+                            "Erreur",
+                            MessageBoxButton.OK,
+                            MessageBoxImage.Warning);
+                        return;
+                    }
+                }
+
                 SelectedMessage = msg;
                 // L'archivage est déjà fait pendant FetchAndSyncMessagesAsync
                 MessageSelected?.Invoke(this, msg);

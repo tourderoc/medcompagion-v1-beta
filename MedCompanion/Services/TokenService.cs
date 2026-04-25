@@ -20,6 +20,7 @@ namespace MedCompanion.Services
         private readonly string _tokensFilePath;
         private TokenStorage? _cache;
         private readonly FirebaseService _firebaseService;
+        private readonly VpsBridgeService _vpsBridge;
 
         public TokenService()
         {
@@ -28,6 +29,7 @@ namespace MedCompanion.Services
             _tokensFilePath = Path.Combine(_pilotageDirectory, "tokens.json");
 
             _firebaseService = new FirebaseService();
+            _vpsBridge = new VpsBridgeService();
 
             EnsureDirectoryExists();
         }
@@ -88,10 +90,15 @@ namespace MedCompanion.Services
             storage.Tokens.Add(token);
             await SaveStorageAsync(storage);
 
-            // Écrire sur Firebase pour validation côté Parent'aile
+            // VPS bridge (source de vérité)
+            var (vpsOk, vpsError) = await _vpsBridge.CreateTokenAsync(token.TokenId, "medcompanion", patientId, patientDisplayName);
+            if (!vpsOk)
+                System.Diagnostics.Debug.WriteLine($"[TokenService] VPS create echoue: {vpsError}");
+
+            // Firebase (dual-write, sera supprime au merge)
             var (firebaseOk, firebaseError) = await _firebaseService.WriteTokenAsync(token.TokenId, token.CreatedAt);
 
-            return (token, firebaseOk, firebaseError);
+            return (token, vpsOk || firebaseOk, vpsOk ? null : (firebaseOk ? null : $"VPS: {vpsError} | Firebase: {firebaseError}"));
         }
 
         /// <summary>
@@ -176,10 +183,13 @@ namespace MedCompanion.Services
             token.Active = false;
             await SaveStorageAsync(storage);
 
-            // Mettre à jour sur Firebase
+            // VPS bridge
+            var (vpsOk, vpsError) = await _vpsBridge.RevokeTokenAsync(tokenId);
+
+            // Firebase (dual-write)
             var (firebaseOk, firebaseError) = await _firebaseService.UpdateTokenStatusAsync(tokenId, "revoked");
 
-            return (firebaseOk, firebaseError);
+            return (vpsOk || firebaseOk, vpsOk ? null : (firebaseOk ? null : $"VPS: {vpsError} | Firebase: {firebaseError}"));
         }
 
         /// <summary>
@@ -196,10 +206,13 @@ namespace MedCompanion.Services
                 await SaveStorageAsync(storage);
             }
 
-            // Supprimer aussi de Firebase
+            // VPS bridge
+            var (vpsOk, vpsError) = await _vpsBridge.DeleteTokenAsync(tokenId);
+
+            // Firebase (dual-write)
             var (firebaseOk, firebaseError) = await _firebaseService.DeleteTokenAsync(tokenId);
 
-            return (firebaseOk, firebaseError);
+            return (vpsOk || firebaseOk, vpsOk ? null : (firebaseOk ? null : $"VPS: {vpsError} | Firebase: {firebaseError}"));
         }
 
         /// <summary>
@@ -212,38 +225,66 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
-        /// Synchronise les tokens locaux avec les données Firebase
+        /// Synchronise les tokens locaux avec VPS + Firebase
         /// Met à jour le statut (pending → used) et le pseudo du parent
         /// </summary>
         /// <returns>Nombre de tokens mis à jour</returns>
         public async Task<int> SyncFromFirebaseAsync()
         {
-            if (!_firebaseService.IsConfigured) return 0;
-
             try
             {
                 // Forcer le rechargement depuis le fichier pour avoir les données fraîches
                 _cache = null;
 
-                // 1. Récupérer les statuts des tokens depuis Firebase
                 var storageForIds = await LoadStorageAsync();
                 var knownIds = storageForIds.Tokens.Where(t => t.Active).Select(t => t.TokenId).ToList();
                 System.Diagnostics.Debug.WriteLine($"[TokenService] Sync: {knownIds.Count} tokens actifs locaux: {string.Join(", ", knownIds)}");
 
-                var (tokenStatuses, statusError) = await _firebaseService.FetchTokenStatusesAsync(knownIds);
-                if (statusError != null)
+                // 1. VPS bridge — source de vérité pour statuts et pseudos
+                var tokenStatuses = new Dictionary<string, string>();
+                var nicknames = new Dictionary<string, string>();
+
+                var (vpsTokens, vpsErr) = await _vpsBridge.FetchAllTokensAsync();
+                if (vpsErr == null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[TokenService] Sync statuts échouée: {statusError}");
-                    return 0;
+                    foreach (var kvp in vpsTokens)
+                    {
+                        tokenStatuses[kvp.Key] = kvp.Value.Status;
+                        if (!string.IsNullOrEmpty(kvp.Value.Pseudo))
+                            nicknames[kvp.Key] = kvp.Value.Pseudo;
+                    }
+                    System.Diagnostics.Debug.WriteLine($"[TokenService] VPS retourne {vpsTokens.Count} tokens");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"[TokenService] VPS indisponible ({vpsErr}), fallback Firebase");
                 }
 
-                System.Diagnostics.Debug.WriteLine($"[TokenService] Firebase retourne {tokenStatuses.Count} statuts:");
-                foreach (var kvp in tokenStatuses)
-                    System.Diagnostics.Debug.WriteLine($"  - {kvp.Key} → {kvp.Value}");
+                // 2. Compléter avec Firebase (dual-read, tokens pas encore sur VPS)
+                if (_firebaseService.IsConfigured)
+                {
+                    var (fbStatuses, statusError) = await _firebaseService.FetchTokenStatusesAsync(knownIds);
+                    if (statusError == null)
+                    {
+                        foreach (var kvp in fbStatuses)
+                        {
+                            if (!tokenStatuses.ContainsKey(kvp.Key))
+                                tokenStatuses[kvp.Key] = kvp.Value;
+                        }
+                    }
 
-                // 2. Récupérer les pseudos/nicknames depuis accounts
-                var (nicknames, nicknameError) = await _firebaseService.FetchParentNicknamesAsync();
-                System.Diagnostics.Debug.WriteLine($"[TokenService] Nicknames: {nicknames?.Count ?? 0} trouvés, erreur: {nicknameError ?? "aucune"}");
+                    var (fbNicknames, _) = await _firebaseService.FetchParentNicknamesAsync();
+                    if (fbNicknames != null)
+                    {
+                        foreach (var kvp in fbNicknames)
+                        {
+                            if (!nicknames.ContainsKey(kvp.Key))
+                                nicknames[kvp.Key] = kvp.Value;
+                        }
+                    }
+                }
+
+                System.Diagnostics.Debug.WriteLine($"[TokenService] Total: {tokenStatuses.Count} statuts, {nicknames.Count} pseudos");
 
                 // 3. Mettre à jour les tokens locaux
                 var storage = await LoadStorageAsync();

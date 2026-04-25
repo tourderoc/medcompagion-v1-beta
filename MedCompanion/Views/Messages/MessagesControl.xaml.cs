@@ -25,6 +25,7 @@ namespace MedCompanion.Views.Messages
         private OpenAIService? _openAIService;
         private TokenService? _tokenService;
         private PilotageAttachmentService? _attachmentService;
+        private readonly VpsBridgeService _vpsBridge = new();
         private PatientIndexEntry? _currentPatient;
         private ArchivedMessage? _selectedMessage;
 
@@ -344,13 +345,16 @@ namespace MedCompanion.Views.Messages
                 ReplyBtn.IsEnabled = false;
                 StatusChanged?.Invoke(this, "Envoi de la réponse...");
 
-                // 1. Mettre à jour Firebase
+                // 1. VPS bridge (source de vérité)
+                await _vpsBridge.ReplyToMessageAsync(_selectedMessage.FirebaseMessageId, replyText, "Médecin");
+
+                // 2. Firebase (dual-write, sera supprimé au merge)
                 if (_firebaseService != null && _firebaseService.IsConfigured)
                 {
                     await _firebaseService.UpdateMessageReplyAsync(_selectedMessage.FirebaseMessageId, replyText);
                 }
 
-                // 2. Envoyer par email si possible (avec PJ sélectionnées)
+                // 3. Envoyer par email si possible (avec PJ sélectionnées)
                 if (_emailService != null && !string.IsNullOrEmpty(_selectedMessage.ParentEmail))
                 {
                     var subject = $"Réponse - {_currentPatient.NomComplet}";
@@ -394,7 +398,10 @@ namespace MedCompanion.Views.Messages
 
             if (success)
             {
-                // Mettre à jour Firebase aussi
+                // VPS bridge
+                await _vpsBridge.ReplyToMessageAsync(_selectedMessage.FirebaseMessageId, "[Traité]", "Médecin");
+
+                // Firebase (dual-write)
                 if (_firebaseService != null && _firebaseService.IsConfigured)
                 {
                     await _firebaseService.UpdateMessageReplyAsync(_selectedMessage.FirebaseMessageId, "[Traité]");
@@ -458,7 +465,7 @@ namespace MedCompanion.Views.Messages
                         // 2. Envoi Notification Push
                         if (result.SendPush)
                         {
-                            if (activeToken != null && _firebaseService != null)
+                            if (activeToken != null)
                             {
                                 var notif = new PilotageNotification
                                 {
@@ -471,7 +478,13 @@ namespace MedCompanion.Views.Messages
                                     CreatedAt = DateTime.UtcNow,
                                     SenderName = "Médecin"
                                 };
-                                await _firebaseService.WriteNotificationAsync(notif);
+
+                                // VPS bridge (+ FCM push)
+                                await _vpsBridge.SendNotificationAsync(notif);
+
+                                // Firebase (dual-write)
+                                if (_firebaseService != null && _firebaseService.IsConfigured)
+                                    await _firebaseService.WriteNotificationAsync(notif);
                             }
                             else if (activeToken == null)
                             {
@@ -516,12 +529,6 @@ namespace MedCompanion.Views.Messages
         {
             if (_selectedMessage == null || _currentPatient == null) return;
 
-            if (_firebaseService == null || !_firebaseService.IsConfigured)
-            {
-                MessageBox.Show("Firebase n'est pas configuré.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
             var recipientName = _selectedMessage.ParentName ?? _currentPatient.NomComplet;
             var dialog = new Dialogs.QuickReplyDialog(recipientName, isBroadcast: false, openAIService: _openAIService);
             dialog.Owner = Window.GetWindow(this);
@@ -552,13 +559,22 @@ namespace MedCompanion.Views.Messages
                         SenderName = "Médecin"
                     };
 
-                    var (success, error) = await _firebaseService.WriteNotificationAsync(notification);
+                    // VPS bridge (+ FCM push)
+                    var (vpsOk, _) = await _vpsBridge.SendNotificationAsync(notification);
 
-                    if (success)
-                    {
-                        // Mettre à jour Firebase
+                    // Firebase (dual-write)
+                    if (_firebaseService != null && _firebaseService.IsConfigured)
+                        await _firebaseService.WriteNotificationAsync(notification);
+
+                    // VPS bridge — marquer le message comme répondu
+                    await _vpsBridge.ReplyToMessageAsync(_selectedMessage.FirebaseMessageId, dialog.SelectedTitle, "Médecin");
+
+                    // Firebase — marquer le message comme répondu (dual-write)
+                    if (_firebaseService != null && _firebaseService.IsConfigured)
                         await _firebaseService.UpdateMessageReplyAsync(_selectedMessage.FirebaseMessageId, dialog.SelectedTitle);
 
+                    if (vpsOk || (_firebaseService != null && _firebaseService.IsConfigured))
+                    {
                         // Mettre à jour l'archive locale
                         _messageService?.MarkAsReplied(_currentPatient.NomComplet, _selectedMessage.FirebaseMessageId, dialog.SelectedTitle);
 
@@ -567,8 +583,8 @@ namespace MedCompanion.Views.Messages
                     }
                     else
                     {
-                        MessageBox.Show($"Erreur: {error}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-                        StatusChanged?.Invoke(this, $"Erreur: {error}");
+                        MessageBox.Show("Erreur lors de l'envoi de la notification.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                        StatusChanged?.Invoke(this, "Erreur envoi notification");
                     }
                 }
                 catch (Exception ex)

@@ -28,6 +28,7 @@ namespace MedCompanion.Views.Pilotage
         private OpenAIService? _openAIService;
         private AppSettings? _settings;
         private AvatarSyncService? _avatarSyncService;
+        private readonly VpsBridgeService _vpsBridge = new();
         private int _newAvatarsCount = 0;
 
         // Architecture polling : 3 tentatives × 30 min, puis arrêt
@@ -588,7 +589,7 @@ namespace MedCompanion.Views.Pilotage
 
         private async void NotifyUserBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (_selectedToken == null || _firebaseService == null || !_firebaseService.IsConfigured) return;
+            if (_selectedToken == null) return;
 
             var recipientName = _selectedToken.Pseudo ?? _selectedToken.PatientDisplayName;
             var dialog = new Dialogs.QuickReplyDialog(recipientName, isBroadcast: false, openAIService: _openAIService);
@@ -608,16 +609,21 @@ namespace MedCompanion.Views.Pilotage
                         SenderName = _settings?.Medecin ?? "Le cabinet"
                     };
 
-                    var (success, error) = await _firebaseService.WriteNotificationAsync(notification);
+                    // VPS bridge (+ FCM push)
+                    var (vpsOk, vpsErr) = await _vpsBridge.SendNotificationAsync(notification);
 
-                    if (success)
+                    // Firebase (dual-write)
+                    if (_firebaseService != null && _firebaseService.IsConfigured)
+                        await _firebaseService.WriteNotificationAsync(notification);
+
+                    if (vpsOk)
                     {
                         MessageBox.Show($"Notification envoyée à {recipientName}!", "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
                         OnStatusChanged($"Notification envoyée à {recipientName}");
                     }
                     else
                     {
-                        MessageBox.Show($"Erreur: {error}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                        MessageBox.Show($"Erreur VPS: {vpsErr}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 }
                 catch (Exception ex)
@@ -706,12 +712,6 @@ namespace MedCompanion.Views.Pilotage
         /// </summary>
         private async void BroadcastBtn_Click(object sender, RoutedEventArgs e)
         {
-            if (_firebaseService == null || !_firebaseService.IsConfigured)
-            {
-                MessageBox.Show("Firebase n'est pas configuré.", "Erreur", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
             var dialog = new Dialogs.QuickReplyDialog("TOUS LES PARENTS", isBroadcast: true, openAIService: _openAIService);
             dialog.Owner = Window.GetWindow(this);
 
@@ -723,22 +723,33 @@ namespace MedCompanion.Views.Pilotage
                 try
                 {
                     var senderName = _settings?.Medecin ?? "Le cabinet";
-                    var (sent, failed, error) = await _firebaseService.SendBroadcastNotificationAsync(
+
+                    // VPS bridge (+ FCM push pour chaque parent)
+                    var (vpsOk, vpsErr) = await _vpsBridge.SendBroadcastAsync(
                         dialog.SelectedTitle,
                         dialog.SelectedBody ?? "",
                         senderName);
 
-                    if (error != null)
+                    // Firebase (dual-write)
+                    if (_firebaseService != null && _firebaseService.IsConfigured)
                     {
-                        MessageBox.Show($"Erreur: {error}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
-                        OnStatusChanged($"Erreur broadcast: {error}");
+                        await _firebaseService.SendBroadcastNotificationAsync(
+                            dialog.SelectedTitle,
+                            dialog.SelectedBody ?? "",
+                            senderName);
+                    }
+
+                    if (vpsOk)
+                    {
+                        MessageBox.Show(
+                            "Broadcast envoyé avec succès!",
+                            "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
+                        OnStatusChanged("Broadcast envoyé");
                     }
                     else
                     {
-                        MessageBox.Show(
-                            $"Broadcast envoyé avec succès!\n\n{sent} notification(s) envoyée(s)\n{failed} échec(s)",
-                            "Succès", MessageBoxButton.OK, MessageBoxImage.Information);
-                        OnStatusChanged($"Broadcast envoyé: {sent} notifications");
+                        MessageBox.Show($"Erreur VPS: {vpsErr}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+                        OnStatusChanged($"Erreur broadcast: {vpsErr}");
                     }
                 }
                 catch (Exception ex)

@@ -18,6 +18,7 @@ namespace MedCompanion.Services
         private readonly TokenService _tokenService;
         private readonly FirebaseService _firebaseService;
         private readonly PatientIndexService _patientIndex;
+        private readonly VpsBridgeService _vpsBridge = new();
 
         private static readonly JsonSerializerOptions _jsonOptions = new()
         {
@@ -261,19 +262,53 @@ namespace MedCompanion.Services
         {
             try
             {
-                if (!_firebaseService.IsConfigured)
-                    return (false, new List<PatientMessage>(), "Firebase non configuré");
+                // 1. Lire depuis VPS bridge (source de vérité)
+                var allMessages = new List<PatientMessage>();
+                var seenIds = new HashSet<string>();
 
-                var (firebaseMessages, fetchError) = await _firebaseService.FetchMessagesAsync();
-                if (fetchError != null)
-                    return (false, new List<PatientMessage>(), fetchError);
+                var (vpsMessages, vpsErr) = await _vpsBridge.FetchMessagesAsync();
+                if (vpsErr == null && vpsMessages.Count > 0)
+                {
+                    foreach (var vm in vpsMessages)
+                    {
+                        seenIds.Add(vm.id);
+                        allMessages.Add(new PatientMessage
+                        {
+                            Id = vm.id,
+                            TokenId = vm.token_id ?? "",
+                            Content = vm.content ?? "",
+                            ParentEmail = vm.parent_email,
+                            ChildNickname = vm.child_nickname ?? "",
+                            Status = vm.status ?? "sent",
+                            CreatedAt = DateTime.TryParse(vm.created_at, out var dt) ? dt : DateTime.UtcNow,
+                            ReplyContent = vm.reply_content,
+                            RepliedAt = DateTime.TryParse(vm.replied_at, out var rdt) ? rdt : null,
+                        });
+                    }
+                }
+
+                // 2. Merger avec Firebase (dual-read, messages pas encore sur VPS)
+                if (_firebaseService.IsConfigured)
+                {
+                    var (firebaseMessages, _) = await _firebaseService.FetchMessagesAsync();
+                    if (firebaseMessages != null)
+                    {
+                        foreach (var fm in firebaseMessages)
+                        {
+                            if (!seenIds.Contains(fm.Id))
+                                allMessages.Add(fm);
+                        }
+                    }
+                }
+
+                var firebaseMessages2 = allMessages; // alias pour compatibilité ci-dessous
 
                 var tokens = await _tokenService.GetAllTokensAsync();
                 var tokenMap = tokens.ToDictionary(t => t.TokenId, t => t);
 
                 var unreadMessages = new List<PatientMessage>();
 
-                foreach (var msg in firebaseMessages)
+                foreach (var msg in firebaseMessages2)
                 {
                     // Résoudre le patient via le token
                     if (tokenMap.TryGetValue(msg.TokenId, out var token))
@@ -290,6 +325,16 @@ namespace MedCompanion.Services
                         {
                             ArchiveMessage(patientNomComplet, msg);
                         }
+                    }
+                    else
+                    {
+                        // Token introuvable : message orphelin (token supprimé localement,
+                        // ou créé sur une autre install). On le garde quand même pour permettre
+                        // une assignation manuelle depuis le dialog.
+                        msg.PatientId = null;
+                        msg.PatientName = $"\u26A0 Token inconnu ({msg.TokenId})";
+                        System.Diagnostics.Debug.WriteLine(
+                            $"[Messages] Orphelin: msgId={msg.Id} tokenId={msg.TokenId} childNickname={msg.ChildNickname}");
                     }
 
                     // Pour le header : ne retourner que les non traités
