@@ -287,7 +287,12 @@ namespace MedCompanion.Services
                     }
                 }
 
-                // 2. Merger avec Firebase (dual-read, messages pas encore sur VPS)
+                // 2. Merger avec Firebase (dual-read, messages antérieurs à la migration VPS)
+                // Dédup par contenu+token pour éviter les doublons entre Firebase et VPS
+                var seenContentKeys = allMessages
+                    .Select(m => $"{m.TokenId}|{m.Content?.Trim()}")
+                    .ToHashSet();
+
                 if (_firebaseService.IsConfigured)
                 {
                     var (firebaseMessages, _) = await _firebaseService.FetchMessagesAsync();
@@ -295,7 +300,8 @@ namespace MedCompanion.Services
                     {
                         foreach (var fm in firebaseMessages)
                         {
-                            if (!seenIds.Contains(fm.Id))
+                            var key = $"{fm.TokenId}|{fm.Content?.Trim()}";
+                            if (!seenIds.Contains(fm.Id) && !seenContentKeys.Contains(key))
                                 allMessages.Add(fm);
                         }
                     }

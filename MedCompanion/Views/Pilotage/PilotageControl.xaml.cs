@@ -202,25 +202,45 @@ namespace MedCompanion.Views.Pilotage
         /// </summary>
         private async System.Threading.Tasks.Task RunSyncAttemptAsync()
         {
-            if (_pollingExhausted || _firebaseService == null || _messageCache == null) return;
+            if (_pollingExhausted || _messageCache == null) return;
 
             System.Diagnostics.Debug.WriteLine($"[Pilotage] 🔍 Tentative sync #{_retryCount + 1}/{MAX_RETRIES}");
 
             try
             {
-                var (firebaseMessages, error) = await _firebaseService.FetchMessagesAsync(since: _lastFirebaseSyncTimestamp);
+                var cachedIds = _messageCache.GetCachedMessageIds();
+                var newMessages = new List<PatientMessage>();
 
-                if (!string.IsNullOrEmpty(error))
+                // 1. VPS bridge (source de vérité)
+                var (vpsMessages, vpsErr) = await _vpsBridge.FetchMessagesAsync();
+                if (vpsErr == null)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[Pilotage] ⚠️ Erreur sync: {error}");
-                    await ScheduleRetryOrExhaustAsync();
-                    return;
+                    var newVps = vpsMessages
+                        .Where(m => !string.IsNullOrEmpty(m.id) && !cachedIds.Contains(m.id))
+                        .Select(m => new PatientMessage
+                        {
+                            Id = m.id,
+                            TokenId = m.token_id ?? "",
+                            Content = m.content ?? "",
+                            ChildNickname = m.child_nickname ?? "",
+                            Status = m.status ?? "unread",
+                            CreatedAt = DateTime.TryParse(m.created_at, out var dt) ? dt : DateTime.UtcNow,
+                        })
+                        .ToList();
+                    newMessages.AddRange(newVps);
                 }
 
-                var cachedIds = _messageCache.GetCachedMessageIds();
-                var newMessages = firebaseMessages.Where(m => !cachedIds.Contains(m.Id)).ToList();
+                // 2. Firebase (complément — messages antérieurs à la migration)
+                if (_firebaseService != null)
+                {
+                    var (firebaseMessages, fbErr) = await _firebaseService.FetchMessagesAsync(since: _lastFirebaseSyncTimestamp);
+                    if (fbErr == null && firebaseMessages != null)
+                    {
+                        var newFb = firebaseMessages.Where(m => !cachedIds.Contains(m.Id) && !newMessages.Any(n => n.Id == m.Id)).ToList();
+                        newMessages.AddRange(newFb);
+                    }
+                }
 
-                // Mettre à jour le timestamp pour la prochaine sync incrémentale
                 _lastFirebaseSyncTimestamp = DateTime.UtcNow;
 
                 if (newMessages.Count > 0)

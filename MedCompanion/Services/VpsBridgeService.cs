@@ -104,7 +104,7 @@ namespace MedCompanion.Services
         {
             try
             {
-                var res = await _http.SendAsync(Req(HttpMethod.Get, "/bridge/tokens"));
+                var res = await _http.SendAsync(Req(HttpMethod.Get, "/bridge/tokens/sync/medcompanion"));
                 if (!res.IsSuccessStatusCode)
                     return (new(), $"VPS {res.StatusCode}");
 
@@ -141,7 +141,7 @@ namespace MedCompanion.Services
         {
             try
             {
-                var res = await _http.SendAsync(Req(HttpMethod.Get, "/bridge/messages"));
+                var res = await _http.SendAsync(Req(HttpMethod.Get, "/bridge/messages/doctor/medcompanion"));
                 if (!res.IsSuccessStatusCode)
                     return (new(), $"VPS {res.StatusCode}");
 
