@@ -268,8 +268,18 @@ namespace MedCompanion.Services
                     {
                         foreach (var kvp in fbStatuses)
                         {
+                            // Token absent du VPS → on prend Firebase.
+                            // Patch dual-write : si parent active depuis main (sans dual-write),
+                            // VPS dit "pending" mais Firebase dit "used". On croit Firebase
+                            // (état plus avancé). À retirer après le merge final.
                             if (!tokenStatuses.ContainsKey(kvp.Key))
+                            {
                                 tokenStatuses[kvp.Key] = kvp.Value;
+                            }
+                            else if (kvp.Value == "used" && tokenStatuses[kvp.Key] == "pending")
+                            {
+                                tokenStatuses[kvp.Key] = "used";
+                            }
                         }
                     }
 
