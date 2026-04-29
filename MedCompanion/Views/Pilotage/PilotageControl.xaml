@@ -700,6 +700,277 @@
                 </Grid>
             </TabItem>
 
+            <!-- ═══════════════════════════════════════════════════════════════ -->
+            <!-- ONGLET BOITE ADMIN                                            -->
+            <!-- ═══════════════════════════════════════════════════════════════ -->
+            <TabItem Style="{StaticResource PilotageTabItemStyle}">
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="📬 Boîte admin" FontSize="14" FontWeight="SemiBold"/>
+                        <Border x:Name="InboxBadge" Background="#E74C3C" CornerRadius="10"
+                                Padding="6,2" Margin="6,0,0,0" Visibility="Collapsed" VerticalAlignment="Center">
+                            <TextBlock x:Name="InboxBadgeCount" Text="0" FontSize="10" FontWeight="Bold" Foreground="White"/>
+                        </Border>
+                    </StackPanel>
+                </TabItem.Header>
+
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="380" MinWidth="260"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- ── COLONNE GAUCHE : filtres + liste ── -->
+                    <Border Grid.Column="0" Background="{StaticResource PilotageCardBackground}"
+                            BorderBrush="{StaticResource PilotageBorder}" BorderThickness="0,0,1,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Filtres -->
+                            <Border Grid.Row="0" Padding="12,10"
+                                    BorderBrush="{StaticResource PilotageBorder}" BorderThickness="0,0,0,1">
+                                <StackPanel>
+                                    <!-- Filtre statut -->
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <Button x:Name="InboxFilterAll" Content="Tous" Padding="10,5" Margin="0,0,4,0"
+                                                Style="{StaticResource PilotageAccentButtonStyle}"
+                                                Click="InboxFilter_Click" Tag="all"/>
+                                        <Button x:Name="InboxFilterUnread" Content="Non lus" Padding="10,5" Margin="0,0,4,0"
+                                                Style="{StaticResource PilotageButtonStyle}"
+                                                Click="InboxFilter_Click" Tag="unread"/>
+                                        <Button x:Name="InboxFilterRead" Content="Lus" Padding="10,5"
+                                                Style="{StaticResource PilotageButtonStyle}"
+                                                Click="InboxFilter_Click" Tag="read"/>
+                                    </StackPanel>
+                                    <!-- Filtre type -->
+                                    <ComboBox x:Name="InboxTypeFilter"
+                                              SelectionChanged="InboxTypeFilter_SelectionChanged"
+                                              Background="#3D3D3D" Foreground="White"
+                                              BorderBrush="#555555" Padding="8,5">
+                                        <ComboBoxItem Content="Tous les types" Tag="" IsSelected="True"/>
+                                        <ComboBoxItem Content="🐛 Bugs" Tag="feedback_bug"/>
+                                        <ComboBoxItem Content="💡 Suggestions" Tag="feedback_suggestion"/>
+                                        <ComboBoxItem Content="❓ Questions" Tag="feedback_question"/>
+                                        <ComboBoxItem Content="⚠️ Recours ban" Tag="ban_appeal"/>
+                                        <ComboBoxItem Content="🚨 Signalements" Tag="ban_report"/>
+                                    </ComboBox>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Liste items -->
+                            <ListBox x:Name="InboxListBox" Grid.Row="1"
+                                     Background="Transparent" BorderThickness="0"
+                                     SelectionChanged="InboxListBox_SelectionChanged">
+                                <ListBox.ItemContainerStyle>
+                                    <Style TargetType="ListBoxItem">
+                                        <Setter Property="Background" Value="Transparent"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="Padding" Value="12,10"/>
+                                        <Setter Property="BorderThickness" Value="0,0,0,1"/>
+                                        <Setter Property="BorderBrush" Value="#2D2D2D"/>
+                                        <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                        <Style.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter Property="Background" Value="#2D2D2D"/>
+                                            </Trigger>
+                                            <Trigger Property="IsSelected" Value="True">
+                                                <Setter Property="Background" Value="#3D3D3D"/>
+                                            </Trigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ListBox.ItemContainerStyle>
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <!-- Point non-lu -->
+                                            <Ellipse Grid.Column="0" Width="6" Height="6"
+                                                     Fill="#E67E22" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                <Ellipse.Style>
+                                                    <Style TargetType="Ellipse">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Reviewed}" Value="True">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Ellipse.Style>
+                                            </Ellipse>
+
+                                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                                    <TextBlock Text="{Binding TypeIcon}" FontSize="13" Margin="0,0,5,0"/>
+                                                    <TextBlock Text="{Binding TypeLabel}" FontSize="11" FontWeight="Bold"
+                                                               Foreground="{StaticResource PilotageAccent}"/>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding DisplayPseudo}" FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="White" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding MessagePreview}" FontSize="11"
+                                                           Foreground="#888888" TextTrimming="CharacterEllipsis"
+                                                           Margin="0,2,0,0"/>
+                                            </StackPanel>
+
+                                            <TextBlock Grid.Column="2" Text="{Binding CreatedAt, StringFormat=dd/MM}"
+                                                       FontSize="10" Foreground="#555555"
+                                                       VerticalAlignment="Top" Margin="8,2,0,0"/>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+                        </Grid>
+                    </Border>
+
+                    <!-- Splitter -->
+                    <GridSplitter Grid.Column="1" Width="4" Background="{StaticResource PilotageBorder}"
+                                  HorizontalAlignment="Stretch" VerticalAlignment="Stretch"/>
+
+                    <!-- ── COLONNE DROITE : panneau détail ── -->
+                    <Grid Grid.Column="2">
+
+                        <!-- État vide -->
+                        <Border x:Name="InboxEmptyPanel" Background="{StaticResource PilotageBackground}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <TextBlock Text="📬" FontSize="48" HorizontalAlignment="Center" Opacity="0.3"/>
+                                <TextBlock Text="Sélectionnez un message" FontSize="14"
+                                           Foreground="#555555" HorizontalAlignment="Center" Margin="0,10,0,0"/>
+                                <TextBlock x:Name="InboxStatusText" Text="" FontSize="11"
+                                           Foreground="#444444" HorizontalAlignment="Center" Margin="0,5,0,0"/>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Panneau détail -->
+                        <Border x:Name="InboxDetailPanel" Background="{StaticResource PilotageBackground}"
+                                Visibility="Collapsed">
+                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                <StackPanel Margin="24,20">
+
+                                    <!-- En-tête type + date + badge -->
+                                    <Grid Margin="0,0,0,16">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock x:Name="InboxDetailIcon" Text="📬" FontSize="28"
+                                                   Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                            <TextBlock x:Name="InboxDetailTypeLabel" Text="" FontSize="16"
+                                                       FontWeight="Bold" Foreground="White"/>
+                                            <TextBlock x:Name="InboxDetailDate" Text="" FontSize="11" Foreground="#888888"/>
+                                        </StackPanel>
+                                        <Border x:Name="InboxDetailBadge" Grid.Column="2" CornerRadius="4"
+                                                Padding="8,3" VerticalAlignment="Center">
+                                            <TextBlock x:Name="InboxDetailBadgeText" Text="" FontSize="10" FontWeight="Bold"/>
+                                        </Border>
+                                    </Grid>
+
+                                    <!-- Expéditeur / participant banni -->
+                                    <Border Background="#2D2D2D" CornerRadius="4" Padding="12,10" Margin="0,0,0,10">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="👤" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock x:Name="InboxDetailPseudo" Text="" FontSize="13"
+                                                           FontWeight="SemiBold" Foreground="White"/>
+                                                <TextBlock x:Name="InboxDetailUid" Text="" FontSize="10" Foreground="#666666"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Personne signalée (ban_report uniquement) -->
+                                    <Border x:Name="InboxReportedBlock" Background="#2D2D2D" CornerRadius="4"
+                                            Padding="12,10" Margin="0,0,0,10" Visibility="Collapsed">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="🎯" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Personne signalée" FontSize="10" Foreground="#888888"/>
+                                                <TextBlock x:Name="InboxDetailReportedUid" Text="" FontSize="11" Foreground="#AAAAAA"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Groupe (ban_appeal + ban_report) -->
+                                    <Border x:Name="InboxGroupeBlock" Background="#2D2D2D" CornerRadius="4"
+                                            Padding="12,10" Margin="0,0,0,10" Visibility="Collapsed">
+                                        <StackPanel Orientation="Horizontal">
+                                            <TextBlock Text="🗣" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                            <StackPanel>
+                                                <TextBlock Text="Groupe" FontSize="10" Foreground="#888888"/>
+                                                <TextBlock x:Name="InboxDetailGroupeId" Text="" FontSize="11" Foreground="#AAAAAA"/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Message -->
+                                    <TextBlock Text="MESSAGE" FontSize="10" FontWeight="Bold"
+                                               Foreground="#888888" Margin="0,6,0,8"/>
+                                    <Border Background="#2D2D2D" CornerRadius="4" Padding="14,12" Margin="0,0,0,16">
+                                        <TextBlock x:Name="InboxDetailMessage" Text="" FontSize="13"
+                                                   Foreground="White" TextWrapping="Wrap" LineHeight="22"/>
+                                    </Border>
+
+                                    <!-- Contexte technique (feedback uniquement) -->
+                                    <Border x:Name="InboxContextBlock" Visibility="Collapsed" Margin="0,0,0,16">
+                                        <StackPanel>
+                                            <TextBlock Text="CONTEXTE" FontSize="10" FontWeight="Bold"
+                                                       Foreground="#888888" Margin="0,0,0,8"/>
+                                            <Border Background="#1A1A2E" CornerRadius="4" Padding="12,10">
+                                                <StackPanel>
+                                                    <TextBlock x:Name="InboxCtxUrl" Text="" FontSize="10"
+                                                               Foreground="#666666" TextWrapping="Wrap" Margin="0,0,0,4"/>
+                                                    <TextBlock x:Name="InboxCtxVersion" Text="" FontSize="10" Foreground="#666666"/>
+                                                </StackPanel>
+                                            </Border>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Actions -->
+                                    <StackPanel Orientation="Horizontal">
+                                        <Button x:Name="InboxMarkReadBtn" Content="✓ Marquer lu" Padding="14,8" Margin="0,0,8,0"
+                                                Style="{StaticResource PilotageButtonStyle}" Click="InboxMarkReadBtn_Click"/>
+                                        <Button x:Name="InboxDeleteBtn" Content="🗑 Supprimer" Padding="14,8"
+                                                Foreground="White" BorderThickness="0" Cursor="Hand"
+                                                Click="InboxDeleteBtn_Click">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Background" Value="#5C3030"/>
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}"
+                                                                        CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#7C2020"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+
+                                </StackPanel>
+                            </ScrollViewer>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </TabItem>
+
         </TabControl>
 
         <!-- ═══════════════════════════════════════════════════════════════ -->

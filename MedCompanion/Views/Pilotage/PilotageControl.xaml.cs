@@ -31,6 +31,13 @@ namespace MedCompanion.Views.Pilotage
         private readonly VpsBridgeService _vpsBridge = new();
         private int _newAvatarsCount = 0;
 
+        // Onglet Boîte admin
+        private readonly AdminInboxService _adminInboxService = new();
+        private AdminInboxItem? _selectedInboxItem;
+        private string _inboxFilterStatus = "all";  // "all" | "unread" | "read"
+        private string _inboxFilterType = "";        // "" | "feedback_bug" | "ban_appeal" | etc.
+        private System.Windows.Threading.DispatcherTimer? _inboxPollTimer;
+
         // Architecture polling : 3 tentatives × 30 min, puis arrêt
         private int _retryCount = 0;
         private const int MAX_RETRIES = 3;
@@ -79,8 +86,12 @@ namespace MedCompanion.Views.Pilotage
             // Rafraîchir l'onglet actif quand le contrôle redevient visible
             IsVisibleChanged += PilotageControl_IsVisibleChanged;
 
-            // Arrêter le polling quand le contrôle est déchargé
-            Unloaded += (s, e) => _avatarSyncService?.StopPolling();
+            // Arrêter les pollings quand le contrôle est déchargé
+            Unloaded += (s, e) =>
+            {
+                _avatarSyncService?.StopPolling();
+                _inboxPollTimer?.Stop();
+            };
         }
 
         private void PilotageControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
@@ -379,11 +390,12 @@ namespace MedCompanion.Views.Pilotage
                 case 1: // Serveur VPS
                     InitVpsService();
                     SelectionInfoText.Text = "Pilotage du serveur VPS";
-                    // Déclencher aussi une synchro d'avatars
                     if (_avatarSyncService != null)
-                    {
                         System.Threading.Tasks.Task.Run(async () => await _avatarSyncService.SyncAvatarsAsync());
-                    }
+                    break;
+                case 2: // Boîte admin
+                    RefreshInboxTab();
+                    SelectionInfoText.Text = "Boîte de réception admin";
                     break;
             }
         }
@@ -672,7 +684,7 @@ namespace MedCompanion.Views.Pilotage
             dialog.ShowDialog();
 
             // Rafraîchir l'onglet utilisateurs si on est dessus
-            if (MainTabControl.SelectedIndex == 2)
+            if (MainTabControl.SelectedIndex == 0)
             {
                 RefreshTokensTab();
             }
@@ -715,6 +727,231 @@ namespace MedCompanion.Views.Pilotage
             _lastFirebaseSyncTimestamp = null;
             StartInitialSyncWithRetry();
             RefreshTokensTab();
+        }
+
+        #endregion
+
+
+        #region Boîte Admin Tab
+
+        private void StartInboxPolling()
+        {
+            if (_inboxPollTimer != null) return;
+            _inboxPollTimer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromMinutes(5)
+            };
+            _inboxPollTimer.Tick += async (s, e) => await RefreshInboxStatsAsync();
+            _inboxPollTimer.Start();
+        }
+
+        private async void RefreshInboxTab()
+        {
+            StartInboxPolling();
+            InboxStatusText.Text = "Chargement…";
+
+            bool? reviewedFilter = _inboxFilterStatus switch
+            {
+                "unread" => false,
+                "read"   => true,
+                _        => (bool?)null
+            };
+
+            string? sourceFilter = null;
+            string? typeFilter = null;
+            if (_inboxFilterType.StartsWith("feedback_"))
+            {
+                sourceFilter = "feedback";
+                typeFilter = _inboxFilterType["feedback_".Length..];
+            }
+            else if (!string.IsNullOrEmpty(_inboxFilterType))
+            {
+                sourceFilter = _inboxFilterType;
+            }
+
+            var (items, error) = await _adminInboxService.GetInboxAsync(reviewedFilter, sourceFilter);
+
+            if (typeFilter != null)
+                items = items.Where(i => i.Type == typeFilter).ToList();
+
+            InboxListBox.ItemsSource = items;
+            InboxStatusText.Text = error != null ? $"Erreur : {error}" : $"{items.Count} message(s)";
+
+            await RefreshInboxStatsAsync();
+        }
+
+        private async Task RefreshInboxStatsAsync()
+        {
+            var (stats, _) = await _adminInboxService.GetStatsAsync();
+            if (stats == null) return;
+
+            Dispatcher.Invoke(() =>
+            {
+                if (stats.UnreadTotal > 0)
+                {
+                    InboxBadge.Visibility = Visibility.Visible;
+                    InboxBadgeCount.Text = stats.UnreadTotal > 99 ? "99+" : stats.UnreadTotal.ToString();
+                }
+                else
+                {
+                    InboxBadge.Visibility = Visibility.Collapsed;
+                }
+            });
+        }
+
+        private void InboxListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (InboxListBox.SelectedItem is not AdminInboxItem item)
+            {
+                InboxDetailPanel.Visibility = Visibility.Collapsed;
+                InboxEmptyPanel.Visibility = Visibility.Visible;
+                return;
+            }
+            _selectedInboxItem = item;
+            ShowInboxDetail(item);
+        }
+
+        private void ShowInboxDetail(AdminInboxItem item)
+        {
+            InboxEmptyPanel.Visibility = Visibility.Collapsed;
+            InboxDetailPanel.Visibility = Visibility.Visible;
+
+            InboxDetailIcon.Text = item.TypeIcon;
+            InboxDetailTypeLabel.Text = item.TypeLabel;
+            InboxDetailDate.Text = item.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy à HH:mm");
+
+            if (item.Reviewed)
+            {
+                InboxDetailBadge.Background = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x2D));
+                InboxDetailBadgeText.Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88));
+                InboxDetailBadgeText.Text = "✓ Lu";
+                InboxMarkReadBtn.IsEnabled = false;
+            }
+            else
+            {
+                InboxDetailBadge.Background = new SolidColorBrush(Color.FromRgb(0xE6, 0x7E, 0x22));
+                InboxDetailBadgeText.Foreground = new SolidColorBrush(Colors.White);
+                InboxDetailBadgeText.Text = "Non lu";
+                InboxMarkReadBtn.IsEnabled = true;
+            }
+
+            InboxDetailPseudo.Text = item.SubjectPseudo ?? "Inconnu";
+            InboxDetailUid.Text = item.SubjectUid ?? "";
+            InboxDetailMessage.Text = item.Message ?? "";
+
+            // Personne signalée (ban_report)
+            if (item.Src == "ban_report" && item.ReportedUid != null)
+            {
+                InboxReportedBlock.Visibility = Visibility.Visible;
+                InboxDetailReportedUid.Text = item.ReportedUid;
+            }
+            else
+            {
+                InboxReportedBlock.Visibility = Visibility.Collapsed;
+            }
+
+            // Groupe (ban_appeal + ban_report)
+            if (item.GroupeId != null)
+            {
+                InboxGroupeBlock.Visibility = Visibility.Visible;
+                InboxDetailGroupeId.Text = item.GroupeId;
+            }
+            else
+            {
+                InboxGroupeBlock.Visibility = Visibility.Collapsed;
+            }
+
+            // Contexte technique (feedback)
+            if (item.Src == "feedback" && item.Context.HasValue)
+            {
+                try
+                {
+                    var ctx = item.Context.Value;
+                    InboxCtxUrl.Text = ctx.TryGetProperty("url", out var url)
+                        ? $"URL : {url.GetString()}" : "";
+                    InboxCtxVersion.Text = ctx.TryGetProperty("app_version", out var ver)
+                        ? $"Version : {ver.GetString()}" : "";
+                    InboxContextBlock.Visibility = Visibility.Visible;
+                }
+                catch
+                {
+                    InboxContextBlock.Visibility = Visibility.Collapsed;
+                }
+            }
+            else
+            {
+                InboxContextBlock.Visibility = Visibility.Collapsed;
+            }
+        }
+
+        private async void InboxMarkReadBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedInboxItem == null) return;
+            var item = _selectedInboxItem;
+            if (!int.TryParse(item.Id, out int id)) return;
+
+            InboxMarkReadBtn.IsEnabled = false;
+            var (ok, error) = await _adminInboxService.MarkReviewedAsync(item.Src, id);
+            if (ok)
+            {
+                item.Reviewed = true;
+                ShowInboxDetail(item);
+                // Rafraîchir la liste pour mettre à jour le point orange
+                RefreshInboxTab();
+            }
+            else
+            {
+                InboxMarkReadBtn.IsEnabled = true;
+                MessageBox.Show($"Erreur : {error}", "Boîte admin", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private async void InboxDeleteBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_selectedInboxItem == null) return;
+            var item = _selectedInboxItem;
+
+            if (MessageBox.Show(
+                $"Supprimer ce message de {item.DisplayPseudo} ?",
+                "Confirmer la suppression",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question) != MessageBoxResult.Yes) return;
+
+            if (!int.TryParse(item.Id, out int id)) return;
+
+            var (ok, error) = await _adminInboxService.DeleteAsync(item.Src, id);
+            if (ok)
+            {
+                _selectedInboxItem = null;
+                InboxDetailPanel.Visibility = Visibility.Collapsed;
+                InboxEmptyPanel.Visibility = Visibility.Visible;
+                RefreshInboxTab();
+            }
+            else
+            {
+                MessageBox.Show($"Erreur : {error}", "Boîte admin", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        private void InboxFilter_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn) return;
+            _inboxFilterStatus = btn.Tag as string ?? "all";
+
+            InboxFilterAll.Style    = FindResource(_inboxFilterStatus == "all"    ? "PilotageAccentButtonStyle" : "PilotageButtonStyle") as Style;
+            InboxFilterUnread.Style = FindResource(_inboxFilterStatus == "unread" ? "PilotageAccentButtonStyle" : "PilotageButtonStyle") as Style;
+            InboxFilterRead.Style   = FindResource(_inboxFilterStatus == "read"   ? "PilotageAccentButtonStyle" : "PilotageButtonStyle") as Style;
+
+            RefreshInboxTab();
+        }
+
+        private void InboxTypeFilter_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (InboxTypeFilter.SelectedItem is ComboBoxItem selected)
+            {
+                _inboxFilterType = selected.Tag as string ?? "";
+                RefreshInboxTab();
+            }
         }
 
         #endregion
