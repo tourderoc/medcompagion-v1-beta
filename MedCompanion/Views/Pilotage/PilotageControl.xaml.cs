@@ -747,6 +747,8 @@ namespace MedCompanion.Views.Pilotage
 
         private async void RefreshInboxTab()
         {
+            // Guard : InitializeComponent() n'est pas terminé (ComboBox IsSelected="True" tire trop tôt)
+            if (!IsInitialized) return;
             StartInboxPolling();
             InboxStatusText.Text = "Chargement…";
 
