@@ -285,6 +285,8 @@
                         <ColumnDefinition Width="350" MinWidth="300"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="320" MinWidth="260"/>
                     </Grid.ColumnDefinitions>
 
                     <!-- Liste utilisateurs/tokens -->
@@ -422,11 +424,11 @@
                         </Grid>
                     </Border>
 
-                    <!-- Splitter -->
+                    <!-- Splitter gauche -->
                     <GridSplitter Grid.Column="1" Width="3" Background="#3D3D3D"
                                   HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
 
-                    <!-- Détail utilisateur -->
+                    <!-- Détail token (vue clinique) -->
                     <Border Grid.Column="2" Background="{StaticResource PilotageBackground}" Padding="15">
                         <Grid x:Name="UserDetailPanel">
                             <!-- Etat vide -->
@@ -440,7 +442,7 @@
                                            HorizontalAlignment="Center" Margin="0,5,0,0" Opacity="0.7"/>
                             </StackPanel>
 
-                            <!-- Contenu utilisateur -->
+                            <!-- Contenu token sélectionné -->
                             <Grid x:Name="UserContentPanel" Visibility="Collapsed">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
@@ -515,6 +517,240 @@
                                         </WrapPanel>
                                     </StackPanel>
                                 </Border>
+                            </Grid>
+
+                            <!-- Contenu compte VPS sélectionné -->
+                            <Grid x:Name="AccountContentPanel" Visibility="Collapsed">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- Header compte -->
+                                <Border Grid.Row="0" Background="{StaticResource PilotageCardBackground}"
+                                        CornerRadius="8" Padding="15" Margin="0,0,0,10">
+                                    <StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                            <TextBlock x:Name="AccDetailPseudo" Text="" FontSize="18" FontWeight="Bold"
+                                                       Foreground="{StaticResource PilotageTextPrimary}" VerticalAlignment="Center"/>
+                                            <Border x:Name="AccDetailTokenBadge" Background="#1A3320" CornerRadius="4"
+                                                    Padding="8,3" Margin="10,0,0,0" VerticalAlignment="Center"
+                                                    Visibility="Collapsed">
+                                                <TextBlock Text="🔑 Patient tokenisé" FontSize="11" Foreground="#27AE60"/>
+                                            </Border>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                            <TextBlock Text="Email: " Foreground="{StaticResource PilotageTextSecondary}" FontSize="12"/>
+                                            <TextBlock x:Name="AccDetailEmail" Text="—" Foreground="White" FontSize="12"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                            <TextBlock Text="Rôle: " Foreground="{StaticResource PilotageTextSecondary}" FontSize="12"/>
+                                            <TextBlock x:Name="AccDetailRole" Text="—" Foreground="{StaticResource PilotageAccent}"
+                                                       FontSize="12" FontWeight="SemiBold"/>
+                                        </StackPanel>
+                                        <StackPanel Orientation="Horizontal" Margin="0,3,0,0">
+                                            <TextBlock Text="Inscrit le: " Foreground="{StaticResource PilotageTextSecondary}" FontSize="11"/>
+                                            <TextBlock x:Name="AccDetailCreated" Text="—" Foreground="#888888" FontSize="11"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Stats compte -->
+                                <Border Grid.Row="1" Background="{StaticResource PilotageCardBackground}"
+                                        CornerRadius="8" Padding="15" Margin="0,0,0,10">
+                                    <StackPanel Orientation="Horizontal">
+                                        <Border Background="#3D3D3D" CornerRadius="4" Padding="12,6" Margin="0,0,10,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="⭐ " FontSize="12"/>
+                                                <TextBlock x:Name="AccDetailPoints" Text="0" Foreground="White" FontWeight="Bold" FontSize="12"/>
+                                                <TextBlock Text=" pts" Foreground="{StaticResource PilotageTextSecondary}" FontSize="12"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Background="#3D3D3D" CornerRadius="4" Padding="12,6" Margin="0,0,10,0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="🏅 " FontSize="12"/>
+                                                <TextBlock x:Name="AccDetailBadge" Text="—" Foreground="White" FontSize="12"/>
+                                            </StackPanel>
+                                        </Border>
+                                        <Border Background="#3D3D3D" CornerRadius="4" Padding="12,6">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="📅 " FontSize="12"/>
+                                                <TextBlock Text="Activité: " Foreground="{StaticResource PilotageTextSecondary}" FontSize="12"/>
+                                                <TextBlock x:Name="AccDetailActivity" Text="—" Foreground="White" FontSize="12"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- UID -->
+                                <Border Grid.Row="2" Background="{StaticResource PilotageCardBackground}"
+                                        CornerRadius="8" Padding="15" Margin="0,0,0,10" VerticalAlignment="Top">
+                                    <StackPanel>
+                                        <TextBlock Text="UID" FontSize="10" FontWeight="Bold"
+                                                   Foreground="{StaticResource PilotageTextSecondary}" Margin="0,0,0,6"/>
+                                        <TextBlock x:Name="AccDetailUid" Text="—" Foreground="#666666"
+                                                   FontSize="11" FontFamily="Consolas" TextWrapping="Wrap"/>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Grid>
+                    </Border>
+
+                    <!-- Splitter droit -->
+                    <GridSplitter Grid.Column="3" Width="3" Background="#3D3D3D"
+                                  HorizontalAlignment="Center" VerticalAlignment="Stretch"/>
+
+                    <!-- Comptes VPS Parent'aile (vue plateforme) -->
+                    <Border Grid.Column="4" Background="{StaticResource PilotageBackground}">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="*"/>
+                            </Grid.RowDefinitions>
+
+                            <!-- Header -->
+                            <Border Grid.Row="0" Background="{StaticResource PilotageCardBackground}"
+                                    BorderBrush="{StaticResource PilotageBorder}" BorderThickness="0,0,0,1"
+                                    Padding="15,10">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Text="COMPTES PARENT'AILE" FontSize="11" FontWeight="Bold"
+                                               Foreground="{StaticResource PilotageTextSecondary}" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" x:Name="RefreshAccountsBtn" Content="↻"
+                                            Padding="8,5" Style="{StaticResource PilotageButtonStyle}"
+                                            Click="RefreshAccountsBtn_Click" ToolTip="Actualiser les comptes"/>
+                                </Grid>
+                            </Border>
+
+                            <!-- Barre progression croissance -->
+                            <Border Grid.Row="1" Background="{StaticResource PilotageCardBackground}"
+                                    BorderBrush="{StaticResource PilotageBorder}" BorderThickness="0,0,0,1"
+                                    Padding="16,12">
+                                <StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                                        <TextBlock x:Name="AccountsTotalText" Text="—" FontSize="26" FontWeight="Bold"
+                                                   Foreground="{StaticResource PilotageAccent}" VerticalAlignment="Bottom"/>
+                                        <TextBlock Text=" / 1000" FontSize="12" Foreground="#666666"
+                                                   VerticalAlignment="Bottom" Margin="3,0,0,3"/>
+                                    </StackPanel>
+                                    <Grid x:Name="ProgressContainer" Height="28"
+                                          SizeChanged="ProgressContainer_SizeChanged">
+                                        <Canvas x:Name="ProgressCanvas"/>
+                                    </Grid>
+                                    <TextBlock x:Name="NextMilestoneText" Text="" FontSize="10"
+                                               Foreground="#666666" Margin="0,5,0,0" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Liste comptes -->
+                            <Grid Grid.Row="2">
+                                <StackPanel x:Name="AccountsEmptyPanel"
+                                            HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <TextBlock Text="👥" FontSize="40" HorizontalAlignment="Center" Opacity="0.3"/>
+                                    <TextBlock Text="Cliquez sur ↻" FontSize="13"
+                                               Foreground="{StaticResource PilotageTextSecondary}"
+                                               HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                                </StackPanel>
+
+                                <ListBox x:Name="VpsAccountsListBox" Background="Transparent" BorderThickness="0"
+                                         ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                         Visibility="Collapsed"
+                                         SelectionChanged="VpsAccountsListBox_SelectionChanged">
+                                    <ListBox.ItemContainerStyle>
+                                        <Style TargetType="ListBoxItem">
+                                            <Setter Property="Background" Value="Transparent"/>
+                                            <Setter Property="BorderThickness" Value="0"/>
+                                            <Setter Property="Padding" Value="0"/>
+                                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                                            <Setter Property="Cursor" Value="Hand"/>
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="ListBoxItem">
+                                                        <Border Background="{TemplateBinding Background}" Margin="0,1">
+                                                            <ContentPresenter/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsSelected" Value="True">
+                                                    <Setter Property="Background" Value="#3D3D3D"/>
+                                                </Trigger>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#333333"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </ListBox.ItemContainerStyle>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <Border Padding="10,8" Margin="4,1"
+                                                    BorderBrush="#2A2A2A" BorderThickness="0,0,0,1">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Barre couleur -->
+                                                    <Border Grid.Column="0" Width="3" CornerRadius="2"
+                                                            Margin="0,0,8,0" VerticalAlignment="Stretch">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Background" Value="#444444"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding RoleDisplay}" Value="ADMIN">
+                                                                        <Setter Property="Background" Value="#E67E22"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding HasToken}" Value="True">
+                                                                        <Setter Property="Background" Value="#27AE60"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                    </Border>
+
+                                                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding Pseudo}" FontWeight="SemiBold"
+                                                                   Foreground="White" FontSize="12"/>
+                                                        <TextBlock Text="{Binding Email}" Foreground="#666666"
+                                                                   FontSize="10" Margin="0,1,0,0"
+                                                                   TextTrimming="CharacterEllipsis"/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Column="2" HorizontalAlignment="Right"
+                                                                VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding CreatedAt, StringFormat='{}{0:dd/MM/yy}'}"
+                                                                   Foreground="#555555" FontSize="9"
+                                                                   HorizontalAlignment="Right"/>
+                                                        <Border CornerRadius="3" Padding="4,1" Margin="0,2,0,0"
+                                                                HorizontalAlignment="Right">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Background" Value="Transparent"/>
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasToken}" Value="True">
+                                                                            <Setter Property="Background" Value="#1A3320"/>
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
+                                                            <TextBlock Text="🔑" FontSize="9"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
                             </Grid>
                         </Grid>
                     </Border>

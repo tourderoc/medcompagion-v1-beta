@@ -1444,17 +1444,16 @@ private async void OnSendToPilotageRequested(object? sender, string filePath)
 
     try
     {
-        await _pilotageAttachmentService.AddAttachmentAsync(fileToSend, _selectedPatient.Id, docType);
+        await _pilotageAttachmentService.AddAttachmentAsync(fileToSend, _selectedPatient.NomComplet, docType);
         var format = fileToSend.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase) ? "PDF" : "DOCX";
-        StatusTextBlock.Text = $"✅ {docType} ({format}) envoyé vers Pilotage";
+        StatusTextBlock.Text = $"✅ {docType} ({format}) ajouté aux Pièces jointes";
         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
 
-        // Rafraîchir aussi le panneau PJ dans la console Messages
         MessagesControlPanel.RefreshAttachments();
     }
     catch (Exception ex)
     {
-        StatusTextBlock.Text = $"❌ Erreur envoi Pilotage: {ex.Message}";
+        StatusTextBlock.Text = $"❌ Erreur ajout Pièces jointes: {ex.Message}";
         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
     }
 }

@@ -4,6 +4,7 @@ using System.Collections.ObjectModel;
 using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 using MedCompanion.Models;
@@ -33,6 +34,10 @@ namespace MedCompanion.Views.Pilotage
 
         // Onglet Boîte admin
         private readonly AdminInboxService _adminInboxService = new();
+
+        // Onglet Utilisateurs : comptes VPS
+        private VpsAccountService? _vpsAccountService;
+        private int _vpsAccountsTotal = 0;
         private AdminInboxItem? _selectedInboxItem;
         private string _inboxFilterStatus = "all";  // "all" | "unread" | "read"
         private string _inboxFilterType = "";        // "" | "feedback_bug" | "ban_appeal" | etc.
@@ -138,6 +143,7 @@ namespace MedCompanion.Views.Pilotage
             else
                 StartInitialSyncWithRetry();
 
+            _vpsAccountService = new VpsAccountService(_settings);
             OnStatusChanged("Mode Pilotage prêt");
             RefreshTokensTab();
             InitAvatarSyncService();
@@ -161,6 +167,7 @@ namespace MedCompanion.Views.Pilotage
             _openAIService = openAIService;
             _settings = settings;
 
+            _vpsAccountService = new VpsAccountService(_settings);
             OnStatusChanged("Mode Pilotage prêt (sans cache)");
             RefreshTokensTab();
             InitAvatarSyncService();
@@ -451,6 +458,7 @@ namespace MedCompanion.Views.Pilotage
             if (TokensListBox.SelectedItem is PatientToken selected)
             {
                 _selectedToken = selected;
+                VpsAccountsListBox.SelectedItem = null;
                 ShowUserDetail(selected);
             }
             else
@@ -463,6 +471,7 @@ namespace MedCompanion.Views.Pilotage
         private void ShowUserDetail(PatientToken token)
         {
             NoUserSelectedPanel.Visibility = Visibility.Collapsed;
+            AccountContentPanel.Visibility = Visibility.Collapsed;
             UserContentPanel.Visibility = Visibility.Visible;
 
             UserDetailName.Text = token.PatientDisplayName;
@@ -496,6 +505,7 @@ namespace MedCompanion.Views.Pilotage
         {
             NoUserSelectedPanel.Visibility = Visibility.Visible;
             UserContentPanel.Visibility = Visibility.Collapsed;
+            AccountContentPanel.Visibility = Visibility.Collapsed;
         }
 
         private void NewTokenBtn_Click(object sender, RoutedEventArgs e)
@@ -1443,6 +1453,192 @@ Logs :
 
             var (success, result, error) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 400);
             AiAnalysisText.Text = success ? result : $"Erreur : {error}";
+        }
+
+
+        // ═══════════════════════════════════════════════════════════════
+        // COMPTES VPS PARENT'AILE
+        // ═══════════════════════════════════════════════════════════════
+
+        private class VpsAccountRow
+        {
+            public VpsAccount Account { get; }
+            public bool HasToken { get; }
+            public string Pseudo => Account.Pseudo;
+            public string? Email => Account.Email;
+            public DateTime CreatedAt => Account.CreatedAt;
+            public string RoleDisplay => Account.RoleDisplay;
+
+            public VpsAccountRow(VpsAccount account, bool hasToken)
+            {
+                Account = account;
+                HasToken = hasToken;
+            }
+        }
+
+        private async void RefreshAccountsBtn_Click(object sender, RoutedEventArgs e)
+        {
+            await LoadVpsAccountsAsync();
+        }
+
+        private async System.Threading.Tasks.Task LoadVpsAccountsAsync()
+        {
+            if (_vpsAccountService == null) return;
+
+            RefreshAccountsBtn.IsEnabled = false;
+            AccountsEmptyPanel.Visibility = Visibility.Visible;
+            VpsAccountsListBox.Visibility = Visibility.Collapsed;
+            AccountsTotalText.Text = "…";
+            NextMilestoneText.Text = "";
+
+            var (ok, accounts, error) = await _vpsAccountService.GetAllAccountsAsync(500);
+
+            if (!ok || accounts == null)
+            {
+                AccountsTotalText.Text = "!";
+                NextMilestoneText.Text = error ?? "Erreur de chargement";
+                RefreshAccountsBtn.IsEnabled = true;
+                return;
+            }
+
+            var tokenPseudos = Tokens
+                .Where(t => t.Active && !string.IsNullOrEmpty(t.Pseudo))
+                .Select(t => t.Pseudo!)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var rows = accounts
+                .OrderByDescending(a => a.CreatedAt)
+                .Select(a => new VpsAccountRow(a, tokenPseudos.Contains(a.Pseudo)))
+                .ToList();
+
+            _vpsAccountsTotal = accounts.Count;
+            AccountsTotalText.Text = _vpsAccountsTotal.ToString();
+
+            VpsAccountsListBox.ItemsSource = rows;
+            VpsAccountsListBox.Visibility = Visibility.Visible;
+            AccountsEmptyPanel.Visibility = Visibility.Collapsed;
+
+            await Dispatcher.InvokeAsync(
+                () => DrawProgressBar(_vpsAccountsTotal),
+                System.Windows.Threading.DispatcherPriority.ContextIdle);
+
+            int[] milestones = { 250, 500, 750, 1000 };
+            var next = milestones.FirstOrDefault(m => m > _vpsAccountsTotal);
+            NextMilestoneText.Text = next switch
+            {
+                250 => $"{250 - _vpsAccountsTotal} pour le merge 🎯",
+                > 0 => $"{next - _vpsAccountsTotal} avant {next}",
+                _ => "Objectif 1000 atteint ! 🎉"
+            };
+
+            RefreshAccountsBtn.IsEnabled = true;
+        }
+
+        private void ProgressContainer_SizeChanged(object sender, SizeChangedEventArgs e)
+        {
+            DrawProgressBar(_vpsAccountsTotal);
+        }
+
+        private void DrawProgressBar(int total)
+        {
+            ProgressCanvas.Children.Clear();
+            double w = ProgressContainer.ActualWidth;
+            double h = ProgressContainer.ActualHeight;
+            if (w <= 1 || h <= 1) return;
+
+            const int max = 1000;
+            const double barH = 10.0;
+            double barY = (h - barH) / 2;
+
+            // Fond de piste
+            var track = new Rectangle
+            {
+                Width = w, Height = barH, RadiusX = 5, RadiusY = 5,
+                Fill = new SolidColorBrush(Color.FromRgb(0x3D, 0x3D, 0x3D))
+            };
+            Canvas.SetTop(track, barY);
+            ProgressCanvas.Children.Add(track);
+
+            // Remplissage (orange avant merge, vert après)
+            double fillRatio = Math.Min((double)total / max, 1.0);
+            if (fillRatio > 0)
+            {
+                Color fillColor = total >= 250
+                    ? Color.FromRgb(0x27, 0xAE, 0x60)
+                    : Color.FromRgb(0xE6, 0x7E, 0x22);
+                var fill = new Rectangle
+                {
+                    Width = w * fillRatio, Height = barH, RadiusX = 5, RadiusY = 5,
+                    Fill = new SolidColorBrush(fillColor)
+                };
+                Canvas.SetTop(fill, barY);
+                ProgressCanvas.Children.Add(fill);
+            }
+
+            // Marqueurs de paliers
+            (int value, string label)[] milestones =
+            {
+                (250, "★merge"), (500, "500"), (750, "750"), (1000, "1k")
+            };
+
+            foreach (var (value, label) in milestones)
+            {
+                double x = (double)value / max * w;
+                bool reached = total >= value;
+
+                var tick = new Rectangle
+                {
+                    Width = 2, Height = barH + 6,
+                    Fill = new SolidColorBrush(Color.FromRgb(0x1E, 0x1E, 0x1E))
+                };
+                Canvas.SetLeft(tick, x - 1);
+                Canvas.SetTop(tick, barY - 3);
+                ProgressCanvas.Children.Add(tick);
+
+                var lbl = new System.Windows.Controls.TextBlock
+                {
+                    Text = label,
+                    FontSize = 9,
+                    Foreground = new SolidColorBrush(reached
+                        ? Color.FromRgb(0xE6, 0x7E, 0x22)
+                        : Color.FromRgb(0x55, 0x55, 0x55))
+                };
+                lbl.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+                Canvas.SetLeft(lbl, x - lbl.DesiredSize.Width / 2);
+                Canvas.SetTop(lbl, barY + barH + 3);
+                ProgressCanvas.Children.Add(lbl);
+            }
+        }
+
+        private void VpsAccountsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (VpsAccountsListBox.SelectedItem is not VpsAccountRow row) return;
+
+            // Déselectionner le token actif
+            TokensListBox.SelectedItem = null;
+            _selectedToken = null;
+
+            ShowVpsAccountDetailInCol2(row);
+        }
+
+        private void ShowVpsAccountDetailInCol2(VpsAccountRow row)
+        {
+            var acc = row.Account;
+            AccDetailPseudo.Text = acc.Pseudo;
+            AccDetailTokenBadge.Visibility = row.HasToken ? Visibility.Visible : Visibility.Collapsed;
+            AccDetailEmail.Text = acc.Email ?? "—";
+            AccDetailRole.Text = acc.RoleDisplay;
+            AccDetailPoints.Text = acc.Points.ToString();
+            AccDetailBadge.Text = acc.Badge ?? "—";
+            AccDetailCreated.Text = acc.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy");
+            AccDetailActivity.Text = acc.LastActivity?.ToLocalTime().ToString("dd/MM/yyyy") ?? "—";
+            AccDetailUid.Text = acc.Uid;
+
+            NoUserSelectedPanel.Visibility = Visibility.Collapsed;
+            UserContentPanel.Visibility = Visibility.Collapsed;
+            AccountContentPanel.Visibility = Visibility.Visible;
+
+            SelectionInfoText.Text = $"Compte : {acc.Pseudo}";
         }
     }
 }

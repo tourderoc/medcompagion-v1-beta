@@ -714,6 +714,40 @@ PROPOSE UNE RÉPONSE :
                 BtnSuggestionIA.IsEnabled = true;
             }
         }
+
+        private async void BtnReformuler_Click(object sender, RoutedEventArgs e)
+        {
+            if (_openAIService == null) return;
+
+            var text = ReplyTextBox.Text.Trim();
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                StatusChanged?.Invoke(this, "Écrivez d'abord une réponse à reformuler");
+                return;
+            }
+
+            BtnReformuler.IsEnabled = false;
+            StatusChanged?.Invoke(this, "✍️ Reformulation en cours...");
+
+            var prompt = $@"Tu es un assistant médical. Reformule ce message d'un médecin à destination d'un parent pour qu'il soit plus professionnel, bienveillant et approprié. Conserve exactement le même sens et les mêmes informations. Réponds UNIQUEMENT avec le texte reformulé, sans commentaire ni explication.
+
+Message original :
+""{text}""";
+
+            var (success, result, error) = await _openAIService.GenerateTextAsync(prompt, maxTokens: 500);
+
+            if (success && !string.IsNullOrEmpty(result))
+            {
+                ReplyTextBox.Text = result.Trim();
+                StatusChanged?.Invoke(this, "✨ Réponse reformulée");
+            }
+            else
+            {
+                StatusChanged?.Invoke(this, $"Erreur reformulation : {error}");
+            }
+
+            BtnReformuler.IsEnabled = true;
+        }
     }
 
     public enum MessageFilter
