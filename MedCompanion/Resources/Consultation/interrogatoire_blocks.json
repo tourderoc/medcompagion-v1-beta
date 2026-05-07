@@ -1,0 +1,42 @@
+[
+  {
+    "key": "identite",
+    "title": "Identité",
+    "expectedThemes": [ "age", "accompagnant", "classe", "ecole" ]
+  },
+  {
+    "key": "motif",
+    "title": "Motif & histoire",
+    "expectedThemes": [ "motif_principal", "anciennete", "retentissement" ]
+  },
+  {
+    "key": "famille",
+    "title": "Famille",
+    "expectedThemes": [ "statut_parental", "pere", "mere" ]
+  },
+  {
+    "key": "fratrie",
+    "title": "Fratrie",
+    "expectedThemes": [ "presence", "noms_ages" ]
+  },
+  {
+    "key": "atcds",
+    "title": "ATCDs médicaux",
+    "expectedThemes": [ "medical", "allergies" ]
+  },
+  {
+    "key": "scolarite",
+    "title": "Scolarité",
+    "expectedThemes": [ "rapport_ecole", "niveau_ou_copains" ]
+  },
+  {
+    "key": "activites",
+    "title": "Activités",
+    "expectedThemes": [ "pratique_ou_absence" ]
+  },
+  {
+    "key": "maison",
+    "title": "Maison (écrans/sommeil)",
+    "expectedThemes": [ "ecrans", "sommeil" ]
+  }
+]

@@ -1,15 +1,14 @@
+using System.IO;
+using System.Windows;
 using System.Windows.Controls;
 using MedCompanion.Models;
+using MedCompanion.Services;
+using MedCompanion.Services.LLM;
 using MedCompanion.ViewModels;
+using Microsoft.Win32;
 
 namespace MedCompanion.Views.Consultation
 {
-    /// <summary>
-    /// Mode Consultation - Interface adaptative avec dossier patient
-    /// Layout: Espace de travail (67%) + Dossier patient (33%)
-    /// 3 etats: FocusTravail (100% travail), Consultation (67/33), FocusDossier (100% dossier)
-    /// Raccourcis: F1, F2, F3
-    /// </summary>
     public partial class ConsultationModeControl : UserControl
     {
         private ConsultationModeViewModel? _viewModel;
@@ -20,28 +19,65 @@ namespace MedCompanion.Views.Consultation
             _viewModel = DataContext as ConsultationModeViewModel;
         }
 
-        /// <summary>
-        /// Charge un patient dans le mode consultation
-        /// </summary>
+        public void Initialize(ILLMService llmService, StorageService storageService)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            _viewModel?.InjectServices(llmService, storageService);
+        }
+
         public void LoadPatient(PatientIndexEntry patient)
         {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.LoadPatient(patient);
         }
 
-        /// <summary>
-        /// Change l'etat d'affichage
-        /// </summary>
         public void SetViewState(ConsultationViewState state)
         {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
             if (_viewModel != null)
-            {
                 _viewModel.CurrentState = state;
-            }
         }
 
-        /// <summary>
-        /// Recupere le ViewModel pour injection de dependances
-        /// </summary>
         public ConsultationModeViewModel? GetViewModel() => _viewModel;
+
+        private void ConsultationTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            if (_viewModel == null) return;
+
+            var item = ConsultationTypeCombo.SelectedItem as ComboBoxItem;
+            var tag = item?.Tag?.ToString() ?? "Normal";
+
+            _viewModel.ConsultationType = tag switch
+            {
+                "PremiereConsultation" => ConsultationType.PremiereConsultation,
+                _                      => ConsultationType.Normal
+            };
+        }
+
+        private void ImportTxtBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            if (_viewModel == null) return;
+
+            var dlg = new OpenFileDialog
+            {
+                Title = "Importer une transcription",
+                Filter = "Fichiers texte (*.txt)|*.txt|Tous les fichiers (*.*)|*.*",
+                Multiselect = false
+            };
+
+            if (dlg.ShowDialog() != true) return;
+
+            try
+            {
+                _viewModel.TranscriptionInput = File.ReadAllText(dlg.FileName, System.Text.Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lecture fichier : {ex.Message}", "Erreur",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
     }
 }

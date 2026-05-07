@@ -57,6 +57,14 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Charge uniquement les notes de consultation d'un patient
+        /// </summary>
+        public async Task<List<DossierPageItem>> LoadConsultationsAsync(string nomComplet)
+        {
+            return await LoadConsultationsPagesAsync(nomComplet);
+        }
+
+        /// <summary>
         /// Charge une section spécifique
         /// </summary>
         private async Task<(DossierTab, DossierSectionData)> LoadSectionAsync(string nomComplet, DossierTab section)

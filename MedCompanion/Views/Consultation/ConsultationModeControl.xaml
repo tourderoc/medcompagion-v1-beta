@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:MedCompanion.ViewModels"
              xmlns:local="clr-namespace:MedCompanion.Views.Consultation"
+             xmlns:helpers="clr-namespace:MedCompanion.Helpers"
              Background="#F5F7FA">
 
     <UserControl.DataContext>
@@ -11,6 +12,49 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+
+        <!-- Template réutilisable : affichage/édition d'une note sur une page A4 -->
+        <DataTemplate x:Key="NotePageTemplate" DataType="{x:Type vm:ConsultationNoteViewModel}">
+            <StackPanel>
+                <Grid Margin="0,0,0,10">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="14" FontWeight="Bold" Foreground="#2C3E50" TextWrapping="Wrap"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                Visibility="{Binding IsNotEditing, Converter={StaticResource BoolToVis}}">
+                        <Button Content="✏" Command="{Binding StartEditCommand}"
+                                ToolTip="Modifier" Width="26" Height="24" FontSize="12"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand" Margin="0,0,4,0"/>
+                        <Button Content="🗑" Command="{Binding DeleteCommand}"
+                                ToolTip="Supprimer" Width="26" Height="24" FontSize="12"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand"/>
+                    </StackPanel>
+                </Grid>
+                <RichTextBox helpers:RichTextBoxHelper.Document="{Binding DisplayDocument}"
+                             Visibility="{Binding IsNotEditing, Converter={StaticResource BoolToVis}}"
+                             IsReadOnly="True" IsDocumentEnabled="True"
+                             BorderThickness="0" Background="Transparent"
+                             FontSize="12" FontFamily="Georgia"
+                             Padding="0" Margin="0"/>
+                <StackPanel Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
+                    <TextBox Text="{Binding EditContent, UpdateSourceTrigger=PropertyChanged}"
+                             AcceptsReturn="True" TextWrapping="Wrap"
+                             FontSize="11" FontFamily="Consolas" Foreground="#2C3E50"
+                             BorderBrush="#3498DB" BorderThickness="1"
+                             Height="560" Padding="6" VerticalScrollBarVisibility="Auto"/>
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                        <Button Content="Annuler" Command="{Binding CancelEditCommand}"
+                                Padding="10,5" Margin="0,0,8,0"
+                                Background="#ECF0F1" BorderThickness="1" BorderBrush="#BDC3C7" Cursor="Hand" FontSize="11"/>
+                        <Button Content="💾 Enregistrer" Command="{Binding SaveEditCommand}"
+                                Padding="10,5" Background="#27AE60" Foreground="White"
+                                BorderThickness="0" Cursor="Hand" FontSize="11"/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </DataTemplate>
 
         <!-- Couleurs du dossier patient (bleu medical) -->
         <SolidColorBrush x:Key="DossierBackgroundBrush" Color="#5A9AAC"/>
@@ -441,51 +485,295 @@
                         </Grid.RowDefinitions>
 
                         <!-- Header -->
-                        <StackPanel Grid.Row="0" Margin="0,0,0,15">
-                            <TextBlock Text="Note de consultation"
-                                       FontSize="16"
-                                       FontWeight="SemiBold"
-                                       Foreground="#2C3E50"/>
+                        <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                            <!-- Sélecteur type de consultation -->
+                            <Grid Margin="0,0,0,8">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Type :" FontSize="12" Foreground="#7F8C8D"
+                                           VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <ComboBox Grid.Column="1" x:Name="ConsultationTypeCombo"
+                                          FontSize="12" Height="28"
+                                          SelectionChanged="ConsultationTypeCombo_SelectionChanged">
+                                    <ComboBoxItem Content="— Note libre —" Tag="Normal" IsSelected="True"/>
+                                    <ComboBoxItem Content="1ère consultation — Interrogatoire" Tag="PremiereConsultation"/>
+                                    <ComboBoxItem Content="Consultation de suivi (bientôt)" IsEnabled="False" Foreground="#AAAAAA"/>
+                                    <ComboBoxItem Content="Bilan initial (bientôt)" IsEnabled="False" Foreground="#AAAAAA"/>
+                                </ComboBox>
+                            </Grid>
+
                             <TextBlock Text="{Binding ConsultationDate, StringFormat='{}{0:dddd d MMMM yyyy}'}"
                                        FontSize="12"
-                                       Foreground="#7F8C8D"
-                                       Margin="0,4,0,0"/>
+                                       Foreground="#7F8C8D"/>
+
+                            <!-- Statut extraction (visible uniquement en mode interrogatoire) -->
+                            <TextBlock Text="{Binding ExtractionStatus}"
+                                       FontSize="11"
+                                       Foreground="#3498DB"
+                                       Margin="0,4,0,0"
+                                       TextWrapping="Wrap">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
                         </StackPanel>
 
-                        <!-- Zone d'ecriture -->
-                        <TextBox Grid.Row="1"
-                                 Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
-                                 AcceptsReturn="True"
-                                 TextWrapping="Wrap"
-                                 VerticalScrollBarVisibility="Auto"
-                                 FontSize="14"
-                                 FontFamily="Segoe UI"
-                                 Padding="10"
-                                 BorderBrush="#E0E0E0"
-                                 BorderThickness="1">
-                            <TextBox.Style>
-                                <Style TargetType="TextBox">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate TargetType="TextBox">
-                                                <Border Background="#FAFAFA"
-                                                        BorderBrush="{TemplateBinding BorderBrush}"
-                                                        BorderThickness="{TemplateBinding BorderThickness}"
-                                                        CornerRadius="6">
-                                                    <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
-                                                </Border>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Style>
-                            </TextBox.Style>
-                        </TextBox>
+                        <!-- Zone principale : switches selon le mode -->
+                        <Grid Grid.Row="1">
 
-                        <!-- Actions rapides -->
+                            <!-- MODE NORMAL : note libre classique -->
+                            <TextBox Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True"
+                                     TextWrapping="Wrap"
+                                     VerticalScrollBarVisibility="Auto"
+                                     FontSize="14"
+                                     FontFamily="Segoe UI"
+                                     Padding="10"
+                                     BorderBrush="#E0E0E0"
+                                     BorderThickness="1">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="TextBox">
+                                                    <Border Background="#FAFAFA"
+                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                            CornerRadius="6">
+                                                        <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+
+                            <!-- MODE INTERROGATOIRE — Saisie transcription -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsInSaisieMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="Transcription de la consultation :"
+                                           FontSize="12" Foreground="#7F8C8D" Margin="0,0,0,6"/>
+
+                                <TextBox Grid.Row="1"
+                                         Text="{Binding TranscriptionInput, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         FontSize="13"
+                                         FontFamily="Segoe UI"
+                                         Padding="10"
+                                         BorderBrush="#E0E0E0"
+                                         BorderThickness="1"
+                                         Background="#FAFAFA">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="TextBox">
+                                                        <Border Background="#FAFAFA"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                CornerRadius="6">
+                                                            <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+
+                                <StackPanel Grid.Row="2" Orientation="Horizontal"
+                                            HorizontalAlignment="Right" Margin="0,8,0,0">
+                                    <Button x:Name="ImportTxtBtn" Content="📂 Importer .txt"
+                                            Click="ImportTxtBtn_Click"
+                                            Padding="12,7" Background="#ECF0F1" BorderThickness="1"
+                                            BorderBrush="#BDC3C7" Cursor="Hand" FontSize="12"
+                                            Margin="0,0,8,0"/>
+                                    <Button Content="⚙ Extraire avec IA"
+                                            Command="{Binding ExtractInterrogatoireCommand}"
+                                            Padding="14,7" Background="#3498DB" Foreground="White"
+                                            BorderThickness="0" Cursor="Hand" FontSize="12">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#2980B9"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#BDC3C7"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- MODE INTERROGATOIRE — Extraction en cours -->
+                            <Border CornerRadius="8" Background="#EBF5FB" BorderBrush="#3498DB" BorderThickness="1">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsInExtractionMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                    <TextBlock Text="⚙ Extraction en cours..." FontSize="16"
+                                               Foreground="#2980B9" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="Le LLM analyse la transcription..." FontSize="12"
+                                               Foreground="#7F8C8D" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- MODE INTERROGATOIRE — Note finale -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsInFinalNoteMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <TextBlock Grid.Row="0" Text="Note finale — vérifiez et complétez :"
+                                           FontSize="12" Foreground="#27AE60" FontWeight="SemiBold"
+                                           Margin="0,0,0,6"/>
+
+                                <TextBox Grid.Row="1"
+                                         Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         FontSize="13"
+                                         FontFamily="Consolas"
+                                         Padding="10"
+                                         BorderBrush="#27AE60"
+                                         BorderThickness="1"
+                                         Background="#FAFAFA">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="TextBox">
+                                                        <Border Background="#FAFAFA"
+                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                CornerRadius="6">
+                                                            <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+
+                                <StackPanel Grid.Row="2" Orientation="Horizontal"
+                                            HorizontalAlignment="Right" Margin="0,8,0,0">
+                                    <Button Content="↩ Retour"
+                                            Command="{Binding BackToSaisieCommand}"
+                                            Padding="12,7" Background="#ECF0F1" BorderThickness="1"
+                                            BorderBrush="#BDC3C7" Cursor="Hand" FontSize="12"
+                                            Margin="0,0,8,0"/>
+                                    <Button Content="💾 Sauvegarder dossier"
+                                            Command="{Binding SaveInterrogatoireNoteCommand}"
+                                            Padding="14,7" Background="#27AE60" Foreground="White"
+                                            BorderThickness="0" Cursor="Hand" FontSize="12">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#219A52"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#BDC3C7"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                        </Grid>
+
+                        <!-- Actions rapides — mode normal uniquement -->
                         <StackPanel Grid.Row="2"
                                     Orientation="Horizontal"
                                     HorizontalAlignment="Right"
                                     Margin="0,15,0,0">
+                            <StackPanel.Style>
+                                <Style TargetType="StackPanel">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </StackPanel.Style>
                             <Button Content="Sauvegarder"
                                     Command="{Binding SaveNoteCommand}"
                                     Padding="15,8"
@@ -673,6 +961,83 @@
                                                TextAlignment="Center"
                                                Margin="0,20"
                                                Visibility="{Binding IsMedSilencieux, Converter={StaticResource BoolToVis}}"/>
+
+                                    <!-- ── Blocs Interrogatoire ─────────────────────────── -->
+                                    <ItemsControl ItemsSource="{Binding InterrogatoireBlocks}">
+                                        <ItemsControl.Style>
+                                            <Style TargetType="ItemsControl">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </ItemsControl.Style>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Margin="0,0,0,6" CornerRadius="6"
+                                                        BorderThickness="1" Padding="8">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Background" Value="#FAFAFA"/>
+                                                            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEmpty}" Value="False">
+                                                                    <Setter Property="Background" Value="#F0FAF5"/>
+                                                                    <Setter Property="BorderBrush" Value="#A8D5BC"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <StackPanel>
+                                                        <!-- Titre + % -->
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0"
+                                                                       Text="{Binding Title}"
+                                                                       FontSize="11"
+                                                                       FontWeight="SemiBold"
+                                                                       Foreground="#2C3E50"/>
+                                                            <TextBlock Grid.Column="1"
+                                                                       Text="{Binding ProgressPct, StringFormat='{}{0}%'}"
+                                                                       FontSize="10"
+                                                                       Foreground="#7F8C8D"/>
+                                                        </Grid>
+                                                        <!-- Barre de progression -->
+                                                        <ProgressBar Height="5" Minimum="0" Maximum="100"
+                                                                     Value="{Binding ProgressPct, Mode=OneWay}"
+                                                                     Margin="0,4,0,0"
+                                                                     Foreground="{Binding ProgressBarColor}"
+                                                                     Background="#E0E0E0"
+                                                                     BorderThickness="0"/>
+                                                        <!-- Texte extrait -->
+                                                        <TextBlock Text="{Binding FreeText}"
+                                                                   FontSize="10"
+                                                                   Foreground="#5D6D7E"
+                                                                   TextWrapping="Wrap"
+                                                                   Margin="0,4,0,0"
+                                                                   MaxHeight="60"
+                                                                   TextTrimming="CharacterEllipsis">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsEmpty}" Value="False">
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>
@@ -1111,18 +1476,40 @@
                                                 <RowDefinition Height="Auto"/>
                                                 <RowDefinition Height="*"/>
                                                 <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
+
+                                            <!-- En-tête -->
                                             <StackPanel Grid.Row="0" Margin="40,40,40,20">
                                                 <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                                                <TextBlock Text="Historique medical" FontSize="14" Foreground="#7F8C8D"/>
+                                                <TextBlock Text="Historique médical" FontSize="14" Foreground="#7F8C8D"/>
                                             </StackPanel>
-                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
-                                                <StackPanel>
-                                                    <TextBlock Text="Historique des consultations" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                                                    <TextBlock Text="Les notes de consultation precedentes s'afficheront ici." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
-                                                </StackPanel>
-                                            </ScrollViewer>
-                                            <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+
+                                            <!-- Note courante (page unique, sans scroll) -->
+                                            <Grid Grid.Row="1" Margin="40,0,40,10" ClipToBounds="True">
+                                                <TextBlock Text="Aucune note enregistrée." FontSize="12" Foreground="#95A5A6"
+                                                           TextWrapping="Wrap" VerticalAlignment="Top"
+                                                           Visibility="{Binding HasNoConsultationNotes, Converter={StaticResource BoolToVis}}"/>
+                                                <ContentControl Content="{Binding SinglePageNote}"
+                                                                ContentTemplate="{StaticResource NotePageTemplate}"
+                                                                Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}"/>
+                                            </Grid>
+
+                                            <!-- Navigation ◀ 1/3 ▶ -->
+                                            <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,8"
+                                                        Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}">
+                                                <Button Content="◀" Command="{Binding PrevSinglePageCommand}"
+                                                        Width="32" Height="28" FontSize="13" Cursor="Hand"
+                                                        Background="Transparent" BorderThickness="1" BorderBrush="#BDC3C7"/>
+                                                <TextBlock Text="{Binding SinglePageText}" FontSize="13" Foreground="#555"
+                                                           VerticalAlignment="Center" Margin="12,0"/>
+                                                <Button Content="▶" Command="{Binding NextSinglePageCommand}"
+                                                        Width="32" Height="28" FontSize="13" Cursor="Hand"
+                                                        Background="Transparent" BorderThickness="1" BorderBrush="#BDC3C7"/>
+                                            </StackPanel>
+
+                                            <!-- Fermer -->
+                                            <Button Grid.Row="3" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
                                                     Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
                                                     Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
                                                 <Button.Template>
@@ -1154,10 +1541,24 @@
                                     <Grid Width="1240" Height="842">
                                          <!-- Page GAUCHE -->
                                          <Border Width="590" Height="842" HorizontalAlignment="Left" Background="White" Effect="{StaticResource PageShadow}">
-                                             <StackPanel Margin="40">
-                                                  <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,20"/>
-                                                  <TextBlock Text="Historique medical" FontSize="16" Foreground="#7F8C8D"/>
-                                             </StackPanel>
+                                             <Grid Margin="40">
+                                                 <Grid.RowDefinitions>
+                                                     <RowDefinition Height="Auto"/>
+                                                     <RowDefinition Height="*"/>
+                                                 </Grid.RowDefinitions>
+                                                 <StackPanel Grid.Row="0" Margin="0,0,0,20">
+                                                     <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
+                                                     <TextBlock Text="Historique médical" FontSize="14" Foreground="#7F8C8D"/>
+                                                 </StackPanel>
+                                                 <Grid Grid.Row="1" ClipToBounds="True">
+                                                     <TextBlock Text="Aucune note enregistrée." FontSize="12" Foreground="#95A5A6"
+                                                                TextWrapping="Wrap" VerticalAlignment="Top"
+                                                                Visibility="{Binding HasNoConsultationNotes, Converter={StaticResource BoolToVis}}"/>
+                                                     <ContentControl Content="{Binding LeftPageNote}"
+                                                                     ContentTemplate="{StaticResource NotePageTemplate}"
+                                                                     Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}"/>
+                                                 </Grid>
+                                             </Grid>
                                          </Border>
 
                                          <!-- Page DROITE -->
@@ -1166,23 +1567,40 @@
                                                  <Grid.RowDefinitions>
                                                      <RowDefinition Height="*"/>
                                                      <RowDefinition Height="Auto"/>
+                                                     <RowDefinition Height="Auto"/>
                                                  </Grid.RowDefinitions>
-                                                 <ScrollViewer Grid.Row="0" Margin="40" VerticalScrollBarVisibility="Hidden">
-                                                     <StackPanel>
-                                                         <TextBlock Text="Historique des consultations" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                                                         <TextBlock Text="Les notes de consultation precedentes s'afficheront ici." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
-                                                     </StackPanel>
-                                                 </ScrollViewer>
-                                                 <Button Grid.Row="1" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
+
+                                                 <!-- Note page droite du spread (peut être vide si nombre impair) -->
+                                                 <Grid Grid.Row="0" Margin="40" ClipToBounds="True">
+                                                     <ContentControl Content="{Binding RightPageNote}"
+                                                                     ContentTemplate="{StaticResource NotePageTemplate}"
+                                                                     Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}"/>
+                                                 </Grid>
+
+                                                 <!-- Navigation ◀ 1–2/5 ▶ -->
+                                                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,8"
+                                                             Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}">
+                                                     <Button Content="◀" Command="{Binding PrevSpreadCommand}"
+                                                             Width="32" Height="28" FontSize="13" Cursor="Hand"
+                                                             Background="Transparent" BorderThickness="1" BorderBrush="#BDC3C7"/>
+                                                     <TextBlock Text="{Binding SpreadText}" FontSize="13" Foreground="#555"
+                                                                VerticalAlignment="Center" Margin="12,0"/>
+                                                     <Button Content="▶" Command="{Binding NextSpreadCommand}"
+                                                             Width="32" Height="28" FontSize="13" Cursor="Hand"
+                                                             Background="Transparent" BorderThickness="1" BorderBrush="#BDC3C7"/>
+                                                 </StackPanel>
+
+                                                 <!-- Fermer -->
+                                                 <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
                                                          Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
                                                          Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
-                                                         <Button.Template>
-                                                             <ControlTemplate TargetType="Button">
-                                                                 <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
-                                                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                 </Border>
-                                                             </ControlTemplate>
-                                                         </Button.Template>
+                                                     <Button.Template>
+                                                         <ControlTemplate TargetType="Button">
+                                                             <Border Background="{TemplateBinding Background}" CornerRadius="20" Padding="{TemplateBinding Padding}">
+                                                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                             </Border>
+                                                         </ControlTemplate>
+                                                     </Button.Template>
                                                  </Button>
                                              </Grid>
                                          </Border>

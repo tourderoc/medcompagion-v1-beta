@@ -125,6 +125,57 @@ namespace MedCompanion.Models
         }
     }
 
+    // ─── Interrogatoire V0a ──────────────────────────────────────────────────
+
+    public enum ConsultationType
+    {
+        Normal,
+        PremiereConsultation,
+        Suivi,
+        BilanInitial,
+        ProjetTherapeutique
+    }
+
+    public enum InterrogatoireState
+    {
+        Saisie,
+        Extraction,
+        FinalNote
+    }
+
+    public class BlockDefinition
+    {
+        public string Key { get; set; } = "";
+        public string Title { get; set; } = "";
+        public List<string> ExpectedThemes { get; set; } = new();
+    }
+
+    public class ConsultationBlock
+    {
+        public string Key { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string FreeText { get; set; } = "";
+        public List<string> ExpectedThemes { get; set; } = new();
+        public List<string> CoveredThemes { get; set; } = new();
+        public int ProgressPct => ExpectedThemes.Count == 0
+            ? 0
+            : (int)(100.0 * CoveredThemes.Count / ExpectedThemes.Count);
+    }
+
+    public class BlockUpdate
+    {
+        public string BlockKey { get; set; } = "";
+        public string AppendText { get; set; } = "";
+        public List<string> NewThemes { get; set; } = new();
+    }
+
+    public class ExtractionResult
+    {
+        public List<BlockUpdate> Updates { get; set; } = new();
+    }
+
+    // ─── Item de checklist ───────────────────────────────────────────────────
+
     /// <summary>
     /// Item de checklist pour une consultation
     /// </summary>

@@ -359,6 +359,10 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             }
         };
 
+        // Initialiser ConsultationModeControl (Mode Consultation V0a)
+        if (_currentLLMService != null)
+            ConsultationModeContent.Initialize(_currentLLMService, _storageService);
+
         // Initialiser TemplatesControl
         TemplatesPanel.Initialize(_templateExtractor, _mccLibrary);
         TemplatesPanel.StatusChanged += (s, msg) => {

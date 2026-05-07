@@ -38,4 +38,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Resources\Consultation\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

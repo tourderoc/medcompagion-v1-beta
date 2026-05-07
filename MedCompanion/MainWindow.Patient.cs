@@ -137,6 +137,9 @@ public partial class MainWindow : Window
 
             // Charger les messages parents du patient
             MessagesControlPanel.SetCurrentPatient(_selectedPatient);
+
+            // Mettre à jour le dossier consultation si le mode est actif
+            ConsultationModeContent.LoadPatient(_selectedPatient);
  
             // Vérifier si le patient a un doublon
             var (hasDuplicates, duplicatePatient, score) = _patientIndex.CheckForDuplicates(patient.Id);
