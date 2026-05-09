@@ -32,12 +32,14 @@
                                 Background="Transparent" BorderThickness="0" Cursor="Hand"/>
                     </StackPanel>
                 </Grid>
-                <RichTextBox helpers:RichTextBoxHelper.Document="{Binding DisplayDocument}"
+                <FlowDocumentPageViewer
+                             Document="{Binding DisplayDocument}"
                              Visibility="{Binding IsNotEditing, Converter={StaticResource BoolToVis}}"
-                             IsReadOnly="True" IsDocumentEnabled="True"
                              BorderThickness="0" Background="Transparent"
                              FontSize="{Binding DataContext.NoteFontSize, RelativeSource={RelativeSource AncestorType=UserControl}}"
                              FontFamily="Georgia"
+                             Zoom="100" MinZoom="100" MaxZoom="100"
+                             Height="560"
                              Padding="0" Margin="0"/>
                 <StackPanel Visibility="{Binding IsEditing, Converter={StaticResource BoolToVis}}">
                     <TextBox Text="{Binding EditContent, UpdateSourceTrigger=PropertyChanged}"
