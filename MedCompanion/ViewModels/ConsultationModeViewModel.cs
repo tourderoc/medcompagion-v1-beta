@@ -508,7 +508,9 @@ namespace MedCompanion.ViewModels
         private async Task RefreshConsultationNotesAsync()
         {
             if (CurrentPatient == null) return;
-            var pages = await _dossierDataService.LoadConsultationsAsync(CurrentPatient.NomComplet);
+            var patientSnapshot = CurrentPatient;
+            var pages = await _dossierDataService.LoadConsultationsAsync(patientSnapshot.NomComplet);
+            if (CurrentPatient != patientSnapshot) return; // patient changé pendant l'attente IO
             ConsultationNotes.Clear();
             foreach (var p in pages)
             {
@@ -620,6 +622,12 @@ namespace MedCompanion.ViewModels
             CurrentPatient = patient;
             ConsultationDate = DateTime.Now;
             NoteContent = "";
+
+            // Vider immédiatement pour ne pas afficher les notes du patient précédent
+            ConsultationNotes.Clear();
+            OnPropertyChanged(nameof(HasNoConsultationNotes));
+            OnPropertyChanged(nameof(HasConsultationNotes));
+            ResetPagination();
 
             ActiveDossierTab = DossierTab.Couverture;
             LoadSuggestionsForPatient(patient);
