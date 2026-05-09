@@ -184,9 +184,10 @@ namespace MedCompanion.Services
                     var fileName = Path.GetFileNameWithoutExtension(file);
                     var date = ExtractDateFromNoteFileName(fileName) ?? File.GetLastWriteTime(file);
 
+                    var yamlTitle = ExtractYamlField(content, "title");
                     pages.Add(new DossierPageItem
                     {
-                        Title = $"Note du {date:dd/MM/yyyy}",
+                        Title = yamlTitle ?? $"Note du {date:dd/MM/yyyy}",
                         Date = date,
                         FilePath = file,
                         Content = RemoveYamlHeader(content),
@@ -454,17 +455,24 @@ namespace MedCompanion.Services
             if (string.IsNullOrEmpty(content))
                 return content;
 
-            // L'en-tête YAML est entre deux lignes ---
             if (!content.StartsWith("---"))
                 return content;
 
             var endIndex = content.IndexOf("---", 3);
             if (endIndex > 0)
-            {
                 return content.Substring(endIndex + 3).TrimStart();
-            }
 
             return content;
+        }
+
+        private string? ExtractYamlField(string content, string fieldName)
+        {
+            if (string.IsNullOrEmpty(content) || !content.StartsWith("---")) return null;
+            var endIndex = content.IndexOf("---", 3);
+            if (endIndex < 0) return null;
+            var yaml = content[3..endIndex];
+            var match = Regex.Match(yaml, $@"^{fieldName}:\s*""?([^""\r\n]+)""?\s*$", RegexOptions.Multiline);
+            return match.Success ? match.Groups[1].Value.Trim() : null;
         }
 
         /// <summary>

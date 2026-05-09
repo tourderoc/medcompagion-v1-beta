@@ -263,12 +263,25 @@ namespace MedCompanion.ViewModels
         private ILLMService? _llmService;
         private StorageService? _storageService;
         private readonly InterrogatoireExtractorService _extractor = new();
+        private HandyChunkedRecordingService? _handyService;
 
-        public void InjectServices(ILLMService llmService, StorageService storageService)
+        public void InjectServices(ILLMService llmService, StorageService storageService,
+                                   HandyChunkedRecordingService? handyService = null)
         {
-            _llmService = llmService;
+            _llmService     = llmService;
             _storageService = storageService;
+
+            if (handyService != null)
+            {
+                _handyService = handyService;
+                _handyService.StatusChanged   += msg  => Dispatch(() => ExtractionStatus = msg);
+                _handyService.CutoverStarted  += ()   => Dispatch(() => IsInCutover = true);
+                _handyService.CutoverEnded    += ()   => Dispatch(() => IsInCutover = false);
+            }
         }
+
+        private static void Dispatch(Action a)
+            => System.Windows.Application.Current?.Dispatcher.Invoke(a);
 
         // Type de consultation
         private ConsultationType _consultationType = ConsultationType.Normal;
@@ -328,6 +341,38 @@ namespace MedCompanion.ViewModels
         }
 
         public bool CanExtract => IsInSaisieMode && !string.IsNullOrWhiteSpace(TranscriptionInput) && _llmService != null;
+
+        // Enregistrement continu
+        private bool _isRecording;
+        public bool IsRecording
+        {
+            get => _isRecording;
+            set
+            {
+                if (SetProperty(ref _isRecording, value))
+                {
+                    OnPropertyChanged(nameof(IsNotRecording));
+                    OnPropertyChanged(nameof(RecordingStatusColor));
+                    System.Windows.Application.Current?.Dispatcher.InvokeAsync(
+                        System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+                }
+            }
+        }
+        public bool IsNotRecording => !_isRecording;
+
+        private bool _isInCutover;
+        public bool IsInCutover
+        {
+            get => _isInCutover;
+            set
+            {
+                if (SetProperty(ref _isInCutover, value))
+                    OnPropertyChanged(nameof(RecordingStatusColor));
+            }
+        }
+
+        // "#27AE60" = vert, "#E67E22" = orange
+        public string RecordingStatusColor => IsInCutover ? "#E67E22" : "#27AE60";
 
         // Blocs interrogatoire
         public ObservableCollection<ConsultationBlockViewModel> InterrogatoireBlocks { get; } = new();
@@ -403,7 +448,8 @@ namespace MedCompanion.ViewModels
             if (_storageService == null || CurrentPatient == null || string.IsNullOrWhiteSpace(NoteContent))
                 return;
 
-            var (ok, _, err) = _storageService.SaveStructuredNote(CurrentPatient.NomComplet, NoteContent);
+            var noteTitle = $"Interrogatoire – {ConsultationDate:dd/MM/yyyy}";
+            var (ok, _, err) = _storageService.SaveStructuredNote(CurrentPatient.NomComplet, NoteContent, noteTitle);
             if (ok)
             {
                 _noteSaved = true;
@@ -438,6 +484,8 @@ namespace MedCompanion.ViewModels
         public ICommand ExtractInterrogatoireCommand { get; }
         public ICommand SaveInterrogatoireNoteCommand { get; }
         public ICommand BackToSaisieCommand { get; }
+        public ICommand StartRecordingCommand { get; }
+        public ICommand StopRecordingCommand { get; }
 
         #endregion
 
@@ -474,13 +522,32 @@ namespace MedCompanion.ViewModels
             // Commands interrogatoire
             ExtractInterrogatoireCommand   = new RelayCommand(async _ => await ExtractInterrogatoireAsync(), _ => CanExtract);
             SaveInterrogatoireNoteCommand  = new RelayCommand(async _ => await SaveInterrogatoireNoteAsync(), _ => IsInFinalNoteMode && HasPatient && HasNoteContent && !_noteSaved);
-            BackToSaisieCommand            = new RelayCommand(_ =>
+            BackToSaisieCommand = new RelayCommand(_ =>
             {
                 foreach (var b in InterrogatoireBlocks) b.Reset();
                 NoteContent = "";
                 _noteSaved = false;
                 InterrogatoireState = InterrogatoireState.Saisie;
             });
+
+            StartRecordingCommand = new RelayCommand(
+                async _ =>
+                {
+                    if (_handyService == null) return;
+                    await _handyService.StartAsync();
+                    IsRecording = true;
+                },
+                _ => IsInSaisieMode && !IsRecording && _handyService != null);
+
+            StopRecordingCommand = new RelayCommand(
+                async _ =>
+                {
+                    if (_handyService == null) return;
+                    await _handyService.StopAsync();
+                    IsRecording  = false;
+                    IsInCutover  = false;
+                },
+                _ => IsRecording);
 
             // Commands pagination dossier
             InitPaginationCommands();
@@ -568,17 +635,28 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        public ICommand NextSinglePageCommand { get; private set; } = null!;
-        public ICommand PrevSinglePageCommand { get; private set; } = null!;
-        public ICommand NextSpreadCommand     { get; private set; } = null!;
-        public ICommand PrevSpreadCommand     { get; private set; } = null!;
+        public ICommand NextSinglePageCommand  { get; private set; } = null!;
+        public ICommand PrevSinglePageCommand  { get; private set; } = null!;
+        public ICommand NextSpreadCommand      { get; private set; } = null!;
+        public ICommand PrevSpreadCommand      { get; private set; } = null!;
+        public ICommand IncreaseFontSizeCommand { get; private set; } = null!;
+        public ICommand DecreaseFontSizeCommand { get; private set; } = null!;
+
+        private double _noteFontSize = 12;
+        public double NoteFontSize
+        {
+            get => _noteFontSize;
+            set => SetProperty(ref _noteFontSize, Math.Clamp(value, 10, 28));
+        }
 
         private void InitPaginationCommands()
         {
-            NextSinglePageCommand = new RelayCommand(_ => { _singlePageIndex++; NotifyPageChange(); },   _ => HasNextSingle);
-            PrevSinglePageCommand = new RelayCommand(_ => { _singlePageIndex--; NotifyPageChange(); },   _ => HasPrevSingle);
-            NextSpreadCommand     = new RelayCommand(_ => { _spreadIndex++;     NotifySpreadChange(); }, _ => HasNextSpread);
-            PrevSpreadCommand     = new RelayCommand(_ => { _spreadIndex--;     NotifySpreadChange(); }, _ => HasPrevSpread);
+            NextSinglePageCommand   = new RelayCommand(_ => { _singlePageIndex++; NotifyPageChange(); },   _ => HasNextSingle);
+            PrevSinglePageCommand   = new RelayCommand(_ => { _singlePageIndex--; NotifyPageChange(); },   _ => HasPrevSingle);
+            NextSpreadCommand       = new RelayCommand(_ => { _spreadIndex++;     NotifySpreadChange(); }, _ => HasNextSpread);
+            PrevSpreadCommand       = new RelayCommand(_ => { _spreadIndex--;     NotifySpreadChange(); }, _ => HasPrevSpread);
+            IncreaseFontSizeCommand = new RelayCommand(_ => NoteFontSize += 2, _ => NoteFontSize < 28);
+            DecreaseFontSizeCommand = new RelayCommand(_ => NoteFontSize -= 2, _ => NoteFontSize > 10);
         }
 
         private void NotifyPageChange()
@@ -591,10 +669,13 @@ namespace MedCompanion.ViewModels
                 System.Windows.Input.CommandManager.InvalidateRequerySuggested);
         }
 
+        public bool HasRightPageNote => RightPageNote != null;
+
         private void NotifySpreadChange()
         {
             OnPropertyChanged(nameof(LeftPageNote));
             OnPropertyChanged(nameof(RightPageNote));
+            OnPropertyChanged(nameof(HasRightPageNote));
             OnPropertyChanged(nameof(SpreadText));
             OnPropertyChanged(nameof(HasPrevSpread));
             OnPropertyChanged(nameof(HasNextSpread));
@@ -621,7 +702,15 @@ namespace MedCompanion.ViewModels
         {
             CurrentPatient = patient;
             ConsultationDate = DateTime.Now;
+
+            // Réinitialiser l'interrogatoire (blocs, état, textes)
+            ConsultationType = ConsultationType.Normal;   // remet les flags IsInterrogatoireMode etc.
+            InterrogatoireBlocks.Clear();
+            _interrogatoireState = InterrogatoireState.Saisie;
+            _noteSaved = false;
+            TranscriptionInput = "";
             NoteContent = "";
+            ExtractionStatus = "";
 
             // Vider immédiatement pour ne pas afficher les notes du patient précédent
             ConsultationNotes.Clear();

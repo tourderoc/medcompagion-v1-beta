@@ -30,8 +30,9 @@ namespace MedCompanion
         /// Sauvegarde une note structurée
         /// </summary>
         public (bool success, string message, string? filePath) SaveStructuredNote(
-            string nomComplet, 
-            string noteStructuree)
+            string nomComplet,
+            string noteStructuree,
+            string? title = null)
         {
             try
             {
@@ -56,6 +57,8 @@ namespace MedCompanion
                 content.AppendLine("---");
                 content.AppendLine($"patient: \"{nomComplet}\"");
                 content.AppendLine($"date: \"{now:yyyy-MM-ddTHH:mm}\"");
+                if (!string.IsNullOrEmpty(title))
+                    content.AppendLine($"title: \"{title}\"");
                 content.AppendLine("source: \"MedCompanion\"");
                 content.AppendLine("type: \"note-structuree\"");
                 content.AppendLine("version: \"1\"");

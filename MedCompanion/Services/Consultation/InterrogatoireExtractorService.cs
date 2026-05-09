@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using MedCompanion.Models;
 using MedCompanion.Services.LLM;
@@ -106,14 +108,16 @@ namespace MedCompanion.Services.Consultation
         public static string BuildFinalNote(List<ConsultationBlock> blocks, DateTime date)
         {
             var sb = new StringBuilder();
-            sb.AppendLine($"Interrogatoire — 1ère consultation — {date:dd/MM/yyyy}");
-            sb.AppendLine();
 
             foreach (var block in blocks)
             {
                 if (string.IsNullOrWhiteSpace(block.FreeText)) continue;
-                sb.AppendLine($"[{block.Title}]");
-                sb.AppendLine(block.FreeText);
+                sb.AppendLine($"## {block.Title}");
+                // Supprimer les lignes "Date : ..." redondantes injectées par le LLM
+                var lines = block.FreeText
+                    .Split('\n')
+                    .Where(l => !Regex.IsMatch(l.Trim(), @"^\*?\*?Date\s*:.*", RegexOptions.IgnoreCase));
+                sb.AppendLine(string.Join('\n', lines).Trim());
                 sb.AppendLine();
             }
 

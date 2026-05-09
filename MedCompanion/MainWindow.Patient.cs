@@ -311,6 +311,7 @@ public partial class MainWindow : Window
                 case "Consultation":
                     ConsultationModeContent.Visibility = Visibility.Visible;
                     if (PatientSearchZone != null) PatientSearchZone.Visibility = Visibility.Visible;
+                    if (_selectedPatient != null && PatientCardPanel != null) PatientCardPanel.Visibility = Visibility.Visible;
                     // Charger le patient si sélectionné
                     if (_selectedPatient != null)
                     {

@@ -14,6 +14,7 @@ using System.Windows.Media;
 using MedCompanion.Commands;
 using MedCompanion.Models;
 using MedCompanion.Services;
+using MedCompanion.Services.Consultation;
 using MedCompanion.Services.LLM;
 using MedCompanion.Dialogs;
 using MedCompanion.Views.Courriers;
@@ -65,6 +66,7 @@ public partial class MainWindow : Window
     private LLMServiceFactory _llmFactory;
     private LLMWarmupService _warmupService;
     private ILLMService? _currentLLMService;
+    private HandyChunkedRecordingService? _handyRecordingService;
     private readonly LLMGatewayService _llmGatewayService; // ✅ NOUVEAU - Gateway centralisé
     
     // ViewModels MVVM (propriété publique pour binding XAML)
@@ -114,6 +116,11 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = AppSettings.Load();
+        // Même hotkey que FocusMedControl (Ctrl+Shift+H = hotkey Handy qui fonctionne)
+        var handyHotkey = !string.IsNullOrEmpty(_settings.HandyHotkey) && _settings.HandyHotkey != "Ctrl+Space"
+            ? _settings.HandyHotkey
+            : "Ctrl+Shift+H";
+        _handyRecordingService = new HandyChunkedRecordingService(handyHotkey);
         _pathService = new PathService();
 
         // NOUVEAU : Initialiser le tracker de poids pour la synthèse
@@ -359,9 +366,9 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             }
         };
 
-        // Initialiser ConsultationModeControl (Mode Consultation V0a)
+        // Initialiser ConsultationModeControl (Mode Consultation V0b — Handy chunked)
         if (_currentLLMService != null)
-            ConsultationModeContent.Initialize(_currentLLMService, _storageService);
+            ConsultationModeContent.Initialize(_currentLLMService, _storageService, _handyRecordingService);
 
         // Initialiser TemplatesControl
         TemplatesPanel.Initialize(_templateExtractor, _mccLibrary);
