@@ -82,6 +82,10 @@ namespace MedCompanion.Services.Consultation
         private DateTime _startedAt;
         private int      _totalSamplesProcessed;
         private int      _totalChunksTranscribed;
+        private float    _currentAudioRms;       // niveau audio instantané
+        private DateTime _lastTranscriptionAt;
+        private DateTime _lastAudioAt;
+        private string   _logPath = "";
 
         // ── Session state (reset à chaque Start) ──────────────────────────────
         private readonly List<float> _audioBuffer  = new();
@@ -183,7 +187,13 @@ namespace MedCompanion.Services.Consultation
                 _startedAt              = DateTime.Now;
                 _totalSamplesProcessed  = 0;
                 _totalChunksTranscribed = 0;
+                _currentAudioRms        = 0f;
+                _lastTranscriptionAt    = DateTime.Now;
+                _lastAudioAt            = DateTime.Now;
                 _heartbeatTask          = Task.Run(() => HeartbeatLoopAsync(_cts.Token));
+
+                InitLogFile();
+                Log("Session démarrée");
 
                 IsActive = true;
                 StatusChanged?.Invoke("● Enregistrement...");
@@ -201,6 +211,7 @@ namespace MedCompanion.Services.Consultation
         public async Task StopAsync()
         {
             if (!IsActive) return;
+            Log("StopAsync appelé");
             IsActive = false;
 
             StatusChanged?.Invoke("Arrêt en cours...");
@@ -251,6 +262,9 @@ namespace MedCompanion.Services.Consultation
         /// </summary>
         private async void OnRecordingStoppedUnexpectedly(object? sender, StoppedEventArgs e)
         {
+            var exMsg = e.Exception?.Message ?? "(pas d'exception)";
+            Log($"NAudio RecordingStopped : exception={exMsg}, IsActive={IsActive}");
+
             if (!IsActive) return; // Stop volontaire, pas une erreur
 
             var msg = e.Exception?.Message ?? "raison inconnue";
@@ -289,9 +303,12 @@ namespace MedCompanion.Services.Consultation
         }
 
         /// <summary>
-        /// Heartbeat toutes les 2s : status stable, indicateur transcription en cours.
-        /// Le statut reste TOUJOURS "● Enregistrement..." pour éviter le clignotement
-        /// qui faisait croire à un arrêt.
+        /// Heartbeat toutes les 2s : indicateurs détaillés pour diagnostic temps réel.
+        ///   • timer session
+        ///   • compteur segments
+        ///   • niveau audio instantané (barre 0-8 blocs)
+        ///   • temps depuis dernière transcription
+        ///   • profondeur de la queue
         /// </summary>
         private async Task HeartbeatLoopAsync(CancellationToken ct)
         {
@@ -302,17 +319,38 @@ namespace MedCompanion.Services.Consultation
                     await Task.Delay(2_000, ct);
                     if (!IsActive) return;
 
-                    var elapsed     = DateTime.Now - _startedAt;
-                    var transcMark  = Volatile.Read(ref _isTranscribing) == 1 ? " ✎" : "";
-                    var queueDepth  = _audioQueue?.Reader.Count ?? 0;
-                    var queueMark   = queueDepth > 0 ? $" ({queueDepth} en file)" : "";
+                    var elapsed       = DateTime.Now - _startedAt;
+                    var sinceTransc   = (DateTime.Now - _lastTranscriptionAt).TotalSeconds;
+                    var sinceAudio    = (DateTime.Now - _lastAudioAt).TotalSeconds;
+                    var transcMark    = Volatile.Read(ref _isTranscribing) == 1 ? " ✎" : "";
+                    var queueDepth    = _audioQueue?.Reader.Count ?? 0;
+                    var queueMark     = queueDepth > 0 ? $" [{queueDepth} en file]" : "";
+
+                    // Barre de niveau audio (0 à 8 blocs selon RMS)
+                    var audioLevel    = BuildAudioBar(_currentAudioRms);
+
+                    // Alerte si plus d'audio depuis 3s OU plus de transcription depuis 30s
+                    string alert = "";
+                    if (sinceAudio > 3.0)        alert = "  ⚠ MICRO MUET";
+                    else if (sinceTransc > 30.0) alert = $"  ⚠ aucune transcription depuis {sinceTransc:F0}s";
 
                     StatusChanged?.Invoke(
-                        $"● Enregistrement {elapsed:mm\\:ss} • " +
-                        $"{_totalChunksTranscribed} segments{transcMark}{queueMark}");
+                        $"● {elapsed:mm\\:ss} • {audioLevel} • " +
+                        $"{_totalChunksTranscribed} seg{transcMark}{queueMark}{alert}");
                 }
             }
             catch (OperationCanceledException) { /* normal */ }
+            catch (Exception ex)
+            {
+                Log($"Heartbeat CRASH : {ex.GetType().Name}: {ex.Message}");
+            }
+        }
+
+        private static string BuildAudioBar(float rms)
+        {
+            // RMS typiquement 0 à 0.1, normalise sur 8 blocs
+            int level = Math.Min(8, (int)(rms * 80));
+            return new string('▮', level) + new string('░', 8 - level);
         }
 
         private async Task CleanupCaptureAsync()
@@ -357,6 +395,8 @@ namespace MedCompanion.Services.Consultation
             var chunkMs = (int)(samples.Length * 1000.0 / SampleRate);
 
             Interlocked.Add(ref _totalSamplesProcessed, samples.Length);
+            _currentAudioRms = rms;
+            _lastAudioAt     = DateTime.Now;
 
             bool shouldFlush;
             lock (_bufferLock)
@@ -409,16 +449,24 @@ namespace MedCompanion.Services.Consultation
             {
                 await foreach (var samples in reader.ReadAllAsync(ct))
                 {
-                    if (_processor == null) continue;
+                    if (_processor == null) { Log("Processor null, skip"); continue; }
+
+                    var durationS = samples.Length / (double)SampleRate;
+                    Log($"Transcription chunk {durationS:F1}s...");
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
 
                     try
                     {
                         Interlocked.Exchange(ref _isTranscribing, 1);
 
                         var text = await TranscribeAsync(samples);
+                        var rawText = text;
                         text = FilterHallucinations(text);
 
                         Interlocked.Increment(ref _totalChunksTranscribed);
+                        _lastTranscriptionAt = DateTime.Now;
+
+                        Log($"  → {sw.ElapsedMilliseconds}ms, brut: \"{Truncate(rawText, 60)}\", filtré: \"{Truncate(text, 60)}\"");
 
                         if (!string.IsNullOrWhiteSpace(text))
                         {
@@ -433,11 +481,13 @@ namespace MedCompanion.Services.Consultation
                                 _segmentAccumulator = "";
                                 _newWordCount       = 0;
                                 SegmentReady?.Invoke(segment);
+                                Log($"  → Segment LLM envoyé ({CountWords(segment)} mots)");
                             }
                         }
                     }
                     catch (Exception ex)
                     {
+                        Log($"  ✗ EXCEPTION transcription : {ex.GetType().Name}: {ex.Message}");
                         StatusChanged?.Invoke($"✗ Erreur transcription : {ex.Message}");
                     }
                     finally
@@ -445,9 +495,21 @@ namespace MedCompanion.Services.Consultation
                         Interlocked.Exchange(ref _isTranscribing, 0);
                     }
                 }
+                Log("TranscriptionLoop terminée normalement");
             }
-            catch (OperationCanceledException) { /* normal */ }
+            catch (OperationCanceledException)
+            {
+                Log("TranscriptionLoop annulée");
+            }
+            catch (Exception ex)
+            {
+                Log($"TranscriptionLoop CRASH : {ex.GetType().Name}: {ex.Message}\n{ex.StackTrace}");
+                StatusChanged?.Invoke($"✗ Boucle transcription crashée : {ex.Message}");
+            }
         }
+
+        private static string Truncate(string s, int len) =>
+            string.IsNullOrEmpty(s) ? "" : (s.Length <= len ? s : s.Substring(0, len) + "…");
 
         private async Task<string> TranscribeAsync(float[] samples)
         {
@@ -460,6 +522,32 @@ namespace MedCompanion.Services.Consultation
                     results.Add(segment.Text.Trim());
             }
             return string.Join(" ", results);
+        }
+
+        // ── Logging fichier (post-mortem) ─────────────────────────────────────
+
+        private void InitLogFile()
+        {
+            try
+            {
+                var dir = Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                    "MedCompanion", "logs");
+                Directory.CreateDirectory(dir);
+                _logPath = Path.Combine(dir, $"whisper_{DateTime.Now:yyyyMMdd_HHmmss}.log");
+            }
+            catch { _logPath = ""; }
+        }
+
+        private void Log(string message)
+        {
+            if (string.IsNullOrEmpty(_logPath)) return;
+            try
+            {
+                File.AppendAllText(_logPath,
+                    $"[{DateTime.Now:HH:mm:ss.fff}] {message}{Environment.NewLine}");
+            }
+            catch { /* ignoré */ }
         }
 
         // ── CUDA PATH ─────────────────────────────────────────────────────────
