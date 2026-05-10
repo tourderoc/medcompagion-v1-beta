@@ -621,6 +621,14 @@
                                 <StackPanel Grid.Row="2" Orientation="Horizontal"
                                             HorizontalAlignment="Right" Margin="0,8,0,0">
 
+                                    <!-- Sélecteur mode dictée (visible quand pas en cours) -->
+                                    <CheckBox Content="Mode Batch (90s)"
+                                              IsChecked="{Binding UseBatchMode}"
+                                              VerticalAlignment="Center" Margin="0,0,12,0"
+                                              FontSize="11"
+                                              Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
+                                              ToolTip="Coché : transcription toutes les 90s (qualité max, recommandé pour consultation)&#x0a;Décoché : streaming temps réel (peut fragmenter sur débit lent)"/>
+
                                     <!-- Bouton Démarrer dictée -->
                                     <Button Content="🎙 Dicter"
                                             Command="{Binding StartRecordingCommand}"

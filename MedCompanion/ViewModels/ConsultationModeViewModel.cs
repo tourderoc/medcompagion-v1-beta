@@ -432,6 +432,22 @@ namespace MedCompanion.ViewModels
 
         public bool CanExtract => IsInSaisieMode && !string.IsNullOrWhiteSpace(TranscriptionInput) && _llmService != null;
 
+        // Mode de dictée (Batch recommandé pour consultation, Streaming en option pour test)
+        private bool _useBatchMode = true;
+        public bool UseBatchMode
+        {
+            get => _useBatchMode;
+            set => SetProperty(ref _useBatchMode, value);
+        }
+
+        // Durée du chunk en mode Batch (60s / 90s / 120s)
+        private int _batchDurationSeconds = 90;
+        public int BatchDurationSeconds
+        {
+            get => _batchDurationSeconds;
+            set => SetProperty(ref _batchDurationSeconds, value);
+        }
+
         // Enregistrement continu
         private bool _isRecording;
         public bool IsRecording
@@ -612,6 +628,8 @@ namespace MedCompanion.ViewModels
                 async _ =>
                 {
                     if (_whisperService == null) return;
+                    _whisperService.Mode                 = UseBatchMode ? RecordingMode.Batch : RecordingMode.Streaming;
+                    _whisperService.BatchDurationSeconds = BatchDurationSeconds;
                     var modelManager = new WhisperModelManager();
                     await _whisperService.StartAsync(modelManager);
                     IsRecording = true;

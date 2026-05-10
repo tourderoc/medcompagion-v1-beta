@@ -11,17 +11,31 @@ using Whisper.net.Ggml;
 
 namespace MedCompanion.Services.Consultation
 {
+    public enum RecordingMode
+    {
+        /// <summary>Flush sur silence (réactif mais peut fragmenter sur débit lent).</summary>
+        Streaming,
+        /// <summary>Flush toutes les N secondes (qualité maximale, latence prévisible).</summary>
+        Batch
+    }
+
     /// <summary>
-    /// Capture micro continue → transcription Whisper GPU → texte temps réel.
+    /// Capture micro continue → transcription Whisper GPU → texte.
+    ///
+    /// Deux modes :
+    ///  - Streaming : flush sur silence VAD (réactif)
+    ///  - Batch : flush sur timer fixe (qualité max, recommandé pour consultations)
     ///
     /// Architecture :
-    ///  - WhisperFactory/Processor créés UNE SEULE FOIS (au 1er Start), gardés jusqu'à Dispose.
-    ///  - Chaque Start réinitialise l'état de session (buffers, accumulateurs).
-    ///  - Audio passe par une Channel : aucune perte si la transcription est en cours.
-    ///  - WaveIn disposé proprement à chaque Stop.
+    ///  - WhisperFactory/Processor créés UNE SEULE FOIS, gardés jusqu'à Dispose
+    ///  - Audio passe par une Channel zéro-perte
+    ///  - WaveIn disposé proprement à chaque Stop
+    ///  - Audio + transcription sauvegardés (debug) — désactivable via SaveAudioEnabled
     /// </summary>
     public class WhisperStreamingService : IDisposable
     {
+        // ── À METTRE À FALSE QUAND TOUT EST STABLE ─────────────────────────────
+        public const bool SaveAudioEnabled = true;
         // ── Config ────────────────────────────────────────────────────────────
         // Pour une consultation réelle (pauses de réflexion, débit lent) :
         // on tolère 2.5s de silence avant de flusher → Whisper reçoit des chunks
@@ -76,12 +90,18 @@ namespace MedCompanion.Services.Consultation
         private bool _whisperInitialized;
         private readonly SemaphoreSlim _initLock = new(1, 1);
 
+        // ── Mode (configurable avant Start) ───────────────────────────────────
+        public RecordingMode Mode                 { get; set; } = RecordingMode.Batch;
+        public int           BatchDurationSeconds { get; set; } = 90;
+
         // ── Capture audio (recréés à chaque Start/Stop) ───────────────────────
         private WaveInEvent? _waveIn;
         private CancellationTokenSource? _cts;
         private Channel<float[]>? _audioQueue;
         private Task? _transcriptionTask;
         private Task? _heartbeatTask;
+        private Task? _batchTimerTask;
+        private AudioRecorder? _audioRecorder;
         private DateTime _startedAt;
         private int      _totalSamplesProcessed;
         private int      _totalChunksTranscribed;
@@ -195,11 +215,22 @@ namespace MedCompanion.Services.Consultation
                 _lastAudioAt            = DateTime.Now;
                 _heartbeatTask          = Task.Run(() => HeartbeatLoopAsync(_cts.Token));
 
+                if (SaveAudioEnabled)
+                    _audioRecorder = new AudioRecorder(SampleRate, Channels);
+
+                // En mode Batch : timer qui flush toutes les N secondes
+                if (Mode == RecordingMode.Batch)
+                    _batchTimerTask = Task.Run(() => BatchTimerLoopAsync(_cts.Token));
+
                 InitLogFile();
-                Log("Session démarrée");
+                Log($"Session démarrée — mode={Mode}, batch={BatchDurationSeconds}s, save={SaveAudioEnabled}");
+                if (_audioRecorder != null) Log($"Audio sauvegardé dans : {_audioRecorder.SessionFolder}");
 
                 IsActive = true;
-                StatusChanged?.Invoke("● Enregistrement...");
+                var modeMsg = Mode == RecordingMode.Batch
+                    ? $"● Capture (batch {BatchDurationSeconds}s)..."
+                    : "● Enregistrement (streaming)...";
+                StatusChanged?.Invoke(modeMsg);
             }
             catch (Exception ex)
             {
@@ -251,6 +282,16 @@ namespace MedCompanion.Services.Consultation
                 catch { /* ignoré */ }
                 _heartbeatTask = null;
             }
+
+            if (_batchTimerTask != null)
+            {
+                try { await _batchTimerTask; }
+                catch { /* ignoré */ }
+                _batchTimerTask = null;
+            }
+
+            _audioRecorder?.Dispose();
+            _audioRecorder = null;
 
             _cts?.Dispose();
             _cts = null;
@@ -409,6 +450,18 @@ namespace MedCompanion.Services.Consultation
             _currentAudioRms = rms;
             _lastAudioAt     = DateTime.Now;
 
+            // En mode Batch : on accumule SANS flush automatique, le timer s'en occupe
+            if (Mode == RecordingMode.Batch)
+            {
+                lock (_bufferLock)
+                {
+                    _audioBuffer.AddRange(samples);
+                    _bufferMs += chunkMs;
+                }
+                return;
+            }
+
+            // Mode Streaming : flush sur silence VAD ou max buffer
             bool shouldFlush;
             lock (_bufferLock)
             {
@@ -422,6 +475,29 @@ namespace MedCompanion.Services.Consultation
             }
 
             if (shouldFlush) FlushBufferToQueue(force: false);
+        }
+
+        /// <summary>
+        /// Mode Batch : flush du buffer toutes les BatchDurationSeconds.
+        /// </summary>
+        private async Task BatchTimerLoopAsync(CancellationToken ct)
+        {
+            try
+            {
+                while (!ct.IsCancellationRequested)
+                {
+                    await Task.Delay(BatchDurationSeconds * 1000, ct);
+                    if (!IsActive) return;
+
+                    Log($"Batch timer : flush {BatchDurationSeconds}s");
+                    FlushBufferToQueue(force: true);
+                }
+            }
+            catch (OperationCanceledException) { /* normal */ }
+            catch (Exception ex)
+            {
+                Log($"BatchTimer CRASH : {ex.GetType().Name}: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -442,19 +518,27 @@ namespace MedCompanion.Services.Consultation
                 _bufferMs = 0;
             }
 
-            // Anti-hallucination : ignorer chunks trop courts ou silencieux
             var durationMs = (int)(samples.Length * 1000.0 / SampleRate);
             var rms        = ComputeRms(samples);
 
-            if (durationMs < MinAudioDurationMs)
+            // En mode Streaming : filtrer les chunks trop courts/silencieux (anti-hallucination)
+            // En mode Batch : on envoie toujours, le contexte de 90s permet à Whisper de bien gérer
+            if (Mode == RecordingMode.Streaming)
             {
-                Log($"Chunk REJETÉ (trop court : {durationMs}ms < {MinAudioDurationMs}ms)");
-                return;
+                if (durationMs < MinAudioDurationMs)
+                {
+                    Log($"Chunk REJETÉ (trop court : {durationMs}ms < {MinAudioDurationMs}ms)");
+                    return;
+                }
+                if (rms < SegmentRmsThreshold)
+                {
+                    Log($"Chunk REJETÉ (trop silencieux : RMS={rms:F4} < {SegmentRmsThreshold})");
+                    return;
+                }
             }
-            if (rms < SegmentRmsThreshold)
+            else
             {
-                Log($"Chunk REJETÉ (trop silencieux : RMS={rms:F4} < {SegmentRmsThreshold})");
-                return;
+                Log($"Chunk batch envoyé : {durationMs / 1000.0:F1}s, RMS={rms:F4}");
             }
 
             _audioQueue?.Writer.TryWrite(samples);
@@ -480,12 +564,18 @@ namespace MedCompanion.Services.Consultation
                     {
                         Interlocked.Exchange(ref _isTranscribing, 1);
 
+                        // Sauvegarde audio AVANT transcription (pour avoir le .wav même si Whisper crashe)
+                        _audioRecorder?.SaveChunk(samples);
+
                         var text = await TranscribeAsync(samples);
                         var rawText = text;
                         text = FilterHallucinations(text);
 
                         Interlocked.Increment(ref _totalChunksTranscribed);
                         _lastTranscriptionAt = DateTime.Now;
+
+                        // Sauvegarde la transcription juste après le .wav du même chunk
+                        _audioRecorder?.SaveTranscription(text);
 
                         Log($"  → {sw.ElapsedMilliseconds}ms, brut: \"{Truncate(rawText, 60)}\", filtré: \"{Truncate(text, 60)}\"");
 
