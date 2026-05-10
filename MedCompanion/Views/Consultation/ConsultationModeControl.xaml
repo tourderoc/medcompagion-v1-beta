@@ -623,7 +623,7 @@
 
                                     <!-- Bouton Démarrer dictée -->
                                     <Button Content="🎙 Dicter"
-                                            Click="DicterBtn_Click"
+                                            Command="{Binding StartRecordingCommand}"
                                             IsEnabled="{Binding IsInSaisieMode}"
                                             Padding="12,7" Cursor="Hand" FontSize="12"
                                             Background="#27AE60" Foreground="White"
@@ -655,7 +655,7 @@
 
                                     <!-- Bouton Arrêter dictée -->
                                     <Button Content="⏹ Arrêter"
-                                            Click="ArreterBtn_Click"
+                                            Command="{Binding StopRecordingCommand}"
                                             Padding="12,7" Cursor="Hand" FontSize="12"
                                             Background="#E74C3C" Foreground="White"
                                             BorderThickness="0" Margin="0,0,8,0"

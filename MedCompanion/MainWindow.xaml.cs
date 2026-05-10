@@ -66,7 +66,7 @@ public partial class MainWindow : Window
     private LLMServiceFactory _llmFactory;
     private LLMWarmupService _warmupService;
     private ILLMService? _currentLLMService;
-    private HandyChunkedRecordingService? _handyRecordingService;
+    private WhisperStreamingService? _whisperStreamingService;
     private readonly LLMGatewayService _llmGatewayService; // ✅ NOUVEAU - Gateway centralisé
     
     // ViewModels MVVM (propriété publique pour binding XAML)
@@ -116,11 +116,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         _settings = AppSettings.Load();
-        // Même hotkey que FocusMedControl (Ctrl+Shift+H = hotkey Handy qui fonctionne)
-        var handyHotkey = !string.IsNullOrEmpty(_settings.HandyHotkey) && _settings.HandyHotkey != "Ctrl+Space"
-            ? _settings.HandyHotkey
-            : "Ctrl+Shift+H";
-        _handyRecordingService = new HandyChunkedRecordingService(handyHotkey);
+        _whisperStreamingService = new WhisperStreamingService();
         _pathService = new PathService();
 
         // NOUVEAU : Initialiser le tracker de poids pour la synthèse
@@ -366,9 +362,9 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             }
         };
 
-        // Initialiser ConsultationModeControl (Mode Consultation V0b — Handy chunked)
+        // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
-            ConsultationModeContent.Initialize(_currentLLMService, _storageService, _handyRecordingService);
+            ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService);
 
         // Initialiser TemplatesControl
         TemplatesPanel.Initialize(_templateExtractor, _mccLibrary);

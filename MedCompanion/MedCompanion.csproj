@@ -24,6 +24,10 @@
     <PackageReference Include="Tesseract" Version="5.2.0" />
     <PackageReference Include="UglyToad.PdfPig" Version="1.7.0-custom-5" />
     <PackageReference Include="Google.Cloud.Firestore" Version="3.8.0" />
+    <PackageReference Include="Whisper.net" Version="1.9.0" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.9.0" />
+    <PackageReference Include="NAudio" Version="2.2.1" />
   </ItemGroup>
 
   <ItemGroup>

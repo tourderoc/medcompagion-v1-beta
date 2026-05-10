@@ -106,3 +106,5 @@ if (!success) { MessageBox.Show(error); return; }
 
 - [VISION_V3.md](VISION_V3.md) — Vision écosystème Parent'aile + MedCompanion (V0 en cours)
 - [VISION_V2.md](VISION_V2.md) — Vision MedCompanion V2 (Focus Med, Mémoire, Mode Consultation)
+- [PLAN_MODE_CONSULTATION_V0A.md](PLAN_MODE_CONSULTATION_V0A.md) — Plan détaillé Mode Consultation V0a
+- [SETUP_WHISPER_GPU.md](SETUP_WHISPER_GPU.md) — **Guide installation Whisper GPU + 7 pièges résolus** (à lire avant install nouveau poste)

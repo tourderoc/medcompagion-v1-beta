@@ -1,5 +1,4 @@
 using System.IO;
-using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 using MedCompanion.Models;
@@ -13,8 +12,7 @@ namespace MedCompanion.Views.Consultation
 {
     public partial class ConsultationModeControl : UserControl
     {
-        private ConsultationModeViewModel?    _viewModel;
-        private HandyChunkedRecordingService? _handyService;
+        private ConsultationModeViewModel? _viewModel;
 
         public ConsultationModeControl()
         {
@@ -23,26 +21,10 @@ namespace MedCompanion.Views.Consultation
         }
 
         public void Initialize(ILLMService llmService, StorageService storageService,
-                               HandyChunkedRecordingService? handyService = null)
+                               WhisperStreamingService? whisperService = null)
         {
-            _viewModel    ??= DataContext as ConsultationModeViewModel;
-            _handyService   = handyService;
-
-            if (handyService != null)
-            {
-                // Focus TextBox AVANT chaque stop/restart Handy (Handy tape là où est le focus)
-                handyService.FocusRequired += async () =>
-                {
-                    await Dispatcher.InvokeAsync(() =>
-                    {
-                        TranscriptionTextBox.Focus();
-                        TranscriptionTextBox.CaretIndex = TranscriptionTextBox.Text?.Length ?? 0;
-                    });
-                    await Task.Delay(80); // marge pour que le focus soit effectif
-                };
-            }
-
-            _viewModel?.InjectServices(llmService, storageService, handyService);
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            _viewModel?.InjectServices(llmService, storageService, whisperService);
         }
 
         public void LoadPatient(PatientIndexEntry patient)
@@ -62,36 +44,7 @@ namespace MedCompanion.Views.Consultation
 
         public ConsultationModeViewModel? GetViewModel() => _viewModel;
 
-        // ── Dictée Handy ────────────────────────────────────────────────────
-
-        private async void DicterBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_handyService == null || _viewModel == null) return;
-
-            // Pattern identique à FocusMedControl : focus TextBox → délai → toggle Handy
-            TranscriptionTextBox.Focus();
-            TranscriptionTextBox.CaretIndex = TranscriptionTextBox.Text?.Length ?? 0;
-            await Task.Delay(50);
-
-            await _handyService.StartAsync();
-            _viewModel.IsRecording = true;
-        }
-
-        private async void ArreterBtn_Click(object sender, RoutedEventArgs e)
-        {
-            if (_handyService == null || _viewModel == null) return;
-
-            // Re-focus avant stop : Handy tape dans notre TextBox, pas ailleurs
-            TranscriptionTextBox.Focus();
-            TranscriptionTextBox.CaretIndex = TranscriptionTextBox.Text?.Length ?? 0;
-            await Task.Delay(100);
-
-            await _handyService.StopAsync();
-            _viewModel.IsRecording  = false;
-            _viewModel.IsInCutover  = false;
-        }
-
-        // ── Autres handlers ─────────────────────────────────────────────────
+        // ── Handlers ─────────────────────────────────────────────────────────
 
         private void ConsultationTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -115,8 +68,8 @@ namespace MedCompanion.Views.Consultation
 
             var dlg = new OpenFileDialog
             {
-                Title     = "Importer une transcription",
-                Filter    = "Fichiers texte (*.txt)|*.txt|Tous les fichiers (*.*)|*.*",
+                Title       = "Importer une transcription",
+                Filter      = "Fichiers texte (*.txt)|*.txt|Tous les fichiers (*.*)|*.*",
                 Multiselect = false
             };
 

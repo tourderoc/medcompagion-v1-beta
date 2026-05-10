@@ -262,22 +262,112 @@ namespace MedCompanion.ViewModels
 
         private ILLMService? _llmService;
         private StorageService? _storageService;
-        private readonly InterrogatoireExtractorService _extractor = new();
-        private HandyChunkedRecordingService? _handyService;
+        private readonly InterrogatoireExtractorService  _extractor            = new();
+        private readonly IncrementalExtractorService     _incrementalExtractor = new();
+        private WhisperStreamingService? _whisperService;
+
+        // File d'extraction : jamais deux appels LLM simultanés
+        private readonly SemaphoreSlim _extractionLock    = new(1, 1);
+        private string                 _pendingSegment    = "";
 
         public void InjectServices(ILLMService llmService, StorageService storageService,
-                                   HandyChunkedRecordingService? handyService = null)
+                                   WhisperStreamingService? whisperService = null)
         {
             _llmService     = llmService;
             _storageService = storageService;
 
-            if (handyService != null)
+            if (whisperService != null)
             {
-                _handyService = handyService;
-                _handyService.StatusChanged   += msg  => Dispatch(() => ExtractionStatus = msg);
-                _handyService.CutoverStarted  += ()   => Dispatch(() => IsInCutover = true);
-                _handyService.CutoverEnded    += ()   => Dispatch(() => IsInCutover = false);
+                _whisperService = whisperService;
+                _whisperService.StatusChanged         += msg  => Dispatch(() => ExtractionStatus = msg);
+                _whisperService.TextAppended          += text => Dispatch(() => TranscriptionInput += text);
+                _whisperService.SegmentReady          += seg  => _ = EnqueueExtractionAsync(seg);
+                _whisperService.SessionResetRequested += ()   => Dispatch(ResetDictationSession);
             }
+        }
+
+        /// <summary>
+        /// Réinitialise complètement la session de dictée :
+        /// - vide la transcription
+        /// - vide le segment en attente d'extraction
+        /// - réinitialise les blocs (texte + thèmes)
+        /// </summary>
+        private void ResetDictationSession()
+        {
+            TranscriptionInput = "";
+            _pendingSegment    = "";
+
+            foreach (var block in InterrogatoireBlocks)
+                block.Reset();
+
+            // Repasse en mode Saisie si on était dans un autre état
+            if (IsInterrogatoireMode)
+                InterrogatoireState = InterrogatoireState.Saisie;
+        }
+
+        /// <summary>
+        /// Accumule les segments et déclenche une extraction incrémentale dès que le LLM est libre.
+        /// </summary>
+        private async Task EnqueueExtractionAsync(string newSegment)
+        {
+            _pendingSegment += " " + newSegment;
+
+            if (!await _extractionLock.WaitAsync(0)) return;
+
+            try
+            {
+                while (!string.IsNullOrWhiteSpace(_pendingSegment))
+                {
+                    var segment = _pendingSegment.Trim();
+                    _pendingSegment = "";
+                    await ExtractIncrementalAsync(segment);
+                }
+            }
+            finally
+            {
+                _extractionLock.Release();
+            }
+        }
+
+        private async Task ExtractIncrementalAsync(string segment)
+        {
+            if (_llmService == null || string.IsNullOrWhiteSpace(segment)) return;
+
+            Dispatch(() => ExtractionStatus = "⟳ Extraction en cours...");
+
+            var currentBlocks = InterrogatoireBlocks
+                .Select(vm => new ConsultationBlock
+                {
+                    Key           = vm.Key,
+                    Title         = vm.Title,
+                    FreeText      = vm.FreeText,
+                    CoveredThemes = new List<string>(vm.CoveredThemes)
+                }).ToList();
+
+            var (ok, result, err) = await _incrementalExtractor.ExtractAsync(
+                _llmService, segment, currentBlocks);
+
+            if (!ok || result == null)
+            {
+                Dispatch(() => ExtractionStatus = $"Erreur extraction : {err}");
+                return;
+            }
+
+            Dispatch(() =>
+            {
+                foreach (var update in result.Updates)
+                {
+                    var blockVm = InterrogatoireBlocks.FirstOrDefault(b => b.Key == update.BlockKey);
+                    if (blockVm == null) continue;
+
+                    if (!string.IsNullOrWhiteSpace(update.AppendText))
+                        blockVm.AppendText(update.AppendText);
+
+                    foreach (var theme in update.NewThemes)
+                        blockVm.AddTheme(theme);
+                }
+                ExtractionStatus = "● Enregistrement...";
+            });
         }
 
         private static void Dispatch(Action a)
@@ -360,19 +450,7 @@ namespace MedCompanion.ViewModels
         }
         public bool IsNotRecording => !_isRecording;
 
-        private bool _isInCutover;
-        public bool IsInCutover
-        {
-            get => _isInCutover;
-            set
-            {
-                if (SetProperty(ref _isInCutover, value))
-                    OnPropertyChanged(nameof(RecordingStatusColor));
-            }
-        }
-
-        // "#27AE60" = vert, "#E67E22" = orange
-        public string RecordingStatusColor => IsInCutover ? "#E67E22" : "#27AE60";
+        public string RecordingStatusColor => IsRecording ? "#27AE60" : "#AAAAAA";
 
         // Blocs interrogatoire
         public ObservableCollection<ConsultationBlockViewModel> InterrogatoireBlocks { get; } = new();
@@ -533,19 +611,19 @@ namespace MedCompanion.ViewModels
             StartRecordingCommand = new RelayCommand(
                 async _ =>
                 {
-                    if (_handyService == null) return;
-                    await _handyService.StartAsync();
+                    if (_whisperService == null) return;
+                    var modelManager = new WhisperModelManager();
+                    await _whisperService.StartAsync(modelManager);
                     IsRecording = true;
                 },
-                _ => IsInSaisieMode && !IsRecording && _handyService != null);
+                _ => IsInSaisieMode && !IsRecording && _whisperService != null);
 
             StopRecordingCommand = new RelayCommand(
                 async _ =>
                 {
-                    if (_handyService == null) return;
-                    await _handyService.StopAsync();
-                    IsRecording  = false;
-                    IsInCutover  = false;
+                    if (_whisperService == null) return;
+                    await _whisperService.StopAsync();
+                    IsRecording = false;
                 },
                 _ => IsRecording);
 
