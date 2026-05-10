@@ -26,11 +26,11 @@ namespace MedCompanion.Services.Consultation
         private const int   SampleRate            = 16000;
         private const int   Channels              = 1;
         private const float SilenceRmsThreshold   = 0.015f;  // VAD : seuil détection silence
-        private const int   SilenceDurationMs     = 1000;    // silence → flush (équilibre réactivité/qualité)
+        private const int   SilenceDurationMs     = 1000;    // silence → flush
         private const int   MaxBufferDurationMs   = 10000;   // flush forcé après 10s
         private const int   MinWordsToTriggerLlm  = 50;
-        private const int   MinAudioDurationMs    = 1200;    // anti-hallucination : chunks min 1.2s
-        private const float SegmentRmsThreshold   = 0.020f;  // anti-hallucination : RMS segment plus strict
+        private const int   MinAudioDurationMs    = 500;     // capturer aussi les courtes réponses ("oui", "non")
+        private const float SegmentRmsThreshold   = 0.020f;  // anti-hallucination : RMS segment
 
         // Prompt neutre : évite les mots-clés qui déclenchent des associations
         // problématiques dans le modèle (ex: "pédopsychiatrie" → "pédophilie")
@@ -323,8 +323,16 @@ namespace MedCompanion.Services.Consultation
                     var sinceTransc   = (DateTime.Now - _lastTranscriptionAt).TotalSeconds;
                     var sinceAudio    = (DateTime.Now - _lastAudioAt).TotalSeconds;
                     var transcMark    = Volatile.Read(ref _isTranscribing) == 1 ? " ✎" : "";
-                    var queueDepth    = _audioQueue?.Reader.Count ?? 0;
-                    var queueMark     = queueDepth > 0 ? $" [{queueDepth} en file]" : "";
+
+                    // Reader.Count peut throw NotSupportedException sur certains channels
+                    string queueMark = "";
+                    try
+                    {
+                        var reader = _audioQueue?.Reader;
+                        if (reader != null && reader.CanCount && reader.Count > 0)
+                            queueMark = $" [{reader.Count} en file]";
+                    }
+                    catch { /* ignore */ }
 
                     // Barre de niveau audio (0 à 8 blocs selon RMS)
                     var audioLevel    = BuildAudioBar(_currentAudioRms);
@@ -433,8 +441,18 @@ namespace MedCompanion.Services.Consultation
 
             // Anti-hallucination : ignorer chunks trop courts ou silencieux
             var durationMs = (int)(samples.Length * 1000.0 / SampleRate);
-            if (durationMs < MinAudioDurationMs) return;
-            if (ComputeRms(samples) < SegmentRmsThreshold) return;
+            var rms        = ComputeRms(samples);
+
+            if (durationMs < MinAudioDurationMs)
+            {
+                Log($"Chunk REJETÉ (trop court : {durationMs}ms < {MinAudioDurationMs}ms)");
+                return;
+            }
+            if (rms < SegmentRmsThreshold)
+            {
+                Log($"Chunk REJETÉ (trop silencieux : RMS={rms:F4} < {SegmentRmsThreshold})");
+                return;
+            }
 
             _audioQueue?.Writer.TryWrite(samples);
         }
