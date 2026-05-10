@@ -23,11 +23,14 @@ namespace MedCompanion.Services.Consultation
     public class WhisperStreamingService : IDisposable
     {
         // ── Config ────────────────────────────────────────────────────────────
+        // Pour une consultation réelle (pauses de réflexion, débit lent) :
+        // on tolère 2.5s de silence avant de flusher → Whisper reçoit des chunks
+        // longs avec contexte = meilleure qualité de transcription.
         private const int   SampleRate            = 16000;
         private const int   Channels              = 1;
         private const float SilenceRmsThreshold   = 0.015f;  // VAD : seuil détection silence
-        private const int   SilenceDurationMs     = 1000;    // silence → flush
-        private const int   MaxBufferDurationMs   = 10000;   // flush forcé après 10s
+        private const int   SilenceDurationMs     = 2500;    // tolère pauses naturelles de réflexion
+        private const int   MaxBufferDurationMs   = 15000;   // flush forcé après 15s (chunks plus longs = meilleur contexte)
         private const int   MinWordsToTriggerLlm  = 50;
         private const int   MinAudioDurationMs    = 500;     // capturer aussi les courtes réponses ("oui", "non")
         private const float SegmentRmsThreshold   = 0.020f;  // anti-hallucination : RMS segment
