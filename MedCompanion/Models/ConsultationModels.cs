@@ -207,4 +207,21 @@ namespace MedCompanion.Models
             set { _source = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Source))); }
         }
     }
+
+    public enum QualityIssueType
+    {
+        Medication,   // nom de médicament phonétique
+        Coherence,    // incohérence logique (âge, date...)
+        Unclear       // terme ambigu, précision demandée
+    }
+
+    public class QualityIssue
+    {
+        public string           BlockKey    { get; set; } = "";
+        public string           BlockTitle  { get; set; } = "";
+        public string           Original    { get; set; } = "";
+        public string           Suggestion  { get; set; } = "";
+        public string           Reason      { get; set; } = "";
+        public QualityIssueType Type        { get; set; }
+    }
 }

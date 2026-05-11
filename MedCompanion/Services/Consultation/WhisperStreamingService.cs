@@ -49,10 +49,21 @@ namespace MedCompanion.Services.Consultation
         private const int   MinAudioDurationMs    = 500;     // capturer aussi les courtes réponses ("oui", "non")
         private const float SegmentRmsThreshold   = 0.020f;  // anti-hallucination : RMS segment
 
-        // Prompt neutre : évite les mots-clés qui déclenchent des associations
-        // problématiques dans le modèle (ex: "pédopsychiatrie" → "pédophilie")
+        // Prompt neutre + médicaments courants → biaise le vocabulaire Whisper vers les bons termes
+        // Ne pas mettre "pédopsychiatrie" : déclenche des associations problématiques dans le modèle
         private const string InitialPrompt =
-            "Conversation médicale entre un médecin et une famille en français.";
+            "Conversation médicale entre un médecin et une famille en français. " +
+            "Médicaments : Médikinet, Concerta, Ritaline, Quasym, Rubifen, méthylphénidate, " +
+            "Vyvanse, lisdexamfétamine, Strattera, atomoxétine, Attentin, " +
+            "Risperdal, rispéridone, Abilify, aripiprazole, Tercian, cyamémazine, " +
+            "Haldol, halopéridol, Tiapridex, tiapride, Zyprexa, olanzapine, " +
+            "Xeroquel, quétiapine, Nozinan, lévomépromazine, Leponex, clozapine, Loxapac, loxapine, " +
+            "Prozac, fluoxétine, Zoloft, sertraline, Seroplex, escitalopram, " +
+            "Deroxat, paroxétine, Floxyfral, fluvoxamine, Effexor, venlafaxine, Norset, mirtazapine, " +
+            "Dépakine, acide valproïque, Dépakote, Lamictal, lamotrigine, " +
+            "Tégrétol, carbamazépine, Téralithe, lithium, Epitomax, topiramate, " +
+            "Atarax, hydroxyzine, Circadin, Slenyto, mélatonine, Valium, diazépam, Lysanxia, prazépam. " +
+            "Sigles : TDAH, ITEP, DITEP, IDEP, AESH, SESSAD, IME, CMP, CMPP, CAMSP.";
 
         private static readonly string[] KnownHallucinations =
         {
@@ -197,6 +208,13 @@ namespace MedCompanion.Services.Consultation
                     TranscriptionLoopAsync(_audioQueue.Reader, _cts.Token));
 
                 // Capture micro
+                if (WaveInEvent.DeviceCount == 0)
+                {
+                    IsActive = false;
+                    StatusChanged?.Invoke("✗ Aucun microphone détecté. Branchez un micro et réessayez.");
+                    return;
+                }
+
                 _waveIn = new WaveInEvent
                 {
                     WaveFormat         = new WaveFormat(SampleRate, 16, Channels),
@@ -205,7 +223,18 @@ namespace MedCompanion.Services.Consultation
                 };
                 _waveIn.DataAvailable    += OnAudioData;
                 _waveIn.RecordingStopped += OnRecordingStoppedUnexpectedly;
-                _waveIn.StartRecording();
+                try
+                {
+                    _waveIn.StartRecording();
+                }
+                catch (Exception ex)
+                {
+                    IsActive = false;
+                    StatusChanged?.Invoke($"✗ Erreur microphone : {ex.Message}. Vérifiez les autorisations dans Paramètres → Confidentialité → Microphone.");
+                    _waveIn.Dispose();
+                    _waveIn = null;
+                    return;
+                }
 
                 _startedAt              = DateTime.Now;
                 _totalSamplesProcessed  = 0;

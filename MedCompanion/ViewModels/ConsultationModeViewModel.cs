@@ -264,6 +264,7 @@ namespace MedCompanion.ViewModels
         private StorageService? _storageService;
         private readonly InterrogatoireExtractorService  _extractor            = new();
         private readonly IncrementalExtractorService     _incrementalExtractor = new();
+        private readonly QualityCheckService             _qualityChecker       = new();
         private WhisperStreamingService? _whisperService;
 
         // File d'extraction : jamais deux appels LLM simultanés
@@ -535,6 +536,51 @@ namespace MedCompanion.ViewModels
             InterrogatoireState = InterrogatoireState.FinalNote;
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                 System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+
+            // Passe qualité en arrière-plan (non bloquante)
+            _ = RunQualityCheckAsync(NoteContent);
+        }
+
+        // ── Contrôle qualité ─────────────────────────────────────────────────
+
+        public ObservableCollection<QualityIssueViewModel> QualityIssues { get; } = new();
+
+        private bool _isRunningQualityCheck;
+        public bool IsRunningQualityCheck
+        {
+            get => _isRunningQualityCheck;
+            set { if (SetProperty(ref _isRunningQualityCheck, value)) OnPropertyChanged(nameof(HasQualityIssues)); }
+        }
+
+        public bool HasQualityIssues => QualityIssues.Count > 0 || IsRunningQualityCheck;
+
+        private async Task RunQualityCheckAsync(string noteContent)
+        {
+            if (_llmService == null) return;
+            Dispatch(() => { IsRunningQualityCheck = true; QualityIssues.Clear(); });
+
+            var issues = await _qualityChecker.CheckAsync(_llmService, noteContent);
+
+            Dispatch(() =>
+            {
+                IsRunningQualityCheck = false;
+                QualityIssues.Clear();
+                foreach (var issue in issues)
+                    QualityIssues.Add(new QualityIssueViewModel(issue, this));
+                OnPropertyChanged(nameof(HasQualityIssues));
+            });
+        }
+
+        internal void ApplyQualityIssue(QualityIssue issue)
+        {
+            NoteContent = NoteContent.Replace(issue.Original, issue.Suggestion,
+                System.StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal void DismissQualityIssue(QualityIssueViewModel vm)
+        {
+            QualityIssues.Remove(vm);
+            OnPropertyChanged(nameof(HasQualityIssues));
         }
 
         private async Task SaveInterrogatoireNoteAsync()
@@ -887,5 +933,42 @@ namespace MedCompanion.ViewModels
         }
 
         #endregion
+    }
+
+    public class QualityIssueViewModel : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private readonly ConsultationModeViewModel _parent;
+        public QualityIssue Issue { get; }
+
+        public string Original   => Issue.Original;
+        public string Suggestion => Issue.Suggestion;
+        public string Reason     => Issue.Reason;
+        public string BlockTitle => Issue.BlockTitle;
+
+        public string TypeIcon => Issue.Type switch
+        {
+            QualityIssueType.Medication => "💊",
+            QualityIssueType.Coherence  => "⚠",
+            _                           => "❓"
+        };
+
+        public ICommand AcceptCommand  { get; }
+        public ICommand DismissCommand { get; }
+
+        public QualityIssueViewModel(QualityIssue issue, ConsultationModeViewModel parent)
+        {
+            Issue   = issue;
+            _parent = parent;
+
+            AcceptCommand = new RelayCommand(_ =>
+            {
+                _parent.ApplyQualityIssue(Issue);
+                _parent.DismissQualityIssue(this);
+            });
+
+            DismissCommand = new RelayCommand(_ => _parent.DismissQualityIssue(this));
+        }
     }
 }

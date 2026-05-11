@@ -778,6 +778,7 @@
                                 </Grid.Style>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
@@ -786,7 +787,83 @@
                                            FontSize="12" Foreground="#27AE60" FontWeight="SemiBold"
                                            Margin="0,0,0,6"/>
 
-                                <TextBox Grid.Row="1"
+                                <!-- Bandeau contrôle qualité -->
+                                <Border Grid.Row="1" Margin="0,0,0,8"
+                                        Visibility="{Binding HasQualityIssues, Converter={StaticResource BoolToVis}}">
+                                    <StackPanel>
+                                        <!-- En cours -->
+                                        <TextBlock Text="⏳ Contrôle qualité en cours..."
+                                                   FontSize="11" Foreground="#7F8C8D" FontStyle="Italic"
+                                                   Margin="0,0,0,4"
+                                                   Visibility="{Binding IsRunningQualityCheck, Converter={StaticResource BoolToVis}}"/>
+                                        <!-- Liste des signalements -->
+                                        <ItemsControl ItemsSource="{Binding QualityIssues}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#FFF9E6" BorderBrush="#F39C12"
+                                                            BorderThickness="1" CornerRadius="4"
+                                                            Margin="0,0,0,4" Padding="8,5">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0">
+                                                                <StackPanel Orientation="Horizontal">
+                                                                    <TextBlock Text="{Binding TypeIcon}" FontSize="12" Margin="0,0,5,0"/>
+                                                                    <TextBlock Text="{Binding BlockTitle}" FontSize="11"
+                                                                               FontWeight="SemiBold" Foreground="#7F8C8D"/>
+                                                                </StackPanel>
+                                                                <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                                    <TextBlock Text="{Binding Original}" FontSize="12"
+                                                                               Foreground="#E74C3C" TextDecorations="Strikethrough"/>
+                                                                    <TextBlock Text=" → " FontSize="12" Foreground="#7F8C8D"/>
+                                                                    <TextBlock Text="{Binding Suggestion}" FontSize="12"
+                                                                               Foreground="#27AE60" FontWeight="SemiBold"/>
+                                                                </StackPanel>
+                                                                <TextBlock Text="{Binding Reason}" FontSize="10"
+                                                                           Foreground="#95A5A6" Margin="0,2,0,0"/>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal"
+                                                                        VerticalAlignment="Center" Margin="8,0,0,0">
+                                                                <Button Content="✓ Appliquer"
+                                                                        Command="{Binding AcceptCommand}"
+                                                                        Padding="8,4" FontSize="11" Cursor="Hand"
+                                                                        Background="#27AE60" Foreground="White"
+                                                                        BorderThickness="0" Margin="0,0,4,0">
+                                                                    <Button.Template>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}"
+                                                                                    CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Button.Template>
+                                                                </Button>
+                                                                <Button Content="✕"
+                                                                        Command="{Binding DismissCommand}"
+                                                                        Width="24" Height="24" FontSize="11" Cursor="Hand"
+                                                                        Background="#ECF0F1" Foreground="#7F8C8D"
+                                                                        BorderThickness="0">
+                                                                    <Button.Template>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}"
+                                                                                    CornerRadius="3" Padding="2">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Button.Template>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
+
+                                <TextBox Grid.Row="2"
                                          Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
                                          AcceptsReturn="True"
                                          TextWrapping="Wrap"
@@ -815,7 +892,7 @@
                                     </TextBox.Style>
                                 </TextBox>
 
-                                <StackPanel Grid.Row="2" Orientation="Horizontal"
+                                <StackPanel Grid.Row="3" Orientation="Horizontal"
                                             HorizontalAlignment="Right" Margin="0,8,0,0">
                                     <Button Content="↩ Retour"
                                             Command="{Binding BackToSaisieCommand}"
