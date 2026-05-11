@@ -459,6 +459,66 @@ Les 3 exemples sont les vraies notes du Dr Lassoued, **anonymisées par initiale
 
 ---
 
+## 7. Plan V0c — STT temps réel local (à implémenter)
+
+> Date de réflexion : 2026-05-09  
+> Statut : à planifier, solution technique identifiée
+
+### 7.1 Contexte
+
+La solution actuelle (V0b) utilise Handy en chunks de 3 min avec une coupure de ~5s entre chaque chunk. Cette coupure entraîne une perte de parole non récupérable. L'objectif V0c est un **STT continu** : le médecin parle, le texte apparaît dans le TextBox au fur et à mesure, sans interruption et sans cloud.
+
+### 7.2 Solution retenue : Const-me/Whisper
+
+**Repo :** [https://github.com/Const-me/Whisper](https://github.com/Const-me/Whisper)
+
+Implémentation haute performance de Whisper via **DirectCompute (DirectX 11)** — pas de CUDA, fonctionne sur tout GPU moderne via DirectX. Dispose d'un wrapper C# et supporte la capture microphone en temps réel.
+
+**Pourquoi ce choix :**
+- 100% local, aucune donnée envoyée au cloud
+- GPU via DirectX 11 (compatible avec le GPU 16 Go de la machine)
+- Wrapper C# natif → intégration directe dans le projet WPF sans Python
+- Capture microphone en streaming déjà implémentée dans le projet
+- Qualité Whisper (excellent français)
+- Windows-only — parfait pour cette app desktop
+
+**Alternatives écartées :**
+- WebView2 + Web Speech API → cloud Microsoft, inacceptable pour données médicales
+- Python + faster-whisper → Python non installé, dépendance externe lourde
+- Vosk → CPU uniquement, qualité inférieure à Whisper
+- Coqui STT ("cocircoo") → projet abandonné fin 2023
+- Whisper.net + CUDA → pas conçu pour streaming temps réel
+
+### 7.3 Architecture cible
+
+```
+Micro → Const-me/Whisper (DirectX GPU)
+           ↓ segment détecté (fin de phrase ~1-2s)
+    TranscriptionInput += segment
+           ↓
+    TextBox mis à jour en temps réel
+           ↓ (à la fin de la consultation)
+    [Extraire] → LLM → 8 blocs cliniques
+```
+
+### 7.4 Ce qu'il faut faire
+
+1. **Étudier le NuGet/wrapper C#** du repo Const-me/Whisper et voir la surface d'API disponible
+2. **Télécharger un modèle Whisper** (recommandé : `medium` ou `large-v2` selon perf GPU)
+3. **Créer `WhisperRealtimeService`** : démarre la capture micro, fire un event `TextReceived` à chaque segment transcrit
+4. **Brancher dans `ConsultationModeViewModel`** : remplacer `HandyChunkedRecordingService` par `WhisperRealtimeService`, `TranscriptionInput` s'alimente en continu
+5. **Supprimer les boutons Dicter/Arrêter** et l'indicateur de coupure vert/orange (devenus inutiles)
+6. **Remplacer par Commencer / Terminer** : Commencer = démarre la capture, Terminer = arrête + propose d'extraire
+
+### 7.5 Points d'attention
+
+- La latence de transcription sera de ~1-2 secondes après chaque silence naturel (délai inhérent à Whisper)
+- Le modèle Whisper doit être stocké localement (`Documents/MedCompanion/whisper/`)
+- Premier lancement : proposer un téléchargement guidé du modèle (comme WhisperDesktop le fait)
+- Tester la détection de langue (forcer `fr` pour éviter une détection anglaise sur mots courts)
+
+---
+
 ## 7. UI V0a
 
 ### 7.1 Bloc gauche — Mode saisie (avant extraction)
