@@ -63,11 +63,14 @@ namespace MedCompanion.Services.Consultation
             "Dépakine, acide valproïque, Dépakote, Lamictal, lamotrigine, " +
             "Tégrétol, carbamazépine, Téralithe, lithium, Epitomax, topiramate, " +
             "Atarax, hydroxyzine, Circadin, Slenyto, mélatonine, Valium, diazépam, Lysanxia, prazépam. " +
-            "Sigles : TDAH, ITEP, DITEP, IDEP, AESH, SESSAD, IME, UEMA, FHEAH, CMP, CMPP, CAMSP. " +
+            "Sigles : TDAH, ITEP, DITEP, IDEP, AESH, SESSAD, IME, UEMA, FHEAH, EEAP, IEM, SEES, APAJH, ADSEA, CMP, CMPP, CAMSP. " +
             "Établissements Var : Majourane, La Frégate, Moineaux de l'Ermitage, Bell'Estello, " +
-            "Geist 83, Le Galion, Prépro-ARGIMSA, Rossetti, Canot Major. " +
-            "Villes Var : Le Pradet, La Garde, La Valette-du-Var, Six-Fours-les-Plages, " +
-            "Sanary-sur-Mer, Ollioules, Hyères, La Crau, Carqueiranne, Solliès-Pont.";
+            "Geist 83, Le Galion, Prépro-ARGIMSA, Rossetti, Canot Major, " +
+            "Folke Bernadotte, Pompaniana Olbia, San Salvadour, Le Cigalon, " +
+            "Jardins d'Asclepios, Les Farfadets, Les Piérides, Pierre Semard. " +
+            "Villes Var : Le Pradet, La Garde, La Valette-du-Var, La Seyne-sur-Mer, " +
+            "Six-Fours-les-Plages, Sanary-sur-Mer, Ollioules, Hyères, Brignoles, " +
+            "La Crau, Carqueiranne, Solliès-Pont.";
 
         private static readonly string[] KnownHallucinations =
         {
