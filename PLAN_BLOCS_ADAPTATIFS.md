@@ -280,11 +280,44 @@ par les patients).
 
 ---
 
+## Whisper — Vocabulaire personnalisé depuis l'application
+
+**Constat :** les établissements locaux changent, s'ajoutent, et le médecin les connaît mieux que le code.
+Passer par un commit à chaque ajout n'est pas viable à long terme.
+
+**Solution : fichier texte éditable depuis l'UI**
+
+- Fichier : `Documents/MedCompanion/whisper_vocab_custom.txt` (un terme par ligne)
+- Lu au démarrage de `WhisperStreamingService`, concaténé à la fin de `InitialPrompt`
+- UI : petite zone dans les réglages du Mode Consultation — champ "Ajouter un terme" + liste éditable
+
+**Implémentation (~1h) :**
+
+```csharp
+// Dans WhisperStreamingService, au démarrage :
+var customVocabPath = Path.Combine(PathService.DataRoot, "whisper_vocab_custom.txt");
+if (File.Exists(customVocabPath))
+{
+    var terms = File.ReadAllLines(customVocabPath, Encoding.UTF8)
+                    .Where(l => !string.IsNullOrWhiteSpace(l));
+    _effectivePrompt = InitialPrompt + " " + string.Join(", ", terms) + ".";
+}
+else
+{
+    _effectivePrompt = InitialPrompt;
+}
+```
+
+L'UI affiche la liste, permet d'ajouter/supprimer sans redémarrer l'app
+(le fichier est relu à chaque `StartAsync()`).
+
+---
+
 ## Prochaine session : ordre d'exécution recommandé
 
-1. Commit du fix microphone BadDeviceId (déjà codé, pas encore commité)
-2. Ajout noms de villes dans `InitialPrompt` (10 min)
-3. Ajout ~10 établissements locaux atypiques dans `InitialPrompt` (15 min, liste à fournir)
+1. ~~Commit du fix microphone BadDeviceId~~ ✓ fait (939f54e)
+2. ~~Ajout noms de villes + établissements Var dans `InitialPrompt`~~ ✓ fait (9f7059c, 205151a)
+3. Vocabulaire personnalisé depuis l'UI (~1h) — **priorité avant blocs adaptatifs**
 4. Phase A (block_library.json) — socle pour toute la suite
 5. Phases B + C ensemble — pas de LLM, logique pure
 6. Phase D (ContextualBlockSuggester) — le seul appel LLM supplémentaire
