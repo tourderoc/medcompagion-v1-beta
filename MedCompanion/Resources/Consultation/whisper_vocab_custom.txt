@@ -1,0 +1,183 @@
+# ══════════════════════════════════════════════════════════════
+# Vocabulaire personnalisé Whisper — MedCompanion
+# ══════════════════════════════════════════════════════════════
+#
+# Ce fichier contient les termes spécialisés à injecter dans le
+# prompt Whisper pour améliorer la transcription médicale.
+#
+# Format :
+#   - Un mot ou phrase par ligne
+#   - Les lignes commençant par # sont ignorées (commentaires)
+#   - Les sections [NomSection] regroupent les termes
+#   - Les lignes vides sont ignorées
+#
+# Vous pouvez modifier ce fichier depuis les réglages Consultation
+# ou directement dans le fichier texte.
+# ══════════════════════════════════════════════════════════════
+
+[Médicaments TDAH]
+Médikinet
+Concerta
+Ritaline
+Quasym
+Rubifen
+méthylphénidate
+Vyvanse
+lisdexamfétamine
+Strattera
+atomoxétine
+Attentin
+
+[Antipsychotiques]
+Risperdal
+rispéridone
+Abilify
+aripiprazole
+Tercian
+cyamémazine
+Haldol
+halopéridol
+Tiapridex
+tiapride
+Zyprexa
+olanzapine
+Xeroquel
+quétiapine
+Nozinan
+lévomépromazine
+Leponex
+clozapine
+Loxapac
+loxapine
+
+[Antidépresseurs]
+Prozac
+fluoxétine
+Zoloft
+sertraline
+Seroplex
+escitalopram
+Deroxat
+paroxétine
+Floxyfral
+fluvoxamine
+Effexor
+venlafaxine
+Norset
+mirtazapine
+
+[Thymorégulateurs]
+Dépakine
+acide valproïque
+Dépakote
+Lamictal
+lamotrigine
+Tégrétol
+carbamazépine
+Téralithe
+lithium
+Epitomax
+topiramate
+
+[Anxiolytiques et Sommeil]
+Atarax
+hydroxyzine
+Circadin
+Slenyto
+mélatonine
+Valium
+diazépam
+Lysanxia
+prazépam
+
+[Sigles et Acronymes]
+TDAH
+TSA
+ITEP
+DITEP
+IDEP
+AESH
+SESSAD
+IME
+UEMA
+FHEAH
+EEAP
+IEM
+SEES
+APAJH
+ADSEA
+CMP
+CMPP
+CAMSP
+MDPH
+PPS
+PAP
+PPRE
+GEVASco
+
+[Établissements Var]
+Majourane
+La Frégate
+Moineaux de l'Ermitage
+Bell'Estello
+Geist 83
+Le Galion
+Prépro-ARGIMSA
+Rossetti
+Canot Major
+Folke Bernadotte
+Pompaniana Olbia
+San Salvadour
+Le Cigalon
+Jardins d'Asclepios
+Les Farfadets
+Les Piérides
+Pierre Semard
+
+[Villes Var]
+Le Pradet
+La Garde
+La Valette-du-Var
+La Seyne-sur-Mer
+Six-Fours-les-Plages
+Sanary-sur-Mer
+Ollioules
+Hyères
+Brignoles
+La Crau
+Carqueiranne
+Solliès-Pont
+
+[Tests et Bilans]
+WISC-V
+WPPSI-IV
+ADI-R
+ADOS-2
+Vineland
+Conners
+BRIEF
+Figure de Rey
+NEPSY-II
+Tea-Ch
+Stroop
+Trail Making Test
+Bilan neuropsychologique
+Bilan orthophonique
+Bilan psychomoteur
+Bilan ergothérapique
+
+[Termes cliniques]
+dysrégulation émotionnelle
+haut potentiel intellectuel
+retard de langage
+trouble oppositionnel
+anxiété de séparation
+mutisme sélectif
+encoprésie
+énurésie
+hyperactivité
+inattention
+impulsivité
+comorbidité
+psychoéducation
+remédiation cognitive

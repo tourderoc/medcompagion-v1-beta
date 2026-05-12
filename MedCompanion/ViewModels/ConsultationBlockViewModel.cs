@@ -109,5 +109,15 @@ namespace MedCompanion.ViewModels
             Title = model.Title,
             ExpectedThemes = new List<string>(model.ExpectedThemes)
         };
+
+        /// <summary>
+        /// V0b : Crée un ViewModel depuis une BlockDefinition (block_library.json)
+        /// </summary>
+        public static ConsultationBlockViewModel FromDefinition(BlockDefinition def) => new()
+        {
+            Key = def.Key,
+            Title = def.Title,
+            ExpectedThemes = new List<string>(def.ExpectedThemes)
+        };
     }
 }

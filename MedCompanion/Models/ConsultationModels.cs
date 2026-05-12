@@ -143,11 +143,80 @@ namespace MedCompanion.Models
         FinalNote
     }
 
+    // ─── Trigger type for V0b adaptive blocks ─────────────────────────────
+
+    public enum BlockTriggerType
+    {
+        /// <summary>Noyau fixe, toujours présent</summary>
+        CoreFixed,
+        /// <summary>Automatique selon l'âge (petite_enfance vs scolarite)</summary>
+        AgeAutomatic,
+        /// <summary>Suggestion chip déclenchée par motif</summary>
+        MotifChip
+    }
+
     public class BlockDefinition
     {
         public string Key { get; set; } = "";
         public string Title { get; set; } = "";
         public List<string> ExpectedThemes { get; set; } = new();
+
+        // ── V0b fields ──────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Type de déclencheur : core_fixed, age_automatic, motif_chip
+        /// </summary>
+        public string TriggerType { get; set; } = "core_fixed";
+
+        /// <summary>Âge minimum pour ce bloc (0 si pas de contrainte)</summary>
+        public int? AgeMin { get; set; }
+
+        /// <summary>Âge maximum pour ce bloc (99 si pas de contrainte)</summary>
+        public int? AgeMax { get; set; }
+
+        /// <summary>Mots-clés motif qui déclenchent la suggestion chip</summary>
+        public List<string> MotifKeywords { get; set; } = new();
+
+        /// <summary>Ordre d'affichage dans la liste</summary>
+        public int Order { get; set; } = 99;
+
+        /// <summary>Parse TriggerType string to enum</summary>
+        public BlockTriggerType TriggerTypeEnum => TriggerType?.ToLowerInvariant() switch
+        {
+            "core_fixed"     => BlockTriggerType.CoreFixed,
+            "age_automatic"  => BlockTriggerType.AgeAutomatic,
+            "motif_chip"     => BlockTriggerType.MotifChip,
+            _                => BlockTriggerType.CoreFixed
+        };
+    }
+
+    // ─── V0b : Suggestion chip pour bloc supplémentaire ────────────────────
+
+    /// <summary>
+    /// Suggestion de bloc supplémentaire, affichée comme chip dans l'UI.
+    /// Le médecin accepte (✓) ou ignore (✕).
+    /// </summary>
+    public class BlockSuggestion : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string BlockKey { get; set; } = "";
+        public string Title { get; set; } = "";
+        public string Reason { get; set; } = "";
+
+        private bool _isAccepted;
+        public bool IsAccepted
+        {
+            get => _isAccepted;
+            set { _isAccepted = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsAccepted))); }
+        }
+
+        private bool _isDismissed;
+        public bool IsDismissed
+        {
+            get => _isDismissed;
+            set { _isDismissed = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsDismissed))); }
+        }
     }
 
     public class ConsultationBlock

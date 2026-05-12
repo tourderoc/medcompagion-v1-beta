@@ -49,28 +49,16 @@ namespace MedCompanion.Services.Consultation
         private const int   MinAudioDurationMs    = 500;     // capturer aussi les courtes réponses ("oui", "non")
         private const float SegmentRmsThreshold   = 0.020f;  // anti-hallucination : RMS segment
 
-        // Prompt neutre + médicaments courants → biaise le vocabulaire Whisper vers les bons termes
-        // Ne pas mettre "pédopsychiatrie" : déclenche des associations problématiques dans le modèle
-        private const string InitialPrompt =
-            "Conversation médicale entre un médecin et une famille en français. " +
-            "Médicaments : Médikinet, Concerta, Ritaline, Quasym, Rubifen, méthylphénidate, " +
-            "Vyvanse, lisdexamfétamine, Strattera, atomoxétine, Attentin, " +
-            "Risperdal, rispéridone, Abilify, aripiprazole, Tercian, cyamémazine, " +
-            "Haldol, halopéridol, Tiapridex, tiapride, Zyprexa, olanzapine, " +
-            "Xeroquel, quétiapine, Nozinan, lévomépromazine, Leponex, clozapine, Loxapac, loxapine, " +
-            "Prozac, fluoxétine, Zoloft, sertraline, Seroplex, escitalopram, " +
-            "Deroxat, paroxétine, Floxyfral, fluvoxamine, Effexor, venlafaxine, Norset, mirtazapine, " +
-            "Dépakine, acide valproïque, Dépakote, Lamictal, lamotrigine, " +
-            "Tégrétol, carbamazépine, Téralithe, lithium, Epitomax, topiramate, " +
-            "Atarax, hydroxyzine, Circadin, Slenyto, mélatonine, Valium, diazépam, Lysanxia, prazépam. " +
-            "Sigles : TDAH, ITEP, DITEP, IDEP, AESH, SESSAD, IME, UEMA, FHEAH, EEAP, IEM, SEES, APAJH, ADSEA, CMP, CMPP, CAMSP. " +
-            "Établissements Var : Majourane, La Frégate, Moineaux de l'Ermitage, Bell'Estello, " +
-            "Geist 83, Le Galion, Prépro-ARGIMSA, Rossetti, Canot Major, " +
-            "Folke Bernadotte, Pompaniana Olbia, San Salvadour, Le Cigalon, " +
-            "Jardins d'Asclepios, Les Farfadets, Les Piérides, Pierre Semard. " +
-            "Villes Var : Le Pradet, La Garde, La Valette-du-Var, La Seyne-sur-Mer, " +
-            "Six-Fours-les-Plages, Sanary-sur-Mer, Ollioules, Hyères, Brignoles, " +
-            "La Crau, Carqueiranne, Solliès-Pont.";
+        // Prompt neutre de base + vocabulaire custom injecté dynamiquement
+        private const string BasePrompt =
+            "Conversation médicale entre un médecin et une famille en français. ";
+
+        // Vocabulaire custom (chargé depuis whisper_vocab_custom.txt)
+        private readonly WhisperVocabService _vocabService = new();
+        private string _dynamicPrompt = BasePrompt;
+
+        /// <summary>Service de vocabulaire personnalisé (accès UI/Settings)</summary>
+        public WhisperVocabService VocabService => _vocabService;
 
         private static readonly string[] KnownHallucinations =
         {
@@ -173,12 +161,22 @@ namespace MedCompanion.Services.Consultation
                 await modelManager.EnsureModelAsync(progress);
 
                 StatusChanged?.Invoke("Chargement modèle GPU...");
+
+                // Charger le vocabulaire personnalisé
+                _vocabService.Load();
+                var vocabFragment = _vocabService.BuildPromptFragment();
+                _dynamicPrompt = string.IsNullOrWhiteSpace(vocabFragment)
+                    ? BasePrompt
+                    : BasePrompt + vocabFragment;
+                System.Diagnostics.Debug.WriteLine(
+                    $"[Whisper] Prompt dynamique : {_vocabService.Count} termes custom chargés.");
+
                 _factory   = WhisperFactory.FromPath(modelManager.ModelPath);
                 _processor = _factory.CreateBuilder()
                                      .WithLanguage("fr")
                                      .WithSingleSegment()
                                      .WithNoContext()           // ← clé : pas de propagation entre chunks
-                                     .WithPrompt(InitialPrompt)
+                                     .WithPrompt(_dynamicPrompt)
                                      .WithTemperature(0f)
                                      .Build();
 

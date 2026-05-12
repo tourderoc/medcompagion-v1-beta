@@ -258,7 +258,7 @@ namespace MedCompanion.ViewModels
 
         #endregion
 
-        #region Interrogatoire V0a
+        #region Interrogatoire V0b (Blocs Adaptatifs)
 
         private ILLMService? _llmService;
         private StorageService? _storageService;
@@ -266,6 +266,56 @@ namespace MedCompanion.ViewModels
         private readonly IncrementalExtractorService     _incrementalExtractor = new();
         private readonly QualityCheckService             _qualityChecker       = new();
         private WhisperStreamingService? _whisperService;
+
+        // ── V0b : services adaptatifs ──────────────────────────────────────────
+        private readonly BlockSetResolver            _blockSetResolver     = new();
+        private readonly MotifPrincipalDetector       _motifDetector        = new();
+        private readonly ContextualBlockSuggester     _blockSuggester;
+        private readonly BlockPrefiller               _blockPrefiller       = new();
+
+        /// <summary>Âge confirmé du patient (null si pas encore confirmé)</summary>
+        private int? _confirmedAge;
+        public int? ConfirmedAge
+        {
+            get => _confirmedAge;
+            set
+            {
+                if (SetProperty(ref _confirmedAge, value))
+                {
+                    OnPropertyChanged(nameof(HasConfirmedAge));
+                    if (value.HasValue)
+                        OnAgeConfirmed(value.Value);
+                }
+            }
+        }
+
+        private bool _isAgeConfirmed;
+        public bool HasConfirmedAge => _isAgeConfirmed && _confirmedAge.HasValue;
+
+        /// <summary>Motif principal détecté</summary>
+        private string _detectedMotif = "";
+        public string DetectedMotif
+        {
+            get => _detectedMotif;
+            set
+            {
+                if (SetProperty(ref _detectedMotif, value))
+                    OnPropertyChanged(nameof(HasDetectedMotif));
+            }
+        }
+        public bool HasDetectedMotif => !string.IsNullOrWhiteSpace(_detectedMotif);
+
+        /// <summary>Suggestions de blocs supplémentaires (chips)</summary>
+        public ObservableCollection<BlockSuggestionViewModel> BlockSuggestions { get; } = new();
+        public bool HasBlockSuggestions => BlockSuggestions.Count > 0;
+
+        /// <summary>Indique si la structure est gelée (après ~90s)</summary>
+        private bool _isStructureFrozen;
+        public bool IsStructureFrozen
+        {
+            get => _isStructureFrozen;
+            set => SetProperty(ref _isStructureFrozen, value);
+        }
 
         // File d'extraction : jamais deux appels LLM simultanés
         private readonly SemaphoreSlim _extractionLock    = new(1, 1);
@@ -300,6 +350,15 @@ namespace MedCompanion.ViewModels
 
             foreach (var block in InterrogatoireBlocks)
                 block.Reset();
+
+            // V0b : réinitialiser les détecteurs
+            _motifDetector.Reset();
+            DetectedMotif = "";
+            _isAgeConfirmed = false;
+            OnPropertyChanged(nameof(HasConfirmedAge));
+            BlockSuggestions.Clear();
+            OnPropertyChanged(nameof(HasBlockSuggestions));
+            IsStructureFrozen = false;
 
             // Repasse en mode Saisie si on était dans un autre état
             if (IsInterrogatoireMode)
@@ -342,6 +401,7 @@ namespace MedCompanion.ViewModels
                     Key           = vm.Key,
                     Title         = vm.Title,
                     FreeText      = vm.FreeText,
+                    ExpectedThemes = new List<string>(vm.ExpectedThemes),
                     CoveredThemes = new List<string>(vm.CoveredThemes)
                 }).ToList();
 
@@ -368,6 +428,21 @@ namespace MedCompanion.ViewModels
                         blockVm.AddTheme(theme);
                 }
                 ExtractionStatus = "● Enregistrement...";
+
+                // V0b : vérifier si l'âge est confirmé (thème "age" dans le bloc "identite")
+                if (!_isAgeConfirmed)
+                {
+                    var identiteBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "identite");
+                    if (identiteBlock != null && identiteBlock.CoveredThemes.Contains("age"))
+                    {
+                        _isAgeConfirmed = true;
+                        OnPropertyChanged(nameof(HasConfirmedAge));
+                        System.Diagnostics.Debug.WriteLine("[V0b] Âge confirmé via l'interrogatoire.");
+                    }
+                }
+
+                // V0b : vérifier si le motif principal est détecté
+                _motifDetector.CheckForMotif(InterrogatoireBlocks);
             });
         }
 
@@ -475,13 +550,139 @@ namespace MedCompanion.ViewModels
         private void InitInterrogatoireBlocks()
         {
             InterrogatoireBlocks.Clear();
-            var models = BlockDefinitionLoader.LoadAsBlocks();
-            foreach (var m in models)
-                InterrogatoireBlocks.Add(ConsultationBlockViewModel.FromModel(m));
+            BlockSuggestions.Clear();
+            OnPropertyChanged(nameof(HasBlockSuggestions));
+
+            // V0b : résoudre les blocs selon l'âge confirmé
+            List<BlockDefinition> definitions;
+            if (_confirmedAge.HasValue)
+            {
+                definitions = _blockSetResolver.Resolve(_confirmedAge.Value);
+            }
+            else
+            {
+                // Âge pas encore confirmé → noyau fixe uniquement
+                definitions = _blockSetResolver.ResolveWithoutAge();
+            }
+
+            foreach (var d in definitions)
+                InterrogatoireBlocks.Add(ConsultationBlockViewModel.FromDefinition(d));
+
+            // Réinitialiser les détecteurs V0b
+            _motifDetector.Reset();
+            DetectedMotif = "";
+            IsStructureFrozen = false;
+
             InterrogatoireState = InterrogatoireState.Saisie;
             TranscriptionInput = "";
             NoteContent = "";
             _noteSaved = false;
+        }
+
+        // ── V0b : Gestion de l'âge confirmé ──────────────────────────────────
+
+        /// <summary>
+        /// Appelé quand l'âge du patient est confirmé.
+        /// Ajoute silencieusement le macro-bloc contextuel par âge.
+        /// </summary>
+        private void OnAgeConfirmed(int ageYears)
+        {
+            // Ne pas ajouter si le macro-bloc est déjà présent
+            var existingKeys = InterrogatoireBlocks.Select(b => b.Key).ToHashSet();
+            var ageBlock = _blockSetResolver.GetAgeBlock(ageYears);
+
+            if (ageBlock != null && !existingKeys.Contains(ageBlock.Key))
+            {
+                InterrogatoireBlocks.Add(ConsultationBlockViewModel.FromDefinition(ageBlock));
+                System.Diagnostics.Debug.WriteLine($"[V0b] Macro-bloc ajouté : {ageBlock.Title} (âge={ageYears})");
+            }
+        }
+
+        // ── V0b : Gestion du motif détecté ────────────────────────────────────
+
+        /// <summary>
+        /// Appelé quand le motif principal est détecté (one-shot).
+        /// Lance la suggestion de blocs supplémentaires.
+        /// </summary>
+        private async void OnMotifDetected(string motif)
+        {
+            Dispatch(() => DetectedMotif = motif);
+
+            if (!_confirmedAge.HasValue) return;
+
+            var activeKeys = InterrogatoireBlocks.Select(b => b.Key).ToList();
+            var suggestions = await _blockSuggester.SuggestAsync(
+                motif, _confirmedAge.Value, activeKeys, _llmService);
+
+            Dispatch(() =>
+            {
+                BlockSuggestions.Clear();
+                foreach (var s in suggestions)
+                    BlockSuggestions.Add(new BlockSuggestionViewModel(s, this));
+                OnPropertyChanged(nameof(HasBlockSuggestions));
+
+                // Geler la structure
+                IsStructureFrozen = true;
+                System.Diagnostics.Debug.WriteLine($"[V0b] Structure gelée. {suggestions.Count} chips suggérés.");
+            });
+        }
+
+        // ── V0b : Accept/Dismiss chips ────────────────────────────────────────
+
+        /// <summary>
+        /// Accepte un chip : ajoute le bloc et pré-remplit avec le contexte existant.
+        /// </summary>
+        internal async Task AcceptBlockSuggestionAsync(BlockSuggestion suggestion)
+        {
+            var definition = _blockSetResolver.GetByKey(suggestion.BlockKey);
+            if (definition == null) return;
+
+            suggestion.IsAccepted = true;
+
+            // Ajouter le bloc
+            var newBlock = ConsultationBlockViewModel.FromDefinition(definition);
+            InterrogatoireBlocks.Add(newBlock);
+
+            // Pré-remplir si un LLM est disponible
+            if (_llmService != null)
+            {
+                ExtractionStatus = $"⟳ Pré-remplissage {definition.Title}...";
+                var (ok, prefillText, themes) = await _blockPrefiller.PrefillAsync(
+                    _llmService, definition, InterrogatoireBlocks.Where(b => b.Key != definition.Key));
+
+                if (ok && !string.IsNullOrWhiteSpace(prefillText))
+                {
+                    Dispatch(() =>
+                    {
+                        newBlock.AppendText(prefillText);
+                        foreach (var theme in themes)
+                            newBlock.AddTheme(theme);
+                        ExtractionStatus = $"✓ {definition.Title} pré-rempli.";
+                    });
+                }
+                else
+                {
+                    Dispatch(() => ExtractionStatus = $"✓ {definition.Title} ajouté.");
+                }
+            }
+
+            // Retirer le chip de la liste
+            var chipVm = BlockSuggestions.FirstOrDefault(c => c.Suggestion.BlockKey == suggestion.BlockKey);
+            if (chipVm != null)
+                BlockSuggestions.Remove(chipVm);
+            OnPropertyChanged(nameof(HasBlockSuggestions));
+        }
+
+        /// <summary>
+        /// Rejette un chip : le retire de la liste sans ajouter le bloc.
+        /// </summary>
+        internal void DismissBlockSuggestion(BlockSuggestion suggestion)
+        {
+            suggestion.IsDismissed = true;
+            var chipVm = BlockSuggestions.FirstOrDefault(c => c.Suggestion.BlockKey == suggestion.BlockKey);
+            if (chipVm != null)
+                BlockSuggestions.Remove(chipVm);
+            OnPropertyChanged(nameof(HasBlockSuggestions));
         }
 
         private bool _noteSaved = false;
@@ -627,12 +828,21 @@ namespace MedCompanion.ViewModels
         public ICommand StartRecordingCommand { get; }
         public ICommand StopRecordingCommand { get; }
 
+        // V0b : Commande pour confirmer l'âge manuellement
+        public ICommand ConfirmAgeCommand { get; }
+
+        // V0b : Commande pour saisir le motif manuellement
+        public ICommand SetMotifManuallyCommand { get; }
+
         #endregion
 
         #region Constructor
 
         public ConsultationModeViewModel()
         {
+            // V0b : initialiser le suggester avec le resolver
+            _blockSuggester = new ContextualBlockSuggester(_blockSetResolver);
+            _motifDetector.MotifDetected += OnMotifDetected;
             // Par défaut, ouvrir sur la couverture
             _activeDossierTab = DossierTab.Couverture;
 
@@ -690,6 +900,22 @@ namespace MedCompanion.ViewModels
                     IsRecording = false;
                 },
                 _ => IsRecording);
+
+            // V0b : Commande confirmation âge
+            ConfirmAgeCommand = new RelayCommand(param =>
+            {
+                if (param is int age)
+                    ConfirmedAge = age;
+                else if (param is string ageStr && int.TryParse(ageStr, out var parsedAge))
+                    ConfirmedAge = parsedAge;
+            }, _ => IsInterrogatoireMode);
+
+            // V0b : Commande motif manuel
+            SetMotifManuallyCommand = new RelayCommand(param =>
+            {
+                if (param is string motif && !string.IsNullOrWhiteSpace(motif))
+                    _motifDetector.SetMotifManually(motif);
+            }, _ => IsInterrogatoireMode && !HasDetectedMotif);
 
             // Commands pagination dossier
             InitPaginationCommands();
@@ -853,6 +1079,29 @@ namespace MedCompanion.ViewModels
             TranscriptionInput = "";
             NoteContent = "";
             ExtractionStatus = "";
+
+            // V0b : réinitialiser l'état adaptatif
+            _confirmedAge = null;
+            OnPropertyChanged(nameof(ConfirmedAge));
+            OnPropertyChanged(nameof(HasConfirmedAge));
+            _motifDetector.Reset();
+            DetectedMotif = "";
+            _isAgeConfirmed = false;
+            OnPropertyChanged(nameof(HasConfirmedAge));
+            BlockSuggestions.Clear();
+            OnPropertyChanged(nameof(HasBlockSuggestions));
+            IsStructureFrozen = false;
+
+            // V0b : pré-calculer l'âge si Dob disponible (sera confirmé en consultation)
+            if (!string.IsNullOrEmpty(patient.Dob) &&
+                DateTime.TryParse(patient.Dob, out var dob))
+            {
+                var age = DateTime.Now.Year - dob.Year;
+                if (DateTime.Now.DayOfYear < dob.DayOfYear) age--;
+                _confirmedAge = age; // Pré-rempli, sera confirmé
+                OnPropertyChanged(nameof(ConfirmedAge));
+                OnPropertyChanged(nameof(HasConfirmedAge));
+            }
 
             // Vider immédiatement pour ne pas afficher les notes du patient précédent
             ConsultationNotes.Clear();

@@ -629,6 +629,32 @@
                                               Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
                                               ToolTip="Coché : transcription toutes les 90s (qualité max, recommandé pour consultation)&#x0a;Décoché : streaming temps réel (peut fragmenter sur débit lent)"/>
 
+                                    <!-- V0b : Bouton Vocabulaire Whisper -->
+                                    <Button x:Name="VocabBtn" Content="📝 Vocab"
+                                            Click="VocabBtn_Click"
+                                            Padding="8,5" Cursor="Hand" FontSize="10"
+                                            Background="#F3E5F5" Foreground="#7B1FA2"
+                                            BorderThickness="1" BorderBrush="#CE93D8"
+                                            Margin="0,0,8,0"
+                                            ToolTip="Éditer le vocabulaire personnalisé Whisper"
+                                            Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="BdVocab" Background="{TemplateBinding Background}"
+                                                        CornerRadius="4" Padding="{TemplateBinding Padding}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="BdVocab" Property="Background" Value="#E1BEE7"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+
                                     <!-- Bouton Démarrer dictée -->
                                     <Button Content="🎙 Dicter"
                                             Command="{Binding StartRecordingCommand}"
@@ -1133,6 +1159,51 @@
                                                Margin="0,20"
                                                Visibility="{Binding IsMedSilencieux, Converter={StaticResource BoolToVis}}"/>
 
+                                    <!-- ── V0b : Bandeau état adaptatif ─────────────── -->
+                                    <Border Margin="0,0,0,8" Padding="8,6" CornerRadius="6"
+                                            Background="#EDE7F6" BorderBrush="#B39DDB" BorderThickness="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <!-- Âge confirmé -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
+                                                <TextBlock Text="👤" FontSize="11" Margin="0,0,4,0"/>
+                                                <TextBlock FontSize="11" Foreground="#5E35B1" FontWeight="SemiBold">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Âge : en attente de confirmation"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding HasConfirmedAge}" Value="True">
+                                                                    <Setter Property="Text" Value="{Binding ConfirmedAge, StringFormat='Âge confirmé : {0} ans'}"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+                                            </StackPanel>
+                                            <!-- Motif détecté -->
+                                            <StackPanel Orientation="Horizontal"
+                                                        Visibility="{Binding HasDetectedMotif, Converter={StaticResource BoolToVis}}">
+                                                <TextBlock Text="🎯" FontSize="11" Margin="0,0,4,0"/>
+                                                <TextBlock Text="{Binding DetectedMotif, StringFormat='Motif : {0}'}"
+                                                           FontSize="10" Foreground="#7E57C2"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="200"/>
+                                            </StackPanel>
+                                            <!-- Structure gelée -->
+                                            <TextBlock Text="🔒 Structure gelée" FontSize="9" Foreground="#9575CD"
+                                                       Margin="0,2,0,0"
+                                                       Visibility="{Binding IsStructureFrozen, Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
+                                    </Border>
+
                                     <!-- ── Blocs Interrogatoire ─────────────────────────── -->
                                     <ItemsControl ItemsSource="{Binding InterrogatoireBlocks}">
                                         <ItemsControl.Style>
@@ -1157,6 +1228,15 @@
                                                                 <DataTrigger Binding="{Binding IsEmpty}" Value="False">
                                                                     <Setter Property="Background" Value="#F0FAF5"/>
                                                                     <Setter Property="BorderBrush" Value="#A8D5BC"/>
+                                                                </DataTrigger>
+                                                                <!-- V0b : Trigger blocks (Identité & Motif) en violet comme le bandeau âge -->
+                                                                <DataTrigger Binding="{Binding Key}" Value="identite">
+                                                                    <Setter Property="Background" Value="#EDE7F6"/>
+                                                                    <Setter Property="BorderBrush" Value="#B39DDB"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding Key}" Value="motif">
+                                                                    <Setter Property="Background" Value="#EDE7F6"/>
+                                                                    <Setter Property="BorderBrush" Value="#B39DDB"/>
                                                                 </DataTrigger>
                                                             </Style.Triggers>
                                                         </Style>
@@ -1209,6 +1289,145 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
+
+                                    <!-- ── V0b : Zone Chips — Suggestions de blocs ─────── -->
+                                    <Border Margin="0,4,0,8" Padding="8,6" CornerRadius="8"
+                                            Background="#FFF8E1" BorderBrush="#FFE082" BorderThickness="1">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                <Style.Triggers>
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInterrogatoireMode}" Value="True"/>
+                                                            <Condition Binding="{Binding HasBlockSuggestions}" Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                    </MultiDataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <StackPanel>
+                                            <!-- Titre de la zone -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                <TextBlock Text="✨" FontSize="12" Margin="0,0,4,0"/>
+                                                <TextBlock Text="Blocs suggérés" FontSize="11"
+                                                           FontWeight="SemiBold" Foreground="#F57F17"/>
+                                                <TextBlock Text=" — cliquez ✓ pour ajouter" FontSize="10"
+                                                           Foreground="#FFA000" VerticalAlignment="Center"
+                                                           Margin="4,0,0,0"/>
+                                            </StackPanel>
+
+                                            <!-- Liste des chips -->
+                                            <ItemsControl ItemsSource="{Binding BlockSuggestions}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Margin="0,0,6,6" CornerRadius="16"
+                                                                Background="White" BorderBrush="#FFD54F"
+                                                                BorderThickness="1.5" Padding="0"
+                                                                Cursor="Hand">
+                                                            <Border.Effect>
+                                                                <DropShadowEffect ShadowDepth="1" BlurRadius="4"
+                                                                                  Opacity="0.12" Color="#FFA000"/>
+                                                            </Border.Effect>
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <!-- Icône -->
+                                                                <TextBlock Grid.Column="0" Text="{Binding Icon}"
+                                                                           FontSize="14" VerticalAlignment="Center"
+                                                                           Margin="10,6,4,6"/>
+
+                                                                <!-- Titre + Raison -->
+                                                                <StackPanel Grid.Column="1" VerticalAlignment="Center"
+                                                                            Margin="2,6,6,6">
+                                                                    <TextBlock Text="{Binding Title}" FontSize="11"
+                                                                               FontWeight="SemiBold" Foreground="#2C3E50"
+                                                                               TextTrimming="CharacterEllipsis"/>
+                                                                    <TextBlock Text="{Binding Reason}" FontSize="9"
+                                                                               Foreground="#95A5A6"
+                                                                               TextTrimming="CharacterEllipsis"
+                                                                               MaxWidth="130"/>
+                                                                </StackPanel>
+
+                                                                <!-- Bouton Accept ✓ -->
+                                                                <Button Grid.Column="2"
+                                                                        Command="{Binding AcceptCommand}"
+                                                                        ToolTip="Ajouter ce bloc"
+                                                                        Width="26" Height="26"
+                                                                        Margin="0,0,2,0"
+                                                                        Cursor="Hand">
+                                                                    <Button.Template>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border x:Name="BdAccept"
+                                                                                    Background="#E8F5E9"
+                                                                                    CornerRadius="13"
+                                                                                    Width="26" Height="26">
+                                                                                <TextBlock Text="✓" FontSize="13"
+                                                                                           FontWeight="Bold"
+                                                                                           Foreground="#27AE60"
+                                                                                           HorizontalAlignment="Center"
+                                                                                           VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter TargetName="BdAccept" Property="Background" Value="#C8E6C9"/>
+                                                                                </Trigger>
+                                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                                    <Setter TargetName="BdAccept" Property="Opacity" Value="0.4"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Button.Template>
+                                                                </Button>
+
+                                                                <!-- Bouton Dismiss ✕ -->
+                                                                <Button Grid.Column="3"
+                                                                        Command="{Binding DismissCommand}"
+                                                                        ToolTip="Ignorer"
+                                                                        Width="26" Height="26"
+                                                                        Margin="0,0,6,0"
+                                                                        Cursor="Hand">
+                                                                    <Button.Template>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border x:Name="BdDismiss"
+                                                                                    Background="#FFEBEE"
+                                                                                    CornerRadius="13"
+                                                                                    Width="26" Height="26">
+                                                                                <TextBlock Text="✕" FontSize="11"
+                                                                                           Foreground="#E74C3C"
+                                                                                           HorizontalAlignment="Center"
+                                                                                           VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter TargetName="BdDismiss" Property="Background" Value="#FFCDD2"/>
+                                                                                </Trigger>
+                                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                                    <Setter TargetName="BdDismiss" Property="Opacity" Value="0.4"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Button.Template>
+                                                                </Button>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </Border>
+
                                 </StackPanel>
                             </ScrollViewer>
                         </Grid>

@@ -59,10 +59,15 @@ namespace MedCompanion.Services.Consultation
             var sb = new StringBuilder();
             foreach (var block in blocks)
             {
-                sb.Append($"[{block.Key}] ");
-                sb.AppendLine(string.IsNullOrWhiteSpace(block.FreeText)
-                    ? "(vide)"
-                    : block.FreeText.Trim());
+                var expected = string.Join(", ", block.ExpectedThemes);
+                var covered  = string.Join(", ", block.CoveredThemes);
+                
+                sb.AppendLine($"--- BLOC: {block.Title} (Key: {block.Key}) ---");
+                sb.AppendLine($"Thèmes attendus : {expected}");
+                sb.AppendLine($"Thèmes déjà couverts : {covered}");
+                sb.AppendLine("Contenu actuel :");
+                sb.AppendLine(string.IsNullOrWhiteSpace(block.FreeText) ? "(vide)" : block.FreeText.Trim());
+                sb.AppendLine();
             }
             return sb.ToString().TrimEnd();
         }

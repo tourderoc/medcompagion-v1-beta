@@ -1,0 +1,163 @@
+[
+  {
+    "key": "identite",
+    "title": "Identité",
+    "expectedThemes": ["age", "accompagnant", "classe", "ecole", "sexe"],
+    "triggerType": "core_fixed",
+    "order": 1
+  },
+  {
+    "key": "motif",
+    "title": "Motif de consultation",
+    "expectedThemes": ["motif_principal"],
+    "triggerType": "core_fixed",
+    "order": 2
+  },
+  {
+    "key": "histoire_maladie",
+    "title": "Histoire de la maladie",
+    "expectedThemes": ["anciennete", "retentissement", "parcours_soins", "traitements_anterieurs"],
+    "triggerType": "core_fixed",
+    "order": 3
+  },
+  {
+    "key": "famille",
+    "title": "Famille & contexte social",
+    "expectedThemes": ["statut_parental", "pere", "mere", "situation_familiale", "conditions_vie"],
+    "triggerType": "core_fixed",
+    "order": 4
+  },
+  {
+    "key": "fratrie",
+    "title": "Fratrie",
+    "expectedThemes": ["presence", "noms_ages", "relations_fratrie"],
+    "triggerType": "core_fixed",
+    "order": 5
+  },
+  {
+    "key": "atcds",
+    "title": "ATCDs médicaux & psychiatriques",
+    "expectedThemes": ["medical", "psychiatrique", "chirurgical", "allergies", "atcds_familiaux"],
+    "triggerType": "core_fixed",
+    "order": 6
+  },
+  {
+    "key": "sommeil_ecrans",
+    "title": "Sommeil, rythmes & écrans",
+    "expectedThemes": ["sommeil", "ecrans", "rythmes_journaliers", "alimentation"],
+    "triggerType": "core_fixed",
+    "order": 7
+  },
+
+  {
+    "key": "petite_enfance",
+    "title": "Petite enfance — Périnatalité & développement précoce",
+    "expectedThemes": [
+      "grossesse", "accouchement", "perinatalite", "neonatalite",
+      "developpement_psychomoteur", "marche", "langage_precoce",
+      "interactions_sociales_precoces", "attachement",
+      "mode_garde", "alimentation_diversification"
+    ],
+    "triggerType": "age_automatic",
+    "ageMin": 0,
+    "ageMax": 3,
+    "order": 7
+  },
+  {
+    "key": "scolarite_activites",
+    "title": "Scolarité & vie sociale",
+    "expectedThemes": [
+      "environnement_scolaire", "adaptations_scolaires",
+      "difficultes_scolaires", "comportement_classe",
+      "relations_sociales", "amities",
+      "activites_extrascolaires", "loisirs", "autonomie_scolaire"
+    ],
+    "triggerType": "age_automatic",
+    "ageMin": 3,
+    "ageMax": 99,
+    "order": 7
+  },
+
+  {
+    "key": "comportement",
+    "title": "Comportement & régulation",
+    "expectedThemes": ["agitation", "impulsivite", "frustration", "opposition", "regulation_emotionnelle", "crises_colere"],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["TDAH", "agitation", "opposition", "trouble du comportement", "hyperactivité", "impulsivité"],
+    "order": 10
+  },
+  {
+    "key": "vecu_emotionnel",
+    "title": "Vécu émotionnel",
+    "expectedThemes": ["anxiete", "peurs", "phobies", "ruminations", "coping", "tristesse", "stress"],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["anxiété", "phobie", "stress", "angoisse", "TOC", "peur", "inquiétude"],
+    "order": 11
+  },
+  {
+    "key": "developpement",
+    "title": "Développement — Périnatalité & acquisitions",
+    "expectedThemes": [
+      "grossesse", "accouchement", "perinatalite",
+      "acquisitions_motrices", "acquisitions_langagieres",
+      "interactions_sociales", "jeu_symbolique", "proprete"
+    ],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["TSA", "autisme", "DI", "retard développement", "retard global", "trouble envahissant", "TND"],
+    "order": 12
+  },
+  {
+    "key": "langage",
+    "title": "Langage & communication",
+    "expectedThemes": ["comprehension", "expression", "articulation", "begaiement", "pragmatique", "bilinguisme"],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["retard de langage", "bégaiement", "dysphasie", "trouble du langage", "mutisme"],
+    "order": 13
+  },
+  {
+    "key": "motricite",
+    "title": "Motricité & coordination",
+    "expectedThemes": ["coordination", "equilibre", "maladresse", "graphisme", "motricite_fine", "motricite_globale"],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["dyspraxie", "maladresse", "coordination", "TAC", "trouble moteur"],
+    "ageMin": 0,
+    "ageMax": 10,
+    "order": 14
+  },
+  {
+    "key": "puberte",
+    "title": "Puberté & changements corporels",
+    "expectedThemes": ["changements_physiques", "image_soi", "puberte_precoce", "puberte_tardive"],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["puberté", "image corporelle", "croissance"],
+    "ageMin": 10,
+    "ageMax": 17,
+    "order": 15
+  },
+  {
+    "key": "adolescence",
+    "title": "Adolescence & identité",
+    "expectedThemes": ["identite", "pairs", "autonomisation", "conduites_risque", "sexualite", "reseaux_sociaux", "substances"],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["adolescence", "identité", "conduites à risque", "scarifications", "fugue", "cannabis"],
+    "ageMin": 12,
+    "ageMax": 18,
+    "order": 16
+  },
+  {
+    "key": "traumatisme",
+    "title": "Traumatisme & événements de vie",
+    "expectedThemes": ["circonstances", "symptomes_post_trauma", "impact_fonctionnel", "deuil", "separation", "maltraitance"],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["trauma", "abus", "maltraitance", "deuil", "TSPT", "événement traumatique", "violence", "agression"],
+    "order": 17
+  },
+  {
+    "key": "traitement",
+    "title": "Traitements actuels & historique",
+    "expectedThemes": ["medicaments_actuels", "posologie", "efficacite", "effets_secondaires", "traitements_anterieurs", "observance"],
+    "triggerType": "motif_chip",
+    "motifKeywords": ["médicament", "traitement", "Ritaline", "Concerta", "Risperdal", "mélatonine", "Quasym"],
+    "order": 18
+  }
+]

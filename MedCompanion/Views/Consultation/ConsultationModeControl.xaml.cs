@@ -85,5 +85,15 @@ namespace MedCompanion.Views.Consultation
                     MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
+
+        private void VocabBtn_Click(object sender, RoutedEventArgs e)
+        {
+            var vocabService = new WhisperVocabService();
+            var dialog = new Dialogs.WhisperVocabDialog(vocabService)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            dialog.ShowDialog();
+        }
     }
 }
