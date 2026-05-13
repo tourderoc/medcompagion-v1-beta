@@ -1127,7 +1127,7 @@
 
                                         <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
                                             <Button Content="📱 Scanner"
-                                                    Command="{Binding ImportDocumentCommand}"
+                                                    Click="ScannerBtn_Click"
                                                     Padding="10,6" Background="#34495E" Foreground="White" Cursor="Hand" FontSize="11"
                                                     BorderThickness="0" Margin="0,0,6,0">
                                                 <Button.Style>
@@ -1142,7 +1142,7 @@
                                                 </Button.Style>
                                             </Button>
                                             <Button Content="📄 Importer Document"
-                                                    Command="{Binding ImportDocumentCommand}"
+                                                    Click="ImportDocBtn_Click"
                                                     Padding="10,6" Background="#34495E" Foreground="White" Cursor="Hand" FontSize="11"
                                                     BorderThickness="0">
                                                 <Button.Style>

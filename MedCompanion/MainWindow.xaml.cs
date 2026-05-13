@@ -364,7 +364,8 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
 
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
-            ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService);
+            ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
+                _documentService, _scannerService);
 
         // Initialiser TemplatesControl
         TemplatesPanel.Initialize(_templateExtractor, _mccLibrary);

@@ -1203,60 +1203,9 @@ justification: {SynthesisWeights.LLMJustification ?? ""}
             return Task.CompletedTask;
         }
 
-        private async Task ImportDocumentAsync()
-        {
-            if (_llmService == null) return;
-
-            IsImportingDocument = true;
-            SynthesisStatusMessage = "📄 Sélectionner un document...";
-
-            try
-            {
-                // Dialog pour sélectionner fichier (via code-behind)
-                // TODO: Phase D - Implémenter dialog dans ConsultationModeControl.xaml.cs
-                // Pour maintenant, placeholder pour tester workflow
-
-                SynthesisStatusMessage = "⏳ Génération synthèse document...";
-
-                // Exemple: créer un document test pour démonstration
-                var doc = new ImportedConsultationDocument
-                {
-                    FileName = "Document_test.pdf",
-                    FilePath = "test_path",
-                    Category = "Documents",
-                    Weight = 0.6
-                };
-
-                // Générer synthèse du document via LLM
-                var prompt = $@"Génère une synthèse courte (3-4 lignes) de ce document médical:
-
-Fichier: {doc.FileName}
-Catégorie: {doc.Category}
-
-Synthèse (format markdown, concis, factuels uniquement):";
-
-                var (success, synthesis, _) = await _llmService.ChatAsync(prompt, new(), maxTokens: 300);
-
-                if (success)
-                {
-                    doc.DocumentSynthesis = synthesis;
-                    ImportedDocuments.Add(doc);
-                    SynthesisStatusMessage = $"✅ Document importé: {doc.FileName}";
-                }
-                else
-                {
-                    SynthesisStatusMessage = "❌ Erreur génération synthèse doc";
-                }
-            }
-            catch (Exception ex)
-            {
-                SynthesisStatusMessage = $"❌ Erreur: {ex.Message}";
-            }
-            finally
-            {
-                IsImportingDocument = false;
-            }
-        }
+        // Import géré par ConsultationModeControl.xaml.cs (code-behind)
+        // car nécessite OpenFileDialog / ScanDocumentDialog (UI)
+        private Task ImportDocumentAsync() => Task.CompletedTask;
 
         // Helpers
 
