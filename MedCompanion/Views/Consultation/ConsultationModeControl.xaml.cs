@@ -95,5 +95,32 @@ namespace MedCompanion.Views.Consultation
             };
             dialog.ShowDialog();
         }
+
+        // ── Clinical Observations (V0c) ──────────────────────────────────────
+
+        /// <summary>
+        /// Handler pour clic sur option d'observation clinique.
+        /// Extrait la carte du parent et l'option du bouton.
+        /// </summary>
+        private void ObservationOptionButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not Button btn) return;
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            if (_viewModel == null) return;
+
+            var option = btn.Content?.ToString();
+            if (string.IsNullOrWhiteSpace(option)) return;
+
+            // Remonter pour trouver la carte parente (ClinicalObservationCard)
+            var visual = btn.Parent as WrapPanel;
+            var border = visual?.Parent as StackPanel;
+            var grid = border?.Parent as Grid;
+            var template = grid?.Parent as Border;
+            var itemsControl = template?.Parent as ItemsControl;
+            var card = itemsControl?.DataContext as ClinicalObservationCard;
+
+            if (card != null)
+                _viewModel.SelectObservationOption(card, option);
+        }
     }
 }
