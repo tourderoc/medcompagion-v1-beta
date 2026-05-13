@@ -580,6 +580,8 @@
                                 </Grid.Style>
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="140"/>
+                                    <RowDefinition Height="150"/>
                                     <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
@@ -588,37 +590,90 @@
                                 <TextBlock Grid.Row="0" Text="Transcription de la consultation :"
                                            FontSize="12" Foreground="#7F8C8D" Margin="0,0,0,6"/>
 
-                                <TextBox Grid.Row="1"
-                                         x:Name="TranscriptionTextBox"
-                                         Text="{Binding TranscriptionInput, UpdateSourceTrigger=PropertyChanged}"
-                                         AcceptsReturn="True"
-                                         TextWrapping="Wrap"
-                                         VerticalScrollBarVisibility="Auto"
-                                         FontSize="13"
-                                         FontFamily="Segoe UI"
-                                         Padding="10"
-                                         BorderBrush="#E0E0E0"
-                                         BorderThickness="1"
-                                         Background="#FAFAFA">
-                                    <TextBox.Style>
-                                        <Style TargetType="TextBox">
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="TextBox">
-                                                        <Border Background="#FAFAFA"
-                                                                BorderBrush="{TemplateBinding BorderBrush}"
-                                                                BorderThickness="{TemplateBinding BorderThickness}"
-                                                                CornerRadius="6">
-                                                            <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                        </Style>
-                                    </TextBox.Style>
-                                </TextBox>
+                                <Border Grid.Row="1" Background="#FAFAFA" BorderThickness="1" BorderBrush="#E0E0E0" CornerRadius="6" Padding="10">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="120">
+                                        <TextBlock Text="{Binding TranscriptionInput}"
+                                                   TextWrapping="Wrap"
+                                                   FontSize="11"
+                                                   Foreground="#5D6D7E"
+                                                   FontFamily="Segoe UI"/>
+                                    </ScrollViewer>
+                                </Border>
 
-                                <StackPanel Grid.Row="2" Orientation="Horizontal"
+                                <!-- V0c : Blocs complétés (100%) -->
+                                <Border Grid.Row="2" Background="White" BorderThickness="1" BorderBrush="#27AE60" CornerRadius="6" Padding="10" Margin="0,6,0,0">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <StackPanel>
+                                            <TextBlock Text="✓ Blocs complétés" FontSize="11" FontWeight="SemiBold" Foreground="#27AE60" Margin="0,0,0,6"/>
+                                            <ItemsControl ItemsSource="{Binding CompletedBlocks}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="#F0FAF5" BorderBrush="#27AE60" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,4" Cursor="Hand">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <StackPanel Grid.Column="0">
+                                                                    <TextBlock Text="{Binding Title}" FontSize="10" FontWeight="SemiBold" Foreground="#27AE60"/>
+                                                                    <TextBlock Text="{Binding CompactPreview}" FontSize="9" Foreground="#7F8C8D" TextTrimming="CharacterEllipsis" MaxWidth="200"/>
+                                                                </StackPanel>
+                                                                <TextBlock Grid.Column="1" Text="✓" FontSize="14" Foreground="#27AE60" FontWeight="Bold" VerticalAlignment="Center"/>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+                                    </ScrollViewer>
+                                </Border>
+
+                                <!-- V0c : Blocs actifs (en cours) -->
+                                <Border Grid.Row="3" Background="White" BorderThickness="1" BorderBrush="#E0E0E0" CornerRadius="6" Padding="10" Margin="0,6,0,0">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                        <ItemsControl ItemsSource="{Binding ActiveBlocks}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Margin="0,0,0,6" CornerRadius="6" BorderThickness="1" Padding="8">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <Setter Property="Background" Value="#FAFAFA"/>
+                                                                <Setter Property="BorderBrush" Value="#E0E0E0"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsEmpty}" Value="False">
+                                                                        <Setter Property="Background" Value="#F0FAF5"/>
+                                                                        <Setter Property="BorderBrush" Value="#A8D5BC"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0">
+                                                                <Grid>
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="Auto"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                                                    <TextBlock Grid.Column="1" Text="{Binding ProgressPct, StringFormat='{}{0}%'}" FontSize="10" Foreground="#7F8C8D"/>
+                                                                </Grid>
+                                                                <ProgressBar Height="4" Minimum="0" Maximum="100" Value="{Binding ProgressPct, Mode=OneWay}" Margin="0,4,0,4" Foreground="{Binding ProgressBarColor}" Background="#E0E0E0" BorderThickness="0"/>
+                                                                <TextBlock Text="{Binding FreeText}" FontSize="9" Foreground="#5D6D7E" TextWrapping="Wrap" MaxHeight="40" TextTrimming="CharacterEllipsis" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}"/>
+                                                            </StackPanel>
+                                                            <Button Grid.Column="1" Content="👁‍🗨" VerticalAlignment="Top" Command="{Binding Path=DataContext.ToggleBlockVisibilityCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Width="24" Height="24" Padding="0" FontSize="11" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip="Masquer ce bloc"/>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Border>
+
+                                <StackPanel Grid.Row="4" Orientation="Horizontal"
                                             HorizontalAlignment="Right" Margin="0,8,0,0">
 
                                     <!-- Sélecteur mode dictée (visible quand pas en cours) -->
@@ -750,7 +805,7 @@
                                 </StackPanel>
 
                                 <!-- Indicateur visuel enregistrement / coupure -->
-                                <Border Grid.Row="3" x:Name="RecordingStatusBand"
+                                <Border Grid.Row="5" x:Name="RecordingStatusBand"
                                         CornerRadius="4" Margin="0,6,0,0" Padding="10,5"
                                         Background="#27AE60"
                                         Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}">
