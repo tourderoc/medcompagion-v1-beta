@@ -2,8 +2,10 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using MedCompanion.Commands;
@@ -491,9 +493,9 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie;
-        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction;
-        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote;
+        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode;
+        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode;
+        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode;
 
         // Transcription
         private string _transcriptionInput = "";
@@ -873,7 +875,15 @@ namespace MedCompanion.ViewModels
         public bool IsInClinicalMode
         {
             get => _isInClinicalMode;
-            set => SetProperty(ref _isInClinicalMode, value);
+            set
+            {
+                if (SetProperty(ref _isInClinicalMode, value))
+                {
+                    OnPropertyChanged(nameof(IsInSaisieMode));
+                    OnPropertyChanged(nameof(IsInExtractionMode));
+                    OnPropertyChanged(nameof(IsInFinalNoteMode));
+                }
+            }
         }
 
         /// <summary>
@@ -949,6 +959,7 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(ClinicalObservations));
 
             // Basculer vers la note finale
+            IsInClinicalMode = false;
             InterrogatoireState = InterrogatoireState.FinalNote;
         }
 
@@ -973,6 +984,373 @@ namespace MedCompanion.ViewModels
 
             var (ok, result, _) = await _llmService.ChatAsync(prompt, new(), maxTokens: 500);
             return ok ? result : "";
+        }
+
+        #endregion
+
+        #region Synthèse Initiale V0d
+
+        private InitialSynthesisWeights _synthesisWeights = new();
+        public InitialSynthesisWeights SynthesisWeights
+        {
+            get => _synthesisWeights;
+            set => SetProperty(ref _synthesisWeights, value);
+        }
+
+        private bool _isSynthesisMode = false;
+        public bool IsSynthesisMode
+        {
+            get => _isSynthesisMode;
+            set => SetProperty(ref _isSynthesisMode, value);
+        }
+
+        private string _synthesisContent = "";
+        public string SynthesisContent
+        {
+            get => _synthesisContent;
+            set => SetProperty(ref _synthesisContent, value);
+        }
+
+        private bool _areWeightsLoading = false;
+        public bool AreWeightsLoading
+        {
+            get => _areWeightsLoading;
+            set => SetProperty(ref _areWeightsLoading, value);
+        }
+
+        private bool _isGeneratingSynthesis = false;
+        public bool IsGeneratingSynthesis
+        {
+            get => _isGeneratingSynthesis;
+            set => SetProperty(ref _isGeneratingSynthesis, value);
+        }
+
+        private string _synthesisStatusMessage = "";
+        public string SynthesisStatusMessage
+        {
+            get => _synthesisStatusMessage;
+            set => SetProperty(ref _synthesisStatusMessage, value);
+        }
+
+        private void SwitchToSynthesis()
+        {
+            IsInClinicalMode = false;
+            IsSynthesisMode = true;
+        }
+
+        private async Task ProposeWeightsAsync()
+        {
+            AreWeightsLoading = true;
+            SynthesisStatusMessage = "⏳ Analyse des données...";
+
+            try
+            {
+                if (_llmService == null) return;
+
+                // Construire le prompt pour proposer les poids
+                var prompt = BuildWeightProposalPrompt();
+                var (success, response, _) = await _llmService.ChatAsync(prompt, new(), maxTokens: 500);
+
+                if (success)
+                {
+                    // Parser la réponse JSON pour extraire les poids proposés
+                    var weights = ExtractWeightsFromResponse(response);
+
+                    SynthesisWeights.InterrogatoireWeight = weights.ContainsKey("interrogatoire")
+                        ? weights["interrogatoire"]
+                        : 0.5;
+
+                    SynthesisWeights.ObservationsWeight = weights.ContainsKey("observations")
+                        ? weights["observations"]
+                        : 0.8;
+
+                    SynthesisWeights.DocumentWeights = weights
+                        .Where(kv => !kv.Key.StartsWith("interrogatoire") && !kv.Key.StartsWith("observations"))
+                        .ToDictionary(kv => kv.Key, kv => kv.Value);
+
+                    SynthesisWeights.LLMJustification = ExtractJustificationFromResponse(response);
+
+                    SynthesisStatusMessage = "✅ Poids proposés (ajustable via sliders)";
+                }
+                else
+                {
+                    SynthesisStatusMessage = "❌ Erreur: " + response;
+                }
+            }
+            catch (Exception ex)
+            {
+                SynthesisStatusMessage = $"❌ Erreur: {ex.Message}";
+            }
+            finally
+            {
+                AreWeightsLoading = false;
+            }
+        }
+
+        private async Task GenerateSynthesisAsync()
+        {
+            IsGeneratingSynthesis = true;
+            SynthesisStatusMessage = "⏳ Génération synthèse pondérée...";
+
+            try
+            {
+                if (_llmService == null) return;
+
+                // Construire le JSON structuré avec données + poids validés
+                var synthesisJSON = BuildInitialSynthesisJSON(SynthesisWeights);
+
+                var prompt = BuildSynthesisGenerationPrompt(synthesisJSON);
+
+                var (success, synthesis, _) = await _llmService.ChatAsync(prompt, new(), maxTokens: 2000);
+
+                if (success)
+                {
+                    SynthesisContent = synthesis;
+                    SynthesisStatusMessage = "✅ Synthèse générée avec succès";
+                }
+                else
+                {
+                    SynthesisStatusMessage = "❌ Erreur génération: " + synthesis;
+                }
+            }
+            catch (Exception ex)
+            {
+                SynthesisStatusMessage = $"❌ Erreur: {ex.Message}";
+            }
+            finally
+            {
+                IsGeneratingSynthesis = false;
+            }
+        }
+
+        private Task SaveSynthesisAsync()
+        {
+            if (string.IsNullOrEmpty(SynthesisContent))
+            {
+                SynthesisStatusMessage = "❌ Aucune synthèse à sauvegarder";
+                return Task.CompletedTask;
+            }
+
+            if (_storageService == null || _currentPatient == null)
+            {
+                SynthesisStatusMessage = "❌ Services non disponibles";
+                return Task.CompletedTask;
+            }
+
+            try
+            {
+                // Construire le Markdown avec métadonnées YAML
+                var now = DateTime.Now;
+                var synthesisWithMetadata = $@"---
+date_synthese: {now:yyyy-MM-ddTHH:mm:ss}
+type: initial_consultation
+weights:
+  interrogatoire: {SynthesisWeights.InterrogatoireWeight:F1}
+  observations: {SynthesisWeights.ObservationsWeight:F1}
+  moyenne: {SynthesisWeights.AverageWeight:F1}
+justification: {SynthesisWeights.LLMJustification ?? ""}
+---
+
+{SynthesisContent}";
+
+                // Sauvegarder le fichier via SaveStructuredNote
+                var (success, message, filePath) = _storageService.SaveStructuredNote(
+                    _currentPatient.NomComplet,
+                    SynthesisContent,
+                    "Synthèse Initiale - Première Consultation");
+
+                if (success && !string.IsNullOrEmpty(filePath))
+                {
+                    // Réécrire avec le fichier pour ajouter les métadonnées de poids
+                    try
+                    {
+                        File.WriteAllText(filePath, synthesisWithMetadata, System.Text.Encoding.UTF8);
+                    }
+                    catch { }
+
+                    SynthesisStatusMessage = $"✅ Synthèse sauvegardée: {Path.GetFileName(filePath)}";
+                }
+                else
+                {
+                    SynthesisStatusMessage = "⚠️ Synthèse créée mais: " + message;
+                }
+            }
+            catch (Exception ex)
+            {
+                SynthesisStatusMessage = $"❌ Erreur sauvegarde: {ex.Message}";
+            }
+
+            return Task.CompletedTask;
+        }
+
+        // Helpers
+
+        private string BuildWeightProposalPrompt()
+        {
+            var interrogatoireData = BuildInterrogatoireJSON();
+            var observationsData = BuildObservationsJSON();
+
+            return $@"Tu es un clinicien expérimenté en pédopsychiatrie évaluant la qualité des données d'une 1ère consultation.
+
+DONNÉES COLLECTÉES:
+
+INTERROGATOIRE (anamnèse parentale):
+{interrogatoireData}
+
+OBSERVATIONS CLINIQUES DIRECTES (examen enfant):
+{observationsData}
+
+TÂCHE: Évalue la FIABILITÉ et PERTINENCE diagnostique de chaque source de données pour cette synthèse initiale.
+
+Critères d'évaluation:
+- COMPLÉTUDE: Toutes les zones ont-elles été explorées?
+- COHÉRENCE: Les informations sont-elles cohérentes/compatibles?
+- CLARTÉ: Le contenu est-il précis et non ambigu?
+- RELEVANCE: Les informations sont-elles pertinentes au motif?
+- DÉTAIL CLINIQUE: Suffisant pour une première évaluation?
+
+Échelle de poids (0.1-1.0):
+- 0.9-1.0: Très complet, cohérent, cliniquement riche
+- 0.7-0.8: Bon coverage, fiable, quelques détails manquants
+- 0.5-0.6: Moyen, partiellement complet
+- 0.3-0.4: Limité, incomplet
+- 0.1-0.2: Très partiel, peu fiable pour synthèse
+
+Réponds en JSON valide:
+{{
+  ""weights"": {{
+    ""interrogatoire"": 0.X,
+    ""observations"": 0.X
+  }},
+  ""justification"": ""Courte analyse de la fiabilité de chaque composant et leur impact sur la synthèse""
+}}";
+        }
+
+        private string BuildInterrogatoireJSON()
+        {
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                transcription = TranscriptionInput ?? "",
+                blocks_count = InterrogatoireBlocks?.Count ?? 0,
+                blocks_filled = InterrogatoireBlocks?.Count(b => b.ProgressPct > 0) ?? 0
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+
+        private string BuildObservationsJSON()
+        {
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                total_cards = _clinicalObservations.Cards.Count,
+                filled_cards = _clinicalObservations.Cards.Count(c => c.SelectedOption != null),
+                observations = _clinicalObservations.Cards.Select(c => new
+                {
+                    branch = c.Branch.ToString(),
+                    title = c.Title,
+                    selected = c.SelectedOption
+                }).ToList()
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+
+        private Dictionary<string, double> ExtractWeightsFromResponse(string response)
+        {
+            try
+            {
+                var json = System.Text.Json.JsonDocument.Parse(response);
+                var weights = new Dictionary<string, double>();
+
+                if (json.RootElement.TryGetProperty("weights", out var weightsObj))
+                {
+                    foreach (var prop in weightsObj.EnumerateObject())
+                    {
+                        if (double.TryParse(prop.Value.ToString(), out var weight))
+                        {
+                            weights[prop.Name] = Math.Clamp(weight, 0.1, 1.0);
+                        }
+                    }
+                }
+
+                return weights;
+            }
+            catch
+            {
+                return new Dictionary<string, double>();
+            }
+        }
+
+        private string ExtractJustificationFromResponse(string response)
+        {
+            try
+            {
+                var json = System.Text.Json.JsonDocument.Parse(response);
+                if (json.RootElement.TryGetProperty("justification", out var justif))
+                {
+                    return justif.GetString() ?? "";
+                }
+            }
+            catch { }
+
+            return "";
+        }
+
+        private string BuildInitialSynthesisJSON(InitialSynthesisWeights weights)
+        {
+            return System.Text.Json.JsonSerializer.Serialize(new
+            {
+                consultation_type = "premiere_consultation",
+                weights = new
+                {
+                    interrogatoire = weights.InterrogatoireWeight,
+                    observations = weights.ObservationsWeight,
+                    moyenne = weights.AverageWeight
+                },
+                data = new
+                {
+                    interrogatoire = BuildInterrogatoireJSON(),
+                    observations = BuildObservationsJSON()
+                }
+            }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        }
+
+        private string BuildSynthesisGenerationPrompt(string synthesisJSON)
+        {
+            return $@"Tu es un clinicien pédopsychiatre expert en synthèse d'évaluation. Voici les données structurées d'une 1ère consultation avec leurs poids de fiabilité:
+
+{synthesisJSON}
+
+IMPORTANT: Les poids indiquent le degré de fiabilité et doivent orienter ton analyse:
+- Poids 0.9-1.0: Données très fiables → détailler, valoriser, donner du poids décisionnel
+- Poids 0.7-0.8: Données bonnes → inclure normalement
+- Poids 0.5-0.6: Données moyennes → inclure avec nuance, noter les limites potentielles
+- Poids 0.3-0.4: Données limitées → mentionner sans surinterprétation
+- Poids <0.3: Données fragmentaires → noter avec prudence
+
+RÈGLES DE SYNTHÈSE:
+✅ INCLURE: Description factuelles, observations cliniques, données anamnestiques
+✅ ADOPTER: Ton neutre, clinique, basé sur les données présentes
+✅ PONDÉRER: Équilibrer les sources selon leurs poids respectifs
+
+❌ EXCLURE ABSOLUMENT:
+- Aucune proposition d'axes diagnostiques
+- Aucune recommandation thérapeutique
+- Aucun projet de soin
+- Aucune interprétation spéculative au-delà des données
+- Aucun diagnostic provisoire ou hypothèse
+
+STRUCTURE (Markdown):
+
+# Synthèse Initiale - Première Consultation
+
+## Contexte
+[Présentation: âge, motif principal de consultation, date]
+
+## Données Anamnestiques - Parents (Poids: {SynthesisWeights.InterrogatoireWeight:F1})
+[Synthèse structurée de ce que les parents rapportent: antécédents, contexte développemental, symptômes rapportés. Si poids bas, noter les limitations de fiabilité de ces données.]
+
+## Observations Cliniques Directes (Poids: {SynthesisWeights.ObservationsWeight:F1})
+[Observations précises et factuelles de l'enfant lors de l'examen: comportement, contact, langage, psychomotricité, etc. Si poids élevé, valoriser cette source.]
+
+## Synthèse Descriptive Pondérée
+[Fusion intelligente et logique: Ce qu'on observe de cet enfant, intégrant les données parentales ET cliniques directes, pondérées par leur fiabilité respective. Décrire l'enfant tel qu'on le comprend après cette évaluation, sans interpréter au-delà.]";
         }
 
         #endregion
@@ -1013,6 +1391,12 @@ namespace MedCompanion.ViewModels
         public ICommand SelectObservationCommand { get; }
         public ICommand ToggleCardExpandCommand { get; }
         public ICommand TerminateClinicalObservationsCommand { get; }
+
+        // V0d : Commandes Synthèse Initiale
+        public ICommand SwitchToSynthesisCommand { get; }
+        public ICommand ProposeWeightsCommand { get; }
+        public ICommand GenerateSynthesisCommand { get; }
+        public ICommand SaveSynthesisCommand { get; }
 
         #endregion
 
@@ -1118,7 +1502,7 @@ namespace MedCompanion.ViewModels
                 if (_clinicalObservations.Cards.Count == 0)
                     InitializeClinicalObservations();
                 IsInClinicalMode = true;
-            }, _ => IsInterrogatoireMode && IsStructureFrozen);
+            }, _ => IsInterrogatoireMode);
 
             SelectObservationCommand = new RelayCommand(param =>
             {
@@ -1145,6 +1529,27 @@ namespace MedCompanion.ViewModels
             {
                 await TerminateClinicalObservationsAsync();
             }, _ => IsInClinicalMode);
+
+            // Commands Synthèse Initiale V0d
+            SwitchToSynthesisCommand = new RelayCommand(_ =>
+            {
+                SwitchToSynthesis();
+            }, _ => IsInterrogatoireMode && IsStructureFrozen);
+
+            ProposeWeightsCommand = new RelayCommand(async _ =>
+            {
+                await ProposeWeightsAsync();
+            }, _ => IsSynthesisMode && !AreWeightsLoading);
+
+            GenerateSynthesisCommand = new RelayCommand(async _ =>
+            {
+                await GenerateSynthesisAsync();
+            }, _ => IsSynthesisMode && !IsGeneratingSynthesis);
+
+            SaveSynthesisCommand = new RelayCommand(async _ =>
+            {
+                await SaveSynthesisAsync();
+            }, _ => IsSynthesisMode && !string.IsNullOrEmpty(SynthesisContent));
 
             // Commands pagination dossier
             InitPaginationCommands();

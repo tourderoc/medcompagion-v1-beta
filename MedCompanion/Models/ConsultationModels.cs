@@ -381,4 +381,58 @@ namespace MedCompanion.Models
             set { _generatedClinicalNarrative = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratedClinicalNarrative))); }
         }
     }
+
+    // ─── Synthèse Initiale V0d ──────────────────────────────────────────────
+
+    /// <summary>
+    /// Poids proposés pour chaque composant de la synthèse initiale
+    /// Basés sur l'analyse IA + validation Med
+    /// </summary>
+    public class InitialSynthesisWeights : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private double _interrogatoireWeight = 0.5;
+        /// <summary>Poids de l'interrogatoire (fiabilité données parental)</summary>
+        public double InterrogatoireWeight
+        {
+            get => _interrogatoireWeight;
+            set { _interrogatoireWeight = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(InterrogatoireWeight))); }
+        }
+
+        private double _observationsWeight = 0.8;
+        /// <summary>Poids des observations cliniques directes</summary>
+        public double ObservationsWeight
+        {
+            get => _observationsWeight;
+            set { _observationsWeight = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ObservationsWeight))); }
+        }
+
+        private Dictionary<string, double> _documentWeights = new();
+        /// <summary>Poids individuels des documents/bilans importés</summary>
+        public Dictionary<string, double> DocumentWeights
+        {
+            get => _documentWeights;
+            set { _documentWeights = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DocumentWeights))); }
+        }
+
+        private string? _llmJustification;
+        /// <summary>Justification courte de l'évaluation des poids par l'IA</summary>
+        public string? LLMJustification
+        {
+            get => _llmJustification;
+            set { _llmJustification = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(LLMJustification))); }
+        }
+
+        /// <summary>Poids moyen global (pour tracking accumulation)</summary>
+        public double AverageWeight
+        {
+            get
+            {
+                var allWeights = new List<double> { _interrogatoireWeight, _observationsWeight };
+                allWeights.AddRange(_documentWeights.Values);
+                return allWeights.Count > 0 ? allWeights.Average() : 0.5;
+            }
+        }
+    }
 }
