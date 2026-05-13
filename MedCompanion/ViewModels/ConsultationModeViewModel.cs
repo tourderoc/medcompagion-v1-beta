@@ -608,6 +608,27 @@ namespace MedCompanion.ViewModels
 
             OnPropertyChanged(nameof(ActiveBlocks));
             OnPropertyChanged(nameof(CompletedBlocks));
+
+            // V0c : Geler structure quand age ET motif à 100%
+            CheckAndFreezeStructureIfReady();
+        }
+
+        /// <summary>
+        /// V0c : Gèle la structure dès que les deux blocs clés (age + motif) sont à 100%
+        /// plutôt que d'attendre un timer arbitraire.
+        /// </summary>
+        private void CheckAndFreezeStructureIfReady()
+        {
+            if (IsStructureFrozen) return;
+
+            var ageBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "age");
+            var motifBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "motif");
+
+            if (ageBlock?.IsCompleted == true && motifBlock?.IsCompleted == true)
+            {
+                IsStructureFrozen = true;
+                System.Diagnostics.Debug.WriteLine("[V0c] Structure gelée : age + motif à 100%");
+            }
         }
 
         // ── V0b : Gestion de l'âge confirmé ──────────────────────────────────
