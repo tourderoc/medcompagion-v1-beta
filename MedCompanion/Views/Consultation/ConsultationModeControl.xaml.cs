@@ -101,6 +101,7 @@ namespace MedCompanion.Views.Consultation
         /// <summary>
         /// Handler pour clic sur option d'observation clinique.
         /// Extrait la carte du parent et l'option du bouton.
+        /// Highlight le bouton sélectionné en bleu.
         /// </summary>
         private void ObservationOptionButton_Click(object sender, RoutedEventArgs e)
         {
@@ -120,7 +121,33 @@ namespace MedCompanion.Views.Consultation
             var card = itemsControl?.DataContext as ClinicalObservationCard;
 
             if (card != null)
+            {
                 _viewModel.SelectObservationOption(card, option);
+
+                // Feedback visuel : highlight le bouton sélectionné
+                ResetOtherButtonsInGroup(visual, btn);
+                btn.Background = new System.Windows.Media.SolidColorBrush(
+                    System.Windows.Media.Color.FromRgb(52, 152, 219)); // #3498DB
+                btn.Foreground = System.Windows.Media.Brushes.White;
+            }
+        }
+
+        private void ResetOtherButtonsInGroup(WrapPanel? panel, Button selectedBtn)
+        {
+            if (panel == null) return;
+            var whiteBrush = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(255, 255, 255)); // White
+            var darkBrush = new System.Windows.Media.SolidColorBrush(
+                System.Windows.Media.Color.FromRgb(44, 62, 80)); // #2C3E50
+
+            foreach (var child in panel.Children.OfType<Button>())
+            {
+                if (child != selectedBtn)
+                {
+                    child.Background = whiteBrush;
+                    child.Foreground = darkBrush;
+                }
+            }
         }
     }
 }
