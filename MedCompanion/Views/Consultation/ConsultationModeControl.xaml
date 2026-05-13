@@ -907,10 +907,10 @@
                                                                         <DataTemplate>
                                                                             <Button Content="{Binding}"
                                                                                     Click="ObservationOptionButton_Click"
-                                                                                    Padding="8,5" Margin="0,0,4,4"
+                                                                                    Padding="10,6" Margin="0,0,6,4"
                                                                                     FontSize="11" Cursor="Hand"
-                                                                                    Background="#E8F4F8" Foreground="#2C3E50"
-                                                                                    BorderThickness="1" BorderBrush="#3498DB">
+                                                                                    Background="White" Foreground="#2C3E50"
+                                                                                    BorderThickness="2" BorderBrush="#3498DB">
                                                                                 <Button.Style>
                                                                                     <Style TargetType="Button">
                                                                                         <Setter Property="Template">
@@ -919,14 +919,12 @@
                                                                                                     <Border Background="{TemplateBinding Background}"
                                                                                                             BorderBrush="{TemplateBinding BorderBrush}"
                                                                                                             BorderThickness="{TemplateBinding BorderThickness}"
-                                                                                                            CornerRadius="4"
                                                                                                             Padding="{TemplateBinding Padding}">
                                                                                                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                                                                     </Border>
                                                                                                     <ControlTemplate.Triggers>
                                                                                                         <Trigger Property="IsMouseOver" Value="True">
-                                                                                                            <Setter Property="Background" Value="#3498DB"/>
-                                                                                                            <Setter Property="Foreground" Value="White"/>
+                                                                                                            <Setter Property="Background" Value="#E8F4F8"/>
                                                                                                         </Trigger>
                                                                                                     </ControlTemplate.Triggers>
                                                                                                 </ControlTemplate>
