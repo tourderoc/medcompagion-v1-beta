@@ -646,6 +646,38 @@
                                         </Style>
                                     </Button.Style>
                                 </Button>
+
+                                <Button Content="📄 Synthèse Initiale"
+                                        Command="{Binding SwitchToSynthesisCommand}"
+                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
+                                        Margin="10,0,0,0" Height="40"
+                                        Background="#9B59B6" Foreground="White"
+                                        BorderThickness="0"
+                                        VerticalAlignment="Top">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="8"
+                                                                Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#8E44AD"/>
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
                             </StackPanel>
 
                             <!-- MODE INTERROGATOIRE — Saisie transcription -->
@@ -1064,6 +1096,202 @@
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
                                         </Button.Template>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- V0d : MODE SYNTHÈSE INITIALE — Poids + Génération -->
+                            <Grid Grid.Row="1">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSynthesisMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>     <!-- Poids section -->
+                                    <RowDefinition Height="*"/>        <!-- Synthèse preview -->
+                                    <RowDefinition Height="Auto"/>     <!-- Boutons action -->
+                                </Grid.RowDefinitions>
+
+                                <!-- SECTION 1: Poids de Fiabilité -->
+                                <Border Grid.Row="0" Background="#F8F9FA" Padding="12" Margin="0,0,0,12"
+                                        BorderThickness="0,0,0,1" BorderBrush="#E0E0E0">
+                                    <StackPanel>
+                                        <TextBlock Text="📊 Poids de Fiabilité des Composants" FontWeight="Bold" FontSize="14" Margin="0,0,0,12"/>
+
+                                        <!-- Interrogatoire Weight Slider -->
+                                        <Grid Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="140"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="70"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Interrogatoire:" VerticalAlignment="Center" FontSize="12"/>
+                                            <Slider Grid.Column="1" Minimum="0.1" Maximum="1.0" SmallChange="0.1" LargeChange="0.2"
+                                                    Value="{Binding SynthesisWeights.InterrogatoireWeight, UpdateSourceTrigger=PropertyChanged}"
+                                                    Margin="12,0" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding SynthesisWeights.InterrogatoireWeight, StringFormat='0.0'}"
+                                                      HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"/>
+                                        </Grid>
+
+                                        <!-- Observations Weight Slider -->
+                                        <Grid Margin="0,0,0,12">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="140"/>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="70"/>
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Grid.Column="0" Text="Observations:" VerticalAlignment="Center" FontSize="12"/>
+                                            <Slider Grid.Column="1" Minimum="0.1" Maximum="1.0" SmallChange="0.1" LargeChange="0.2"
+                                                    Value="{Binding SynthesisWeights.ObservationsWeight, UpdateSourceTrigger=PropertyChanged}"
+                                                    Margin="12,0" VerticalAlignment="Center"/>
+                                            <TextBlock Grid.Column="2" Text="{Binding SynthesisWeights.ObservationsWeight, StringFormat='0.0'}"
+                                                      HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"/>
+                                        </Grid>
+
+                                        <!-- Justification from LLM -->
+                                        <TextBlock Text="{Binding SynthesisWeights.LLMJustification}"
+                                                  Foreground="#7F8C8D" FontSize="11" FontStyle="Italic" TextWrapping="Wrap"
+                                                  Margin="0,0,0,8"/>
+
+                                        <!-- Propose Weights Button -->
+                                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                            <Button Content="🔄 Proposer les poids"
+                                                    Command="{Binding ProposeWeightsCommand}"
+                                                    Padding="12,6" Background="#34495E" Foreground="White" Cursor="Hand" FontSize="11"
+                                                    BorderThickness="0">
+                                                <Button.Style>
+                                                    <Style TargetType="Button">
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding AreWeightsLoading}" Value="True">
+                                                                <Setter Property="IsEnabled" Value="False"/>
+                                                                <Setter Property="Background" Value="#95A5A6"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Button.Style>
+                                            </Button>
+                                        </StackPanel>
+
+                                        <!-- Status Message -->
+                                        <TextBlock Text="{Binding SynthesisStatusMessage}" Foreground="#27AE60" Margin="0,8,0,0" FontSize="11"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- SECTION 2: Synthèse Preview -->
+                                <Border Grid.Row="1" Background="White" Padding="12" BorderThickness="1" BorderBrush="#DDD" CornerRadius="6" Margin="0,0,0,12">
+                                    <StackPanel>
+                                        <TextBlock Text="✅ Synthèse Initiale" FontWeight="Bold" FontSize="13" Margin="0,0,0,8"/>
+
+                                        <TextBox Name="SynthesisPreview"
+                                                Text="{Binding SynthesisContent, Mode=OneWay}"
+                                                IsReadOnly="True" Height="280"
+                                                Padding="12" BorderThickness="1" BorderBrush="#E0E0E0"
+                                                Foreground="#2C3E50" FontFamily="Segoe UI" FontSize="11"
+                                                VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+
+                                        <TextBlock Text="{Binding SynthesisStatusMessage}" Foreground="#3498DB" Margin="0,8,0,0" FontSize="11"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- SECTION 3: Action Buttons -->
+                                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,0,0,0">
+                                    <Button Content="← Retour Observations"
+                                            Command="{Binding SwitchToClinicalCommand}"
+                                            Padding="10,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                            Background="#ECF0F1" Foreground="#2C3E50"
+                                            BorderThickness="1" BorderBrush="#BDC3C7">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}"
+                                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                                        CornerRadius="4"
+                                                        Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#D5DBDB"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+
+                                    <Button Content="✨ Générer Synthèse"
+                                            Command="{Binding GenerateSynthesisCommand}"
+                                            Padding="12,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                            Background="#27AE60" Foreground="White"
+                                            BorderThickness="0">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}"
+                                                                    CornerRadius="4"
+                                                                    Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#219653"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                    <Setter Property="Background" Value="#95A5A6"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding IsGeneratingSynthesis}" Value="True">
+                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+
+                                    <Button Content="💾 Sauvegarder"
+                                            Command="{Binding SaveSynthesisCommand}"
+                                            Padding="12,7" Cursor="Hand" FontSize="11"
+                                            Background="#3498DB" Foreground="White"
+                                            BorderThickness="0">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Template">
+                                                    <Setter.Value>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}"
+                                                                    CornerRadius="4"
+                                                                    Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#2980B9"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                    <Setter Property="Background" Value="#95A5A6"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Setter.Value>
+                                                </Setter>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding SynthesisContent}" Value="">
+                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
                                     </Button>
                                 </StackPanel>
                             </Grid>
