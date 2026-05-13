@@ -1122,12 +1122,16 @@ namespace MedCompanion.ViewModels
 
             SelectObservationCommand = new RelayCommand(param =>
             {
-                // Le paramètre contient l'option sélectionnée
-                // La carte source est dans le DataContext du binding
-                if (param is string option)
+                // Format attendu du paramètre depuis le XAML : object[] avec [card, option]
+                // Ou directement un tuple ValueTuple<ClinicalObservationCard, string>
+                if (param is object[] arr && arr.Length >= 2)
                 {
-                    // Cette commande sera appelée avec l'option depuis le XAML
-                    // La logique de liaison carte/option sera gérée dans la couche UI
+                    if (arr[0] is ClinicalObservationCard card && arr[1] is string option)
+                        SelectObservationOption(card, option);
+                }
+                else if (param is ValueTuple<ClinicalObservationCard, string> tuple)
+                {
+                    SelectObservationOption(tuple.Item1, tuple.Item2);
                 }
             }, _ => IsInClinicalMode);
 
