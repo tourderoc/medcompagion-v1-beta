@@ -860,6 +860,123 @@ namespace MedCompanion.ViewModels
 
         #endregion
 
+        #region Observations Cliniques V0c
+
+        private ClinicalObservationsSession _clinicalObservations = new();
+        public ClinicalObservationsSession ClinicalObservations
+        {
+            get => _clinicalObservations;
+            set => SetProperty(ref _clinicalObservations, value);
+        }
+
+        private bool _isInClinicalMode = false;
+        public bool IsInClinicalMode
+        {
+            get => _isInClinicalMode;
+            set => SetProperty(ref _isInClinicalMode, value);
+        }
+
+        /// <summary>
+        /// Initialise les 10 cartes d'observation clinique avec leurs options
+        /// </summary>
+        private void InitializeClinicalObservations()
+        {
+            _clinicalObservations.Cards.Clear();
+            _clinicalObservations.CreatedAt = DateTime.Now;
+
+            AddClinicalCard(ClinicalObservationBranch.Contact, "Contact/Rapport",
+                new[] { "Bon", "Distant", "Fuyant", "Adhésif", "Instable" });
+
+            AddClinicalCard(ClinicalObservationBranch.Langage, "Langage",
+                new[] { "Adapté", "Riche", "Pauvre/Immaturité", "Inexistant" });
+
+            AddClinicalCard(ClinicalObservationBranch.Comprehension, "Compréhension",
+                new[] { "Adaptée", "Limitée", "Consignes simples uniquement" });
+
+            AddClinicalCard(ClinicalObservationBranch.Psychomotricite, "Psychomotricité",
+                new[] { "Harmonieuse", "Instabilité motrice", "Inhibition", "Maladresse" });
+
+            AddClinicalCard(ClinicalObservationBranch.MimiquRegard, "Mimique & Regard",
+                new[] { "Expressive", "Faciès figé", "Regard fuyant", "Pauvreté des mimiques" });
+
+            AddClinicalCard(ClinicalObservationBranch.ProfilCognitif, "Profil Cognitif estimé",
+                new[] { "Harmonieux", "Dysharmonieux", "Supérieur", "Retard suspecté" });
+
+            AddClinicalCard(ClinicalObservationBranch.HumeurAnxiete, "Humeur / Anxiété",
+                new[] { "Stable", "Triste", "Irritable", "Angoissé" });
+
+            AddClinicalCard(ClinicalObservationBranch.ImaginaireJeu, "Imaginaire / Jeu",
+                new[] { "Riche", "Pauvre", "Bizarre", "Stéréotypé" });
+
+            AddClinicalCard(ClinicalObservationBranch.RapportCadre, "Rapport au cadre",
+                new[] { "Respecté", "Opposition", "Désinhibé", "Passif" });
+
+            AddClinicalCard(ClinicalObservationBranch.Vigilance, "Vigilance",
+                new[] { "R.A.S", "Signes de négligence", "Signes de maltraitance" });
+
+            OnPropertyChanged(nameof(ClinicalObservations));
+        }
+
+        private void AddClinicalCard(ClinicalObservationBranch branch, string title, string[] options)
+        {
+            var card = new ClinicalObservationCard
+            {
+                Branch = branch,
+                Title = title,
+                Options = new List<string>(options)
+            };
+            _clinicalObservations.Cards.Add(card);
+        }
+
+        public void SelectObservationOption(ClinicalObservationCard card, string option)
+        {
+            card.SelectedOption = option;
+            OnPropertyChanged(nameof(ClinicalObservations));
+        }
+
+        public void ToggleCardExpand(ClinicalObservationCard card)
+        {
+            card.IsExpanded = !card.IsExpanded;
+            OnPropertyChanged(nameof(ClinicalObservations));
+        }
+
+        public async Task TerminateClinicalObservationsAsync()
+        {
+            if (_llmService == null) return;
+
+            var narrative = await GenerateClinicalNarrativeAsync(_clinicalObservations);
+            _clinicalObservations.GeneratedClinicalNarrative = narrative;
+            OnPropertyChanged(nameof(ClinicalObservations));
+
+            // Basculer vers la note finale
+            InterrogatoireState = InterrogatoireState.FinalNote;
+        }
+
+        private async Task<string> GenerateClinicalNarrativeAsync(ClinicalObservationsSession obs)
+        {
+            if (_llmService == null) return "";
+
+            var prompt = "Génère un paragraphe clinique cohérent et bien structuré à partir de ces observations cliniques de l'enfant:\n\n";
+
+            foreach (var card in obs.Cards)
+            {
+                if (card.SelectedOption != null)
+                {
+                    prompt += $"- {card.Title}: {card.SelectedOption}";
+                    if (!string.IsNullOrWhiteSpace(card.FreeText))
+                        prompt += $" ({card.FreeText})";
+                    prompt += "\n";
+                }
+            }
+
+            prompt += "\nGénère un seul paragraphe cohérent, cliniquement pertinent, prêt à être intégré dans la note de consultation.";
+
+            var (ok, result, _) = await _llmService.ChatAsync(prompt, new(), maxTokens: 500);
+            return ok ? result : "";
+        }
+
+        #endregion
+
         #region Commands
 
         public ICommand SwitchToFocusTravailCommand { get; }
@@ -889,6 +1006,13 @@ namespace MedCompanion.ViewModels
 
         // V0c : Commande pour basculer la visibilité d'un bloc
         public ICommand ToggleBlockVisibilityCommand { get; }
+
+        // V0c : Commandes Observations Cliniques
+        public ICommand SwitchToInterrogatoireCommand { get; }
+        public ICommand SwitchToClinicalCommand { get; }
+        public ICommand SelectObservationCommand { get; }
+        public ICommand ToggleCardExpandCommand { get; }
+        public ICommand TerminateClinicalObservationsCommand { get; }
 
         #endregion
 
@@ -982,6 +1106,41 @@ namespace MedCompanion.ViewModels
                     UpdateBlockCollections();
                 }
             }, _ => IsInterrogatoireMode);
+
+            // V0c : Commandes Observations Cliniques
+            SwitchToInterrogatoireCommand = new RelayCommand(_ =>
+            {
+                IsInClinicalMode = false;
+            }, _ => IsInterrogatoireMode);
+
+            SwitchToClinicalCommand = new RelayCommand(_ =>
+            {
+                if (_clinicalObservations.Cards.Count == 0)
+                    InitializeClinicalObservations();
+                IsInClinicalMode = true;
+            }, _ => IsInterrogatoireMode && IsStructureFrozen);
+
+            SelectObservationCommand = new RelayCommand(param =>
+            {
+                // Le paramètre contient l'option sélectionnée
+                // La carte source est dans le DataContext du binding
+                if (param is string option)
+                {
+                    // Cette commande sera appelée avec l'option depuis le XAML
+                    // La logique de liaison carte/option sera gérée dans la couche UI
+                }
+            }, _ => IsInClinicalMode);
+
+            ToggleCardExpandCommand = new RelayCommand(param =>
+            {
+                if (param is ClinicalObservationCard card)
+                    ToggleCardExpand(card);
+            }, _ => IsInClinicalMode);
+
+            TerminateClinicalObservationsCommand = new RelayCommand(async _ =>
+            {
+                await TerminateClinicalObservationsAsync();
+            }, _ => IsInClinicalMode);
 
             // Commands pagination dossier
             InitPaginationCommands();

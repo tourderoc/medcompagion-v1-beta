@@ -293,4 +293,92 @@ namespace MedCompanion.Models
         public string           Reason      { get; set; } = "";
         public QualityIssueType Type        { get; set; }
     }
+
+    // ─── Observations Cliniques V0c ────────────────────────────────────────────
+
+    /// <summary>
+    /// Les 10 branches d'observation clinique (Clinique/Enfant)
+    /// </summary>
+    public enum ClinicalObservationBranch
+    {
+        Contact,
+        Langage,
+        Comprehension,
+        Psychomotricite,
+        MimiquRegard,
+        ProfilCognitif,
+        HumeurAnxiete,
+        ImaginaireJeu,
+        RapportCadre,
+        Vigilance
+    }
+
+    /// <summary>
+    /// Carte d'observation clinique avec choix radio + notes optionnelles
+    /// </summary>
+    public class ClinicalObservationCard : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public ClinicalObservationBranch Branch { get; set; }
+
+        private string _title = "";
+        public string Title
+        {
+            get => _title;
+            set { _title = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Title))); }
+        }
+
+        private List<string> _options = new();
+        public List<string> Options
+        {
+            get => _options;
+            set { _options = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Options))); }
+        }
+
+        private string? _selectedOption;
+        public string? SelectedOption
+        {
+            get => _selectedOption;
+            set { _selectedOption = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedOption))); }
+        }
+
+        private string _freeText = "";
+        public string FreeText
+        {
+            get => _freeText;
+            set { _freeText = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FreeText))); }
+        }
+
+        private bool _isExpanded = false;
+        public bool IsExpanded
+        {
+            get => _isExpanded;
+            set { _isExpanded = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded))); }
+        }
+    }
+
+    /// <summary>
+    /// Session d'observations cliniques (phase 2 de la 1ère consultation)
+    /// </summary>
+    public class ClinicalObservationsSession : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private List<ClinicalObservationCard> _cards = new();
+        public List<ClinicalObservationCard> Cards
+        {
+            get => _cards;
+            set { _cards = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Cards))); }
+        }
+
+        public DateTime CreatedAt { get; set; }
+
+        private string? _generatedClinicalNarrative;
+        public string? GeneratedClinicalNarrative
+        {
+            get => _generatedClinicalNarrative;
+            set { _generatedClinicalNarrative = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratedClinicalNarrative))); }
+        }
+    }
 }
