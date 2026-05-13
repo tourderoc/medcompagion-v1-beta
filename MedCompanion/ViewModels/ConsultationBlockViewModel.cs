@@ -73,6 +73,26 @@ namespace MedCompanion.ViewModels
 
         public bool IsEmpty => string.IsNullOrWhiteSpace(FreeText);
 
+        public bool IsCompleted => ProgressPct >= 100;
+
+        public string CompactPreview
+        {
+            get
+            {
+                if (string.IsNullOrWhiteSpace(FreeText)) return "";
+                var lines = FreeText.Split('\n');
+                var first = lines[0];
+                return first.Length > 50 ? first.Substring(0, 47) + "..." : first;
+            }
+        }
+
+        private bool _isHidden = false;
+        public bool IsHidden
+        {
+            get => _isHidden;
+            set => SetProp(ref _isHidden, value);
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────
 
         public void AddTheme(string theme)
@@ -97,10 +117,17 @@ namespace MedCompanion.ViewModels
         {
             FreeText = "";
             _coveredThemes = new List<string>();
+            _isHidden = false;
             OnPropertyChanged(nameof(CoveredThemes));
             OnPropertyChanged(nameof(ProgressPct));
             OnPropertyChanged(nameof(ProgressBarColor));
             OnPropertyChanged(nameof(IsEmpty));
+            OnPropertyChanged(nameof(IsHidden));
+        }
+
+        public void ToggleHidden()
+        {
+            IsHidden = !IsHidden;
         }
 
         public static ConsultationBlockViewModel FromModel(ConsultationBlock model) => new()

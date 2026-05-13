@@ -427,6 +427,7 @@ namespace MedCompanion.ViewModels
                     foreach (var theme in update.NewThemes)
                         blockVm.AddTheme(theme);
                 }
+                UpdateBlockCollections(); // V0c : mettre à jour Active/Completed
                 ExtractionStatus = "● Enregistrement...";
 
                 // V0b : vérifier si l'âge est confirmé (thème "age" dans le bloc "identite")
@@ -547,6 +548,13 @@ namespace MedCompanion.ViewModels
         // Blocs interrogatoire
         public ObservableCollection<ConsultationBlockViewModel> InterrogatoireBlocks { get; } = new();
 
+        // V0c : Blocs séparés (actifs vs complétés)
+        private ObservableCollection<ConsultationBlockViewModel> _activeBlocks = new();
+        public IReadOnlyList<ConsultationBlockViewModel> ActiveBlocks => _activeBlocks;
+
+        private ObservableCollection<ConsultationBlockViewModel> _completedBlocks = new();
+        public IReadOnlyList<ConsultationBlockViewModel> CompletedBlocks => _completedBlocks;
+
         private void InitInterrogatoireBlocks()
         {
             InterrogatoireBlocks.Clear();
@@ -577,6 +585,29 @@ namespace MedCompanion.ViewModels
             TranscriptionInput = "";
             NoteContent = "";
             _noteSaved = false;
+
+            UpdateBlockCollections();
+        }
+
+        /// <summary>
+        /// V0c : Met à jour les collections Active/Completed
+        /// appelée après chaque changement de bloc (progression, masquage)
+        /// </summary>
+        private void UpdateBlockCollections()
+        {
+            _activeBlocks.Clear();
+            _completedBlocks.Clear();
+
+            foreach (var block in InterrogatoireBlocks.Where(b => !b.IsHidden))
+            {
+                if (block.IsCompleted)
+                    _completedBlocks.Add(block);
+                else
+                    _activeBlocks.Add(block);
+            }
+
+            OnPropertyChanged(nameof(ActiveBlocks));
+            OnPropertyChanged(nameof(CompletedBlocks));
         }
 
         // ── V0b : Gestion de l'âge confirmé ──────────────────────────────────
@@ -724,6 +755,7 @@ namespace MedCompanion.ViewModels
                 foreach (var theme in update.NewThemes)
                     blockVm.AddTheme(theme);
             }
+            UpdateBlockCollections(); // V0c : mettre à jour Active/Completed
 
             // Construire la note finale
             var blocks = InterrogatoireBlocks.Select(vm => new ConsultationBlock
@@ -834,6 +866,9 @@ namespace MedCompanion.ViewModels
         // V0b : Commande pour saisir le motif manuellement
         public ICommand SetMotifManuallyCommand { get; }
 
+        // V0c : Commande pour basculer la visibilité d'un bloc
+        public ICommand ToggleBlockVisibilityCommand { get; }
+
         #endregion
 
         #region Constructor
@@ -916,6 +951,16 @@ namespace MedCompanion.ViewModels
                 if (param is string motif && !string.IsNullOrWhiteSpace(motif))
                     _motifDetector.SetMotifManually(motif);
             }, _ => IsInterrogatoireMode && !HasDetectedMotif);
+
+            // V0c : Commande basculer visibilité bloc
+            ToggleBlockVisibilityCommand = new RelayCommand(param =>
+            {
+                if (param is ConsultationBlockViewModel vm)
+                {
+                    vm.ToggleHidden();
+                    UpdateBlockCollections();
+                }
+            }, _ => IsInterrogatoireMode);
 
             // Commands pagination dossier
             InitPaginationCommands();
