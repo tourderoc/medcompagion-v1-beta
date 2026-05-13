@@ -662,7 +662,7 @@
                                                                     <TextBlock Grid.Column="1" Text="{Binding ProgressPct, StringFormat='{}{0}%'}" FontSize="10" Foreground="#7F8C8D"/>
                                                                 </Grid>
                                                                 <ProgressBar Height="4" Minimum="0" Maximum="100" Value="{Binding ProgressPct, Mode=OneWay}" Margin="0,4,0,4" Foreground="{Binding ProgressBarColor}" Background="#E0E0E0" BorderThickness="0"/>
-                                                                <TextBlock Text="{Binding FreeText}" FontSize="9" Foreground="#5D6D7E" TextWrapping="Wrap" MaxHeight="40" TextTrimming="CharacterEllipsis" Visibility="{Binding IsEmpty, Converter={StaticResource BoolToVis}}"/>
+                                                                <TextBlock Text="{Binding FreeText}" FontSize="9" Foreground="#5D6D7E" TextWrapping="Wrap" MaxHeight="40" TextTrimming="CharacterEllipsis" Visibility="{Binding IsNotEmpty, Converter={StaticResource BoolToVis}}"/>
                                                             </StackPanel>
                                                             <Button Grid.Column="1" Content="👁‍🗨" VerticalAlignment="Top" Command="{Binding Path=DataContext.ToggleBlockVisibilityCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Width="24" Height="24" Padding="0" FontSize="11" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip="Masquer ce bloc"/>
                                                         </Grid>
@@ -860,6 +860,7 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
@@ -867,6 +868,29 @@
                                 <TextBlock Grid.Row="0" Text="Note finale — vérifiez et complétez :"
                                            FontSize="12" Foreground="#27AE60" FontWeight="SemiBold"
                                            Margin="0,0,0,6"/>
+
+                                <!-- V0c : Aperçu final — tous les blocs -->
+                                <Border Grid.Row="2" Background="#E8F5E9" BorderBrush="#4CAF50" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="📋 Aperçu final — tous les blocs" FontSize="11" FontWeight="SemiBold" Foreground="#2E7D32" Margin="0,0,0,6"/>
+                                        <ItemsControl ItemsSource="{Binding InterrogatoireBlocks}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Grid Margin="0,0,0,6">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="120"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="60"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="10" Foreground="#1B5E20" FontWeight="SemiBold"/>
+                                                        <ProgressBar Grid.Column="1" Height="8" Minimum="0" Maximum="100" Value="{Binding ProgressPct, Mode=OneWay}" Margin="10,0,10,0" Foreground="{Binding ProgressBarColor}" Background="#CCCCCC" BorderThickness="0" VerticalAlignment="Center"/>
+                                                        <TextBlock Grid.Column="2" Text="{Binding ProgressPct, StringFormat='{}{0}%'}" FontSize="10" Foreground="#558B2F" TextAlignment="Right"/>
+                                                    </Grid>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
 
                                 <!-- Bandeau contrôle qualité -->
                                 <Border Grid.Row="1" Margin="0,0,0,8"
@@ -944,7 +968,7 @@
                                     </StackPanel>
                                 </Border>
 
-                                <TextBox Grid.Row="2"
+                                <TextBox Grid.Row="3"
                                          Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
                                          AcceptsReturn="True"
                                          TextWrapping="Wrap"
@@ -973,7 +997,7 @@
                                     </TextBox.Style>
                                 </TextBox>
 
-                                <StackPanel Grid.Row="3" Orientation="Horizontal"
+                                <StackPanel Grid.Row="4" Orientation="Horizontal"
                                             HorizontalAlignment="Right" Margin="0,8,0,0">
                                     <Button Content="↩ Retour"
                                             Command="{Binding BackToSaisieCommand}"

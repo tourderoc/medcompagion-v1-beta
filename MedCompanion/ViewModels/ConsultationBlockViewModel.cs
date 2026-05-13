@@ -73,6 +73,8 @@ namespace MedCompanion.ViewModels
 
         public bool IsEmpty => string.IsNullOrWhiteSpace(FreeText);
 
+        public bool IsNotEmpty => !IsEmpty;
+
         public bool IsCompleted => ProgressPct >= 100;
 
         public string CompactPreview
