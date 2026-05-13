@@ -1531,10 +1531,12 @@ STRUCTURE (Markdown):
             }, _ => IsInClinicalMode);
 
             // Commands Synthèse Initiale V0d
+            // TODO: Phase D — retourner à: IsInterrogatoireMode && IsStructureFrozen
+            // Pour tests: juste IsInterrogatoireMode
             SwitchToSynthesisCommand = new RelayCommand(_ =>
             {
                 SwitchToSynthesis();
-            }, _ => IsInterrogatoireMode && IsStructureFrozen);
+            }, _ => IsInterrogatoireMode);
 
             ProposeWeightsCommand = new RelayCommand(async _ =>
             {
