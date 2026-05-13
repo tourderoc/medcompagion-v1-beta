@@ -501,7 +501,7 @@
                                           FontSize="12" Height="28"
                                           SelectionChanged="ConsultationTypeCombo_SelectionChanged">
                                     <ComboBoxItem Content="— Note libre —" Tag="Normal" IsSelected="True"/>
-                                    <ComboBoxItem Content="1ère consultation — Interrogatoire" Tag="PremiereConsultation"/>
+                                    <ComboBoxItem Content="1ère consultation" Tag="PremiereConsultation"/>
                                     <ComboBoxItem Content="Consultation de suivi (bientôt)" IsEnabled="False" Foreground="#AAAAAA"/>
                                     <ComboBoxItem Content="Bilan initial (bientôt)" IsEnabled="False" Foreground="#AAAAAA"/>
                                 </ComboBox>
@@ -567,7 +567,7 @@
                             </TextBox>
 
                             <!-- V0c : Boutons simples (Interrogatoire vs Observations) -->
-                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,12" Height="40" VerticalAlignment="Top">
                                 <StackPanel.Style>
                                     <Style TargetType="StackPanel">
                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -581,17 +581,20 @@
 
                                 <Button Content="Interrogatoire"
                                         Command="{Binding SwitchToInterrogatoireCommand}"
-                                        Padding="15,10" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
-                                        Margin="0,0,10,0"
+                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
+                                        Margin="0,0,10,0" Height="40"
                                         Background="#3498DB" Foreground="White"
-                                        BorderThickness="0"/>
+                                        BorderThickness="0"
+                                        VerticalAlignment="Top"/>
 
                                 <Button Content="Observations Cliniques"
                                         Command="{Binding SwitchToClinicalCommand}"
-                                        Padding="15,10" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
+                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
+                                        Height="40"
                                         Background="#27AE60" Foreground="White"
                                         BorderThickness="0"
-                                        IsEnabled="{Binding IsStructureFrozen}"/>
+                                        IsEnabled="{Binding IsStructureFrozen}"
+                                        VerticalAlignment="Top"/>
                             </StackPanel>
 
                             <!-- MODE INTERROGATOIRE — Saisie transcription -->
