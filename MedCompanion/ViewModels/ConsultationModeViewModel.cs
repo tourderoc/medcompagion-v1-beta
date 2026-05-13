@@ -493,9 +493,9 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode;
-        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode;
-        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode;
+        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode && !IsSynthesisMode;
+        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode && !IsSynthesisMode;
+        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode && !IsSynthesisMode;
 
         // Transcription
         private string _transcriptionInput = "";
@@ -587,6 +587,8 @@ namespace MedCompanion.ViewModels
             TranscriptionInput = "";
             NoteContent = "";
             _noteSaved = false;
+            IsInClinicalMode = false;
+            IsSynthesisMode = false;
 
             UpdateBlockCollections();
         }
@@ -1001,7 +1003,15 @@ namespace MedCompanion.ViewModels
         public bool IsSynthesisMode
         {
             get => _isSynthesisMode;
-            set => SetProperty(ref _isSynthesisMode, value);
+            set
+            {
+                if (SetProperty(ref _isSynthesisMode, value))
+                {
+                    OnPropertyChanged(nameof(IsInSaisieMode));
+                    OnPropertyChanged(nameof(IsInExtractionMode));
+                    OnPropertyChanged(nameof(IsInFinalNoteMode));
+                }
+            }
         }
 
         private string _synthesisContent = "";
@@ -1030,6 +1040,16 @@ namespace MedCompanion.ViewModels
         {
             get => _synthesisStatusMessage;
             set => SetProperty(ref _synthesisStatusMessage, value);
+        }
+
+        // V0d : Documents importés
+        public ObservableCollection<ImportedConsultationDocument> ImportedDocuments { get; } = new();
+
+        private bool _isImportingDocument = false;
+        public bool IsImportingDocument
+        {
+            get => _isImportingDocument;
+            set => SetProperty(ref _isImportingDocument, value);
         }
 
         private void SwitchToSynthesis()
@@ -1183,12 +1203,78 @@ justification: {SynthesisWeights.LLMJustification ?? ""}
             return Task.CompletedTask;
         }
 
+        private async Task ImportDocumentAsync()
+        {
+            if (_llmService == null) return;
+
+            IsImportingDocument = true;
+            SynthesisStatusMessage = "📄 Sélectionner un document...";
+
+            try
+            {
+                // Dialog pour sélectionner fichier (via code-behind)
+                // TODO: Phase D - Implémenter dialog dans ConsultationModeControl.xaml.cs
+                // Pour maintenant, placeholder pour tester workflow
+
+                SynthesisStatusMessage = "⏳ Génération synthèse document...";
+
+                // Exemple: créer un document test pour démonstration
+                var doc = new ImportedConsultationDocument
+                {
+                    FileName = "Document_test.pdf",
+                    FilePath = "test_path",
+                    Category = "Documents",
+                    Weight = 0.6
+                };
+
+                // Générer synthèse du document via LLM
+                var prompt = $@"Génère une synthèse courte (3-4 lignes) de ce document médical:
+
+Fichier: {doc.FileName}
+Catégorie: {doc.Category}
+
+Synthèse (format markdown, concis, factuels uniquement):";
+
+                var (success, synthesis, _) = await _llmService.ChatAsync(prompt, new(), maxTokens: 300);
+
+                if (success)
+                {
+                    doc.DocumentSynthesis = synthesis;
+                    ImportedDocuments.Add(doc);
+                    SynthesisStatusMessage = $"✅ Document importé: {doc.FileName}";
+                }
+                else
+                {
+                    SynthesisStatusMessage = "❌ Erreur génération synthèse doc";
+                }
+            }
+            catch (Exception ex)
+            {
+                SynthesisStatusMessage = $"❌ Erreur: {ex.Message}";
+            }
+            finally
+            {
+                IsImportingDocument = false;
+            }
+        }
+
         // Helpers
 
         private string BuildWeightProposalPrompt()
         {
             var interrogatoireData = BuildInterrogatoireJSON();
             var observationsData = BuildObservationsJSON();
+            var documentsSection = "";
+
+            if (ImportedDocuments.Count > 0)
+            {
+                documentsSection = @"
+
+DOCUMENTS IMPORTÉS (bilans, rapports, etc.):
+" + string.Join("\n", ImportedDocuments.Select(d =>
+    $@"- {d.FileName} (Catégorie: {d.Category})
+  Synthèse: {d.DocumentSynthesis}"));
+            }
 
             return $@"Tu es un clinicien expérimenté en pédopsychiatrie évaluant la qualité des données d'une 1ère consultation.
 
@@ -1199,6 +1285,7 @@ INTERROGATOIRE (anamnèse parentale):
 
 OBSERVATIONS CLINIQUES DIRECTES (examen enfant):
 {observationsData}
+{documentsSection}
 
 TÂCHE: Évalue la FIABILITÉ et PERTINENCE diagnostique de chaque source de données pour cette synthèse initiale.
 
@@ -1216,14 +1303,24 @@ Critères d'évaluation:
 - 0.3-0.4: Limité, incomplet
 - 0.1-0.2: Très partiel, peu fiable pour synthèse
 
-Réponds en JSON valide:
+Réponds en JSON valide:" + (ImportedDocuments.Count > 0 ? @"
+{{
+  ""weights"": {{
+    ""interrogatoire"": 0.X,
+    ""observations"": 0.X,
+    ""documents"": {{
+      // Pour chaque document: ""document_id"": 0.X
+    }}
+  }},
+  ""justification"": ""Courte analyse de la fiabilité de chaque composant""
+}}" : @"
 {{
   ""weights"": {{
     ""interrogatoire"": 0.X,
     ""observations"": 0.X
   }},
-  ""justification"": ""Courte analyse de la fiabilité de chaque composant et leur impact sur la synthèse""
-}}";
+  ""justification"": ""Courte analyse de la fiabilité de chaque composant""
+}}");
         }
 
         private string BuildInterrogatoireJSON()
@@ -1294,6 +1391,21 @@ Réponds en JSON valide:
 
         private string BuildInitialSynthesisJSON(InitialSynthesisWeights weights)
         {
+            var data = new
+            {
+                interrogatoire = BuildInterrogatoireJSON(),
+                observations = BuildObservationsJSON()
+            };
+
+            // Inclure les documents importés s'il y en a
+            var documentsList = ImportedDocuments.Select(d => new
+            {
+                document_id = d.DocumentId,
+                file_name = d.FileName,
+                category = d.Category,
+                synthesis = d.DocumentSynthesis
+            }).ToList();
+
             return System.Text.Json.JsonSerializer.Serialize(new
             {
                 consultation_type = "premiere_consultation",
@@ -1301,12 +1413,14 @@ Réponds en JSON valide:
                 {
                     interrogatoire = weights.InterrogatoireWeight,
                     observations = weights.ObservationsWeight,
+                    documents = ImportedDocuments.ToDictionary(d => d.DocumentId, d => d.Weight),
                     moyenne = weights.AverageWeight
                 },
                 data = new
                 {
                     interrogatoire = BuildInterrogatoireJSON(),
-                    observations = BuildObservationsJSON()
+                    observations = BuildObservationsJSON(),
+                    documents = documentsList
                 }
             }, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
         }
@@ -1397,6 +1511,10 @@ STRUCTURE (Markdown):
         public ICommand ProposeWeightsCommand { get; }
         public ICommand GenerateSynthesisCommand { get; }
         public ICommand SaveSynthesisCommand { get; }
+
+        // V0d : Commandes Documents Importés
+        public ICommand ImportDocumentCommand { get; }
+        public ICommand RemoveDocumentCommand { get; }
 
         #endregion
 
@@ -1495,12 +1613,14 @@ STRUCTURE (Markdown):
             SwitchToInterrogatoireCommand = new RelayCommand(_ =>
             {
                 IsInClinicalMode = false;
+                IsSynthesisMode = false;
             }, _ => IsInterrogatoireMode);
 
             SwitchToClinicalCommand = new RelayCommand(_ =>
             {
                 if (_clinicalObservations.Cards.Count == 0)
                     InitializeClinicalObservations();
+                IsSynthesisMode = false;
                 IsInClinicalMode = true;
             }, _ => IsInterrogatoireMode);
 
@@ -1552,6 +1672,20 @@ STRUCTURE (Markdown):
             {
                 await SaveSynthesisAsync();
             }, _ => IsSynthesisMode && !string.IsNullOrEmpty(SynthesisContent));
+
+            // V0d : Commands Documents Importés
+            ImportDocumentCommand = new RelayCommand(async _ =>
+            {
+                await ImportDocumentAsync();
+            }, _ => IsSynthesisMode && !IsImportingDocument);
+
+            RemoveDocumentCommand = new RelayCommand(param =>
+            {
+                if (param is ImportedConsultationDocument doc)
+                {
+                    ImportedDocuments.Remove(doc);
+                }
+            });
 
             // Commands pagination dossier
             InitPaginationCommands();

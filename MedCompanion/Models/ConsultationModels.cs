@@ -435,4 +435,63 @@ namespace MedCompanion.Models
             }
         }
     }
+
+    // ─── V0d : Document Importé en Consultation ─────────────────────────
+
+    /// <summary>
+    /// Document importé/scanné pendant la consultation
+    /// Peut être un bilan, rapport, etc. avec synthèse générée
+    /// </summary>
+    public class ImportedConsultationDocument : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string DocumentId { get; set; } = Guid.NewGuid().ToString();
+        public DateTime DateAdded { get; set; } = DateTime.Now;
+
+        private string _fileName = "";
+        public string FileName
+        {
+            get => _fileName;
+            set { _fileName = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FileName))); }
+        }
+
+        private string _filePath = "";
+        public string FilePath
+        {
+            get => _filePath;
+            set { _filePath = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FilePath))); }
+        }
+
+        private string _documentSynthesis = "";
+        /// <summary>Synthèse générée du document par LLM</summary>
+        public string DocumentSynthesis
+        {
+            get => _documentSynthesis;
+            set { _documentSynthesis = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DocumentSynthesis))); }
+        }
+
+        private double _weight = 0.5;
+        /// <summary>Poids de fiabilité du document (0.1-1.0)</summary>
+        public double Weight
+        {
+            get => _weight;
+            set { _weight = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Weight))); }
+        }
+
+        private bool _isSynthesizing = false;
+        public bool IsSynthesizing
+        {
+            get => _isSynthesizing;
+            set { _isSynthesizing = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSynthesizing))); }
+        }
+
+        private string _category = "Documents";
+        /// <summary>Catégorie: Documents, Bilans, etc.</summary>
+        public string Category
+        {
+            get => _category;
+            set { _category = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Category))); }
+        }
+    }
 }
