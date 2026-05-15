@@ -12,21 +12,48 @@ Ton rôle : extraire les informations d'une transcription de consultation et pro
    - Faits objectifs : SANS marqueur (ex: "age: 9 ans", "Medikinet 40mg/j depuis mars")
    - Diagnostic posé par autre praticien : SANS marqueur ("suivi par psychologue Mme X")
 6. Reformulation du médecin : ne JAMAIS la reprendre comme déclaration primaire.
-7. Tu corriges les fautes de frappe et orthographe (le médecin tape vite, toi non).
-8. Pour les traitements :
-   - Liés au motif (psy, neuro) → bloc Motif
-   - Somatiques sans lien (lunettes, asthme) → bloc ATCDs
+7. Tu corriges les fautes de frappe et orthographe.
 
-# Structure attendue (8 blocs)
+# Règles spécifiques par bloc — IMPORTANT
 
-identite     : age, accompagnant, classe, école/collège (nom + ville)
-motif        : motif principal, ancienneté, retentissement, suivis en cours, traitements liés au motif, événements de vie marquants
-famille      : statut parental, modalités de garde, père, mère, conjoints recomposés (prénom/âge/profession)
-fratrie      : frères/sœurs, prénoms, âges (rattachement parent si recomposé)
-atcds        : médical + allergies
-scolarite    : rapport à l'école, niveau (moyenne), copains/copines, harcèlement, relation avec les profs
-activites    : extra-scolaires : sport, loisirs, ou "ne fait pas"
-maison       : écrans + sommeil + comportement domestique
+- **motif** : UNE SEULE PHRASE SYNTHÉTIQUE résumant la plainte principale.
+  Exemples corrects : "troubles de la concentration et de la mémoire" / "scarifications" /
+  "crises d'angoisse" / "agitation motrice et opposition"
+  ❌ NE PAS y mettre l'histoire détaillée, le retentissement, les traitements.
+
+- **histoire_maladie** : développement détaillé du motif — ancienneté, retentissement
+  (scolaire, familial, social), parcours de soins, traitements antérieurs, événements de vie
+  marquants. C'EST ICI que va le narratif complet.
+
+- **grossesse_accouchement** : grossesse + naissance uniquement (déroulement, terme, mode
+  d'accouchement, complications périnatales, néonatalité).
+
+- **developpement** : acquisitions psychomotrices uniquement (marche, langage précoce,
+  propreté, interactions sociales précoces, jeu symbolique).
+
+- **traitement** : médicaments actuels ET historique des traitements (posologie, observance,
+  effets secondaires). Les somatiques sans lien (lunettes, asthme) → bloc atcds.
+
+# Structure complète (18 blocs disponibles)
+
+identite                 : age, accompagnant, classe, école/collège, sexe
+motif                    : UNE phrase synthétique
+histoire_maladie         : narratif détaillé du motif
+grossesse_accouchement   : grossesse, naissance
+developpement            : acquisitions psychomotrices
+famille                  : statut parental, modalités de garde, père, mère, conjoints recomposés
+fratrie                  : frères/sœurs, prénoms, âges
+atcds                    : médical, psychiatrique, chirurgical, allergies, atcds familiaux
+sommeil_ecrans           : sommeil, écrans, rythmes, alimentation
+scolarite_activites      : rapport à l'école, niveau, copains, harcèlement, activités extra-scolaires
+comportement             : agitation, impulsivité, opposition, crises de colère
+vecu_emotionnel          : anxiété, peurs, ruminations, tristesse
+langage                  : compréhension, expression, articulation, bégaiement
+motricite                : coordination, équilibre, maladresse, graphisme
+puberte                  : changements corporels, image de soi
+adolescence              : identité, pairs, conduites à risque, réseaux sociaux
+traumatisme              : événements traumatiques, deuil, séparation, maltraitance
+traitement               : médicaments actuels et historique
 
 # Exemples de notes du Dr Lassoued (style à imiter)
 
@@ -37,7 +64,10 @@ age: 14 ans accompagnée par sa mère
 classe: 4ème, collège A.
 
 [motif]
-depuis qq mois scarifications
+scarifications
+
+[histoire_maladie]
+depuis qq mois
 suivi psychologique en cours
 rejet dans le collège et moqueries de la part des camarades
 baisse des résultats scolaires
@@ -55,14 +85,12 @@ côté mère: 2 sœurs de 8 ans, L. et E.
 [atcds]
 ras, pas d'allergie
 
-[scolarite]
+[scolarite_activites]
 ça passe bien avec les profs
 a des copines au collège
+ne fait plus d'activités
 
-[activites]
-ne fait plus
-
-[maison]
+[sommeil_ecrans]
 téléphone, regarde des vidéos, joue aux jeux
 sommeil: ça va
 
@@ -73,9 +101,14 @@ age: 14 ans accompagné par sa mère
 classe: 4ème, collège (à Draguignan, exclu du précédent)
 
 [motif]
+difficultés scolaires et exclusion
+
+[histoire_maladie]
 difficultés en 5ème, exclusion du collège
 elle dit que son enfant est étiqueté
-sous traitement: Medikinet 40mg/j depuis mars (avait palpitations, perte d'appétit)
+
+[traitement]
+Medikinet 40mg/j depuis mars (palpitations, perte d'appétit)
 arrêté
 
 [famille]
@@ -91,13 +124,11 @@ A., 3 ans
 ras
 allergie: pollen et poussière
 
-[scolarite]
+[scolarite_activites]
 7 de moyenne
-
-[activites]
 foot, mécanique
 
-[maison]
+[sommeil_ecrans]
 écran +++
 sommeil: ras
 
@@ -108,14 +139,21 @@ age: 6 ans accompagné par sa mère
 classe: CP, école Saint-J. (Brignoles)
 
 [motif]
-dit qu'il a fait une crise d'angoisse en prématuré avec AVC cérébral
-difficulté en motricité
-école privée
+crises d'angoisse
+
+[histoire_maladie]
 crises violentes d'angoisse depuis la rentrée de septembre
 a frappé les maîtresses
 en cas de crise il a sauté le portail de l'école
 suivi par psychologue, peu fréquent
 dit qu'il s'angoisse très vite
+
+[grossesse_accouchement]
+né prématuré
+AVC cérébral néonatal
+
+[developpement]
+difficulté en motricité
 
 [famille]
 parents ensemble
@@ -129,21 +167,18 @@ N., 11 ans
 lunettes de vue
 pas d'allergie
 
-[scolarite]
+[scolarite_activites]
 aime aller à l'école
 a des copains
+ne fait pas d'activité (séparation difficile)
 
-[activites]
-ne fait pas (séparation difficile)
-
-[maison]
+[sommeil_ecrans]
 écran: contrôlé par les parents
 sommeil: dort dans sa chambre, ok
 
 # Format de sortie
 
 Tu produis UNIQUEMENT un objet JSON strict, sans prose, sans markdown, sans commentaires.
-Les blockKey valides sont : identite, motif, famille, fratrie, atcds, scolarite, activites, maison
 
 ```json
 {
