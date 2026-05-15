@@ -695,7 +695,7 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="140"/>
-                                    <RowDefinition Height="150"/>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
@@ -714,78 +714,40 @@
                                     </ScrollViewer>
                                 </Border>
 
-                                <!-- V0c : Blocs complétés (100%) -->
-                                <Border Grid.Row="2" Background="White" BorderThickness="1" BorderBrush="#27AE60" CornerRadius="6" Padding="10" Margin="0,6,0,0">
+                                <!-- Blocs complétés — tags compacts (migrent depuis la zone Med à droite) -->
+                                <Border Grid.Row="2" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,6,0,0">
                                     <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <StackPanel>
-                                            <TextBlock Text="✓ Blocs complétés" FontSize="11" FontWeight="SemiBold" Foreground="#27AE60" Margin="0,0,0,6"/>
-                                            <ItemsControl ItemsSource="{Binding CompletedBlocks}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="#F0FAF5" BorderBrush="#27AE60" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,4" Cursor="Hand">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="*"/>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                </Grid.ColumnDefinitions>
-                                                                <StackPanel Grid.Column="0">
-                                                                    <TextBlock Text="{Binding Title}" FontSize="10" FontWeight="SemiBold" Foreground="#27AE60"/>
-                                                                    <TextBlock Text="{Binding CompactPreview}" FontSize="9" Foreground="#7F8C8D" TextTrimming="CharacterEllipsis" MaxWidth="200"/>
-                                                                </StackPanel>
-                                                                <TextBlock Grid.Column="1" Text="✓" FontSize="14" Foreground="#27AE60" FontWeight="Bold" VerticalAlignment="Center"/>
-                                                            </Grid>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </ScrollViewer>
-                                </Border>
-
-                                <!-- V0c : Blocs actifs (en cours) -->
-                                <Border Grid.Row="3" Background="White" BorderThickness="1" BorderBrush="#E0E0E0" CornerRadius="6" Padding="10" Margin="0,6,0,0">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding ActiveBlocks}">
+                                        <ItemsControl ItemsSource="{Binding CompletedBlocks}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <WrapPanel/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border Margin="0,0,0,6" CornerRadius="6" BorderThickness="1" Padding="8">
-                                                        <Border.Style>
-                                                            <Style TargetType="Border">
-                                                                <Setter Property="Background" Value="#FAFAFA"/>
-                                                                <Setter Property="BorderBrush" Value="#E0E0E0"/>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsEmpty}" Value="False">
-                                                                        <Setter Property="Background" Value="#F0FAF5"/>
-                                                                        <Setter Property="BorderBrush" Value="#A8D5BC"/>
-                                                                    </DataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Border.Style>
-                                                        <Grid>
-                                                            <Grid.ColumnDefinitions>
-                                                                <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="Auto"/>
-                                                            </Grid.ColumnDefinitions>
-                                                            <StackPanel Grid.Column="0">
-                                                                <Grid>
-                                                                    <Grid.ColumnDefinitions>
-                                                                        <ColumnDefinition Width="*"/>
-                                                                        <ColumnDefinition Width="Auto"/>
-                                                                    </Grid.ColumnDefinitions>
-                                                                    <TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                                                                    <TextBlock Grid.Column="1" Text="{Binding ProgressPct, StringFormat='{}{0}%'}" FontSize="10" Foreground="#7F8C8D"/>
-                                                                </Grid>
-                                                                <ProgressBar Height="4" Minimum="0" Maximum="100" Value="{Binding ProgressPct, Mode=OneWay}" Margin="0,4,0,4" Foreground="{Binding ProgressBarColor}" Background="#E0E0E0" BorderThickness="0"/>
-                                                                <TextBlock Text="{Binding FreeText}" FontSize="9" Foreground="#5D6D7E" TextWrapping="Wrap" MaxHeight="40" TextTrimming="CharacterEllipsis" Visibility="{Binding IsNotEmpty, Converter={StaticResource BoolToVis}}"/>
-                                                            </StackPanel>
-                                                            <Button Grid.Column="1" Content="👁‍🗨" VerticalAlignment="Top" Command="{Binding Path=DataContext.ToggleBlockVisibilityCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" CommandParameter="{Binding}" Width="24" Height="24" Padding="0" FontSize="11" Background="Transparent" BorderThickness="0" Cursor="Hand" ToolTip="Masquer ce bloc"/>
-                                                        </Grid>
+                                                    <Border Background="#E8F5E9" BorderBrush="#27AE60" BorderThickness="1"
+                                                            CornerRadius="12" Padding="8,3" Margin="0,0,5,5"
+                                                            Cursor="Hand" ToolTip="{Binding CompactPreview}">
+                                                        <StackPanel Orientation="Horizontal">
+                                                            <TextBlock Text="✓" FontSize="10" FontWeight="Bold"
+                                                                       Foreground="#27AE60" Margin="0,0,4,0"
+                                                                       VerticalAlignment="Center"/>
+                                                            <TextBlock Text="{Binding Title}" FontSize="10"
+                                                                       FontWeight="SemiBold" Foreground="#1B5E20"
+                                                                       VerticalAlignment="Center" Margin="0,0,5,0"/>
+                                                            <TextBlock Text="{Binding CompactPreview}" FontSize="10"
+                                                                       Foreground="#558B2F" TextTrimming="CharacterEllipsis"
+                                                                       MaxWidth="180" VerticalAlignment="Center"/>
+                                                        </StackPanel>
                                                     </Border>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
                                     </ScrollViewer>
                                 </Border>
+
+                                <!-- Grid.Row=3 vide : les blocs actifs sont affichés à droite (panneau Med) -->
+                                <Border Grid.Row="3" Background="Transparent" BorderThickness="0"/>
 
                                 <StackPanel Grid.Row="4" Orientation="Horizontal"
                                             HorizontalAlignment="Right" Margin="0,8,0,0">
@@ -1860,53 +1822,8 @@
                                                Margin="0,20"
                                                Visibility="{Binding IsMedSilencieux, Converter={StaticResource BoolToVis}}"/>
 
-                                    <!-- ── V0b : Bandeau état adaptatif ─────────────── -->
-                                    <Border Margin="0,0,0,8" Padding="8,6" CornerRadius="6"
-                                            Background="#EDE7F6" BorderBrush="#B39DDB" BorderThickness="1">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <StackPanel>
-                                            <!-- Âge confirmé -->
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,2">
-                                                <TextBlock Text="👤" FontSize="11" Margin="0,0,4,0"/>
-                                                <TextBlock FontSize="11" Foreground="#5E35B1" FontWeight="SemiBold">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="Âge : en attente de confirmation"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding HasConfirmedAge}" Value="True">
-                                                                    <Setter Property="Text" Value="{Binding ConfirmedAge, StringFormat='Âge confirmé : {0} ans'}"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
-                                            </StackPanel>
-                                            <!-- Motif détecté -->
-                                            <StackPanel Orientation="Horizontal"
-                                                        Visibility="{Binding HasDetectedMotif, Converter={StaticResource BoolToVis}}">
-                                                <TextBlock Text="🎯" FontSize="11" Margin="0,0,4,0"/>
-                                                <TextBlock Text="{Binding DetectedMotif, StringFormat='Motif : {0}'}"
-                                                           FontSize="10" Foreground="#7E57C2"
-                                                           TextTrimming="CharacterEllipsis" MaxWidth="200"/>
-                                            </StackPanel>
-                                            <!-- Structure gelée -->
-                                            <TextBlock Text="🔒 Structure gelée" FontSize="9" Foreground="#9575CD"
-                                                       Margin="0,2,0,0"
-                                                       Visibility="{Binding IsStructureFrozen, Converter={StaticResource BoolToVis}}"/>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- ── Blocs Interrogatoire ─────────────────────────── -->
-                                    <ItemsControl ItemsSource="{Binding InterrogatoireBlocks}">
+                                    <!-- ── Blocs en cours (les complétés migrent vers la zone travail à gauche) -->
+                                    <ItemsControl ItemsSource="{Binding ActiveBlocks}">
                                         <ItemsControl.Style>
                                             <Style TargetType="ItemsControl">
                                                 <Setter Property="Visibility" Value="Collapsed"/>
@@ -1990,144 +1907,6 @@
                                             </DataTemplate>
                                         </ItemsControl.ItemTemplate>
                                     </ItemsControl>
-
-                                    <!-- ── V0b : Zone Chips — Suggestions de blocs ─────── -->
-                                    <Border Margin="0,4,0,8" Padding="8,6" CornerRadius="8"
-                                            Background="#FFF8E1" BorderBrush="#FFE082" BorderThickness="1">
-                                        <Border.Style>
-                                            <Style TargetType="Border">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                <Style.Triggers>
-                                                    <MultiDataTrigger>
-                                                        <MultiDataTrigger.Conditions>
-                                                            <Condition Binding="{Binding IsInterrogatoireMode}" Value="True"/>
-                                                            <Condition Binding="{Binding HasBlockSuggestions}" Value="True"/>
-                                                        </MultiDataTrigger.Conditions>
-                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                    </MultiDataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </Border.Style>
-                                        <StackPanel>
-                                            <!-- Titre de la zone -->
-                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
-                                                <TextBlock Text="✨" FontSize="12" Margin="0,0,4,0"/>
-                                                <TextBlock Text="Blocs suggérés" FontSize="11"
-                                                           FontWeight="SemiBold" Foreground="#F57F17"/>
-                                                <TextBlock Text=" — cliquez ✓ pour ajouter" FontSize="10"
-                                                           Foreground="#FFA000" VerticalAlignment="Center"
-                                                           Margin="4,0,0,0"/>
-                                            </StackPanel>
-
-                                            <!-- Liste des chips -->
-                                            <ItemsControl ItemsSource="{Binding BlockSuggestions}">
-                                                <ItemsControl.ItemsPanel>
-                                                    <ItemsPanelTemplate>
-                                                        <WrapPanel/>
-                                                    </ItemsPanelTemplate>
-                                                </ItemsControl.ItemsPanel>
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Margin="0,0,6,6" CornerRadius="16"
-                                                                Background="White" BorderBrush="#FFD54F"
-                                                                BorderThickness="1.5" Padding="0"
-                                                                Cursor="Hand">
-                                                            <Border.Effect>
-                                                                <DropShadowEffect ShadowDepth="1" BlurRadius="4"
-                                                                                  Opacity="0.12" Color="#FFA000"/>
-                                                            </Border.Effect>
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="*"/>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                </Grid.ColumnDefinitions>
-
-                                                                <!-- Icône -->
-                                                                <TextBlock Grid.Column="0" Text="{Binding Icon}"
-                                                                           FontSize="14" VerticalAlignment="Center"
-                                                                           Margin="10,6,4,6"/>
-
-                                                                <!-- Titre + Raison -->
-                                                                <StackPanel Grid.Column="1" VerticalAlignment="Center"
-                                                                            Margin="2,6,6,6">
-                                                                    <TextBlock Text="{Binding Title}" FontSize="11"
-                                                                               FontWeight="SemiBold" Foreground="#2C3E50"
-                                                                               TextTrimming="CharacterEllipsis"/>
-                                                                    <TextBlock Text="{Binding Reason}" FontSize="9"
-                                                                               Foreground="#95A5A6"
-                                                                               TextTrimming="CharacterEllipsis"
-                                                                               MaxWidth="130"/>
-                                                                </StackPanel>
-
-                                                                <!-- Bouton Accept ✓ -->
-                                                                <Button Grid.Column="2"
-                                                                        Command="{Binding AcceptCommand}"
-                                                                        ToolTip="Ajouter ce bloc"
-                                                                        Width="26" Height="26"
-                                                                        Margin="0,0,2,0"
-                                                                        Cursor="Hand">
-                                                                    <Button.Template>
-                                                                        <ControlTemplate TargetType="Button">
-                                                                            <Border x:Name="BdAccept"
-                                                                                    Background="#E8F5E9"
-                                                                                    CornerRadius="13"
-                                                                                    Width="26" Height="26">
-                                                                                <TextBlock Text="✓" FontSize="13"
-                                                                                           FontWeight="Bold"
-                                                                                           Foreground="#27AE60"
-                                                                                           HorizontalAlignment="Center"
-                                                                                           VerticalAlignment="Center"/>
-                                                                            </Border>
-                                                                            <ControlTemplate.Triggers>
-                                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                                    <Setter TargetName="BdAccept" Property="Background" Value="#C8E6C9"/>
-                                                                                </Trigger>
-                                                                                <Trigger Property="IsEnabled" Value="False">
-                                                                                    <Setter TargetName="BdAccept" Property="Opacity" Value="0.4"/>
-                                                                                </Trigger>
-                                                                            </ControlTemplate.Triggers>
-                                                                        </ControlTemplate>
-                                                                    </Button.Template>
-                                                                </Button>
-
-                                                                <!-- Bouton Dismiss ✕ -->
-                                                                <Button Grid.Column="3"
-                                                                        Command="{Binding DismissCommand}"
-                                                                        ToolTip="Ignorer"
-                                                                        Width="26" Height="26"
-                                                                        Margin="0,0,6,0"
-                                                                        Cursor="Hand">
-                                                                    <Button.Template>
-                                                                        <ControlTemplate TargetType="Button">
-                                                                            <Border x:Name="BdDismiss"
-                                                                                    Background="#FFEBEE"
-                                                                                    CornerRadius="13"
-                                                                                    Width="26" Height="26">
-                                                                                <TextBlock Text="✕" FontSize="11"
-                                                                                           Foreground="#E74C3C"
-                                                                                           HorizontalAlignment="Center"
-                                                                                           VerticalAlignment="Center"/>
-                                                                            </Border>
-                                                                            <ControlTemplate.Triggers>
-                                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                                    <Setter TargetName="BdDismiss" Property="Background" Value="#FFCDD2"/>
-                                                                                </Trigger>
-                                                                                <Trigger Property="IsEnabled" Value="False">
-                                                                                    <Setter TargetName="BdDismiss" Property="Opacity" Value="0.4"/>
-                                                                                </Trigger>
-                                                                            </ControlTemplate.Triggers>
-                                                                        </ControlTemplate>
-                                                                    </Button.Template>
-                                                                </Button>
-                                                            </Grid>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                        </StackPanel>
-                                    </Border>
 
                                 </StackPanel>
                             </ScrollViewer>
