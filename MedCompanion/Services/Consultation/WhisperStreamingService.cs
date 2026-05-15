@@ -284,7 +284,7 @@ namespace MedCompanion.Services.Consultation
 
             StatusChanged?.Invoke("Arrêt en cours...");
 
-            // 1) Arrêter la capture audio
+            // 1) Arrêter la capture audio (plus aucun OnAudioData après ça)
             if (_waveIn != null)
             {
                 _waveIn.DataAvailable    -= OnAudioData;
@@ -294,21 +294,27 @@ namespace MedCompanion.Services.Consultation
                 _waveIn = null;
             }
 
-            // 2) Annuler le heartbeat
-            _cts?.Cancel();
-
-            // 3) Vider le buffer restant dans la queue
+            // 2) Flush le buffer restant dans la queue AVANT d'annuler le token
+            //    Important: le token n'est PAS encore annulé ici, donc TranscriptionLoop
+            //    peut encore lire et traiter ce dernier chunk.
             FlushBufferToQueue(force: true);
 
-            // 4) Fermer la queue → la tâche de transcription va se terminer après avoir tout traité
+            // 3) Fermer la queue — TranscriptionLoop se termine proprement
+            //    après avoir traité tous les éléments restants.
             _audioQueue?.Writer.Complete();
 
+            // 4) Attendre que la transcription du dernier segment soit terminée
+            //    AVANT d'annuler le token (sinon ReadAllAsync(ct) peut s'arrêter prématurément)
             if (_transcriptionTask != null)
             {
+                StatusChanged?.Invoke("⏳ Transcription du dernier segment...");
                 try { await _transcriptionTask; }
                 catch { /* ignoré */ }
                 _transcriptionTask = null;
             }
+
+            // 5) Maintenant annuler le token → arrête heartbeat + batch timer
+            _cts?.Cancel();
 
             if (_heartbeatTask != null)
             {
