@@ -601,22 +601,15 @@ namespace MedCompanion.ViewModels
             BlockSuggestions.Clear();
             OnPropertyChanged(nameof(HasBlockSuggestions));
 
-            // V0b : résoudre les blocs selon l'âge confirmé
-            List<BlockDefinition> definitions;
-            if (_confirmedAge.HasValue)
-            {
-                definitions = _blockSetResolver.Resolve(_confirmedAge.Value);
-            }
-            else
-            {
-                // Âge pas encore confirmé → noyau fixe uniquement
-                definitions = _blockSetResolver.ResolveWithoutAge();
-            }
-
-            foreach (var d in definitions)
+            // Tous les blocs sont présents dès le départ (logique « soustraction »).
+            // L'âge et le motif permettront un auto-masquage ultérieur (puberté, adolescence…).
+            foreach (var d in _blockSetResolver.ResolveWithoutAge())
                 InterrogatoireBlocks.Add(ConsultationBlockViewModel.FromDefinition(d));
 
-            // Réinitialiser les détecteurs V0b
+            // Si l'âge est déjà connu, appliquer les règles d'auto-masquage
+            if (_confirmedAge.HasValue)
+                ApplyAutoHideRules(_confirmedAge.Value);
+
             _motifDetector.Reset();
             DetectedMotif = "";
             IsStructureFrozen = false;
@@ -673,52 +666,55 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        // ── V0b : Gestion de l'âge confirmé ──────────────────────────────────
+        // ── Gestion de l'âge confirmé ────────────────────────────────────────
 
         /// <summary>
         /// Appelé quand l'âge du patient est confirmé.
-        /// Ajoute silencieusement le macro-bloc contextuel par âge.
+        /// Logique « soustraction » : tous les blocs sont déjà présents — on masque
+        /// uniquement ceux dont la tranche d'âge ne correspond pas (puberté, adolescence…).
         /// </summary>
         private void OnAgeConfirmed(int ageYears)
         {
-            // Ne pas ajouter si le macro-bloc est déjà présent
-            var existingKeys = InterrogatoireBlocks.Select(b => b.Key).ToHashSet();
-            var ageBlock = _blockSetResolver.GetAgeBlock(ageYears);
-
-            if (ageBlock != null && !existingKeys.Contains(ageBlock.Key))
-            {
-                InterrogatoireBlocks.Add(ConsultationBlockViewModel.FromDefinition(ageBlock));
-                System.Diagnostics.Debug.WriteLine($"[V0b] Macro-bloc ajouté : {ageBlock.Title} (âge={ageYears})");
-            }
+            ApplyAutoHideRules(ageYears);
+            System.Diagnostics.Debug.WriteLine($"[Blocks] Âge confirmé ({ageYears}) — règles d'auto-masquage appliquées.");
         }
 
-        // ── V0b : Gestion du motif détecté ────────────────────────────────────
+        // ── Gestion du motif détecté ──────────────────────────────────────────
 
         /// <summary>
         /// Appelé quand le motif principal est détecté (one-shot).
-        /// Lance la suggestion de blocs supplémentaires.
+        /// Logique « soustraction » : tous les blocs sont déjà visibles dès le départ.
+        /// On masque automatiquement ceux incompatibles avec l'âge (ex. puberté si &lt; 9 ans).
+        /// Le médecin peut toujours réafficher manuellement via le bouton 👁.
         /// </summary>
-        private async void OnMotifDetected(string motif)
+        private void OnMotifDetected(string motif)
         {
-            Dispatch(() => DetectedMotif = motif);
-
-            if (!_confirmedAge.HasValue) return;
-
-            var activeKeys = InterrogatoireBlocks.Select(b => b.Key).ToList();
-            var suggestions = await _blockSuggester.SuggestAsync(
-                motif, _confirmedAge.Value, activeKeys, _llmService);
-
             Dispatch(() =>
             {
-                BlockSuggestions.Clear();
-                foreach (var s in suggestions)
-                    BlockSuggestions.Add(new BlockSuggestionViewModel(s, this));
-                OnPropertyChanged(nameof(HasBlockSuggestions));
+                DetectedMotif = motif;
 
-                // Geler la structure
+                if (_confirmedAge.HasValue)
+                    ApplyAutoHideRules(_confirmedAge.Value);
+
+                BlockSuggestions.Clear();
+                OnPropertyChanged(nameof(HasBlockSuggestions));
                 IsStructureFrozen = true;
-                System.Diagnostics.Debug.WriteLine($"[V0b] Structure gelée. {suggestions.Count} chips suggérés.");
+                System.Diagnostics.Debug.WriteLine("[Blocks] Motif détecté, structure gelée.");
             });
+        }
+
+        /// <summary>
+        /// Masque les blocs incompatibles avec l'âge du patient (règles conservatrices).
+        /// </summary>
+        private void ApplyAutoHideRules(int ageYears)
+        {
+            var hideKeys = _blockSetResolver.GetAutoHideKeys(ageYears);
+            foreach (var block in InterrogatoireBlocks)
+            {
+                if (hideKeys.Contains(block.Key) && !block.IsHidden)
+                    block.IsHidden = true;
+            }
+            UpdateBlockCollections();
         }
 
         // ── V0b : Accept/Dismiss chips ────────────────────────────────────────

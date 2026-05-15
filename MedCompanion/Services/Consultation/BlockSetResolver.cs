@@ -8,10 +8,9 @@ using MedCompanion.Models;
 namespace MedCompanion.Services.Consultation
 {
     /// <summary>
-    /// Phase B — BlockSetResolver
-    /// Résout l'ensemble des blocs actifs pour une consultation selon l'âge du patient.
-    /// Règle : noyau fixe (6 blocs) + 1 macro-bloc contextuel par âge.
-    /// Structure gelée après résolution (~90s).
+    /// BlockSetResolver — version "soustraction"
+    /// Tous les blocs sont chargés dès le début (visibilité totale).
+    /// L'âge et le motif servent à proposer un AUTO-MASQUAGE (pas à filtrer l'initialisation).
     /// </summary>
     public class BlockSetResolver
     {
@@ -23,78 +22,52 @@ namespace MedCompanion.Services.Consultation
         }
 
         /// <summary>
-        /// Résout les blocs actifs pour un patient d'un âge donné.
-        /// Retourne les blocs core_fixed + le macro-bloc age_automatic correspondant.
+        /// Retourne TOUS les blocs, ordonnés. La sélection se fait par masquage côté UI.
+        /// L'argument <paramref name="ageYears"/> est conservé pour compatibilité mais ignoré.
         /// </summary>
-        /// <param name="ageYears">Âge confirmé du patient en années</param>
-        /// <returns>Liste ordonnée de BlockDefinition à instancier comme ConsultationBlock</returns>
-        public List<BlockDefinition> Resolve(int ageYears)
+        public List<BlockDefinition> Resolve(int ageYears) => ResolveAll();
+
+        /// <summary>
+        /// Retourne TOUS les blocs (âge inconnu ou non — peu importe).
+        /// </summary>
+        public List<BlockDefinition> ResolveWithoutAge() => ResolveAll();
+
+        private List<BlockDefinition> ResolveAll() => _library
+            .OrderBy(b => b.Order)
+            .ToList();
+
+        /// <summary>
+        /// Retourne les clés des blocs à masquer automatiquement après confirmation
+        /// d'âge + motif. Règles conservatrices : on masque uniquement les cas évidents
+        /// (incompatibilité d'âge stricte). On ne masque PAS sur seul critère de motif —
+        /// le médecin peut toujours masquer manuellement via le bouton 👁.
+        /// </summary>
+        public HashSet<string> GetAutoHideKeys(int ageYears)
         {
-            var result = new List<BlockDefinition>();
+            var hide = new HashSet<string>();
+            foreach (var block in _library)
+            {
+                bool ageMismatch =
+                    (block.AgeMin.HasValue && ageYears < block.AgeMin.Value) ||
+                    (block.AgeMax.HasValue && ageYears > block.AgeMax.Value);
 
-            // 1. Noyau fixe (toujours présent)
-            var coreBlocks = _library
-                .Where(b => b.TriggerTypeEnum == BlockTriggerType.CoreFixed)
-                .OrderBy(b => b.Order)
-                .ToList();
-
-            result.AddRange(coreBlocks);
-
-            // 2. Macro-bloc contextuel par âge (un seul)
-            var ageBlock = _library
-                .Where(b => b.TriggerTypeEnum == BlockTriggerType.AgeAutomatic)
-                .FirstOrDefault(b => ageYears >= (b.AgeMin ?? 0) && ageYears < (b.AgeMax ?? 99));
-
-            if (ageBlock != null)
-                result.Add(ageBlock);
-
-            return result;
+                if (ageMismatch) hide.Add(block.Key);
+            }
+            return hide;
         }
 
         /// <summary>
-        /// Résout les blocs en mode "âge inconnu" — retourne uniquement le noyau fixe.
-        /// Le macro-bloc sera ajouté dynamiquement après confirmation de l'âge.
+        /// Conservé pour compatibilité — retourne null (plus de macro-bloc dynamique).
         /// </summary>
-        public List<BlockDefinition> ResolveWithoutAge()
-        {
-            return _library
-                .Where(b => b.TriggerTypeEnum == BlockTriggerType.CoreFixed)
-                .OrderBy(b => b.Order)
-                .ToList();
-        }
+        public BlockDefinition? GetAgeBlock(int ageYears) => null;
 
         /// <summary>
-        /// Retourne le macro-bloc contextuel pour un âge donné.
-        /// Utilisé pour ajouter dynamiquement le bloc après confirmation de l'âge.
-        /// </summary>
-        public BlockDefinition? GetAgeBlock(int ageYears)
-        {
-            return _library
-                .Where(b => b.TriggerTypeEnum == BlockTriggerType.AgeAutomatic)
-                .FirstOrDefault(b => ageYears >= (b.AgeMin ?? 0) && ageYears < (b.AgeMax ?? 99));
-        }
-
-        /// <summary>
-        /// Retourne tous les blocs motif_chip disponibles (pour référence).
-        /// Le filtrage par motif se fait dans ContextualBlockSuggester.
-        /// </summary>
-        public List<BlockDefinition> GetAllChipBlocks()
-        {
-            return _library
-                .Where(b => b.TriggerTypeEnum == BlockTriggerType.MotifChip)
-                .OrderBy(b => b.Order)
-                .ToList();
-        }
-
-        /// <summary>
-        /// Retourne les blocs motif_chip éligibles pour un âge donné.
-        /// Filtre par ageMin/ageMax si définis.
+        /// Conservé pour compatibilité — retourne tous les blocs éligibles à l'âge donné.
         /// </summary>
         public List<BlockDefinition> GetEligibleChipBlocks(int ageYears)
         {
             return _library
-                .Where(b => b.TriggerTypeEnum == BlockTriggerType.MotifChip)
-                .Where(b => ageYears >= (b.AgeMin ?? 0) && ageYears < (b.AgeMax ?? 99))
+                .Where(b => ageYears >= (b.AgeMin ?? 0) && ageYears <= (b.AgeMax ?? 99))
                 .OrderBy(b => b.Order)
                 .ToList();
         }
@@ -151,16 +124,16 @@ namespace MedCompanion.Services.Consultation
         /// </summary>
         private static List<BlockDefinition> GetDefaults() => new()
         {
-            new() { Key = "identite",          Title = "Identité",                         ExpectedThemes = new() { "age", "accompagnant", "classe", "ecole" },                  TriggerType = "core_fixed", Order = 1 },
-            new() { Key = "motif",             Title = "Motif de consultation",            ExpectedThemes = new() { "motif_principal" },                                         TriggerType = "core_fixed", Order = 2 },
-            new() { Key = "histoire_maladie",  Title = "Histoire de la maladie",           ExpectedThemes = new() { "anciennete", "retentissement", "parcours_soins" },           TriggerType = "core_fixed", Order = 3 },
-            new() { Key = "famille",           Title = "Famille & contexte social",        ExpectedThemes = new() { "statut_parental", "pere", "mere" },                         TriggerType = "core_fixed", Order = 4 },
-            new() { Key = "fratrie",           Title = "Fratrie",                          ExpectedThemes = new() { "presence", "noms_ages" },                                   TriggerType = "core_fixed", Order = 5 },
-            new() { Key = "atcds",             Title = "ATCDs médicaux & psychiatriques",  ExpectedThemes = new() { "medical", "allergies" },                                    TriggerType = "core_fixed", Order = 6 },
-            new() { Key = "sommeil_ecrans",    Title = "Sommeil, rythmes & écrans",        ExpectedThemes = new() { "sommeil", "ecrans" },                                       TriggerType = "core_fixed", Order = 7 },
-
-            new() { Key = "petite_enfance",       Title = "Petite enfance",       ExpectedThemes = new() { "grossesse", "accouchement", "marche", "langage_precoce" }, TriggerType = "age_automatic", AgeMin = 0, AgeMax = 3,  Order = 8 },
-            new() { Key = "scolarite_activites",  Title = "Scolarité & activités", ExpectedThemes = new() { "ecole", "comportement_classe", "amis" },                  TriggerType = "age_automatic", AgeMin = 3, AgeMax = 99, Order = 8 },
+            new() { Key = "identite",                Title = "Identité",                        ExpectedThemes = new() { "age", "accompagnant", "classe", "ecole" },                TriggerType = "core_fixed", Order = 1 },
+            new() { Key = "motif",                   Title = "Motif de consultation",           ExpectedThemes = new() { "motif_principal" },                                       TriggerType = "core_fixed", Order = 2 },
+            new() { Key = "histoire_maladie",        Title = "Histoire de la maladie",          ExpectedThemes = new() { "anciennete", "retentissement", "parcours_soins" },        TriggerType = "core_fixed", Order = 3 },
+            new() { Key = "grossesse_accouchement",  Title = "Grossesse & accouchement",        ExpectedThemes = new() { "deroulement_grossesse", "terme_accouchement", "mode_accouchement", "complications_perinatales" }, TriggerType = "core_fixed", Order = 4 },
+            new() { Key = "developpement",           Title = "Développement psychomoteur",      ExpectedThemes = new() { "marche", "langage_precoce", "proprete" },                 TriggerType = "core_fixed", Order = 5 },
+            new() { Key = "famille",                 Title = "Famille & contexte social",       ExpectedThemes = new() { "statut_parental", "pere", "mere" },                       TriggerType = "core_fixed", Order = 6 },
+            new() { Key = "fratrie",                 Title = "Fratrie",                         ExpectedThemes = new() { "presence", "noms_ages" },                                 TriggerType = "core_fixed", Order = 7 },
+            new() { Key = "atcds",                   Title = "ATCDs médicaux & psychiatriques", ExpectedThemes = new() { "medical", "allergies" },                                  TriggerType = "core_fixed", Order = 8 },
+            new() { Key = "sommeil_ecrans",          Title = "Sommeil, rythmes & écrans",       ExpectedThemes = new() { "sommeil", "ecrans" },                                     TriggerType = "core_fixed", Order = 9 },
+            new() { Key = "scolarite_activites",     Title = "Scolarité & vie sociale",         ExpectedThemes = new() { "ecole", "comportement_classe", "amis" },                  TriggerType = "core_fixed", Order = 10 },
         };
     }
 }
