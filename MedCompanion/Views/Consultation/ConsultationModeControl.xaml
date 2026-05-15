@@ -918,23 +918,94 @@
                                     </Button>
                                 </StackPanel>
 
-                                <!-- Indicateur visuel enregistrement / coupure -->
-                                <Border Grid.Row="5" x:Name="RecordingStatusBand"
-                                        CornerRadius="4" Margin="0,6,0,0" Padding="10,5"
-                                        Background="#27AE60"
+                                <!-- Indicateur visuel enregistrement -->
+                                <Border Grid.Row="5" Margin="0,6,0,0" Padding="8,6"
+                                        CornerRadius="6" Background="#F0FAF5" BorderThickness="1" BorderBrush="#A8D5BC"
                                         Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="#27AE60"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsInCutover}" Value="True">
-                                                    <Setter Property="Background" Value="#E67E22"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                    <TextBlock Text="{Binding ExtractionStatus}"
-                                               Foreground="White" FontSize="12" FontWeight="Medium"/>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Ligne 1 : micro + statut -->
+                                        <Grid Grid.Row="0" Margin="0,0,0,5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="90"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <TextBlock Grid.Column="0" Text="🎤" FontSize="13"
+                                                       VerticalAlignment="Center" Margin="0,0,6,0"/>
+
+                                            <!-- Barre niveau micro (animée) -->
+                                            <ProgressBar Grid.Column="1" Height="8"
+                                                         Minimum="0" Maximum="100"
+                                                         Value="{Binding MicLevelPct}"
+                                                         Background="#DDEEDD" BorderThickness="0"
+                                                         VerticalAlignment="Center">
+                                                <ProgressBar.Style>
+                                                    <Style TargetType="ProgressBar">
+                                                        <Setter Property="Foreground" Value="#27AE60"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBatchSent}" Value="True">
+                                                                <Setter Property="Foreground" Value="#E67E22"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ProgressBar.Style>
+                                            </ProgressBar>
+
+                                            <!-- Statut texte (timer + alerts) -->
+                                            <TextBlock Grid.Column="2"
+                                                       Text="{Binding ExtractionStatus}"
+                                                       FontSize="11" Foreground="#2C6E49"
+                                                       VerticalAlignment="Center" Margin="8,0,0,0"
+                                                       TextTrimming="CharacterEllipsis"/>
+                                        </Grid>
+
+                                        <!-- Ligne 2 : progression batch 90s -->
+                                        <Grid Grid.Row="1">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+
+                                            <ProgressBar Grid.Column="0" Height="10"
+                                                         Minimum="0" Maximum="100"
+                                                         Value="{Binding BatchProgressPct}"
+                                                         Background="#DDEEDD" BorderThickness="0">
+                                                <ProgressBar.Style>
+                                                    <Style TargetType="ProgressBar">
+                                                        <Setter Property="Foreground" Value="#27AE60"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBatchSent}" Value="True">
+                                                                <Setter Property="Foreground" Value="#F39C12"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ProgressBar.Style>
+                                            </ProgressBar>
+
+                                            <!-- Label : "45s / 90s" ou "✓ Envoyé" -->
+                                            <TextBlock Grid.Column="1" FontSize="10" Margin="6,0,0,0"
+                                                       VerticalAlignment="Center">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Text" Value="{Binding BatchProgressPct, StringFormat='{}{0}s / 90s'}"/>
+                                                        <Setter Property="Foreground" Value="#558B2F"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding IsBatchSent}" Value="True">
+                                                                <Setter Property="Text" Value="✓ Envoyé"/>
+                                                                <Setter Property="Foreground" Value="#E67E22"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </Grid>
+                                    </Grid>
                                 </Border>
 
                             </Grid>

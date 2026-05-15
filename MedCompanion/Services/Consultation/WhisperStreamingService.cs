@@ -109,6 +109,7 @@ namespace MedCompanion.Services.Consultation
         private Task? _batchTimerTask;
         private AudioRecorder? _audioRecorder;
         private DateTime _startedAt;
+        private DateTime _batchCycleStartedAt;   // début du chunk batch courant
         private int      _totalSamplesProcessed;
         private int      _totalChunksTranscribed;
         private float    _currentAudioRms;       // niveau audio instantané
@@ -141,6 +142,12 @@ namespace MedCompanion.Services.Consultation
 
         /// <summary>Demande au ViewModel de réinitialiser la session (transcription, blocs).</summary>
         public event Action? SessionResetRequested;
+
+        /// <summary>Niveau micro instantané (0.0 = silence, 1.0 = max). Fréquence : 1s.</summary>
+        public event Action<float>? AudioLevelChanged;
+
+        /// <summary>Progression du chunk batch courant (0-100 %). Fréquence : 1s.</summary>
+        public event Action<int>? BatchProgressChanged;
 
         // ── Initialisation Whisper (lazy, une seule fois) ─────────────────────
 
@@ -242,6 +249,7 @@ namespace MedCompanion.Services.Consultation
                 }
 
                 _startedAt              = DateTime.Now;
+                _batchCycleStartedAt    = DateTime.Now;
                 _totalSamplesProcessed  = 0;
                 _totalChunksTranscribed = 0;
                 _currentAudioRms        = 0f;
@@ -400,35 +408,32 @@ namespace MedCompanion.Services.Consultation
             {
                 while (!ct.IsCancellationRequested)
                 {
-                    await Task.Delay(2_000, ct);
+                    await Task.Delay(1_000, ct);
                     if (!IsActive) return;
 
-                    var elapsed       = DateTime.Now - _startedAt;
-                    var sinceTransc   = (DateTime.Now - _lastTranscriptionAt).TotalSeconds;
-                    var sinceAudio    = (DateTime.Now - _lastAudioAt).TotalSeconds;
-                    var transcMark    = Volatile.Read(ref _isTranscribing) == 1 ? " ✎" : "";
+                    var elapsed     = DateTime.Now - _startedAt;
+                    var sinceTransc = (DateTime.Now - _lastTranscriptionAt).TotalSeconds;
+                    var sinceAudio  = (DateTime.Now - _lastAudioAt).TotalSeconds;
+                    var transcMark  = Volatile.Read(ref _isTranscribing) == 1 ? " ✎" : "";
 
-                    // Reader.Count peut throw NotSupportedException sur certains channels
-                    string queueMark = "";
-                    try
+                    // Émettre niveau micro (0-1) et progression batch (0-100%)
+                    AudioLevelChanged?.Invoke(_currentAudioRms);
+
+                    int batchPct = 0;
+                    if (Mode == RecordingMode.Batch && BatchDurationSeconds > 0)
                     {
-                        var reader = _audioQueue?.Reader;
-                        if (reader != null && reader.CanCount && reader.Count > 0)
-                            queueMark = $" [{reader.Count} en file]";
+                        var cycleElapsed = (DateTime.Now - _batchCycleStartedAt).TotalSeconds;
+                        batchPct = Math.Min(100, (int)(cycleElapsed / BatchDurationSeconds * 100));
                     }
-                    catch { /* ignore */ }
-
-                    // Barre de niveau audio (0 à 8 blocs selon RMS)
-                    var audioLevel    = BuildAudioBar(_currentAudioRms);
+                    BatchProgressChanged?.Invoke(batchPct);
 
                     // Alerte si plus d'audio depuis 3s OU plus de transcription depuis 30s
                     string alert = "";
                     if (sinceAudio > 3.0)        alert = "  ⚠ MICRO MUET";
-                    else if (sinceTransc > 30.0) alert = $"  ⚠ aucune transcription depuis {sinceTransc:F0}s";
+                    else if (sinceTransc > 30.0) alert = $"  ⚠ pas de transcription depuis {sinceTransc:F0}s";
 
                     StatusChanged?.Invoke(
-                        $"● {elapsed:mm\\:ss} • {audioLevel} • " +
-                        $"{_totalChunksTranscribed} seg{transcMark}{queueMark}{alert}");
+                        $"● {elapsed:mm\\:ss} • {_totalChunksTranscribed} seg{transcMark}{alert}");
                 }
             }
             catch (OperationCanceledException) { /* normal */ }
@@ -579,6 +584,7 @@ namespace MedCompanion.Services.Consultation
             else
             {
                 Log($"Chunk batch envoyé : {durationMs / 1000.0:F1}s, RMS={rms:F4}");
+                _batchCycleStartedAt = DateTime.Now; // repart à zéro pour le prochain chunk
             }
 
             _audioQueue?.Writer.TryWrite(samples);

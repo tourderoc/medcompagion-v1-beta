@@ -336,6 +336,14 @@ namespace MedCompanion.ViewModels
                 _whisperService.TextAppended          += text => Dispatch(() => TranscriptionInput += text);
                 _whisperService.SegmentReady          += seg  => _ = EnqueueExtractionAsync(seg);
                 _whisperService.SessionResetRequested += ()   => Dispatch(ResetDictationSession);
+                _whisperService.AudioLevelChanged     += lvl  => Dispatch(() => MicLevelPct = Math.Min(100, (int)(lvl * 600)));
+                _whisperService.BatchProgressChanged  += pct  => Dispatch(() =>
+                {
+                    bool wasNearEnd = BatchProgressPct >= 90;
+                    BatchProgressPct = pct;
+                    if (wasNearEnd && pct < 10)
+                        _ = FlashBatchSentAsync();
+                });
             }
         }
 
@@ -546,6 +554,36 @@ namespace MedCompanion.ViewModels
         public bool IsNotRecording => !_isRecording;
 
         public string RecordingStatusColor => IsRecording ? "#27AE60" : "#AAAAAA";
+
+        // ── Indicateurs visuels enregistrement ────────────────────────────────
+
+        private int _micLevelPct;
+        public int MicLevelPct
+        {
+            get => _micLevelPct;
+            set => SetProperty(ref _micLevelPct, value);
+        }
+
+        private int _batchProgressPct;
+        public int BatchProgressPct
+        {
+            get => _batchProgressPct;
+            set => SetProperty(ref _batchProgressPct, value);
+        }
+
+        private bool _isBatchSent;
+        public bool IsBatchSent
+        {
+            get => _isBatchSent;
+            set => SetProperty(ref _isBatchSent, value);
+        }
+
+        private async Task FlashBatchSentAsync()
+        {
+            IsBatchSent = true;
+            await Task.Delay(2000);
+            IsBatchSent = false;
+        }
 
         // Blocs interrogatoire
         public ObservableCollection<ConsultationBlockViewModel> InterrogatoireBlocks { get; } = new();
