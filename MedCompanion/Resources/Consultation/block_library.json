@@ -7,16 +7,16 @@
     "order": 0
   },
   {
-    "key": "identite",
-    "title": "Identité",
-    "expectedThemes": ["accompagnant", "classe", "ecole"],
+    "key": "motif",
+    "title": "Motif de consultation",
+    "expectedThemes": ["motif_principal"],
     "triggerType": "core_fixed",
     "order": 1
   },
   {
-    "key": "motif",
-    "title": "Motif de consultation",
-    "expectedThemes": ["motif_principal"],
+    "key": "identite",
+    "title": "Identité",
+    "expectedThemes": ["accompagnant", "classe", "ecole"],
     "triggerType": "core_fixed",
     "order": 2
   },

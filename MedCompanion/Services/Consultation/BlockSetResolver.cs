@@ -125,8 +125,8 @@ namespace MedCompanion.Services.Consultation
         private static List<BlockDefinition> GetDefaults() => new()
         {
             new() { Key = "age",                     Title = "Âge (confirmation)",              ExpectedThemes = new() { "age" },                                                   TriggerType = "core_fixed", Order = 0 },
-            new() { Key = "identite",                Title = "Identité",                        ExpectedThemes = new() { "accompagnant", "classe", "ecole" },                       TriggerType = "core_fixed", Order = 1 },
-            new() { Key = "motif",                   Title = "Motif de consultation",           ExpectedThemes = new() { "motif_principal" },                                       TriggerType = "core_fixed", Order = 2 },
+            new() { Key = "motif",                   Title = "Motif de consultation",           ExpectedThemes = new() { "motif_principal" },                                       TriggerType = "core_fixed", Order = 1 },
+            new() { Key = "identite",                Title = "Identité",                        ExpectedThemes = new() { "accompagnant", "classe", "ecole" },                       TriggerType = "core_fixed", Order = 2 },
             new() { Key = "histoire_maladie",        Title = "Histoire de la maladie",          ExpectedThemes = new() { "anciennete", "retentissement", "parcours_soins" },        TriggerType = "core_fixed", Order = 3 },
             new() { Key = "grossesse_accouchement",  Title = "Grossesse & accouchement",        ExpectedThemes = new() { "deroulement_grossesse", "terme_accouchement", "mode_accouchement", "complications_perinatales" }, TriggerType = "core_fixed", Order = 4 },
             new() { Key = "developpement",           Title = "Développement psychomoteur",      ExpectedThemes = new() { "marche", "langage_precoce", "proprete" },                 TriggerType = "core_fixed", Order = 5 },
