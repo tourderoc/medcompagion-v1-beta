@@ -1847,12 +1847,8 @@
                                                                     <Setter Property="Background" Value="#F0FAF5"/>
                                                                     <Setter Property="BorderBrush" Value="#A8D5BC"/>
                                                                 </DataTrigger>
-                                                                <!-- Blocs déclencheurs (âge, identité, motif) en violet -->
+                                                                <!-- Blocs déclencheurs (âge, motif) en violet -->
                                                                 <DataTrigger Binding="{Binding Key}" Value="age">
-                                                                    <Setter Property="Background" Value="#EDE7F6"/>
-                                                                    <Setter Property="BorderBrush" Value="#B39DDB"/>
-                                                                </DataTrigger>
-                                                                <DataTrigger Binding="{Binding Key}" Value="identite">
                                                                     <Setter Property="Background" Value="#EDE7F6"/>
                                                                     <Setter Property="BorderBrush" Value="#B39DDB"/>
                                                                 </DataTrigger>
