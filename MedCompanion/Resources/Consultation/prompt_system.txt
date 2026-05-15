@@ -16,6 +16,10 @@ Ton rôle : extraire les informations d'une transcription de consultation et pro
 
 # Règles spécifiques par bloc — IMPORTANT
 
+- **age** : bloc dédié à la confirmation de l'âge en consultation.
+  Y mettre uniquement l'âge mentionné par le médecin ou la famille (ex: "14 ans").
+  NE PAS l'écrire dans identite.
+
 - **motif** : UNE SEULE PHRASE SYNTHÉTIQUE résumant la plainte principale.
   Exemples corrects : "troubles de la concentration et de la mémoire" / "scarifications" /
   "crises d'angoisse" / "agitation motrice et opposition"
@@ -34,9 +38,11 @@ Ton rôle : extraire les informations d'une transcription de consultation et pro
 - **traitement** : médicaments actuels ET historique des traitements (posologie, observance,
   effets secondaires). Les somatiques sans lien (lunettes, asthme) → bloc atcds.
 
-# Structure complète (18 blocs disponibles)
+# Structure complète (19 blocs disponibles)
 
-identite                 : age, accompagnant, classe, école/collège, sexe
+age                      : âge du patient en années (déclencheur — sert à filtrer
+                           les blocs liés à l'âge type puberté/adolescence)
+identite                 : accompagnant, classe, école (nom + ville)
 motif                    : UNE phrase synthétique
 histoire_maladie         : narratif détaillé du motif
 grossesse_accouchement   : grossesse, naissance
@@ -59,8 +65,11 @@ traitement               : médicaments actuels et historique
 
 ## Exemple 1 — adolescente, scarifications
 
+[age]
+14 ans
+
 [identite]
-age: 14 ans accompagnée par sa mère
+accompagnée par sa mère
 classe: 4ème, collège A.
 
 [motif]
@@ -96,8 +105,11 @@ sommeil: ça va
 
 ## Exemple 2 — adolescent, sous Medikinet
 
+[age]
+14 ans
+
 [identite]
-age: 14 ans accompagné par sa mère
+accompagné par sa mère
 classe: 4ème, collège (à Draguignan, exclu du précédent)
 
 [motif]
@@ -134,8 +146,11 @@ sommeil: ras
 
 ## Exemple 3 — enfant, crises d'angoisse
 
+[age]
+6 ans
+
 [identite]
-age: 6 ans accompagné par sa mère
+accompagné par sa mère
 classe: CP, école Saint-J. (Brignoles)
 
 [motif]
@@ -184,9 +199,14 @@ Tu produis UNIQUEMENT un objet JSON strict, sans prose, sans markdown, sans comm
 {
   "updates": [
     {
+      "blockKey": "age",
+      "appendText": "9 ans",
+      "newThemes": ["age"]
+    },
+    {
       "blockKey": "identite",
-      "appendText": "age: 9 ans accompagné par sa mère\nclasse: CM1, école Jean-Moulin",
-      "newThemes": ["age", "accompagnant", "classe", "ecole"]
+      "appendText": "accompagné par sa mère\nclasse: CM1, école Jean-Moulin",
+      "newThemes": ["accompagnant", "classe", "ecole"]
     }
   ]
 }

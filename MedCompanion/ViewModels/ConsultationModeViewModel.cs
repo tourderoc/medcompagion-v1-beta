@@ -440,15 +440,18 @@ namespace MedCompanion.ViewModels
                 UpdateBlockCollections(); // V0c : mettre à jour Active/Completed
                 ExtractionStatus = "● Enregistrement...";
 
-                // V0b : vérifier si l'âge est confirmé (thème "age" dans le bloc "identite")
+                // Confirmation de l'âge via le bloc "age" dédié (thème "age" extrait par le LLM).
+                // Tant que ce n'est pas confirmé en consultation, les règles d'auto-masquage
+                // basées sur l'âge ne s'appliquent pas (la DOB du profil peut être erronée).
                 if (!_isAgeConfirmed)
                 {
-                    var identiteBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "identite");
-                    if (identiteBlock != null && identiteBlock.CoveredThemes.Contains("age"))
+                    var ageBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "age");
+                    if (ageBlock != null && ageBlock.CoveredThemes.Contains("age"))
                     {
                         _isAgeConfirmed = true;
                         OnPropertyChanged(nameof(HasConfirmedAge));
-                        System.Diagnostics.Debug.WriteLine("[V0b] Âge confirmé via l'interrogatoire.");
+                        if (_confirmedAge.HasValue) ApplyAutoHideRules(_confirmedAge.Value);
+                        System.Diagnostics.Debug.WriteLine("[Blocks] Âge confirmé via l'interrogatoire.");
                     }
                 }
 
@@ -606,8 +609,9 @@ namespace MedCompanion.ViewModels
             foreach (var d in _blockSetResolver.ResolveWithoutAge())
                 InterrogatoireBlocks.Add(ConsultationBlockViewModel.FromDefinition(d));
 
-            // Si l'âge est déjà connu, appliquer les règles d'auto-masquage
-            if (_confirmedAge.HasValue)
+            // Auto-masquage uniquement si l'âge a été CONFIRMÉ en consultation
+            // (la DOB du profil patient seule ne suffit pas — elle peut être erronée).
+            if (HasConfirmedAge && _confirmedAge.HasValue)
                 ApplyAutoHideRules(_confirmedAge.Value);
 
             _motifDetector.Reset();
@@ -1845,13 +1849,15 @@ STRUCTURE (Markdown):
             OnPropertyChanged(nameof(HasBlockSuggestions));
             IsStructureFrozen = false;
 
-            // V0b : pré-calculer l'âge si Dob disponible (sera confirmé en consultation)
+            // Pré-calculer l'âge si DOB disponible (servira de valeur par défaut),
+            // mais on EXIGE confirmation via l'interrogatoire — parfois la DOB enregistrée
+            // est fausse ou pas du tout mentionnée. Bloc "age" dédié à cette confirmation.
             if (!string.IsNullOrEmpty(patient.Dob) &&
                 DateTime.TryParse(patient.Dob, out var dob))
             {
                 var age = DateTime.Now.Year - dob.Year;
                 if (DateTime.Now.DayOfYear < dob.DayOfYear) age--;
-                _confirmedAge = age; // Pré-rempli, sera confirmé
+                _confirmedAge = age;
                 OnPropertyChanged(nameof(ConfirmedAge));
                 OnPropertyChanged(nameof(HasConfirmedAge));
             }

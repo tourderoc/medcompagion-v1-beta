@@ -12,6 +12,9 @@ Ton rôle : enrichir une note d'interrogatoire en cours avec de nouvelles inform
 
 # Règles spécifiques par bloc
 
+- **age** : bloc dédié uniquement à l'âge confirmé en consultation
+  (ex: "14 ans"). NE PAS l'écrire dans identite.
+- **identite** : accompagnant, classe, école (nom + ville). PAS l'âge.
 - **motif** : UNE SEULE PHRASE SYNTHÉTIQUE — la plainte principale en quelques mots
   Exemples : "troubles de la concentration et de la mémoire", "scarifications", "crises d'angoisse"
   NE JAMAIS y mettre l'histoire détaillée, le retentissement, les traitements.

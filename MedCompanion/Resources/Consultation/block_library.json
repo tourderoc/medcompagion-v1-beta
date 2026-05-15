@@ -1,8 +1,15 @@
 [
   {
+    "key": "age",
+    "title": "Âge (confirmation)",
+    "expectedThemes": ["age"],
+    "triggerType": "core_fixed",
+    "order": 0
+  },
+  {
     "key": "identite",
     "title": "Identité",
-    "expectedThemes": ["age", "accompagnant", "classe", "ecole", "sexe"],
+    "expectedThemes": ["accompagnant", "classe", "ecole"],
     "triggerType": "core_fixed",
     "order": 1
   },
