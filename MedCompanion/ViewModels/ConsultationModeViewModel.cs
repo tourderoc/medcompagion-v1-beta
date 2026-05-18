@@ -992,15 +992,100 @@ namespace MedCompanion.ViewModels
 
         public async Task TerminateClinicalObservationsAsync()
         {
-            if (_llmService == null) return;
+            if (_llmService == null)
+            {
+                // Fallback sans LLM : enchaîne les options brutes
+                ObservationsNarrative = BuildFallbackNarrative(_clinicalObservations);
+            }
+            else
+            {
+                ObservationsStatusMessage = "⏳ Génération de la rédaction clinique...";
+                var narrative = await GenerateClinicalNarrativeAsync(_clinicalObservations);
+                ObservationsNarrative = string.IsNullOrWhiteSpace(narrative)
+                    ? BuildFallbackNarrative(_clinicalObservations)
+                    : narrative;
+                ObservationsStatusMessage = "Vérifiez/modifiez puis cliquez Valider.";
+            }
 
-            var narrative = await GenerateClinicalNarrativeAsync(_clinicalObservations);
-            _clinicalObservations.GeneratedClinicalNarrative = narrative;
+            _clinicalObservations.GeneratedClinicalNarrative = ObservationsNarrative;
             OnPropertyChanged(nameof(ClinicalObservations));
 
-            // Basculer vers la note finale
+            // Bascule vers la zone de relecture/édition
             IsInClinicalMode = false;
-            InterrogatoireState = InterrogatoireState.FinalNote;
+            IsInObservationsReviewMode = true;
+            _observationsNoteSaved = false;
+        }
+
+        private static string BuildFallbackNarrative(ClinicalObservationsSession obs)
+        {
+            var sb = new System.Text.StringBuilder();
+            foreach (var card in obs.Cards)
+            {
+                if (card.SelectedOption == null) continue;
+                sb.Append("• ").Append(card.Title).Append(" : ").Append(card.SelectedOption);
+                if (!string.IsNullOrWhiteSpace(card.FreeText))
+                    sb.Append(" (").Append(card.FreeText.Trim()).Append(')');
+                sb.AppendLine();
+            }
+            return sb.ToString().TrimEnd();
+        }
+
+        // ── Relecture/édition rédaction Observations ────────────────────────
+
+        private bool _isInObservationsReviewMode;
+        public bool IsInObservationsReviewMode
+        {
+            get => _isInObservationsReviewMode;
+            set => SetProperty(ref _isInObservationsReviewMode, value);
+        }
+
+        private string _observationsNarrative = "";
+        public string ObservationsNarrative
+        {
+            get => _observationsNarrative;
+            set => SetProperty(ref _observationsNarrative, value);
+        }
+
+        private string _observationsStatusMessage = "";
+        public string ObservationsStatusMessage
+        {
+            get => _observationsStatusMessage;
+            set => SetProperty(ref _observationsStatusMessage, value);
+        }
+
+        private bool _observationsNoteSaved;
+
+        public async Task SaveObservationsNoteAsync()
+        {
+            if (_storageService == null || CurrentPatient == null ||
+                string.IsNullOrWhiteSpace(ObservationsNarrative))
+            {
+                ObservationsStatusMessage = "❌ Patient ou contenu manquant.";
+                return;
+            }
+
+            var noteTitle = $"Observations – {ConsultationDate:dd/MM/yyyy}";
+            var (ok, _, err) = _storageService.SaveStructuredNote(
+                CurrentPatient.NomComplet, ObservationsNarrative, noteTitle);
+
+            if (ok)
+            {
+                _observationsNoteSaved = true;
+                ObservationsStatusMessage = "✅ Observations sauvegardées dans le dossier patient.";
+                await RefreshConsultationNotesAsync();
+                System.Windows.Application.Current?.Dispatcher.InvokeAsync(
+                    System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+            }
+            else
+            {
+                ObservationsStatusMessage = $"❌ Erreur sauvegarde : {err}";
+            }
+        }
+
+        public void BackToObservationsCards()
+        {
+            IsInObservationsReviewMode = false;
+            IsInClinicalMode = true;
         }
 
         private async Task<string> GenerateClinicalNarrativeAsync(ClinicalObservationsSession obs)
@@ -1093,6 +1178,7 @@ namespace MedCompanion.ViewModels
         private void SwitchToSynthesis()
         {
             IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
             IsSynthesisMode = true;
         }
 
@@ -1492,6 +1578,8 @@ STRUCTURE (Markdown):
         public ICommand SelectObservationCommand { get; }
         public ICommand ToggleCardExpandCommand { get; }
         public ICommand TerminateClinicalObservationsCommand { get; }
+        public ICommand SaveObservationsNoteCommand { get; }
+        public ICommand BackToObservationsCardsCommand { get; }
 
         // V0d : Commandes Synthèse Initiale
         public ICommand SwitchToSynthesisCommand { get; }
@@ -1601,6 +1689,7 @@ STRUCTURE (Markdown):
             {
                 IsInClinicalMode = false;
                 IsSynthesisMode = false;
+                IsInObservationsReviewMode = false;
             }, _ => IsInterrogatoireMode);
 
             SwitchToClinicalCommand = new RelayCommand(_ =>
@@ -1608,6 +1697,7 @@ STRUCTURE (Markdown):
                 if (_clinicalObservations.Cards.Count == 0)
                     InitializeClinicalObservations();
                 IsSynthesisMode = false;
+                IsInObservationsReviewMode = false;
                 IsInClinicalMode = true;
             }, _ => IsInterrogatoireMode);
 
@@ -1636,6 +1726,15 @@ STRUCTURE (Markdown):
             {
                 await TerminateClinicalObservationsAsync();
             }, _ => IsInClinicalMode);
+
+            SaveObservationsNoteCommand = new RelayCommand(
+                async _ => await SaveObservationsNoteAsync(),
+                _ => IsInObservationsReviewMode && HasPatient
+                     && !string.IsNullOrWhiteSpace(ObservationsNarrative) && !_observationsNoteSaved);
+
+            BackToObservationsCardsCommand = new RelayCommand(
+                _ => BackToObservationsCards(),
+                _ => IsInObservationsReviewMode);
 
             // Commands Synthèse Initiale V0d
             // TODO: Phase D — retourner à: IsInterrogatoireMode && IsStructureFrozen

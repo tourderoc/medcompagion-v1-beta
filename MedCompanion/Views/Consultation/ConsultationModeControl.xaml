@@ -1201,6 +1201,72 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- MODE OBSERVATIONS — Revue/édition rédaction clinique -->
+                            <Grid Grid.Row="1">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsInObservationsReviewMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- En-tête -->
+                                <StackPanel Grid.Row="0" Margin="0,0,0,10">
+                                    <TextBlock Text="📝 Rédaction clinique — Observations"
+                                               FontSize="14" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                    <TextBlock Text="Générée à partir des chips sélectionnés + notes. Modifiez si besoin avant de valider."
+                                               FontSize="11" Foreground="#7F8C8D" Margin="0,2,0,0"/>
+                                </StackPanel>
+
+                                <!-- Texte éditable -->
+                                <Border Grid.Row="1" Background="White" BorderBrush="#27AE60" BorderThickness="1.5"
+                                        CornerRadius="6" Padding="10">
+                                    <TextBox Text="{Binding ObservationsNarrative, UpdateSourceTrigger=PropertyChanged}"
+                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                             FontSize="12" FontFamily="Segoe UI"
+                                             BorderThickness="0" Background="Transparent"
+                                             VerticalScrollBarVisibility="Auto"/>
+                                </Border>
+
+                                <!-- Status -->
+                                <TextBlock Grid.Row="2" Text="{Binding ObservationsStatusMessage}"
+                                           FontSize="11" Foreground="#27AE60" Margin="0,8,0,0"
+                                           TextWrapping="Wrap"/>
+
+                                <!-- Boutons -->
+                                <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                                    <Button Content="← Retour Observations"
+                                            Command="{Binding BackToObservationsCardsCommand}"
+                                            Padding="12,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                            Background="#ECF0F1" Foreground="#2C3E50"
+                                            BorderThickness="1" BorderBrush="#BDC3C7"/>
+                                    <Button Content="💾 Valider et sauvegarder"
+                                            Command="{Binding SaveObservationsNoteCommand}"
+                                            Padding="14,7" Cursor="Hand" FontSize="11"
+                                            Background="#27AE60" Foreground="White" BorderThickness="0">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Style.Triggers>
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter Property="Background" Value="#BDC3C7"/>
+                                                    </Trigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+
                             <!-- V0d : MODE SYNTHÈSE INITIALE — Poids + Génération -->
                             <Grid Grid.Row="1">
                                 <Grid.Style>
