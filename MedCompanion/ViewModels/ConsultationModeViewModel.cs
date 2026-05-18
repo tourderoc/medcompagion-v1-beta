@@ -504,9 +504,9 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode && !IsSynthesisMode;
-        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode && !IsSynthesisMode;
-        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode && !IsSynthesisMode;
+        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode;
+        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode;
+        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode;
 
         // Transcription
         private string _transcriptionInput = "";
@@ -1036,7 +1036,15 @@ namespace MedCompanion.ViewModels
         public bool IsInObservationsReviewMode
         {
             get => _isInObservationsReviewMode;
-            set => SetProperty(ref _isInObservationsReviewMode, value);
+            set
+            {
+                if (SetProperty(ref _isInObservationsReviewMode, value))
+                {
+                    OnPropertyChanged(nameof(IsInSaisieMode));
+                    OnPropertyChanged(nameof(IsInExtractionMode));
+                    OnPropertyChanged(nameof(IsInFinalNoteMode));
+                }
+            }
         }
 
         private string _observationsNarrative = "";
@@ -1092,23 +1100,32 @@ namespace MedCompanion.ViewModels
         {
             if (_llmService == null) return "";
 
-            var prompt = "Génère un paragraphe clinique cohérent et bien structuré à partir de ces observations cliniques de l'enfant:\n\n";
-
+            var prompt = new System.Text.StringBuilder();
+            prompt.AppendLine("Rédige un paragraphe descriptif d'observations cliniques pédopsychiatriques à partir des éléments ci-dessous.");
+            prompt.AppendLine();
+            prompt.AppendLine("RÈGLES STRICTES — À RESPECTER ABSOLUMENT :");
+            prompt.AppendLine("❌ AUCUN diagnostic, AUCUNE hypothèse diagnostique, AUCUNE étiquette pathologique.");
+            prompt.AppendLine("❌ AUCUNE suggestion de prise en charge, d'examen complémentaire, de bilan, de traitement.");
+            prompt.AppendLine("❌ AUCUNE recommandation, AUCUN \"justifiant\", AUCUN \"évoquant\", AUCUN \"pouvant suggérer\".");
+            prompt.AppendLine("❌ NE PAS interpréter, NE PAS inférer, NE PAS conclure.");
+            prompt.AppendLine("✅ UNIQUEMENT décrire factuellement ce qui a été observé pendant l'entretien.");
+            prompt.AppendLine("✅ Style médical neutre, télégraphique, à l'imparfait/présent descriptif.");
+            prompt.AppendLine("✅ Un seul paragraphe, 4-8 phrases maximum.");
+            prompt.AppendLine();
+            prompt.AppendLine("ÉLÉMENTS OBSERVÉS :");
             foreach (var card in obs.Cards)
             {
-                if (card.SelectedOption != null)
-                {
-                    prompt += $"- {card.Title}: {card.SelectedOption}";
-                    if (!string.IsNullOrWhiteSpace(card.FreeText))
-                        prompt += $" ({card.FreeText})";
-                    prompt += "\n";
-                }
+                if (card.SelectedOption == null) continue;
+                prompt.Append("- ").Append(card.Title).Append(" : ").Append(card.SelectedOption);
+                if (!string.IsNullOrWhiteSpace(card.FreeText))
+                    prompt.Append(" — ").Append(card.FreeText.Trim());
+                prompt.AppendLine();
             }
+            prompt.AppendLine();
+            prompt.AppendLine("Rends UNIQUEMENT le paragraphe, sans titre, sans préambule, sans formule de clôture.");
 
-            prompt += "\nGénère un seul paragraphe cohérent, cliniquement pertinent, prêt à être intégré dans la note de consultation.";
-
-            var (ok, result, _) = await _llmService.ChatAsync(prompt, new(), maxTokens: 500);
-            return ok ? result : "";
+            var (ok, result, _) = await _llmService.ChatAsync(prompt.ToString(), new(), maxTokens: 400);
+            return ok ? result.Trim() : "";
         }
 
         #endregion
