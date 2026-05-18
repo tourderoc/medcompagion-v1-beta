@@ -1,4 +1,6 @@
 using System.ComponentModel;
+using System.Windows.Input;
+using MedCompanion.Commands;
 
 namespace MedCompanion.Models
 {
@@ -356,6 +358,18 @@ namespace MedCompanion.Models
             get => _isExpanded;
             set { _isExpanded = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded))); }
         }
+
+        // Commande de sélection — liée directement aux boutons d'option (binding MVVM).
+        // Évite le code-behind fragile qui marchait sur le visual tree.
+        public ICommand SelectOptionCommand => _selectOptionCommand ??= new RelayCommand(p =>
+        {
+            if (p is string opt)
+                SelectedOption = SelectedOption == opt ? null : opt; // toggle
+        });
+        private ICommand? _selectOptionCommand;
+
+        public ICommand ToggleExpandCommand => _toggleExpandCommand ??= new RelayCommand(_ => IsExpanded = !IsExpanded);
+        private ICommand? _toggleExpandCommand;
     }
 
     /// <summary>

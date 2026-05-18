@@ -215,4 +215,20 @@ namespace MedCompanion.Converters
             throw new NotImplementedException();
         }
     }
+
+    /// <summary>
+    /// Retourne true si les deux valeurs passées sont égales (Equals).
+    /// Utilisé pour comparer SelectedOption avec l'option du Button (DataTrigger MultiBinding).
+    /// </summary>
+    public class StringEqualsMultiConverter : IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (values == null || values.Length < 2) return false;
+            return Equals(values[0], values[1]);
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
+    }
 }

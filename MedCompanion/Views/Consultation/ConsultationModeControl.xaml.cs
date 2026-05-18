@@ -228,51 +228,7 @@ namespace MedCompanion.Views.Consultation
             }
         }
 
-        // ── Clinical Observations (V0c) ──────────────────────────────────────
-
-        private void ObservationOptionButton_Click(object sender, RoutedEventArgs e)
-        {
-            if (sender is not Button btn) return;
-            _viewModel ??= DataContext as ConsultationModeViewModel;
-            if (_viewModel == null) return;
-
-            var option = btn.Content?.ToString();
-            if (string.IsNullOrWhiteSpace(option)) return;
-
-            var visual = btn.Parent as WrapPanel;
-            var border = visual?.Parent as StackPanel;
-            var grid = border?.Parent as Grid;
-            var template = grid?.Parent as Border;
-            var itemsControl = template?.Parent as ItemsControl;
-            var card = itemsControl?.DataContext as ClinicalObservationCard;
-
-            if (card != null)
-            {
-                _viewModel.SelectObservationOption(card, option);
-
-                ResetOtherButtonsInGroup(visual, btn);
-                btn.Background = new System.Windows.Media.SolidColorBrush(
-                    System.Windows.Media.Color.FromRgb(52, 152, 219));
-                btn.Foreground = System.Windows.Media.Brushes.White;
-            }
-        }
-
-        private void ResetOtherButtonsInGroup(WrapPanel? panel, Button selectedBtn)
-        {
-            if (panel == null) return;
-            var whiteBrush = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(255, 255, 255));
-            var darkBrush = new System.Windows.Media.SolidColorBrush(
-                System.Windows.Media.Color.FromRgb(44, 62, 80));
-
-            foreach (var child in panel.Children.OfType<Button>())
-            {
-                if (child != selectedBtn)
-                {
-                    child.Background = whiteBrush;
-                    child.Foreground = darkBrush;
-                }
-            }
-        }
+        // Clinical Observations : sélection des chips gérée par MVVM via SelectOptionCommand
+        // sur ClinicalObservationCard. Plus de code-behind fragile basé sur le visual tree.
     }
 }

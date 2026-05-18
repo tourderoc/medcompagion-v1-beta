@@ -4,6 +4,7 @@
              xmlns:vm="clr-namespace:MedCompanion.ViewModels"
              xmlns:local="clr-namespace:MedCompanion.Views.Consultation"
              xmlns:helpers="clr-namespace:MedCompanion.Helpers"
+             xmlns:conv="clr-namespace:MedCompanion.Converters"
              Background="#F5F7FA">
 
     <UserControl.DataContext>
@@ -12,6 +13,7 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:StringEqualsMultiConverter x:Key="StringEquals"/>
 
         <!-- Template réutilisable : affichage/édition d'une note sur une page A4 -->
         <DataTemplate x:Key="NotePageTemplate" DataType="{x:Type vm:ConsultationNoteViewModel}">
@@ -1005,8 +1007,23 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Border Background="#FAFAFA" BorderThickness="1" BorderBrush="#E0E0E0"
-                                                            CornerRadius="6" Padding="12" Margin="6">
+                                                    <!-- Carte : bordure verte quand une option est sélectionnée -->
+                                                    <Border CornerRadius="8" Padding="14" Margin="6"
+                                                            BorderThickness="1.5">
+                                                        <Border.Style>
+                                                            <Style TargetType="Border">
+                                                                <!-- Default : option sélectionnée (vert) -->
+                                                                <Setter Property="Background" Value="#F0FAF5"/>
+                                                                <Setter Property="BorderBrush" Value="#27AE60"/>
+                                                                <Style.Triggers>
+                                                                    <!-- Aucune option : revenir au gris -->
+                                                                    <DataTrigger Binding="{Binding SelectedOption}" Value="{x:Null}">
+                                                                        <Setter Property="Background" Value="#FAFAFA"/>
+                                                                        <Setter Property="BorderBrush" Value="#E0E0E0"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Border.Style>
                                                         <Grid>
                                                             <Grid.RowDefinitions>
                                                                 <RowDefinition Height="Auto"/>
@@ -1014,46 +1031,86 @@
                                                                 <RowDefinition Height="Auto"/>
                                                             </Grid.RowDefinitions>
 
-                                                            <!-- Titre -->
-                                                            <TextBlock Grid.Row="0" Text="{Binding Title}"
-                                                                       FontSize="12" FontWeight="SemiBold"
-                                                                       Foreground="#2C3E50" Margin="0,0,0,8"/>
+                                                            <!-- Titre + valeur sélectionnée -->
+                                                            <Grid Grid.Row="0" Margin="0,0,0,10">
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="{Binding Title}"
+                                                                           FontSize="12" FontWeight="SemiBold"
+                                                                           Foreground="#2C3E50"
+                                                                           VerticalAlignment="Center"/>
+                                                                <Border Grid.Column="1" Background="#27AE60" CornerRadius="10"
+                                                                        Padding="8,2" Margin="6,0,0,0">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border">
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding SelectedOption}" Value="{x:Null}">
+                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Border.Style>
+                                                                    <TextBlock Text="✓" Foreground="White" FontSize="11" FontWeight="Bold"/>
+                                                                </Border>
+                                                            </Grid>
 
-                                                            <!-- Chips / Radio buttons (options) -->
-                                                            <ItemsControl Grid.Row="1" ItemsSource="{Binding Options}" Margin="0,0,0,8">
+                                                            <!-- Chips d'options : MVVM clean -->
+                                                            <ItemsControl Grid.Row="1" ItemsSource="{Binding Options}" Margin="0,0,0,4">
                                                                 <ItemsControl.ItemsPanel>
                                                                     <ItemsPanelTemplate>
-                                                                        <WrapPanel />
+                                                                        <WrapPanel/>
                                                                     </ItemsPanelTemplate>
                                                                 </ItemsControl.ItemsPanel>
                                                                 <ItemsControl.ItemTemplate>
                                                                     <DataTemplate>
+                                                                        <!-- Button utilise la commande de la CARTE (DataContext via AncestorLevel=1) -->
                                                                         <Button Content="{Binding}"
-                                                                                Click="ObservationOptionButton_Click"
-                                                                                Padding="10,6" Margin="0,0,6,4"
-                                                                                FontSize="11" Cursor="Hand"
-                                                                                Background="White" Foreground="#2C3E50"
-                                                                                BorderThickness="1" BorderBrush="#3498DB">
+                                                                                Command="{Binding DataContext.SelectOptionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl, AncestorLevel=1}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                Padding="12,7" Margin="0,0,6,5"
+                                                                                FontSize="11" FontWeight="Medium" Cursor="Hand">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border x:Name="ChipBorder"
+                                                                                            Background="{TemplateBinding Background}"
+                                                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                            CornerRadius="14"
+                                                                                            Padding="{TemplateBinding Padding}">
+                                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                                            <Setter TargetName="ChipBorder" Property="Background" Value="#D4E9F7"/>
+                                                                                        </Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
                                                                             <Button.Style>
                                                                                 <Style TargetType="Button">
-                                                                                    <Setter Property="Template">
-                                                                                        <Setter.Value>
-                                                                                            <ControlTemplate TargetType="Button">
-                                                                                                <Border Background="{TemplateBinding Background}"
-                                                                                                        BorderBrush="{TemplateBinding BorderBrush}"
-                                                                                                        BorderThickness="{TemplateBinding BorderThickness}"
-                                                                                                        CornerRadius="4"
-                                                                                                        Padding="{TemplateBinding Padding}">
-                                                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                                                </Border>
-                                                                                                <ControlTemplate.Triggers>
-                                                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                                                        <Setter Property="Background" Value="#E8F4F8"/>
-                                                                                                    </Trigger>
-                                                                                                </ControlTemplate.Triggers>
-                                                                                            </ControlTemplate>
-                                                                                        </Setter.Value>
-                                                                                    </Setter>
+                                                                                    <!-- Default : non sélectionné -->
+                                                                                    <Setter Property="Background" Value="White"/>
+                                                                                    <Setter Property="Foreground" Value="#2C3E50"/>
+                                                                                    <Setter Property="BorderBrush" Value="#BDC3C7"/>
+                                                                                    <Setter Property="BorderThickness" Value="1"/>
+                                                                                    <Style.Triggers>
+                                                                                        <!-- SÉLECTIONNÉ : compare Card.SelectedOption avec l'option du bouton -->
+                                                                                        <DataTrigger Value="True">
+                                                                                            <DataTrigger.Binding>
+                                                                                                <MultiBinding Converter="{StaticResource StringEquals}">
+                                                                                                    <Binding Path="DataContext.SelectedOption" RelativeSource="{RelativeSource AncestorType=ItemsControl, AncestorLevel=1}"/>
+                                                                                                    <Binding/>
+                                                                                                </MultiBinding>
+                                                                                            </DataTrigger.Binding>
+                                                                                            <Setter Property="Background" Value="#3498DB"/>
+                                                                                            <Setter Property="Foreground" Value="White"/>
+                                                                                            <Setter Property="BorderBrush" Value="#2980B9"/>
+                                                                                            <Setter Property="BorderThickness" Value="1.5"/>
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
                                                                                 </Style>
                                                                             </Button.Style>
                                                                         </Button>
@@ -1061,22 +1118,33 @@
                                                                 </ItemsControl.ItemTemplate>
                                                             </ItemsControl>
 
-                                                            <!-- Bouton expand texte + Zone texte -->
+                                                            <!-- Notes (toggle + textarea) -->
                                                             <StackPanel Grid.Row="2">
-                                                                <Button Content="+ Notes"
-                                                                        Command="{Binding Path=DataContext.ToggleCardExpandCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                        CommandParameter="{Binding}"
+                                                                <Button Command="{Binding ToggleExpandCommand}"
                                                                         FontSize="10" Background="Transparent"
                                                                         BorderThickness="0" Foreground="#3498DB"
-                                                                        Cursor="Hand" Padding="0"/>
+                                                                        Cursor="Hand" Padding="0"
+                                                                        HorizontalAlignment="Left">
+                                                                    <Button.Style>
+                                                                        <Style TargetType="Button">
+                                                                            <Setter Property="Content" Value="+ Notes"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsExpanded}" Value="True">
+                                                                                    <Setter Property="Content" Value="− Notes"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Button.Style>
+                                                                </Button>
 
                                                                 <TextBox Text="{Binding FreeText, UpdateSourceTrigger=PropertyChanged}"
                                                                          Visibility="{Binding IsExpanded, Converter={StaticResource BoolToVis}}"
                                                                          AcceptsReturn="True" TextWrapping="Wrap"
-                                                                         Height="60" Margin="0,6,0,0" Padding="6"
+                                                                         MinHeight="50" MaxHeight="120" Margin="0,6,0,0" Padding="8"
                                                                          FontSize="11"
                                                                          BorderBrush="#E0E0E0" BorderThickness="1"
-                                                                         Background="#F9F9F9"/>
+                                                                         Background="White"
+                                                                         VerticalScrollBarVisibility="Auto"/>
                                                             </StackPanel>
                                                         </Grid>
                                                     </Border>
