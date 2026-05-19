@@ -229,15 +229,25 @@ public partial class MainWindow : Window
         }
     }
  
-    private void NavigationModeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    private void NavBtn_Click(object sender, RoutedEventArgs e)
     {
-        // Ignorer pendant l'initialisation - les contrôles ne sont pas encore chargés
         if (!IsLoaded) return;
-
-        if (NavigationModeCombo?.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag is string mode)
+        if (sender is System.Windows.Controls.Button btn && btn.Tag is string mode)
         {
             SwitchMode(mode);
         }
+    }
+
+    private void UpdateNavButtonStyles(string activeMode)
+    {
+        if (NavBtnConsole == null) return; // pas encore chargés
+        var inactive = (System.Windows.Style)FindResource("NavIconButtonStyle");
+        var active   = (System.Windows.Style)FindResource("NavIconButtonStyleActive");
+        NavBtnConsole.Style      = activeMode == "Console"      ? active : inactive;
+        NavBtnAccueil.Style      = activeMode == "Accueil"      ? active : inactive;
+        NavBtnBureau.Style       = activeMode == "Bureau"       ? active : inactive;
+        NavBtnConsultation.Style = activeMode == "Consultation" ? active : inactive;
+        NavBtnPilotage.Style     = activeMode == "Pilotage"     ? active : inactive;
     }
 
     private void SwitchMode(string mode)
@@ -347,13 +357,7 @@ public partial class MainWindow : Window
                             
                             if (patient != null) {
                                 LoadPatientAsync(patient);
-                                // Basculer la combobox
-                                foreach (ComboBoxItem item in NavigationModeCombo.Items) {
-                                    if (item.Tag?.ToString() == "Console") {
-                                        NavigationModeCombo.SelectedItem = item;
-                                        break;
-                                    }
-                                }
+                                SwitchMode("Console");
                             }
                         };
                         _isPilotageInitialized = true;
@@ -369,6 +373,8 @@ public partial class MainWindow : Window
                     }
                     break;
             }
+
+            UpdateNavButtonStyles(mode);
         }
         catch (Exception ex)
         {

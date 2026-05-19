@@ -400,7 +400,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             if (patient != null)
             {
                 LoadPatientAsync(patient);
-                NavigationModeCombo.SelectedIndex = 0; // Revenir au mode Compagnon
+                SwitchMode("Console");
             }
         };
         // ✅ NOUVEAU : Mettre à jour le badge du bouton Messages quand le polling détecte de nouveaux messages
@@ -452,7 +452,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                     if (patient != null)
                     {
                         LoadPatientAsync(patient);
-                        NavigationModeCombo.SelectedIndex = 0; // Mode Console
+                        SwitchMode("Console");
 
                         // Activer l'onglet Messages
                         for (int i = 0; i < AssistantTabControl.Items.Count; i++)
