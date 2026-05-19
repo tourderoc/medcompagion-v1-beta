@@ -14,6 +14,7 @@
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <conv:StringEqualsMultiConverter x:Key="StringEquals"/>
+        <conv:StringNotWhiteSpaceToVisibilityConverter x:Key="StringNotWS"/>
 
         <!-- Template réutilisable : affichage/édition d'une note sur une page A4 -->
         <DataTemplate x:Key="NotePageTemplate" DataType="{x:Type vm:ConsultationNoteViewModel}">
@@ -680,6 +681,39 @@
                                         </Style>
                                     </Button.Style>
                                 </Button>
+
+                                <!-- Bouton 4 : Restitution aux Parents -->
+                                <Button Content="📋 Restitution Parents"
+                                        Command="{Binding SwitchToRestitutionCommand}"
+                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
+                                        Margin="10,0,0,0" Height="40"
+                                        Background="#E67E22" Foreground="White"
+                                        BorderThickness="0"
+                                        VerticalAlignment="Top">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="8"
+                                                                Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#CA6F1E"/>
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
                             </StackPanel>
 
                             <!-- MODE INTERROGATOIRE — Saisie transcription -->
@@ -1210,6 +1244,9 @@
                                             <DataTrigger Binding="{Binding IsInObservationsReviewMode}" Value="True">
                                                 <Setter Property="Visibility" Value="Visible"/>
                                             </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsRestitutionMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </Grid.Style>
@@ -1275,6 +1312,9 @@
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsSynthesisMode}" Value="True">
                                                 <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsRestitutionMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -1543,6 +1583,269 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- V0e : RESTITUTION AUX PARENTS -->
+                            <Grid Grid.Row="1">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsRestitutionMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+
+                                <!-- ── PANEL FORMULAIRE (saisie initiale) ── -->
+                                <Grid Visibility="{Binding IsRestitutionFormMode, Converter={StaticResource BoolToVis}}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                                        <StackPanel Margin="0,0,0,12">
+
+                                            <TextBlock Text="📋 Restitution aux Parents" FontWeight="Bold" FontSize="15"
+                                                       Foreground="#E67E22" Margin="0,0,0,16"/>
+
+                                            <TextBlock Text="Accompagnant(s) présent(s) :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                                            <ComboBox SelectedIndex="{Binding RestitutionAccompagnantIndex, UpdateSourceTrigger=PropertyChanged}"
+                                                      Margin="0,0,0,4">
+                                                <ComboBoxItem Content="Les deux parents"/>
+                                                <ComboBoxItem Content="Mère seule"/>
+                                                <ComboBoxItem Content="Père seul"/>
+                                                <ComboBoxItem Content="Grand-parent(s)"/>
+                                                <ComboBoxItem Content="Éducateur / référent"/>
+                                                <ComboBoxItem Content="Autre"/>
+                                            </ComboBox>
+                                            <TextBox Text="{Binding Restitution.NomAccompagnant, UpdateSourceTrigger=PropertyChanged}"
+                                                     Padding="8,5" FontSize="11" Margin="0,0,0,12"
+                                                     Background="#FAFAFA" BorderBrush="#BDC3C7" BorderThickness="1">
+                                                <TextBox.Style>
+                                                    <Style TargetType="TextBox">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Restitution.TypeAccompagnant}" Value="LesDeuParents">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBox.Style>
+                                            </TextBox>
+
+                                            <Border Background="#FEF9E7" BorderBrush="#F39C12" BorderThickness="1"
+                                                    CornerRadius="4" Padding="10" Margin="0,0,0,12"
+                                                    Visibility="{Binding Restitution.HasMentionLegale, Converter={StaticResource BoolToVis}}">
+                                                <StackPanel>
+                                                    <TextBlock Text="⚖ Mention légale (automatique)" FontWeight="SemiBold"
+                                                               FontSize="11" Foreground="#B7770D" Margin="0,0,0,4"/>
+                                                    <TextBlock Text="{Binding Restitution.MentionLegale}"
+                                                               TextWrapping="Wrap" FontSize="11" Foreground="#7D6608"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <TextBlock Text="Séances d'évaluation prévues :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                                            <Grid Margin="0,0,0,16">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="30"/>
+                                                </Grid.ColumnDefinitions>
+                                                <Slider Grid.Column="0" Minimum="1" Maximum="6" SmallChange="1" LargeChange="1"
+                                                        IsSnapToTickEnabled="True" TickFrequency="1"
+                                                        Value="{Binding Restitution.NombreSeances, UpdateSourceTrigger=PropertyChanged}"
+                                                        VerticalAlignment="Center"/>
+                                                <TextBlock Grid.Column="1" Text="{Binding Restitution.NombreSeances}"
+                                                           FontWeight="Bold" FontSize="14" Foreground="#E67E22"
+                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Grid>
+
+                                            <TextBlock Text="Notes clinicien (optionnel) :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                                            <TextBox Text="{Binding Restitution.NotesLibres, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True" Height="80" Padding="8" TextWrapping="Wrap"
+                                                     FontSize="11" VerticalScrollBarVisibility="Auto"
+                                                     Background="#FAFAFA" BorderBrush="#BDC3C7" BorderThickness="1"
+                                                     Margin="0,0,0,12"/>
+
+                                            <TextBlock Text="{Binding RestitutionStatusMessage}" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="#2980B9" Margin="0,0,0,4"
+                                                       Visibility="{Binding RestitutionStatusMessage, Converter={StaticResource StringNotWS}}"/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button Content="← Retour Synthèse" Command="{Binding SwitchToSynthesisCommand}"
+                                                Padding="10,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                                Background="#ECF0F1" Foreground="#2C3E50" BorderThickness="1" BorderBrush="#BDC3C7">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button Content="✨ Générer Document" Command="{Binding GenerateRestitutionCommand}"
+                                                Padding="12,7" Cursor="Hand" FontSize="11"
+                                                Background="#E67E22" Foreground="White" BorderThickness="0">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#CA6F1E"/></Trigger>
+                                                                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#95A5A6"/></Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsGeneratingRestitution}" Value="True">
+                                                            <Setter Property="IsEnabled" Value="False"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- ── PANEL RÉVISION (après génération IA) ── -->
+                                <Grid Visibility="{Binding IsRestitutionReviewMode, Converter={StaticResource BoolToVis}}">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="*"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                                        <StackPanel Margin="0,0,0,12">
+
+                                            <TextBlock Text="✏️ Vérification avant impression" FontWeight="Bold" FontSize="15"
+                                                       Foreground="#2980B9" Margin="0,0,0,4"/>
+                                            <TextBlock Text="Relisez et modifiez si besoin — un élément par ligne pour les forces et défis."
+                                                       FontSize="11" Foreground="#7F8C8D" TextWrapping="Wrap" Margin="0,0,0,16"/>
+
+                                            <!-- Intro -->
+                                            <TextBlock Text="Introduction :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                            <TextBox Text="{Binding ReviewIntro, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True" Height="60" Padding="8" TextWrapping="Wrap"
+                                                     FontSize="11" VerticalScrollBarVisibility="Auto"
+                                                     Background="#EBF5FB" BorderBrush="#85C1E9" BorderThickness="1"
+                                                     Margin="0,0,0,14"/>
+
+                                            <!-- Motif -->
+                                            <TextBlock Text="Motif de consultation :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,5"/>
+                                            <TextBox Text="{Binding ReviewMotif, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True" Height="60" Padding="8" TextWrapping="Wrap"
+                                                     FontSize="11" VerticalScrollBarVisibility="Auto"
+                                                     Background="#EBF5FB" BorderBrush="#85C1E9" BorderThickness="1"
+                                                     Margin="0,0,0,14"/>
+
+                                            <!-- Forces -->
+                                            <Border Background="#F0FBF8" BorderBrush="#2DC5A2" BorderThickness="0,0,0,2"
+                                                    CornerRadius="6" Padding="10" Margin="0,0,0,14">
+                                                <StackPanel>
+                                                    <TextBlock Text="Ce qui fait sa force" FontWeight="Bold" FontSize="12"
+                                                               Foreground="#1A9E82" Margin="0,0,0,6"/>
+                                                    <TextBlock Text="(un point par ligne)" FontSize="10" Foreground="#7A8899" Margin="0,0,0,5"/>
+                                                    <TextBox Text="{Binding ReviewForces, UpdateSourceTrigger=PropertyChanged}"
+                                                             AcceptsReturn="True" Height="70" Padding="8" TextWrapping="Wrap"
+                                                             FontSize="11" VerticalScrollBarVisibility="Auto"
+                                                             Background="White" BorderBrush="#B2DFD8" BorderThickness="1"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Défis -->
+                                            <Border Background="#FEF6F0" BorderBrush="#E8834A" BorderThickness="0,0,0,2"
+                                                    CornerRadius="6" Padding="10" Margin="0,0,0,14">
+                                                <StackPanel>
+                                                    <TextBlock Text="Ce que nous allons soutenir" FontWeight="Bold" FontSize="12"
+                                                               Foreground="#C4622A" Margin="0,0,0,6"/>
+                                                    <TextBlock Text="(un point par ligne)" FontSize="10" Foreground="#7A8899" Margin="0,0,0,5"/>
+                                                    <TextBox Text="{Binding ReviewDefis, UpdateSourceTrigger=PropertyChanged}"
+                                                             AcceptsReturn="True" Height="70" Padding="8" TextWrapping="Wrap"
+                                                             FontSize="11" VerticalScrollBarVisibility="Auto"
+                                                             Background="White" BorderBrush="#F0C0A0" BorderThickness="1"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <TextBlock Text="{Binding RestitutionStatusMessage}" FontSize="11" TextWrapping="Wrap"
+                                                       Foreground="#2980B9" Margin="0,0,0,4"
+                                                       Visibility="{Binding RestitutionStatusMessage, Converter={StaticResource StringNotWS}}"/>
+                                        </StackPanel>
+                                    </ScrollViewer>
+
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,8,0,0">
+                                        <Button Content="← Modifier" Command="{Binding BackToRestitutionFormCommand}"
+                                                Padding="10,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                                Background="#ECF0F1" Foreground="#2C3E50" BorderThickness="1" BorderBrush="#BDC3C7">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4"
+                                                            Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button Content="✅ Confirmer → PDF" Command="{Binding ConfirmRestitutionCommand}"
+                                                Padding="12,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                                Background="#2980B9" Foreground="White" BorderThickness="0">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#1F618D"/></Trigger>
+                                                                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#95A5A6"/></Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsGeneratingRestitution}" Value="True">
+                                                            <Setter Property="IsEnabled" Value="False"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                        <Button Content="🖨 Ouvrir / Imprimer" Command="{Binding OpenRestitutionCommand}"
+                                                Padding="12,7" Cursor="Hand" FontSize="11"
+                                                Background="#27AE60" Foreground="White" BorderThickness="0">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#219653"/></Trigger>
+                                                                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#95A5A6"/></Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Grid>
+
                             <!-- MODE INTERROGATOIRE — Extraction en cours -->
                             <Border Grid.Row="1" CornerRadius="8" Background="#EBF5FB" BorderBrush="#3498DB" BorderThickness="1">
                                 <Border.Style>
@@ -1551,6 +1854,9 @@
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsInExtractionMode}" Value="True">
                                                 <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsRestitutionMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>

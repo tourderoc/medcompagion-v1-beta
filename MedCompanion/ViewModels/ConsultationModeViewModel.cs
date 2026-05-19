@@ -504,9 +504,9 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode;
-        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode;
-        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode;
+        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode;
+        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode;
+        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode;
 
         // Transcription
         private string _transcriptionInput = "";
@@ -806,6 +806,11 @@ namespace MedCompanion.ViewModels
                 return;
             }
 
+            // Reset complet des blocs avant d'appliquer : la passe LLM sur la transcription
+            // complète remplace les extractions incrémentales (évite les doublons).
+            foreach (var block in InterrogatoireBlocks)
+                block.Reset();
+
             // Appliquer les mises à jour aux ViewModels des blocs
             foreach (var update in result.Updates)
             {
@@ -1027,7 +1032,10 @@ namespace MedCompanion.ViewModels
                     sb.Append(" (").Append(card.FreeText.Trim()).Append(')');
                 sb.AppendLine();
             }
-            return sb.ToString().TrimEnd();
+            var result = sb.ToString().TrimEnd();
+            return string.IsNullOrWhiteSpace(result)
+                ? "Aucune observation clinique renseignée pour cette consultation."
+                : result;
         }
 
         // ── Relecture/édition rédaction Observations ────────────────────────
@@ -1099,6 +1107,7 @@ namespace MedCompanion.ViewModels
         private async Task<string> GenerateClinicalNarrativeAsync(ClinicalObservationsSession obs)
         {
             if (_llmService == null) return "";
+            if (!obs.Cards.Any(c => c.SelectedOption != null)) return ""; // aucune carte renseignée → fallback
 
             var prompt = new System.Text.StringBuilder();
             prompt.AppendLine("Rédige un paragraphe descriptif d'observations cliniques pédopsychiatriques à partir des éléments ci-dessous.");
@@ -1196,6 +1205,8 @@ namespace MedCompanion.ViewModels
         {
             IsInClinicalMode = false;
             IsInObservationsReviewMode = false;
+            IsRestitutionReviewMode = false;
+            IsRestitutionMode = false;
             IsSynthesisMode = true;
         }
 
@@ -1292,15 +1303,14 @@ namespace MedCompanion.ViewModels
                 return Task.CompletedTask;
             }
 
-            if (_storageService == null || _currentPatient == null)
+            if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
             {
-                SynthesisStatusMessage = "❌ Services non disponibles";
+                SynthesisStatusMessage = "❌ Patient non disponible";
                 return Task.CompletedTask;
             }
 
             try
             {
-                // Construire le Markdown avec métadonnées YAML
                 var now = DateTime.Now;
                 var synthesisWithMetadata = $@"---
 date_synthese: {now:yyyy-MM-ddTHH:mm:ss}
@@ -1314,27 +1324,21 @@ justification: {SynthesisWeights.LLMJustification ?? ""}
 
 {SynthesisContent}";
 
-                // Sauvegarder le fichier via SaveStructuredNote
-                var (success, message, filePath) = _storageService.SaveStructuredNote(
-                    _currentPatient.NomComplet,
-                    SynthesisContent,
-                    "Synthèse Initiale - Première Consultation");
+                // Sauvegarder dans {patientDir}/synthese/synthese.md (lu par le dossier patient)
+                var syntheseDir  = Path.Combine(_currentPatient.DirectoryPath, "synthese");
+                Directory.CreateDirectory(syntheseDir);
+                var synthesePath = Path.Combine(syntheseDir, "synthese.md");
 
-                if (success && !string.IsNullOrEmpty(filePath))
+                // Backup de l'ancienne synthèse si elle existe
+                if (File.Exists(synthesePath))
                 {
-                    // Réécrire avec le fichier pour ajouter les métadonnées de poids
-                    try
-                    {
-                        File.WriteAllText(filePath, synthesisWithMetadata, System.Text.Encoding.UTF8);
-                    }
-                    catch { }
+                    var backupPath = Path.Combine(syntheseDir, $"synthese_backup_{now:yyyyMMdd_HHmmss}.md");
+                    try { File.Copy(synthesePath, backupPath, true); } catch { }
+                }
 
-                    SynthesisStatusMessage = $"✅ Synthèse sauvegardée: {Path.GetFileName(filePath)}";
-                }
-                else
-                {
-                    SynthesisStatusMessage = "⚠️ Synthèse créée mais: " + message;
-                }
+                File.WriteAllText(synthesePath, synthesisWithMetadata, System.Text.Encoding.UTF8);
+
+                SynthesisStatusMessage = $"✅ Synthèse sauvegardée dans le dossier patient (synthese.md)";
             }
             catch (Exception ex)
             {
@@ -1517,44 +1521,402 @@ Réponds en JSON valide:" + (ImportedDocuments.Count > 0 ? @"
 
         private string BuildSynthesisGenerationPrompt(string synthesisJSON)
         {
-            return $@"Tu es un clinicien pédopsychiatre expert en synthèse d'évaluation. Voici les données structurées d'une 1ère consultation avec leurs poids de fiabilité:
+            return $@"Tu es un pédopsychiatre rédigeant la synthèse d'une première consultation. Voici les données recueillies :
 
 {synthesisJSON}
 
-IMPORTANT: Les poids indiquent le degré de fiabilité et doivent orienter ton analyse:
-- Poids 0.9-1.0: Données très fiables → détailler, valoriser, donner du poids décisionnel
-- Poids 0.7-0.8: Données bonnes → inclure normalement
-- Poids 0.5-0.6: Données moyennes → inclure avec nuance, noter les limites potentielles
-- Poids 0.3-0.4: Données limitées → mentionner sans surinterprétation
-- Poids <0.3: Données fragmentaires → noter avec prudence
+RÈGLES ABSOLUES :
+❌ Aucun diagnostic, hypothèse diagnostique ou étiquette pathologique.
+❌ Aucune recommandation thérapeutique, bilan ou projet de soin.
+❌ Aucune mention de poids, fiabilité, source ou méthode de collecte.
+❌ Aucune interprétation spéculative.
+✅ Style médical direct, factuel, à l'imparfait ou au présent descriptif.
+✅ Intègre naturellement les données parentales ET les observations cliniques sans les distinguer en sections séparées.
 
-RÈGLES DE SYNTHÈSE:
-✅ INCLURE: Description factuelles, observations cliniques, données anamnestiques
-✅ ADOPTER: Ton neutre, clinique, basé sur les données présentes
-✅ PONDÉRER: Équilibrer les sources selon leurs poids respectifs
+STRUCTURE OBLIGATOIRE (Markdown, sections courtes et épurées) :
 
-❌ EXCLURE ABSOLUMENT:
-- Aucune proposition d'axes diagnostiques
-- Aucune recommandation thérapeutique
-- Aucun projet de soin
-- Aucune interprétation spéculative au-delà des données
-- Aucun diagnostic provisoire ou hypothèse
-
-STRUCTURE (Markdown):
-
-# Synthèse Initiale - Première Consultation
+# Synthèse Initiale – Première Consultation
 
 ## Contexte
-[Présentation: âge, motif principal de consultation, date]
+[2-3 lignes : prénom/âge, motif de consultation, mode de venue]
 
-## Données Anamnestiques - Parents (Poids: {SynthesisWeights.InterrogatoireWeight:F1})
-[Synthèse structurée de ce que les parents rapportent: antécédents, contexte développemental, symptômes rapportés. Si poids bas, noter les limitations de fiabilité de ces données.]
+## Profil clinique
+[3-5 lignes : description de l'enfant tel qu'observé — contact, langage, psychomotricité, mimiques, rapport au cadre]
 
-## Observations Cliniques Directes (Poids: {SynthesisWeights.ObservationsWeight:F1})
-[Observations précises et factuelles de l'enfant lors de l'examen: comportement, contact, langage, psychomotricité, etc. Si poids élevé, valoriser cette source.]
+## État émotionnel et comportement
+[3-5 lignes : humeur, anxiété, comportement rapporté à la maison et observé en séance]
 
-## Synthèse Descriptive Pondérée
-[Fusion intelligente et logique: Ce qu'on observe de cet enfant, intégrant les données parentales ET cliniques directes, pondérées par leur fiabilité respective. Décrire l'enfant tel qu'on le comprend après cette évaluation, sans interpréter au-delà.]";
+## Développement et parcours
+[3-5 lignes : éléments développementaux, scolarité, bilans antérieurs, prises en charge en cours]
+
+Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de commentaire sur les données.";
+        }
+
+        #endregion
+
+        #region Restitution aux Parents V0e
+
+        private RestitutionAuxParents _restitution = new();
+        public RestitutionAuxParents Restitution
+        {
+            get => _restitution;
+            set => SetProperty(ref _restitution, value);
+        }
+
+        // Index ComboBox (0=LesDeux,1=Mere,2=Pere,3=GrandParents,4=Educateur,5=Autre)
+        public int RestitutionAccompagnantIndex
+        {
+            get => (int)_restitution.TypeAccompagnant;
+            set
+            {
+                _restitution.TypeAccompagnant = (TypeAccompagnant)value;
+                OnPropertyChanged(nameof(RestitutionAccompagnantIndex));
+                OnPropertyChanged(nameof(Restitution));
+            }
+        }
+
+        private bool _isRestitutionMode = false;
+        public bool IsRestitutionMode
+        {
+            get => _isRestitutionMode;
+            set
+            {
+                if (SetProperty(ref _isRestitutionMode, value))
+                {
+                    OnPropertyChanged(nameof(IsInSaisieMode));
+                    OnPropertyChanged(nameof(IsInExtractionMode));
+                    OnPropertyChanged(nameof(IsInFinalNoteMode));
+                    OnPropertyChanged(nameof(IsRestitutionFormMode));
+                }
+            }
+        }
+
+        private bool _isRestitutionReviewMode = false;
+        public bool IsRestitutionReviewMode
+        {
+            get => _isRestitutionReviewMode;
+            set
+            {
+                if (SetProperty(ref _isRestitutionReviewMode, value))
+                    OnPropertyChanged(nameof(IsRestitutionFormMode));
+            }
+        }
+
+        public bool IsRestitutionFormMode => IsRestitutionMode && !IsRestitutionReviewMode;
+
+        // Champs éditables après génération LLM
+        private string _reviewIntro = "";
+        public string ReviewIntro { get => _reviewIntro; set => SetProperty(ref _reviewIntro, value); }
+
+        private string _reviewMotif = "";
+        public string ReviewMotif { get => _reviewMotif; set => SetProperty(ref _reviewMotif, value); }
+
+        private string _reviewForces = "";
+        public string ReviewForces { get => _reviewForces; set => SetProperty(ref _reviewForces, value); }
+
+        private string _reviewDefis = "";
+        public string ReviewDefis { get => _reviewDefis; set => SetProperty(ref _reviewDefis, value); }
+
+        private bool _isGeneratingRestitution = false;
+        public bool IsGeneratingRestitution
+        {
+            get => _isGeneratingRestitution;
+            set => SetProperty(ref _isGeneratingRestitution, value);
+        }
+
+        private string _restitutionStatusMessage = "";
+        public string RestitutionStatusMessage
+        {
+            get => _restitutionStatusMessage;
+            set => SetProperty(ref _restitutionStatusMessage, value);
+        }
+
+        private void SwitchToRestitution()
+        {
+            IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
+            IsSynthesisMode = false;
+            IsRestitutionReviewMode = false;
+            IsRestitutionMode = true;
+            // Pré-remplir nom patient si vide
+            if (string.IsNullOrWhiteSpace(_restitution.NomAccompagnant) && CurrentPatient != null)
+                _restitution.NomAccompagnant = "";
+            RestitutionStatusMessage = "";
+        }
+
+        // Étape 1 : LLM génère les champs → mode révision
+        private async Task GenerateRestitutionAsync()
+        {
+            if (_llmService == null) return;
+
+            IsGeneratingRestitution = true;
+            RestitutionStatusMessage = "⏳ Génération IA en cours...";
+
+            try
+            {
+                var prompt = BuildRestitutionPrompt();
+                var (ok, jsonRaw, err) = await _llmService.ChatAsync(prompt, new(), maxTokens: 1500);
+
+                if (!ok || string.IsNullOrWhiteSpace(jsonRaw))
+                {
+                    RestitutionStatusMessage = $"❌ Erreur LLM : {err}";
+                    return;
+                }
+
+                var jsonStart = jsonRaw.IndexOf('{');
+                var jsonEnd   = jsonRaw.LastIndexOf('}');
+                if (jsonStart < 0 || jsonEnd <= jsonStart)
+                {
+                    RestitutionStatusMessage = "❌ Réponse LLM invalide (JSON attendu).";
+                    return;
+                }
+
+                System.Text.Json.JsonDocument doc;
+                try { doc = System.Text.Json.JsonDocument.Parse(jsonRaw[jsonStart..(jsonEnd + 1)]); }
+                catch
+                {
+                    RestitutionStatusMessage = "❌ Impossible de parser le JSON LLM.";
+                    return;
+                }
+
+                string GetStr(string key) =>
+                    doc.RootElement.TryGetProperty(key, out var v) ? v.GetString() ?? "" : "";
+
+                string GetArray(string key)
+                {
+                    if (!doc.RootElement.TryGetProperty(key, out var arr) ||
+                        arr.ValueKind != System.Text.Json.JsonValueKind.Array)
+                        return "Aucun élément identifié lors de cette première rencontre.";
+                    var items = arr.EnumerateArray()
+                                   .Select(x => x.GetString()?.Trim())
+                                   .Where(s => !string.IsNullOrWhiteSpace(s))
+                                   .ToList();
+                    return items.Count == 0
+                        ? "Aucun élément identifié lors de cette première rencontre."
+                        : string.Join("\n", items);
+                }
+
+                // Remplir les champs éditables
+                ReviewIntro   = GetStr("intro");
+                ReviewMotif   = GetStr("motif");
+                ReviewForces  = GetArray("forces");
+                ReviewDefis   = GetArray("defis");
+
+                // Basculer en mode révision
+                IsRestitutionReviewMode = true;
+                RestitutionStatusMessage = "✏️ Vérifiez et modifiez si besoin, puis confirmez pour générer le PDF.";
+
+                System.Windows.Application.Current?.Dispatcher.InvokeAsync(
+                    System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+            }
+            catch (Exception ex)
+            {
+                RestitutionStatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsGeneratingRestitution = false;
+            }
+        }
+
+        // Étape 2 : Confirmer les champs édités → générer le PDF
+        private async Task ConfirmRestitutionAsync()
+        {
+            IsGeneratingRestitution = true;
+            RestitutionStatusMessage = "⏳ Génération du PDF...";
+
+            try
+            {
+                // Template HTML
+                var appDir = AppDomain.CurrentDomain.BaseDirectory;
+                var templatePath = Path.Combine(appDir, "Resources", "Consultation", "restitution_template.html");
+                if (!File.Exists(templatePath))
+                {
+                    RestitutionStatusMessage = "❌ Template introuvable.";
+                    return;
+                }
+                var template = File.ReadAllText(templatePath, System.Text.Encoding.UTF8);
+
+                // Convertir les champs multi-lignes en <ul>
+                string BuildListFromLines(string text)
+                {
+                    var lines = text.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                    if (lines.Length == 0)
+                        return "<p><em>Aucun élément identifié lors de cette première rencontre.</em></p>";
+                    return "<ul>" + string.Join("", lines.Select(l =>
+                        $"<li>{System.Net.WebUtility.HtmlEncode(l)}</li>")) + "</ul>";
+                }
+
+                // Bilans fournis (C#, jamais LLM)
+                var bilansFournis = ImportedDocuments.Count == 0
+                    ? "<p><em>Aucun document fourni lors de cette consultation.</em></p>"
+                    : "<ul>" + string.Join("", ImportedDocuments.Select(d =>
+                        $"<li>{System.Net.WebUtility.HtmlEncode(d.FileName)}</li>")) + "</ul>";
+
+                // Données fixes C#
+                var doctorName    = AppSettings.Load().Medecin;
+                var mentionLegale = _restitution.MentionLegale;
+                var mentionBlock  = string.IsNullOrWhiteSpace(mentionLegale) ? "" :
+                    $"<div class=\"legal\">⚖️ {mentionLegale}</div>";
+
+                var html = template
+                    .Replace("{{DOCTOR_NAME}}",    System.Net.WebUtility.HtmlEncode(doctorName))
+                    .Replace("{{INTRO}}",          ReviewIntro)
+                    .Replace("{{MOTIF}}",          ReviewMotif)
+                    .Replace("{{BILANS_FOURNIS}}", bilansFournis)
+                    .Replace("{{FORCES}}",         BuildListFromLines(ReviewForces))
+                    .Replace("{{DEFIS}}",          BuildListFromLines(ReviewDefis))
+                    .Replace("{{NOMBRE_SEANCES}}", _restitution.NombreSeances.ToString())
+                    .Replace("{{MENTION_LEGALE}}", mentionBlock);
+
+                var tmpDir   = Path.Combine(Path.GetTempPath(), "MedCompanion_Restitution");
+                Directory.CreateDirectory(tmpDir);
+                var stamp    = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var htmlPath = Path.Combine(tmpDir, $"restitution_{stamp}.html");
+                var pdfPath  = Path.Combine(tmpDir, $"restitution_{stamp}.pdf");
+                File.WriteAllText(htmlPath, html, System.Text.Encoding.UTF8);
+
+                _restitution.GeneratedHtmlPath = htmlPath;
+                OnPropertyChanged(nameof(Restitution));
+
+                var edgeSvc = new MedCompanion.Services.EdgeHeadlessPdfService();
+                if (edgeSvc.IsAvailable)
+                {
+                    var pdfOk = await edgeSvc.ConvertAsync(htmlPath, pdfPath);
+                    if (pdfOk)
+                    {
+                        _restitution.GeneratedPdfPath = pdfPath;
+                        OnPropertyChanged(nameof(Restitution));
+                        RestitutionStatusMessage = "✅ PDF prêt — cliquez Ouvrir pour imprimer";
+                    }
+                    else
+                    {
+                        RestitutionStatusMessage = "⚠️ Conversion PDF échouée — HTML disponible";
+                    }
+                }
+                else
+                {
+                    RestitutionStatusMessage = "⚠️ Microsoft Edge introuvable — HTML disponible";
+                }
+
+                System.Windows.Application.Current?.Dispatcher.InvokeAsync(
+                    System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+            }
+            catch (Exception ex)
+            {
+                RestitutionStatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsGeneratingRestitution = false;
+            }
+        }
+
+        private string BuildRestitutionPrompt()
+        {
+            var patient     = CurrentPatient;
+            var prenom      = patient?.Prenom ?? "";
+            var patientName = $"{prenom} {patient?.Nom}".Trim();
+            var dateStr     = DateTime.Now.ToString("dd/MM/yyyy");
+
+            // Ton et salutation selon l'accompagnant
+            var accomp = _restitution.NomAccompagnant?.Trim() ?? "";
+            var tonInstruction = _restitution.TypeAccompagnant switch
+            {
+                TypeAccompagnant.LesDeuParents =>
+                    $"Salutation : \"Chers parents,\" — ton chaleureux et bienveillant, adressez-vous directement aux parents.",
+                TypeAccompagnant.MereSeule =>
+                    $"Salutation : \"Chère maman,\" — ton chaleureux, adressez-vous directement à la mère.",
+                TypeAccompagnant.PereSeul =>
+                    $"Salutation : \"Cher papa,\" — ton chaleureux, adressez-vous directement au père.",
+                TypeAccompagnant.GrandParents =>
+                    $"Salutation : \"Chers grands-parents,\" — ton chaleureux mais légèrement formel. " +
+                    (string.IsNullOrWhiteSpace(accomp) ? "" : $"Accompagnant présent : {accomp}."),
+                TypeAccompagnant.Educateur =>
+                    $"Salutation formelle : \"Vous avez accompagné {prenom} lors de cette consultation.\" " +
+                    $"— vouvoiement strict, ton institutionnel et respectueux. " +
+                    (string.IsNullOrWhiteSpace(accomp) ? "" : $"Accompagnant : {accomp}."),
+                TypeAccompagnant.Autre =>
+                    $"Salutation formelle : \"Vous avez accompagné {prenom} lors de cette consultation.\" " +
+                    $"— vouvoiement strict, ton institutionnel. " +
+                    (string.IsNullOrWhiteSpace(accomp) ? "" : $"Accompagnant : {accomp}."),
+                _ =>
+                    "Salutation : \"Chers parents,\" — ton chaleureux."
+            };
+
+            var donnees = new System.Text.StringBuilder();
+
+            var interrogatoireRempli = InterrogatoireBlocks.Where(b => !string.IsNullOrWhiteSpace(b.FreeText)).ToList();
+            if (interrogatoireRempli.Count > 0)
+            {
+                donnees.AppendLine("=== INTERROGATOIRE ===");
+                foreach (var block in interrogatoireRempli)
+                    donnees.AppendLine($"[{block.Title}] {block.FreeText}");
+            }
+            if (!string.IsNullOrWhiteSpace(_clinicalObservations.GeneratedClinicalNarrative))
+            {
+                donnees.AppendLine("=== OBSERVATIONS CLINIQUES ===");
+                donnees.AppendLine(_clinicalObservations.GeneratedClinicalNarrative);
+            }
+            if (!string.IsNullOrWhiteSpace(_synthesisContent))
+            {
+                donnees.AppendLine("=== SYNTHÈSE ===");
+                donnees.AppendLine(_synthesisContent);
+            }
+            foreach (var d in ImportedDocuments.Where(d => !string.IsNullOrWhiteSpace(d.DocumentSynthesis)))
+            {
+                donnees.AppendLine($"=== BILAN FOURNI : {d.FileName} ===");
+                donnees.AppendLine(d.DocumentSynthesis);
+            }
+            if (!string.IsNullOrWhiteSpace(_restitution.NotesLibres))
+            {
+                donnees.AppendLine("=== NOTES CLINICIEN ===");
+                donnees.AppendLine(_restitution.NotesLibres);
+            }
+
+            var hasDonnees = donnees.Length > 0;
+
+            return $@"Tu es un pédopsychiatre. Génère UNIQUEMENT un objet JSON pour le document de restitution concernant {patientName} (consultation du {dateStr}).
+
+TON ET SALUTATION : {tonInstruction}
+
+{(hasDonnees ? $"DONNÉES CLINIQUES :\n{donnees}" : "AUCUNE DONNÉE CLINIQUE DISPONIBLE.")}
+
+RÈGLES ABSOLUES :
+- Aucun diagnostic, étiquette pathologique ou terme médical incompréhensible.
+- Si les données sont insuffisantes : écris exactement ""Aucun élément identifié lors de cette première rencontre."" — ne jamais inventer.
+- ""forces"" et ""defis"" : 2 à 3 éléments maximum, phrases courtes.
+- L'intro cite la date {dateStr} et respecte strictement le ton indiqué.
+
+RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
+{{
+  ""intro"": ""[Salutation adaptée + 2 phrases — contexte du {dateStr} et objectif bienveillant]"",
+  ""motif"": ""[Résumé du motif en 2-3 lignes accessibles]"",
+  ""forces"": [""[Point fort 1]"", ""[Point fort 2]"", ""[Point fort 3 si données suffisantes]""],
+  ""defis"": [""[Défi 1]"", ""[Défi 2]"", ""[Défi 3 si données suffisantes]""]
+}}";
+        }
+
+        private void OpenRestitutionFile()
+        {
+            var path = _restitution.GeneratedPdfPath ?? _restitution.GeneratedHtmlPath;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            {
+                RestitutionStatusMessage = "❌ Aucun fichier généré.";
+                return;
+            }
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = path,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                RestitutionStatusMessage = $"❌ Impossible d'ouvrir : {ex.Message}";
+            }
         }
 
         #endregion
@@ -1607,6 +1969,13 @@ STRUCTURE (Markdown):
         // V0d : Commandes Documents Importés
         public ICommand ImportDocumentCommand { get; }
         public ICommand RemoveDocumentCommand { get; }
+
+        // V0e : Commandes Restitution
+        public ICommand SwitchToRestitutionCommand { get; }
+        public ICommand GenerateRestitutionCommand { get; }
+        public ICommand ConfirmRestitutionCommand { get; }
+        public ICommand BackToRestitutionFormCommand { get; }
+        public ICommand OpenRestitutionCommand { get; }
 
         #endregion
 
@@ -1707,6 +2076,8 @@ STRUCTURE (Markdown):
                 IsInClinicalMode = false;
                 IsSynthesisMode = false;
                 IsInObservationsReviewMode = false;
+                IsRestitutionReviewMode = false;
+                IsRestitutionMode = false;
             }, _ => IsInterrogatoireMode);
 
             SwitchToClinicalCommand = new RelayCommand(_ =>
@@ -1715,6 +2086,8 @@ STRUCTURE (Markdown):
                     InitializeClinicalObservations();
                 IsSynthesisMode = false;
                 IsInObservationsReviewMode = false;
+                IsRestitutionReviewMode = false;
+                IsRestitutionMode = false;
                 IsInClinicalMode = true;
             }, _ => IsInterrogatoireMode);
 
@@ -1789,6 +2162,28 @@ STRUCTURE (Markdown):
                     ImportedDocuments.Remove(doc);
                 }
             });
+
+            // V0e : Commands Restitution
+            SwitchToRestitutionCommand = new RelayCommand(
+                _ => SwitchToRestitution(),
+                _ => IsInterrogatoireMode);
+
+            GenerateRestitutionCommand = new RelayCommand(
+                async _ => await GenerateRestitutionAsync(),
+                _ => IsRestitutionFormMode && !IsGeneratingRestitution);
+
+            ConfirmRestitutionCommand = new RelayCommand(
+                async _ => await ConfirmRestitutionAsync(),
+                _ => IsRestitutionReviewMode && !IsGeneratingRestitution);
+
+            BackToRestitutionFormCommand = new RelayCommand(
+                _ => { IsRestitutionReviewMode = false; RestitutionStatusMessage = ""; },
+                _ => IsRestitutionReviewMode);
+
+            OpenRestitutionCommand = new RelayCommand(
+                _ => OpenRestitutionFile(),
+                _ => IsRestitutionMode &&
+                     (!string.IsNullOrEmpty(_restitution.GeneratedPdfPath) || !string.IsNullOrEmpty(_restitution.GeneratedHtmlPath)));
 
             // Commands pagination dossier
             InitPaginationCommands();
@@ -1977,6 +2372,21 @@ STRUCTURE (Markdown):
                 OnPropertyChanged(nameof(ConfirmedAge));
                 OnPropertyChanged(nameof(HasConfirmedAge));
             }
+
+            // V0e : réinitialiser la restitution
+            IsRestitutionMode = false;
+            _restitution = new RestitutionAuxParents();
+            OnPropertyChanged(nameof(Restitution));
+            RestitutionStatusMessage = "";
+
+            // V0c : réinitialiser les observations cliniques
+            IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
+            ObservationsNarrative = "";
+            ObservationsStatusMessage = "";
+            _observationsNoteSaved = false;
+            _clinicalObservations.Cards.Clear();
+            _clinicalObservations.GeneratedClinicalNarrative = null;
 
             // Vider immédiatement pour ne pas afficher les notes du patient précédent
             ConsultationNotes.Clear();

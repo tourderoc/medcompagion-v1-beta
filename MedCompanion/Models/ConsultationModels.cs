@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Input;
 using MedCompanion.Commands;
@@ -379,8 +380,8 @@ namespace MedCompanion.Models
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        private List<ClinicalObservationCard> _cards = new();
-        public List<ClinicalObservationCard> Cards
+        private ObservableCollection<ClinicalObservationCard> _cards = new();
+        public ObservableCollection<ClinicalObservationCard> Cards
         {
             get => _cards;
             set { _cards = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Cards))); }
@@ -394,6 +395,80 @@ namespace MedCompanion.Models
             get => _generatedClinicalNarrative;
             set { _generatedClinicalNarrative = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GeneratedClinicalNarrative))); }
         }
+    }
+
+    // ─── Restitution aux Parents V0e ────────────────────────────────────────
+
+    public enum TypeAccompagnant
+    {
+        LesDeuParents,
+        MereSeule,
+        PereSeul,
+        GrandParents,
+        Educateur,
+        Autre
+    }
+
+    public class RestitutionAuxParents : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void Notify(string p) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
+
+        private TypeAccompagnant _typeAccompagnant = TypeAccompagnant.LesDeuParents;
+        public TypeAccompagnant TypeAccompagnant
+        {
+            get => _typeAccompagnant;
+            set { _typeAccompagnant = value; Notify(nameof(TypeAccompagnant)); Notify(nameof(MentionLegale)); Notify(nameof(HasMentionLegale)); }
+        }
+
+        private string _nomAccompagnant = "";
+        public string NomAccompagnant
+        {
+            get => _nomAccompagnant;
+            set { _nomAccompagnant = value; Notify(nameof(NomAccompagnant)); Notify(nameof(MentionLegale)); }
+        }
+
+        private int _nombreSeances = 2;
+        public int NombreSeances
+        {
+            get => _nombreSeances;
+            set { _nombreSeances = value; Notify(nameof(NombreSeances)); }
+        }
+
+        private string _notesLibres = "";
+        public string NotesLibres
+        {
+            get => _notesLibres;
+            set { _notesLibres = value; Notify(nameof(NotesLibres)); }
+        }
+
+        public string MentionLegale
+        {
+            get
+            {
+                var accomp = string.IsNullOrWhiteSpace(NomAccompagnant) ? "l'accompagnant" : NomAccompagnant;
+                return TypeAccompagnant switch
+                {
+                    TypeAccompagnant.LesDeuParents => "",
+                    TypeAccompagnant.MereSeule =>
+                        $"Ce document a été remis à la mère. Conformément à l'exercice conjoint de l'autorité parentale, il doit être communiqué au père.",
+                    TypeAccompagnant.PereSeul =>
+                        $"Ce document a été remis au père. Conformément à l'exercice conjoint de l'autorité parentale, il doit être communiqué à la mère.",
+                    TypeAccompagnant.GrandParents =>
+                        $"Ce document a été remis aux grands-parents ({accomp}). Les représentants légaux de l'enfant doivent en être informés.",
+                    TypeAccompagnant.Educateur =>
+                        $"Ce document a été remis à l'éducateur/référent ({accomp}). Les représentants légaux de l'enfant doivent en être informés.",
+                    _ =>
+                        $"Ce document a été remis à {accomp}. Les représentants légaux de l'enfant doivent en être informés."
+                };
+            }
+        }
+
+        public bool HasMentionLegale => TypeAccompagnant != TypeAccompagnant.LesDeuParents;
+
+        public DateTime DateRestitution { get; set; } = DateTime.Now;
+        public string? GeneratedHtmlPath { get; set; }
+        public string? GeneratedPdfPath { get; set; }
     }
 
     // ─── Synthèse Initiale V0d ──────────────────────────────────────────────
