@@ -488,6 +488,20 @@ namespace MedCompanion.ViewModels
         public bool IsInterrogatoireMode => ConsultationType == ConsultationType.PremiereConsultation;
         public bool IsNormalMode => !IsInterrogatoireMode;
 
+        // Hub : true = une consultation est en cours d'édition (frise réduite en bandeau)
+        //       false = vue frise pleine
+        private bool _isEditingConsultation;
+        public bool IsEditingConsultation
+        {
+            get => _isEditingConsultation;
+            set
+            {
+                if (SetProperty(ref _isEditingConsultation, value))
+                    OnPropertyChanged(nameof(IsNotEditingConsultation));
+            }
+        }
+        public bool IsNotEditingConsultation => !_isEditingConsultation;
+
         // État interne de l'interrogatoire
         private InterrogatoireState _interrogatoireState = InterrogatoireState.Saisie;
         public InterrogatoireState InterrogatoireState
@@ -626,6 +640,58 @@ namespace MedCompanion.ViewModels
             IsSynthesisMode = false;
 
             UpdateBlockCollections();
+        }
+
+        // ── Hub de consultations ───────────────────────────────────────────────
+
+        /// <summary>
+        /// Démarre une nouvelle consultation selon le type choisi dans le menu "+".
+        /// </summary>
+        private void StartNewConsultation(string type)
+        {
+            switch (type)
+            {
+                case "premiere":
+                    ConsultationType = ConsultationType.PremiereConsultation; // déclenche InitInterrogatoireBlocks
+                    ConsultationDate = DateTime.Now;
+                    IsEditingConsultation = true;
+                    ExtractionStatus = "";
+                    break;
+
+                case "suivi":
+                    // Flux à concevoir plus tard — placeholder
+                    System.Windows.MessageBox.Show(
+                        "Le flux « Consultation de suivi » sera disponible prochainement.",
+                        "À venir",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information);
+                    break;
+            }
+        }
+
+        /// <summary>
+        /// Détermine s'il y a une consultation en cours avec du contenu non sauvegardé.
+        /// </summary>
+        private bool HasUnsavedConsultation()
+        {
+            if (!IsInterrogatoireMode) return false;
+            if (_noteSaved) return false;
+            // Du contenu existe si transcription saisie ou au moins un bloc rempli
+            return !string.IsNullOrWhiteSpace(TranscriptionInput)
+                   || InterrogatoireBlocks.Any(b => !string.IsNullOrWhiteSpace(b.FreeText));
+        }
+
+        /// <summary>
+        /// Ouvre une consultation passée (lecture). Bascule sur l'onglet Consultations du dossier.
+        /// (La carte mentale viendra plus tard.)
+        /// </summary>
+        private void OpenPastConsultation(ConsultationCardViewModel card)
+        {
+            // Sort du mode édition pour revenir à la vue frise/dossier
+            IsEditingConsultation = false;
+            // Affiche le dossier sur l'onglet Consultations
+            ActiveDossierTab = DossierTab.Consultations;
+            CurrentState = ConsultationViewState.FocusDossier;
         }
 
         /// <summary>
@@ -896,6 +962,8 @@ namespace MedCompanion.ViewModels
                 _noteSaved = true;
                 ExtractionStatus = "Note sauvegardée dans le dossier patient.";
                 await RefreshConsultationNotesAsync();
+                // Sortie du mode édition → retour à la frise (la nouvelle carte y apparaît)
+                IsEditingConsultation = false;
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
             }
@@ -1942,6 +2010,10 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
         public ICommand StartRecordingCommand { get; }
         public ICommand StopRecordingCommand { get; }
 
+        // Hub de consultations (frise + bouton +)
+        public ICommand NewConsultationCommand { get; }   // param : "premiere" | "suivi"
+        public ICommand OpenCardCommand { get; }          // param : ConsultationCardViewModel
+
         // V0b : Commande pour confirmer l'âge manuellement
         public ICommand ConfirmAgeCommand { get; }
 
@@ -2043,6 +2115,32 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
                     IsRecording = false;
                 },
                 _ => IsRecording);
+
+            // Hub : créer une nouvelle consultation (param "premiere" | "suivi")
+            NewConsultationCommand = new RelayCommand(param =>
+            {
+                var type = param?.ToString() ?? "premiere";
+
+                // Confirmation si une consultation est en cours non sauvegardée
+                if (IsEditingConsultation && HasUnsavedConsultation())
+                {
+                    var r = System.Windows.MessageBox.Show(
+                        "Une consultation est en cours et n'a pas été sauvegardée.\n\nAbandonner la consultation en cours ?",
+                        "Consultation en cours",
+                        System.Windows.MessageBoxButton.YesNo,
+                        System.Windows.MessageBoxImage.Warning);
+                    if (r != System.Windows.MessageBoxResult.Yes) return;
+                }
+
+                StartNewConsultation(type);
+            });
+
+            // Hub : ouvrir une carte passée (lecture)
+            OpenCardCommand = new RelayCommand(param =>
+            {
+                if (param is ConsultationCardViewModel card)
+                    OpenPastConsultation(card);
+            });
 
             // V0b : Commande confirmation âge
             ConfirmAgeCommand = new RelayCommand(param =>
@@ -2205,6 +2303,9 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
 
         public ObservableCollection<ConsultationNoteViewModel> ConsultationNotes { get; } = new();
 
+        // Frise chronologique (hub de consultations)
+        public ObservableCollection<ConsultationCardViewModel> ConsultationCards { get; } = new();
+
         public bool HasNoConsultationNotes => ConsultationNotes.Count == 0;
         public bool HasConsultationNotes   => ConsultationNotes.Count > 0;
 
@@ -2233,7 +2334,28 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
             OnPropertyChanged(nameof(HasNoConsultationNotes));
             OnPropertyChanged(nameof(HasConsultationNotes));
             ResetPagination();
+
+            LoadConsultationCards();
         }
+
+        /// <summary>
+        /// Alimente la frise chronologique à partir des notes chargées,
+        /// triées de la plus ancienne à la plus récente.
+        /// </summary>
+        private void LoadConsultationCards()
+        {
+            ConsultationCards.Clear();
+            var cards = ConsultationNotes
+                .Select(n => new ConsultationCardViewModel(n.Title, n.FilePath))
+                .OrderBy(c => c.Date)
+                .ToList();
+            foreach (var c in cards)
+                ConsultationCards.Add(c);
+
+            OnPropertyChanged(nameof(HasNoConsultationCards));
+        }
+
+        public bool HasNoConsultationCards => ConsultationCards.Count == 0;
 
         #endregion
 
@@ -2341,6 +2463,7 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
 
             // Réinitialiser l'interrogatoire (blocs, état, textes)
             ConsultationType = ConsultationType.Normal;   // remet les flags IsInterrogatoireMode etc.
+            IsEditingConsultation = false;                // retour à la vue frise
             InterrogatoireBlocks.Clear();
             _interrogatoireState = InterrogatoireState.Saisie;
             _noteSaved = false;

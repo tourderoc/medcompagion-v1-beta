@@ -37,8 +37,6 @@ namespace MedCompanion.Views.Consultation
         public void LoadPatient(PatientIndexEntry patient)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
-            if (ConsultationTypeCombo.Items.Count > 0)
-                ConsultationTypeCombo.SelectedIndex = 0;
             _viewModel?.LoadPatient(patient);
         }
 
@@ -53,19 +51,24 @@ namespace MedCompanion.Views.Consultation
 
         // ── Handlers ─────────────────────────────────────────────────────────
 
-        private void ConsultationTypeCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private void NewConsultationBtn_Click(object sender, RoutedEventArgs e)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             if (_viewModel == null) return;
 
-            var item = ConsultationTypeCombo.SelectedItem as ComboBoxItem;
-            var tag  = item?.Tag?.ToString() ?? "Normal";
+            var menu = new ContextMenu();
 
-            _viewModel.ConsultationType = tag switch
-            {
-                "PremiereConsultation" => ConsultationType.PremiereConsultation,
-                _                      => ConsultationType.Normal
-            };
+            var premiere = new MenuItem { Header = "🩺  1ère consultation" };
+            premiere.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("premiere");
+            menu.Items.Add(premiere);
+
+            var suivi = new MenuItem { Header = "🔄  Consultation de suivi" };
+            suivi.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("suivi");
+            menu.Items.Add(suivi);
+
+            menu.PlacementTarget = sender as UIElement;
+            menu.Placement       = System.Windows.Controls.Primitives.PlacementMode.Bottom;
+            menu.IsOpen          = true;
         }
 
         private void ImportTxtBtn_Click(object sender, RoutedEventArgs e)
