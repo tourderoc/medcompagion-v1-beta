@@ -118,7 +118,8 @@ namespace MedCompanion.Services.LLM
                 {
                     model = _currentModel,
                     prompt = "Bonjour",
-                    stream = false
+                    stream = false,
+                    think = false
                 };
 
                 var json = JsonSerializer.Serialize(requestBody);
@@ -158,6 +159,7 @@ namespace MedCompanion.Services.LLM
                         model = forceModel ?? _currentModel,
                         prompt = prompt,
                         stream = false,
+                        think = false,  // Désactive le mode reasoning (Gemma 4, etc.) — inutile pour génération clinique
                         options = new
                         {
                             temperature = 0.3,
@@ -173,6 +175,7 @@ namespace MedCompanion.Services.LLM
                         model = forceModel ?? _currentModel,
                         prompt = prompt,
                         stream = false,
+                        think = false,
                         options = new
                         {
                             num_predict = maxTokens,
@@ -247,6 +250,7 @@ namespace MedCompanion.Services.LLM
                     model = forceModel ?? _currentModel,
                     messages = ollamaMessages.ToArray(),
                     stream = false,
+                    think = false,  // Désactive le mode reasoning (Gemma 4, etc.)
                     options = new
                     {
                         num_predict = maxTokens,
@@ -313,6 +317,7 @@ namespace MedCompanion.Services.LLM
                     model = _currentModel, // S'assurer que le modèle supporte la vision (ex: llava)
                     prompt = prompt,
                     stream = false,
+                    think = false,
                     images = new[] { base64Image },
                     options = new
                     {
@@ -372,6 +377,7 @@ namespace MedCompanion.Services.LLM
                     model = _currentModel,
                     messages = ollamaMessages.ToArray(),
                     stream = true, // Activer le streaming
+                    think = false,  // Désactive le mode reasoning (Gemma 4, etc.)
                     options = new
                     {
                         num_predict = maxTokens,

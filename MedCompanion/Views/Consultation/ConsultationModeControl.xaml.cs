@@ -96,6 +96,31 @@ namespace MedCompanion.Views.Consultation
             }
         }
 
+        private void ImportSuiviTxtBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            if (_viewModel == null) return;
+
+            var dlg = new OpenFileDialog
+            {
+                Title       = "Importer une transcription",
+                Filter      = "Fichiers texte (*.txt)|*.txt|Tous les fichiers (*.*)|*.*",
+                Multiselect = false
+            };
+
+            if (dlg.ShowDialog() != true) return;
+
+            try
+            {
+                _viewModel.Suivi.Transcription = File.ReadAllText(dlg.FileName, System.Text.Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lecture fichier : {ex.Message}", "Erreur",
+                    MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
         private void VocabBtn_Click(object sender, RoutedEventArgs e)
         {
             var vocabService = new WhisperVocabService();

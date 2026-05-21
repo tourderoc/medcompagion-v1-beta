@@ -843,6 +843,10 @@ public class SynthesisService
 
     private string BuildSynthesisWithMetadata(string synthesis, string type)
     {
+        // Filet de sécurité : retirer un éventuel préambule de type chat-bot
+        // (le prompt l'interdit, mais certains modèles abliterated le rajoutent quand même)
+        synthesis = StripChatPreamble(synthesis);
+
         var yaml = $@"---
 date_synthese: {DateTime.Now:yyyy-MM-ddTHH:mm:ss}
 type: {type}
@@ -850,6 +854,28 @@ type: {type}
 
 {synthesis}";
         return yaml;
+    }
+
+    /// <summary>
+    /// Supprime tout préambule conversationnel ("Bonjour Docteur, voici...") qui précède
+    /// le premier titre Markdown ("# ..."). On garde tout ce qui suit la première ligne "#".
+    /// Si pas de titre trouvé, on retourne le contenu tel quel.
+    /// </summary>
+    private string StripChatPreamble(string content)
+    {
+        if (string.IsNullOrWhiteSpace(content)) return content;
+
+        // Cherche le premier titre H1 ou H2 en début de ligne
+        var match = System.Text.RegularExpressions.Regex.Match(
+            content,
+            @"^#{1,2}\s+\S",
+            System.Text.RegularExpressions.RegexOptions.Multiline);
+
+        if (!match.Success) return content;
+        if (match.Index == 0) return content; // pas de préambule à retirer
+
+        // Tout ce qui précède le premier titre est considéré comme préambule
+        return content.Substring(match.Index).TrimStart();
     }
 
     private string RemoveYamlFrontMatter(string content)

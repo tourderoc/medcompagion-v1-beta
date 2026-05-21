@@ -333,7 +333,11 @@ namespace MedCompanion.ViewModels
             {
                 _whisperService = whisperService;
                 _whisperService.StatusChanged         += msg  => Dispatch(() => ExtractionStatus = msg);
-                _whisperService.TextAppended          += text => Dispatch(() => TranscriptionInput += text);
+                _whisperService.TextAppended          += text => Dispatch(() =>
+                {
+                    if (IsSuiviMode) Suivi.Transcription += text;
+                    else             TranscriptionInput  += text;
+                });
                 _whisperService.SegmentReady          += seg  => _ = EnqueueExtractionAsync(seg);
                 _whisperService.SessionResetRequested += ()   => Dispatch(ResetDictationSession);
                 _whisperService.AudioLevelChanged     += lvl  => Dispatch(() => MicLevelPct = Math.Min(100, (int)(lvl * 600)));
@@ -473,6 +477,7 @@ namespace MedCompanion.ViewModels
                 if (SetProperty(ref _consultationType, value))
                 {
                     OnPropertyChanged(nameof(IsInterrogatoireMode));
+                    OnPropertyChanged(nameof(IsSuiviMode));
                     OnPropertyChanged(nameof(IsNormalMode));
                     if (value == ConsultationType.PremiereConsultation)
                         InitInterrogatoireBlocks();
@@ -486,7 +491,8 @@ namespace MedCompanion.ViewModels
         }
 
         public bool IsInterrogatoireMode => ConsultationType == ConsultationType.PremiereConsultation;
-        public bool IsNormalMode => !IsInterrogatoireMode;
+        public bool IsSuiviMode => ConsultationType == ConsultationType.Suivi;
+        public bool IsNormalMode => !IsInterrogatoireMode && !IsSuiviMode;
 
         // Hub : true = une consultation est en cours d'édition (frise réduite en bandeau)
         //       false = vue frise pleine
@@ -659,12 +665,17 @@ namespace MedCompanion.ViewModels
                     break;
 
                 case "suivi":
-                    // Flux à concevoir plus tard — placeholder
-                    System.Windows.MessageBox.Show(
-                        "Le flux « Consultation de suivi » sera disponible prochainement.",
-                        "À venir",
-                        System.Windows.MessageBoxButton.OK,
-                        System.Windows.MessageBoxImage.Information);
+                    Suivi.Reset();
+                    // Reset des autres modes pour éviter toute superposition
+                    IsInClinicalMode = false;
+                    IsInObservationsReviewMode = false;
+                    IsSynthesisMode = false;
+                    IsRestitutionMode = false;
+                    IsRestitutionReviewMode = false;
+                    ConsultationType = ConsultationType.Suivi;
+                    ConsultationDate = DateTime.Now;
+                    IsEditingConsultation = true;
+                    SuiviStatusMessage = "";
                     break;
             }
         }
@@ -1989,6 +2000,169 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
 
         #endregion
 
+        #region Consultation de Suivi V0
+
+        private ConsultationSuivi _suivi = new();
+        public ConsultationSuivi Suivi
+        {
+            get => _suivi;
+            set => SetProperty(ref _suivi, value);
+        }
+
+        private bool _isExtractingSuivi;
+        public bool IsExtractingSuivi
+        {
+            get => _isExtractingSuivi;
+            set => SetProperty(ref _isExtractingSuivi, value);
+        }
+
+        private string _suiviStatusMessage = "";
+        public string SuiviStatusMessage
+        {
+            get => _suiviStatusMessage;
+            set => SetProperty(ref _suiviStatusMessage, value);
+        }
+
+        /// <summary>
+        /// Construit la note finale à partir des cases cochées + extraction IA.
+        /// Si RAS : la note se limite à "RAS, va bien" (autres cases et transcription ignorées).
+        /// </summary>
+        private string BuildSuiviNote()
+        {
+            var dateStr = ConsultationDate.ToString("dd/MM/yyyy");
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"# Consultation de suivi — {dateStr}");
+            sb.AppendLine();
+
+            if (Suivi.RAS)
+            {
+                sb.AppendLine("- RAS, va bien.");
+                return sb.ToString().TrimEnd();
+            }
+
+            // Cases cochées en puces
+            if (Suivi.Renouvellement)       sb.AppendLine("- Renouvellement du traitement.");
+            if (Suivi.PasEffetsSecondaires) sb.AppendLine("- Pas d'effets secondaires signalés.");
+            if (Suivi.AdhesionOk)           sb.AppendLine("- Adhésion thérapeutique satisfaisante.");
+            if (Suivi.EvolutionScolaire)    sb.AppendLine("- Évolution scolaire favorable.");
+            if (Suivi.SommeilCorrect)       sb.AppendLine("- Sommeil correct.");
+            if (Suivi.ARevoir)              sb.AppendLine("- À revoir dans 1 mois.");
+
+            // Extraction IA en bonus
+            if (!string.IsNullOrWhiteSpace(Suivi.AIExtraction))
+            {
+                sb.AppendLine();
+                sb.AppendLine(Suivi.AIExtraction.Trim());
+            }
+
+            return sb.ToString().TrimEnd();
+        }
+
+        private async Task ExtractSuiviAsync()
+        {
+            if (_llmService == null) return;
+            if (string.IsNullOrWhiteSpace(Suivi.Transcription))
+            {
+                SuiviStatusMessage = "❌ Aucune transcription à analyser.";
+                return;
+            }
+
+            IsExtractingSuivi = true;
+            SuiviStatusMessage = "⏳ Extraction IA en cours...";
+
+            try
+            {
+                var prompt = $@"Tu es pédopsychiatre. Voici la transcription d'une consultation de suivi (souvent bavarde, beaucoup de digressions).
+
+Ton rôle : extraire UNIQUEMENT les éléments cliniquement pertinents sous forme de PUCES ULTRA-COMPACTES (3-5 puces maximum, une ligne chacune).
+
+GARDE :
+- Évolution des symptômes cibles
+- Effets secondaires (même évoqués en passant)
+- Adhérence au traitement, oublis
+- Évènements de vie significatifs (déménagement, deuil, conflit, scolarité)
+- Humeur, sommeil, appétit, comportement
+- Idées noires, automutilation, consommation
+
+IGNORE :
+- Digressions, anecdotes ordinaires, bavardage
+- Activités banales (parc, jeux, vacances sans particularité)
+- Considérations météo, hobbies sans lien clinique
+
+Si rien de cliniquement pertinent : réponds exactement ""RAS"".
+
+Format : puces markdown avec ""- "" (pas de titre, pas d'introduction).
+
+TRANSCRIPTION :
+{Suivi.Transcription}
+
+PUCES :";
+
+                var (ok, result, err) = await _llmService.ChatAsync(prompt, new(), maxTokens: 400);
+
+                if (!ok || string.IsNullOrWhiteSpace(result))
+                {
+                    SuiviStatusMessage = $"❌ Erreur LLM : {err}";
+                    return;
+                }
+
+                Suivi.AIExtraction = result.Trim();
+                SuiviStatusMessage = "✅ Extraction terminée.";
+            }
+            catch (Exception ex)
+            {
+                SuiviStatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsExtractingSuivi = false;
+            }
+        }
+
+        private async Task SaveSuiviNoteAsync()
+        {
+            if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+            {
+                SuiviStatusMessage = "❌ Patient non disponible.";
+                return;
+            }
+
+            try
+            {
+                var notesDir = Path.Combine(_currentPatient.DirectoryPath, ConsultationDate.Year.ToString(), "notes");
+                Directory.CreateDirectory(notesDir);
+
+                var stamp    = ConsultationDate.ToString("yyyy-MM-dd_HHmm");
+                var filePath = Path.Combine(notesDir, $"{stamp}_suivi.md");
+
+                var noteContent = $@"---
+patient: ""{_currentPatient.NomComplet}""
+date: ""{ConsultationDate:yyyy-MM-ddTHH:mm}""
+type: ""consultation-suivi""
+source: ""MedCompanion""
+---
+
+{BuildSuiviNote()}
+";
+
+                File.WriteAllText(filePath, noteContent, System.Text.Encoding.UTF8);
+                SuiviStatusMessage = $"✅ Note sauvegardée : {Path.GetFileName(filePath)}";
+
+                // Rafraîchir le dossier patient pour faire apparaître la nouvelle note immédiatement
+                await RefreshConsultationNotesAsync();
+
+                // Sortir du mode édition et retourner au hub
+                IsEditingConsultation = false;
+                ConsultationType = ConsultationType.Normal;
+            }
+            catch (Exception ex)
+            {
+                SuiviStatusMessage = $"❌ Erreur sauvegarde : {ex.Message}";
+            }
+        }
+
+        #endregion
+
         #region Commands
 
         public ICommand SwitchToFocusTravailCommand { get; }
@@ -2049,6 +2223,9 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
         public ICommand BackToRestitutionFormCommand { get; }
         public ICommand OpenRestitutionCommand { get; }
 
+        public ICommand ExtractSuiviCommand { get; }
+        public ICommand SaveSuiviCommand { get; }
+
         #endregion
 
         #region Constructor
@@ -2105,7 +2282,7 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
                     await _whisperService.StartAsync(modelManager);
                     IsRecording = true;
                 },
-                _ => IsInSaisieMode && !IsRecording && _whisperService != null);
+                _ => (IsInSaisieMode || IsSuiviMode) && !IsRecording && _whisperService != null);
 
             StopRecordingCommand = new RelayCommand(
                 async _ =>
@@ -2282,6 +2459,17 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
                 _ => OpenRestitutionFile(),
                 _ => IsRestitutionMode &&
                      (!string.IsNullOrEmpty(_restitution.GeneratedPdfPath) || !string.IsNullOrEmpty(_restitution.GeneratedHtmlPath)));
+
+            // Commands Consultation de Suivi
+            ExtractSuiviCommand = new RelayCommand(
+                async _ => await ExtractSuiviAsync(),
+                _ => IsSuiviMode && !IsExtractingSuivi && !Suivi.RAS && !string.IsNullOrWhiteSpace(Suivi.Transcription));
+
+            SaveSuiviCommand = new RelayCommand(
+                async _ => await SaveSuiviNoteAsync(),
+                _ => IsSuiviMode && (Suivi.RAS || Suivi.Renouvellement || Suivi.PasEffetsSecondaires ||
+                                     Suivi.AdhesionOk || Suivi.EvolutionScolaire || Suivi.SommeilCorrect ||
+                                     Suivi.ARevoir || !string.IsNullOrWhiteSpace(Suivi.AIExtraction)));
 
             // Commands pagination dossier
             InitPaginationCommands();

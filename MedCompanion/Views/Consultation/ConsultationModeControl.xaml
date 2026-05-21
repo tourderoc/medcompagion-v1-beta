@@ -1907,6 +1907,242 @@
                                 </Grid>
                             </Grid>
 
+                            <!-- MODE CONSULTATION DE SUIVI -->
+                            <Grid Grid.Row="1">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSuiviMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                                    <StackPanel Margin="0,0,0,12">
+
+                                        <TextBlock Text="🔄 Consultation de suivi" FontWeight="Bold" FontSize="15"
+                                                   Foreground="#16A085" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Cochez ce qui s'applique. Dictez seulement s'il y a un élément à noter."
+                                                   FontSize="11" Foreground="#7F8C8D" TextWrapping="Wrap" Margin="0,0,0,14"/>
+
+                                        <!-- Cases rapides -->
+                                        <Border Background="#E8F8F5" BorderBrush="#1ABC9C" BorderThickness="1"
+                                                CornerRadius="6" Padding="14" Margin="0,0,0,14">
+                                            <StackPanel>
+                                                <TextBlock Text="COCHES RAPIDES" FontWeight="Bold" FontSize="11"
+                                                           Foreground="#0E6655" Margin="0,0,0,10"/>
+
+                                                <CheckBox Content="✅ RAS / Va bien  (exclusif — ignore le reste)"
+                                                          IsChecked="{Binding Suivi.RAS}"
+                                                          FontWeight="SemiBold" Foreground="#0E6655" FontSize="12" Margin="0,0,0,10"/>
+
+                                                <StackPanel>
+                                                    <StackPanel.Style>
+                                                        <Style TargetType="StackPanel">
+                                                            <Setter Property="IsEnabled" Value="True"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding Suivi.RAS}" Value="True">
+                                                                    <Setter Property="IsEnabled" Value="False"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </StackPanel.Style>
+                                                    <CheckBox Content="Renouvellement du traitement" IsChecked="{Binding Suivi.Renouvellement}" FontSize="12" Margin="0,0,0,5"/>
+                                                    <CheckBox Content="Pas d'effets secondaires" IsChecked="{Binding Suivi.PasEffetsSecondaires}" FontSize="12" Margin="0,0,0,5"/>
+                                                    <CheckBox Content="Adhésion thérapeutique satisfaisante" IsChecked="{Binding Suivi.AdhesionOk}" FontSize="12" Margin="0,0,0,5"/>
+                                                    <CheckBox Content="Évolution scolaire favorable" IsChecked="{Binding Suivi.EvolutionScolaire}" FontSize="12" Margin="0,0,0,5"/>
+                                                    <CheckBox Content="Sommeil correct" IsChecked="{Binding Suivi.SommeilCorrect}" FontSize="12" Margin="0,0,0,5"/>
+                                                    <CheckBox Content="À revoir dans 1 mois" IsChecked="{Binding Suivi.ARevoir}" FontSize="12"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Transcription -->
+                                        <StackPanel Margin="0,0,0,12">
+                                            <StackPanel.Style>
+                                                <Style TargetType="StackPanel">
+                                                    <Setter Property="IsEnabled" Value="True"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Suivi.RAS}" Value="True">
+                                                            <Setter Property="IsEnabled" Value="False"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </StackPanel.Style>
+
+                                            <TextBlock Text="TRANSCRIPTION (si éléments à noter)" FontWeight="Bold" FontSize="11" Margin="0,0,0,6"/>
+                                            <TextBox Text="{Binding Suivi.Transcription, UpdateSourceTrigger=PropertyChanged}"
+                                                     AcceptsReturn="True" Height="110" Padding="8" TextWrapping="Wrap"
+                                                     FontSize="11" VerticalScrollBarVisibility="Auto"
+                                                     Background="#FAFAFA" BorderBrush="#BDC3C7" BorderThickness="1"/>
+
+                                            <!-- Indicateurs d'enregistrement (visibles seulement quand le mic tourne) -->
+                                            <Grid Margin="0,8,0,0"
+                                                  Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+
+                                                <!-- Ligne 1 : niveau micro -->
+                                                <Grid Grid.Row="0" Margin="0,0,0,5">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                        <ColumnDefinition Width="90"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBlock Grid.Column="0" Text="🎤" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                    <ProgressBar Grid.Column="1" Height="8" Minimum="0" Maximum="100"
+                                                                 Value="{Binding MicLevelPct}" Foreground="#27AE60"
+                                                                 Background="#DDEEDD" BorderThickness="0" VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="2" Text="{Binding ExtractionStatus}"
+                                                               FontSize="11" Foreground="#2C6E49" VerticalAlignment="Center"
+                                                               Margin="8,0,0,0" TextTrimming="CharacterEllipsis"/>
+                                                </Grid>
+
+                                                <!-- Ligne 2 : progression batch -->
+                                                <Grid Grid.Row="1"
+                                                      Visibility="{Binding UseBatchMode, Converter={StaticResource BoolToVis}}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <ProgressBar Grid.Column="0" Height="10" Minimum="0" Maximum="100"
+                                                                 Value="{Binding BatchProgressPct}" Foreground="#27AE60"
+                                                                 Background="#DDEEDD" BorderThickness="0"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding BatchProgressPct, StringFormat='{}{0}s / 90s'}"
+                                                               FontSize="10" Foreground="#558B2F"
+                                                               VerticalAlignment="Center" Margin="6,0,0,0"/>
+                                                </Grid>
+                                            </Grid>
+
+                                            <!-- Barre boutons dictée / import / IA -->
+                                            <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                <!-- Dicter (visible si pas en cours d'enregistrement) -->
+                                                <Button Content="🎙 Dicter"
+                                                        Command="{Binding StartRecordingCommand}"
+                                                        Padding="12,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                                        Background="#27AE60" Foreground="White" BorderThickness="0"
+                                                        Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#219A52"/></Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Bd" Property="Background" Value="#BDC3C7"/></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+
+                                                <!-- Arrêter (visible si enregistrement actif) -->
+                                                <Button Content="⏹ Arrêter"
+                                                        Command="{Binding StopRecordingCommand}"
+                                                        Padding="12,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                                        Background="#E74C3C" Foreground="White" BorderThickness="0"
+                                                        Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#C0392B"/></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+
+                                                <!-- Importer .txt -->
+                                                <Button x:Name="ImportSuiviTxtBtn" Content="📂 Importer .txt"
+                                                        Click="ImportSuiviTxtBtn_Click"
+                                                        Padding="12,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                                        Background="#ECF0F1" Foreground="#2C3E50" BorderThickness="1" BorderBrush="#BDC3C7">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+
+                                                <!-- Extraire IA -->
+                                                <Button Content="✨ Extraire en puces compactes"
+                                                        Command="{Binding ExtractSuiviCommand}"
+                                                        Padding="12,7" Cursor="Hand" FontSize="11"
+                                                        Background="#3498DB" Foreground="White" BorderThickness="0">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#2980B9"/></Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Bd" Property="Background" Value="#95A5A6"/></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </StackPanel>
+                                        </StackPanel>
+
+                                        <!-- Aperçu IA -->
+                                        <Border Background="#EBF5FB" BorderBrush="#85C1E9" BorderThickness="1"
+                                                CornerRadius="6" Padding="10" Margin="0,0,0,12"
+                                                Visibility="{Binding Suivi.AIExtraction, Converter={StaticResource StringNotWS}}">
+                                            <StackPanel>
+                                                <TextBlock Text="EXTRACTION IA (modifiable)" FontWeight="Bold" FontSize="11"
+                                                           Foreground="#2980B9" Margin="0,0,0,6"/>
+                                                <TextBox Text="{Binding Suivi.AIExtraction, UpdateSourceTrigger=PropertyChanged}"
+                                                         AcceptsReturn="True" Padding="6" TextWrapping="Wrap" FontSize="11"
+                                                         Background="White" BorderBrush="#85C1E9" BorderThickness="1"
+                                                         MinHeight="70"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Status -->
+                                        <TextBlock Text="{Binding SuiviStatusMessage}" FontSize="11" TextWrapping="Wrap"
+                                                   Foreground="#16A085" Margin="0,4,0,0"
+                                                   Visibility="{Binding SuiviStatusMessage, Converter={StaticResource StringNotWS}}"/>
+                                    </StackPanel>
+                                </ScrollViewer>
+
+                                <Button Grid.Row="1" Content="💾 Sauvegarder la note"
+                                        Command="{Binding SaveSuiviCommand}"
+                                        HorizontalAlignment="Right" Padding="14,8" Margin="0,8,0,0"
+                                        Background="#16A085" Foreground="White" BorderThickness="0"
+                                        FontSize="12" Cursor="Hand">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#138D75"/></Trigger>
+                                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#95A5A6"/></Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+                            </Grid>
+
                             <!-- MODE INTERROGATOIRE — Extraction en cours -->
                             <Border Grid.Row="1" CornerRadius="8" Background="#EBF5FB" BorderBrush="#3498DB" BorderThickness="1">
                                 <Border.Style>
@@ -2130,6 +2366,9 @@
                                 <Style TargetType="StackPanel">
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsSuiviMode}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
                                     </Style.Triggers>

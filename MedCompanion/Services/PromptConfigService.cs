@@ -470,7 +470,15 @@ STYLE:
 - Professionnel mais lisible
 - Chronologique quand pertinent
 - Concis mais complet
-- Intègre les informations clés de TOUS les documents";
+- Intègre les informations clés de TOUS les documents
+
+FORMAT DE RÉPONSE — RÈGLE ABSOLUE:
+- Commence DIRECTEMENT par le titre ""# Synthèse Globale - {{Patient_Name}}""
+- AUCUNE salutation (""Bonjour Docteur"", ""Cher confrère"", etc.)
+- AUCUN préambule (""Voici la synthèse"", ""Voici la synthèse clinique mise à jour..."", ""Voici une analyse..."", etc.)
+- AUCUN commentaire de méta-niveau sur ton travail
+- AUCUN texte avant le premier ""#""
+- Le document est destiné à être lu comme un document clinique, pas comme un message de chat";
 
             config.Prompts["synthesis_complete"] = new PromptConfig
             {
@@ -508,7 +516,14 @@ IMPORTANT:
 - Maintiens la cohérence narrative
 - Garde le format Markdown structuré
 
-Retourne la synthèse COMPLÈTE mise à jour.";
+FORMAT DE RÉPONSE — RÈGLE ABSOLUE:
+- Commence DIRECTEMENT par le titre ""# Synthèse Globale""
+- AUCUNE salutation (""Bonjour Docteur"", ""Cher confrère"", etc.)
+- AUCUN préambule (""Voici la synthèse mise à jour"", ""Voici la nouvelle version..."", etc.)
+- AUCUN commentaire de méta-niveau sur ton travail
+- AUCUN texte avant le premier ""#""
+
+Retourne la synthèse COMPLÈTE mise à jour, directement en Markdown.";
 
             config.Prompts["synthesis_incremental"] = new PromptConfig
             {

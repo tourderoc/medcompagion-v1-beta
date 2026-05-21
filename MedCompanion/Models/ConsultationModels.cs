@@ -583,4 +583,41 @@ namespace MedCompanion.Models
             set { _category = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Category))); }
         }
     }
+
+    // ─── Consultation de Suivi V0 ───────────────────────────────────────────
+
+    /// <summary>
+    /// État d'une consultation de suivi : cases rapides + transcription + extraction IA.
+    /// "RAS / Va bien" est exclusif : si coché, les autres cases et la transcription sont ignorées.
+    /// </summary>
+    public class ConsultationSuivi : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void Set<T>(ref T field, T value, [System.Runtime.CompilerServices.CallerMemberName] string name = "")
+        {
+            if (!Equals(field, value)) { field = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name)); }
+        }
+
+        private bool _ras;                 public bool RAS                 { get => _ras; set => Set(ref _ras, value); }
+        private bool _renouvellement;      public bool Renouvellement      { get => _renouvellement; set => Set(ref _renouvellement, value); }
+        private bool _pasEffetsSecondaires;public bool PasEffetsSecondaires{ get => _pasEffetsSecondaires; set => Set(ref _pasEffetsSecondaires, value); }
+        private bool _adhesionOk;          public bool AdhesionOk          { get => _adhesionOk; set => Set(ref _adhesionOk, value); }
+        private bool _evolutionScolaire;   public bool EvolutionScolaire   { get => _evolutionScolaire; set => Set(ref _evolutionScolaire, value); }
+        private bool _sommeilCorrect;      public bool SommeilCorrect      { get => _sommeilCorrect; set => Set(ref _sommeilCorrect, value); }
+        private bool _aRevoir;             public bool ARevoir             { get => _aRevoir; set => Set(ref _aRevoir, value); }
+
+        private string _transcription = "";
+        public string Transcription { get => _transcription; set => Set(ref _transcription, value); }
+
+        private string _aiExtraction = "";
+        /// <summary>Extraction IA en puces compactes (généré depuis la transcription).</summary>
+        public string AIExtraction { get => _aiExtraction; set => Set(ref _aiExtraction, value); }
+
+        public void Reset()
+        {
+            RAS = false; Renouvellement = false; PasEffetsSecondaires = false;
+            AdhesionOk = false; EvolutionScolaire = false; SommeilCorrect = false; ARevoir = false;
+            Transcription = ""; AIExtraction = "";
+        }
+    }
 }
