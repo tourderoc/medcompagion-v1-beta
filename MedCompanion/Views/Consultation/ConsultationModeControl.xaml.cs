@@ -282,5 +282,175 @@ namespace MedCompanion.Views.Consultation
 
         // Clinical Observations : sélection des chips gérée par MVVM via SelectOptionCommand
         // sur ClinicalObservationCard. Plus de code-behind fragile basé sur le visual tree.
+
+        // ── Documents globaux via la zone Med (Suggestions) ──────────────────
+        // Action transverse : disponible quel que soit le mode (1ère consult, suivi, hub).
+        // L'IA classe automatiquement le document (Bilan vs Document) et le range
+        // dans le bon sous-dossier patient.
+
+        /// <summary>
+        /// Auto-sauvegarde la synthèse du document importé sous forme de fichier markdown.
+        /// Format identique à celui du mode Console (documents/syntheses_documents/{nom}_synthese_{stamp}.md)
+        /// pour que les deux modes voient la même donnée.
+        /// </summary>
+        private static void SaveDocumentSynthesisToDisk(string nomComplet, MedCompanion.Models.PatientDocument document)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(document.Summary)) return;
+
+                var pathService = new MedCompanion.Services.PathService();
+                var documentsDir = pathService.GetDocumentsDirectory(nomComplet);
+                var syntheseDir = Path.Combine(documentsDir, "syntheses_documents");
+                Directory.CreateDirectory(syntheseDir);
+
+                var originalFileName = Path.GetFileNameWithoutExtension(document.FileName);
+                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                var syntheseFileName = $"{originalFileName}_synthese_{timestamp}.md";
+                var synthesePath = Path.Combine(syntheseDir, syntheseFileName);
+
+                var syntheseContent = $@"---
+document_original: {document.FileName}
+date_synthese: {DateTime.Now:dd/MM/yyyy HH:mm:ss}
+patient: {nomComplet}
+categorie: {document.Category ?? "Documents"}
+---
+
+# Synthèse — {document.FileName}
+
+{document.Summary}
+";
+                File.WriteAllText(synthesePath, syntheseContent, System.Text.Encoding.UTF8);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MedDocSynthesis] Erreur sauvegarde synthèse: {ex.Message}");
+            }
+        }
+
+        private async void MedImportDocBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            if (_viewModel == null || _documentService == null || _viewModel.CurrentPatient == null)
+            {
+                MessageBox.Show("Veuillez sélectionner un patient avant d'importer un document.",
+                    "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var dlg = new OpenFileDialog
+            {
+                Title  = "Importer un document du patient (bilan, rapport, courrier…)",
+                Filter = "Tous les documents|*.pdf;*.docx;*.doc;*.jpg;*.jpeg;*.png;*.txt|" +
+                         "PDF|*.pdf|Word|*.docx;*.doc|Images|*.jpg;*.jpeg;*.png|Texte|*.txt",
+                Multiselect = false
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            _viewModel.MedDocumentStatus = "⏳ Analyse du document en cours…";
+            _viewModel.IsImportingDocument = true;
+            try
+            {
+                var (success, document, message) = await _documentService.ImportDocumentAsync(
+                    dlg.FileName, _viewModel.CurrentPatient.NomComplet);
+
+                if (success && document != null)
+                {
+                    // Auto-sauvegarde la synthèse du document (compatibilité Console)
+                    SaveDocumentSynthesisToDisk(_viewModel.CurrentPatient.NomComplet, document);
+
+                    // Ajoute aussi à la liste in-memory utile si on entre en Synthèse Initiale après
+                    _viewModel.ImportedDocuments.Add(new ImportedConsultationDocument
+                    {
+                        FileName = document.FileName,
+                        FilePath = document.FilePath ?? dlg.FileName,
+                        DocumentSynthesis = document.Summary ?? "",
+                        Category = document.Category ?? "Documents",
+                        Weight = 0.6
+                    });
+
+                    // Rafraîchit l'onglet BILANS du dossier bleu
+                    _viewModel.LoadPatientBilansFromDisk();
+
+                    _viewModel.MedDocumentStatus = $"✅ {document.FileName} → {document.Category ?? "Documents"} (synthèse auto)";
+                }
+                else
+                {
+                    _viewModel.MedDocumentStatus = $"❌ Erreur : {message}";
+                }
+            }
+            catch (Exception ex)
+            {
+                _viewModel.MedDocumentStatus = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                _viewModel.IsImportingDocument = false;
+            }
+        }
+
+        private async void MedScannerBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            if (_viewModel == null || _scannerService == null || _documentService == null || _viewModel.CurrentPatient == null)
+            {
+                MessageBox.Show("Scanner non disponible ou patient non sélectionné.",
+                    "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var scanDialog = new ScanDocumentDialog(_scannerService) { Owner = Window.GetWindow(this) };
+            if (scanDialog.ShowDialog() != true || string.IsNullOrEmpty(scanDialog.ScannedFilePath))
+                return;
+
+            _viewModel.MedDocumentStatus = "⏳ Analyse du document scanné…";
+            _viewModel.IsImportingDocument = true;
+            try
+            {
+                var (success, document, message) = await _documentService.ImportDocumentAsync(
+                    scanDialog.ScannedFilePath, _viewModel.CurrentPatient.NomComplet);
+
+                if (success && document != null)
+                {
+                    // Auto-sauvegarde la synthèse du document (compatibilité Console)
+                    SaveDocumentSynthesisToDisk(_viewModel.CurrentPatient.NomComplet, document);
+
+                    _viewModel.ImportedDocuments.Add(new ImportedConsultationDocument
+                    {
+                        FileName = document.FileName,
+                        FilePath = document.FilePath ?? scanDialog.ScannedFilePath,
+                        DocumentSynthesis = document.Summary ?? "",
+                        Category = document.Category ?? "Documents",
+                        Weight = 0.7
+                    });
+
+                    // Rafraîchit l'onglet BILANS du dossier bleu
+                    _viewModel.LoadPatientBilansFromDisk();
+
+                    _viewModel.MedDocumentStatus = $"✅ {document.FileName} → {document.Category ?? "Documents"} (synthèse auto)";
+
+                    // Nettoyer le fichier temporaire de scan
+                    try
+                    {
+                        var tempFolder = Path.GetDirectoryName(scanDialog.ScannedFilePath);
+                        if (tempFolder != null && tempFolder.Contains("MedCompanion_Scans"))
+                            Directory.Delete(tempFolder, true);
+                    }
+                    catch { }
+                }
+                else
+                {
+                    _viewModel.MedDocumentStatus = $"❌ Erreur scan : {message}";
+                }
+            }
+            catch (Exception ex)
+            {
+                _viewModel.MedDocumentStatus = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                _viewModel.IsImportingDocument = false;
+            }
+        }
     }
 }

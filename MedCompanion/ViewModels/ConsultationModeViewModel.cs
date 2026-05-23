@@ -143,6 +143,14 @@ namespace MedCompanion.ViewModels
         public bool IsMedSuggestions => MedMode == MedConsultationMode.Suggestions;
         public bool IsMedChecklist => MedMode == MedConsultationMode.Checklist;
 
+        // Toggle indépendant pour la voix de Med (UI seulement pour l'instant — pas d'effet sur le mode)
+        private bool _isMedVoiceOn = false;
+        public bool IsMedVoiceOn
+        {
+            get => _isMedVoiceOn;
+            set => SetProperty(ref _isMedVoiceOn, value);
+        }
+
         private bool _isMedExpanded = true;
         /// <summary>
         /// Indique si le panneau Med est étendu ou réduit
@@ -667,6 +675,11 @@ namespace MedCompanion.ViewModels
             switch (type)
             {
                 case "premiere":
+                    _premiereConsultationFilePath = null;  // nouvelle consult → nouveau fichier au prochain save
+                    NoteContent = "";
+                    ObservationsNarrative = "";
+                    _noteSaved = false;
+                    _observationsNoteSaved = false;
                     ConsultationType = ConsultationType.PremiereConsultation; // déclenche InitInterrogatoireBlocks
                     ConsultationDate = DateTime.Now;
                     IsEditingConsultation = true;
@@ -903,6 +916,74 @@ namespace MedCompanion.ViewModels
 
         private bool _noteSaved = false;
 
+        /// <summary>
+        /// Chemin du fichier de la 1ère consultation en cours. Null tant qu'aucune sauvegarde n'a eu lieu.
+        /// Réutilisé entre Interrogatoire et Observations pour produire UNE SEULE note avec 2 sections.
+        /// </summary>
+        private string? _premiereConsultationFilePath;
+
+        /// <summary>
+        /// Écrit (ou réécrit) le fichier unique de la 1ère consultation avec les sections
+        /// Interrogatoire et Observations actuellement remplies.
+        /// </summary>
+        private async Task<(bool ok, string? err)> WritePremiereConsultationFileAsync()
+        {
+            if (CurrentPatient == null || string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
+                return (false, "Patient non disponible");
+
+            try
+            {
+                var notesDir = Path.Combine(CurrentPatient.DirectoryPath,
+                    ConsultationDate.Year.ToString(), "notes");
+                Directory.CreateDirectory(notesDir);
+
+                // Créer le chemin une seule fois (basé sur ConsultationDate)
+                if (string.IsNullOrEmpty(_premiereConsultationFilePath))
+                {
+                    var stamp = ConsultationDate.ToString("yyyy-MM-dd_HHmm");
+                    _premiereConsultationFilePath = Path.Combine(notesDir, $"{stamp}_consultation.md");
+                }
+
+                // Construire le contenu unifié
+                var body = new System.Text.StringBuilder();
+                body.AppendLine($"# 1ère consultation — {ConsultationDate:dd/MM/yyyy}");
+                body.AppendLine();
+
+                if (!string.IsNullOrWhiteSpace(NoteContent))
+                {
+                    body.AppendLine("## Interrogatoire");
+                    body.AppendLine();
+                    body.AppendLine(NoteContent.Trim());
+                    body.AppendLine();
+                }
+
+                if (!string.IsNullOrWhiteSpace(ObservationsNarrative))
+                {
+                    body.AppendLine("## Observations cliniques");
+                    body.AppendLine();
+                    body.AppendLine(ObservationsNarrative.Trim());
+                }
+
+                var content = $@"---
+patient: ""{CurrentPatient.NomComplet}""
+date: ""{ConsultationDate:yyyy-MM-ddTHH:mm}""
+type: ""consultation-premiere""
+source: ""MedCompanion""
+---
+
+{body.ToString().TrimEnd()}
+";
+                File.WriteAllText(_premiereConsultationFilePath, content, System.Text.Encoding.UTF8);
+                await RefreshConsultationNotesAsync();
+                RaiseNoteSavedToPatient();
+                return (true, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
         // Extraction
         private string _extractionStatus = "";
         public string ExtractionStatus
@@ -1008,21 +1089,18 @@ namespace MedCompanion.ViewModels
 
         private async Task SaveInterrogatoireNoteAsync()
         {
-            if (_storageService == null || CurrentPatient == null || string.IsNullOrWhiteSpace(NoteContent))
+            if (CurrentPatient == null || string.IsNullOrWhiteSpace(NoteContent))
                 return;
 
-            var noteTitle = $"Interrogatoire – {ConsultationDate:dd/MM/yyyy}";
-            var (ok, _, err) = _storageService.SaveStructuredNote(CurrentPatient.NomComplet, NoteContent, noteTitle);
+            var (ok, err) = await WritePremiereConsultationFileAsync();
             if (ok)
             {
                 _noteSaved = true;
                 ExtractionStatus = "Note sauvegardée dans le dossier patient.";
-                await RefreshConsultationNotesAsync();
                 // Sortie du mode édition → retour à la frise (la nouvelle carte y apparaît)
                 IsEditingConsultation = false;
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
-                RaiseNoteSavedToPatient();
             }
             else
             {
@@ -1198,25 +1276,22 @@ namespace MedCompanion.ViewModels
 
         public async Task SaveObservationsNoteAsync()
         {
-            if (_storageService == null || CurrentPatient == null ||
+            if (CurrentPatient == null ||
                 string.IsNullOrWhiteSpace(ObservationsNarrative))
             {
                 ObservationsStatusMessage = "❌ Patient ou contenu manquant.";
                 return;
             }
 
-            var noteTitle = $"Observations – {ConsultationDate:dd/MM/yyyy}";
-            var (ok, _, err) = _storageService.SaveStructuredNote(
-                CurrentPatient.NomComplet, ObservationsNarrative, noteTitle);
+            // Réécrit le fichier UNIQUE de la 1ère consultation (avec Interrogatoire + Observations).
+            var (ok, err) = await WritePremiereConsultationFileAsync();
 
             if (ok)
             {
                 _observationsNoteSaved = true;
-                ObservationsStatusMessage = "✅ Observations sauvegardées dans le dossier patient.";
-                await RefreshConsultationNotesAsync();
+                ObservationsStatusMessage = "✅ Observations ajoutées à la note de 1ère consultation.";
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
-                RaiseNoteSavedToPatient();
             }
             else
             {
@@ -1325,6 +1400,14 @@ namespace MedCompanion.ViewModels
         {
             get => _isImportingDocument;
             set => SetProperty(ref _isImportingDocument, value);
+        }
+
+        // Statut de l'action "Documents" globale (depuis la zone Med Suggestions)
+        private string _medDocumentStatus = "";
+        public string MedDocumentStatus
+        {
+            get => _medDocumentStatus;
+            set => SetProperty(ref _medDocumentStatus, value);
         }
 
         private void SwitchToSynthesis()
@@ -1464,7 +1547,22 @@ justification: {SynthesisWeights.LLMJustification ?? ""}
 
                 File.WriteAllText(synthesePath, synthesisWithMetadata, System.Text.Encoding.UTF8);
 
-                SynthesisStatusMessage = $"✅ Synthèse sauvegardée dans le dossier patient (synthese.md)";
+                SynthesisStatusMessage = $"✅ Synthèse sauvegardée";
+
+                // Recharge la synthèse dans le dossier bleu pour qu'elle soit immédiatement visible
+                LoadPatientSynthesisFromDisk();
+
+                // Retour automatique au hub après un court délai (laisse le temps de voir la confirmation)
+                _ = System.Threading.Tasks.Task.Run(async () =>
+                {
+                    await System.Threading.Tasks.Task.Delay(900);
+                    System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
+                    {
+                        IsSynthesisMode = false;
+                        IsEditingConsultation = false;
+                        SynthesisStatusMessage = "";
+                    });
+                });
             }
             catch (Exception ex)
             {
@@ -2050,6 +2148,44 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
         #region Consultation de Suivi V0
 
         private ConsultationSuivi _suivi = new();
+
+        // Dictionnaire de brouillons de Suivi par patient (en mémoire seulement, perdu à la fermeture de l'app)
+        // Clé = NomComplet du patient. Permet de garder un brouillon par patient quand on navigue ailleurs.
+        private readonly Dictionary<string, ConsultationSuivi> _suiviDraftsByPatient = new();
+
+        /// <summary>
+        /// Stash le Suivi en cours pour le patient passé en paramètre dans le dictionnaire de brouillons,
+        /// SI il a du contenu. Sinon retire l'entrée du dictionnaire.
+        /// Auto-pause Whisper si en cours d'enregistrement.
+        /// </summary>
+        private void StashCurrentSuiviDraftFor(string? patientKey)
+        {
+            if (string.IsNullOrEmpty(patientKey)) return;
+
+            // Auto-pause si recording (fire-and-forget pour éviter tout risque de deadlock UI)
+            if (IsRecording && _whisperService != null)
+            {
+                _ = _whisperService.StopAsync();
+                IsRecording = false;
+            }
+
+            if (HasSuiviInProgress)
+                _suiviDraftsByPatient[patientKey] = _suivi;
+            else
+                _suiviDraftsByPatient.Remove(patientKey);
+        }
+
+        /// <summary>
+        /// Restaure le brouillon de Suivi du patient passé en paramètre, ou crée une instance vierge.
+        /// </summary>
+        private void RestoreSuiviDraftFor(string? patientKey)
+        {
+            if (!string.IsNullOrEmpty(patientKey) && _suiviDraftsByPatient.TryGetValue(patientKey, out var draft))
+                Suivi = draft;
+            else
+                Suivi = new ConsultationSuivi();
+        }
+
         public ConsultationSuivi Suivi
         {
             get => _suivi;
@@ -2309,6 +2445,7 @@ source: ""MedCompanion""
         public ICommand SetMedSilencieuxCommand { get; }
         public ICommand SetMedSuggestionsCommand { get; }
         public ICommand SetMedChecklistCommand { get; }
+        public ICommand ToggleMedVoiceCommand { get; }
         public ICommand ToggleMedExpandedCommand { get; }
 
         public ICommand SelectDossierTabCommand { get; }
@@ -2386,6 +2523,7 @@ source: ""MedCompanion""
             SetMedSilencieuxCommand = new RelayCommand(_ => MedMode = MedConsultationMode.Silencieux);
             SetMedSuggestionsCommand = new RelayCommand(_ => MedMode = MedConsultationMode.Suggestions);
             SetMedChecklistCommand = new RelayCommand(_ => MedMode = MedConsultationMode.Checklist);
+            ToggleMedVoiceCommand   = new RelayCommand(_ => IsMedVoiceOn = !IsMedVoiceOn);
             ToggleMedExpandedCommand = new RelayCommand(_ => IsMedExpanded = !IsMedExpanded);
 
             // Command Dossier Tab
@@ -2798,8 +2936,14 @@ source: ""MedCompanion""
         /// </summary>
         public void LoadPatient(PatientIndexEntry patient)
         {
+            // Stash le brouillon de Suivi du patient PRÉCÉDENT avant le swap
+            StashCurrentSuiviDraftFor(_currentPatient?.NomComplet);
+
             CurrentPatient = patient;
             ConsultationDate = DateTime.Now;
+
+            // Restaurer le brouillon de Suivi du NOUVEAU patient (ou créer une instance vierge)
+            RestoreSuiviDraftFor(patient?.NomComplet);
 
             // Réinitialiser l'interrogatoire (blocs, état, textes)
             ConsultationType = ConsultationType.Normal;   // remet les flags IsInterrogatoireMode etc.
@@ -2807,9 +2951,22 @@ source: ""MedCompanion""
             InterrogatoireBlocks.Clear();
             _interrogatoireState = InterrogatoireState.Saisie;
             _noteSaved = false;
+            _observationsNoteSaved = false;
+            _premiereConsultationFilePath = null;
             TranscriptionInput = "";
             NoteContent = "";
+            ObservationsNarrative = "";
             ExtractionStatus = "";
+
+            // Reset état Synthèse Initiale pour éviter la persistance entre patients
+            IsSynthesisMode = false;
+            SynthesisContent = "";
+            SynthesisStatusMessage = "";
+            ObservationsStatusMessage = "";
+
+            // Reset zone Documents Med pour éviter d'afficher un import du patient précédent
+            MedDocumentStatus = "";
+            ImportedDocuments.Clear();
 
             // V0b : réinitialiser l'état adaptatif
             _confirmedAge = null;
@@ -2861,6 +3018,7 @@ source: ""MedCompanion""
             LoadSuggestionsForPatient(patient);
             _ = RefreshConsultationNotesAsync();
             LoadPatientSynthesisFromDisk();
+            LoadPatientBilansFromDisk();
         }
 
         // ── Synthèse globale du patient (dossier bleu, onglet SYNTHESE) ───────
@@ -2885,6 +3043,91 @@ source: ""MedCompanion""
 
         public bool HasPatientSynthesis   => !string.IsNullOrWhiteSpace(_patientSynthesisText);
         public bool HasNoPatientSynthesis => !HasPatientSynthesis;
+
+        // ── BILANS du dossier bleu (lit documents/bilans/ + documents/syntheses_documents/) ──
+        private string _patientBilansText = "";
+        public string PatientBilansText
+        {
+            get => _patientBilansText;
+            set
+            {
+                if (SetProperty(ref _patientBilansText, value))
+                {
+                    OnPropertyChanged(nameof(HasPatientBilans));
+                    OnPropertyChanged(nameof(HasNoPatientBilans));
+                }
+            }
+        }
+        public bool HasPatientBilans   => !string.IsNullOrWhiteSpace(_patientBilansText);
+        public bool HasNoPatientBilans => !HasPatientBilans;
+
+        public void LoadPatientBilansFromDisk()
+        {
+            if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+            {
+                PatientBilansText = "";
+                return;
+            }
+
+            try
+            {
+                // Documents sont dans {patient}/{année}/documents/{categorie}/
+                // Synthèses dans {patient}/{année}/documents/syntheses_documents/
+                var sb = new System.Text.StringBuilder();
+                var year = DateTime.Now.Year;
+                var documentsRoot = Path.Combine(_currentPatient.DirectoryPath, year.ToString(), "documents");
+                var bilansDir = Path.Combine(documentsRoot, "bilans");
+                var synthesesDir = Path.Combine(documentsRoot, "syntheses_documents");
+
+                if (!Directory.Exists(bilansDir))
+                {
+                    PatientBilansText = "";
+                    return;
+                }
+
+                var bilanFiles = Directory.GetFiles(bilansDir).OrderByDescending(f => File.GetCreationTime(f)).ToList();
+                foreach (var bilanPath in bilanFiles)
+                {
+                    var name = Path.GetFileName(bilanPath);
+                    sb.AppendLine($"## 📄 {name}");
+
+                    // Chercher la synthèse correspondante (préfixe = nom du bilan sans extension)
+                    var baseName = Path.GetFileNameWithoutExtension(bilanPath);
+                    if (Directory.Exists(synthesesDir))
+                    {
+                        var matchingSynth = Directory.GetFiles(synthesesDir, $"{baseName}_synthese_*.md")
+                                                     .OrderByDescending(f => File.GetCreationTime(f))
+                                                     .FirstOrDefault();
+                        if (matchingSynth != null)
+                        {
+                            try
+                            {
+                                var content = File.ReadAllText(matchingSynth, System.Text.Encoding.UTF8);
+                                // Retirer le YAML front matter
+                                if (content.TrimStart().StartsWith("---"))
+                                {
+                                    var first = content.IndexOf("---", StringComparison.Ordinal);
+                                    var second = content.IndexOf("---", first + 3, StringComparison.Ordinal);
+                                    if (second > 0) content = content.Substring(second + 3).TrimStart();
+                                }
+                                sb.AppendLine(content.Trim());
+                            }
+                            catch { }
+                        }
+                        else
+                        {
+                            sb.AppendLine("_(pas de synthèse générée)_");
+                        }
+                    }
+                    sb.AppendLine();
+                }
+                PatientBilansText = sb.ToString().TrimEnd();
+            }
+            catch
+            {
+                PatientBilansText = "";
+            }
+        }
 
         private void LoadPatientSynthesisFromDisk()
         {

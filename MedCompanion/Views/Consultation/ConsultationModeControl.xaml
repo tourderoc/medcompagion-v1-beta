@@ -1456,44 +1456,14 @@
                                 <Border Grid.Row="0" Background="#F8F9FA" Padding="12" Margin="0,0,0,12"
                                         BorderThickness="0,0,0,1" BorderBrush="#E0E0E0">
                                     <StackPanel>
-                                        <!-- V0d : Zone Import Documents -->
-                                        <TextBlock Text="📄 Documents Importés" FontWeight="Bold" FontSize="13" Margin="0,0,0,8"/>
-
-                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,12">
-                                            <Button Content="📱 Scanner"
-                                                    Click="ScannerBtn_Click"
-                                                    Padding="10,6" Background="#34495E" Foreground="White" Cursor="Hand" FontSize="11"
-                                                    BorderThickness="0" Margin="0,0,6,0">
-                                                <Button.Style>
-                                                    <Style TargetType="Button">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsImportingDocument}" Value="True">
-                                                                <Setter Property="IsEnabled" Value="False"/>
-                                                                <Setter Property="Background" Value="#95A5A6"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
-                                            <Button Content="📄 Importer Document"
-                                                    Click="ImportDocBtn_Click"
-                                                    Padding="10,6" Background="#34495E" Foreground="White" Cursor="Hand" FontSize="11"
-                                                    BorderThickness="0">
-                                                <Button.Style>
-                                                    <Style TargetType="Button">
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding IsImportingDocument}" Value="True">
-                                                                <Setter Property="IsEnabled" Value="False"/>
-                                                                <Setter Property="Background" Value="#95A5A6"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </Button.Style>
-                                            </Button>
-                                        </StackPanel>
+                                        <!-- Liste des documents déjà importés (lecture seule — l'import se fait depuis Med > Documents) -->
+                                        <TextBlock Text="📄 Documents importés pour cette synthèse" FontWeight="Bold" FontSize="13" Margin="0,0,0,4"/>
+                                        <TextBlock Text="Pour ajouter un document : utilisez le bouton 📄 Documents dans la zone Med (mode Suggestions)."
+                                                   FontSize="10" Foreground="#7F8C8D" FontStyle="Italic" Margin="0,0,0,10" TextWrapping="Wrap"/>
 
                                         <!-- Liste des documents importés -->
-                                        <ItemsControl ItemsSource="{Binding ImportedDocuments}" Margin="0,0,0,12">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="220" Margin="0,0,0,12">
+                                        <ItemsControl ItemsSource="{Binding ImportedDocuments}">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Background="#F5F5F5" BorderThickness="1" BorderBrush="#E0E0E0" CornerRadius="4" Padding="10" Margin="0,0,0,6">
@@ -1535,6 +1505,7 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
+                                        </ScrollViewer>
 
                                         <TextBlock Text="📊 Poids de Fiabilité des Composants" FontWeight="Bold" FontSize="14" Margin="0,8,0,12"/>
 
@@ -2438,6 +2409,9 @@
                                         <DataTrigger Binding="{Binding IsSuiviMode}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsSynthesisMode}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
                                     </Style.Triggers>
                                 </Style>
                             </StackPanel.Style>
@@ -2527,15 +2501,17 @@
                                         Orientation="Horizontal"
                                         HorizontalAlignment="Center"
                                         Margin="10">
-                                <Button Content="🔇"
-                                        Command="{Binding SetMedSilencieuxCommand}"
-                                        ToolTip="Silencieux">
+                                <!-- Voix : toggle indépendant (n'affecte pas le panneau affiché) -->
+                                <Button Command="{Binding ToggleMedVoiceCommand}"
+                                        ToolTip="Voix de Med (on/off)">
                                     <Button.Style>
                                         <Style TargetType="Button" BasedOn="{StaticResource MedModeButtonStyle}">
+                                            <Setter Property="Content" Value="🔇"/>
                                             <Style.Triggers>
-                                                <DataTrigger Binding="{Binding IsMedSilencieux}" Value="True">
-                                                    <Setter Property="Background" Value="#E3F2FD"/>
-                                                    <Setter Property="BorderBrush" Value="#3498DB"/>
+                                                <DataTrigger Binding="{Binding IsMedVoiceOn}" Value="True">
+                                                    <Setter Property="Content" Value="🔊"/>
+                                                    <Setter Property="Background" Value="#E8F8F5"/>
+                                                    <Setter Property="BorderBrush" Value="#16A085"/>
                                                 </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
@@ -2576,6 +2552,55 @@
                                           VerticalScrollBarVisibility="Auto"
                                           Margin="10,0,10,10">
                                 <StackPanel>
+                                    <!-- Bloc action globale : Documents du patient -->
+                                    <Border Background="#EBF5FB" BorderBrush="#85C1E9" BorderThickness="1"
+                                            CornerRadius="6" Padding="10" Margin="0,0,0,12"
+                                            Visibility="{Binding IsMedSuggestions, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="📄 Documents du patient" FontWeight="SemiBold" FontSize="12"
+                                                       Foreground="#1F618D" Margin="0,0,0,8"/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button x:Name="MedImportDocBtn" Content="📂 Importer"
+                                                        Click="MedImportDocBtn_Click"
+                                                        Padding="10,6" Background="#3498DB" Foreground="White"
+                                                        BorderThickness="0" Cursor="Hand" FontSize="11" Margin="0,0,6,0"
+                                                        ToolTip="Importer un bilan / document — l'IA le classera automatiquement">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#2980B9"/></Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#BDC3C7"/></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                                <Button x:Name="MedScannerBtn" Content="📷 Scanner"
+                                                        Click="MedScannerBtn_Click"
+                                                        Padding="10,6" Background="#16A085" Foreground="White"
+                                                        BorderThickness="0" Cursor="Hand" FontSize="11"
+                                                        ToolTip="Scanner un document avec un scanner connecté">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#138D75"/></Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#BDC3C7"/></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding MedDocumentStatus}" FontSize="10"
+                                                       Foreground="#5D6D7E" Margin="0,6,0,0" TextWrapping="Wrap"
+                                                       Visibility="{Binding MedDocumentStatus, Converter={StaticResource StringNotWS}}"/>
+                                        </StackPanel>
+                                    </Border>
+
                                     <!-- Mode Suggestions -->
                                     <ItemsControl ItemsSource="{Binding Suggestions}"
                                                   Visibility="{Binding IsMedSuggestions, Converter={StaticResource BoolToVis}}">
@@ -2629,15 +2654,19 @@
                                                Margin="0,20"
                                                Visibility="{Binding IsMedSilencieux, Converter={StaticResource BoolToVis}}"/>
 
-                                    <!-- ── Blocs en cours (les complétés migrent vers la zone travail à gauche) -->
+                                    <!-- ── Blocs en cours (visibles UNIQUEMENT dans le mode Checklist 📋, pas en mode Suggestions 💬) -->
                                     <ItemsControl ItemsSource="{Binding ActiveBlocks}">
                                         <ItemsControl.Style>
                                             <Style TargetType="ItemsControl">
                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                                 <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
+                                                    <MultiDataTrigger>
+                                                        <MultiDataTrigger.Conditions>
+                                                            <Condition Binding="{Binding IsInterrogatoireMode}" Value="True"/>
+                                                            <Condition Binding="{Binding IsMedChecklist}"     Value="True"/>
+                                                        </MultiDataTrigger.Conditions>
                                                         <Setter Property="Visibility" Value="Visible"/>
-                                                    </DataTrigger>
+                                                    </MultiDataTrigger>
                                                 </Style.Triggers>
                                             </Style>
                                         </ItemsControl.Style>
@@ -3470,10 +3499,17 @@
                                                 <TextBlock Text="BILANS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                                                 <TextBlock Text="Evaluations et tests" FontSize="14" Foreground="#7F8C8D"/>
                                             </StackPanel>
-                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Auto">
                                                 <StackPanel>
-                                                    <TextBlock Text="Bilans et evaluations" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                                                    <TextBlock Text="Tests, evaluations, resultats..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="Bilans et évaluations du patient" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                    <!-- Contenu réel des bilans (fichiers + syntheses_documents/) -->
+                                                    <TextBlock Text="{Binding PatientBilansText}" FontSize="13" Foreground="#2C3E50"
+                                                               TextWrapping="Wrap" LineHeight="20"
+                                                               Visibility="{Binding HasPatientBilans, Converter={StaticResource BoolToVis}}"/>
+                                                    <!-- Placeholder quand pas de bilans -->
+                                                    <TextBlock Text="Aucun bilan importé pour ce patient. Utilisez 📄 Documents dans la zone Med pour en ajouter."
+                                                               FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
+                                                               Visibility="{Binding HasNoPatientBilans, Converter={StaticResource BoolToVis}}"/>
                                                 </StackPanel>
                                             </ScrollViewer>
                                             <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
