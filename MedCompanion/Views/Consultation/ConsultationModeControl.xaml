@@ -518,6 +518,67 @@
                                     </Button.Template>
                                 </Button>
 
+                                <!-- Carte "Reprendre suivi en cours" — visible quand brouillon de suivi non sauvegardé -->
+                                <Border DockPanel.Dock="Left" Margin="0,0,8,0"
+                                        Background="#FEF9E7" BorderBrush="#F39C12" BorderThickness="1.5"
+                                        CornerRadius="8" Padding="4">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <MultiDataTrigger>
+                                                    <MultiDataTrigger.Conditions>
+                                                        <Condition Binding="{Binding HasSuiviInProgress}" Value="True"/>
+                                                        <Condition Binding="{Binding IsEditingConsultation}" Value="False"/>
+                                                    </MultiDataTrigger.Conditions>
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </MultiDataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <Button Command="{Binding ResumeSuiviCommand}"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                ToolTip="Reprendre la consultation de suivi en cours">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" Padding="8,6" CornerRadius="6">
+                                                        <StackPanel>
+                                                            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="#B7770D">
+                                                                <Run Text="▶"/>
+                                                                <Run Text="Reprendre suivi"/>
+                                                            </TextBlock>
+                                                            <TextBlock Text="brouillon en cours" FontSize="10" Foreground="#7D6608"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#FCF3CF"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <Button Command="{Binding DiscardSuiviCommand}"
+                                                Width="22" Height="22" Margin="2,0,2,0"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                ToolTip="Abandonner le brouillon">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                        <TextBlock Text="🗑" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#FADBD8"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                    </StackPanel>
+                                </Border>
+
                                 <!-- Placeholder si aucune consultation -->
                                 <TextBlock Text="Aucune consultation — cliquez sur ＋ pour en créer une"
                                            FontSize="12" Foreground="#AAAAAA" VerticalAlignment="Center"
@@ -801,14 +862,19 @@
                                 <TextBlock Grid.Row="0" Text="Transcription de la consultation :"
                                            FontSize="12" Foreground="#7F8C8D" Margin="0,0,0,6"/>
 
-                                <Border Grid.Row="1" Background="#FAFAFA" BorderThickness="1" BorderBrush="#E0E0E0" CornerRadius="6" Padding="10">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="120">
-                                        <TextBlock Text="{Binding TranscriptionInput}"
-                                                   TextWrapping="Wrap"
-                                                   FontSize="11"
-                                                   Foreground="#5D6D7E"
-                                                   FontFamily="Segoe UI"/>
-                                    </ScrollViewer>
+                                <Border Grid.Row="1" Background="#FAFAFA" BorderThickness="1" BorderBrush="#E0E0E0" CornerRadius="6" Padding="2">
+                                    <TextBox Text="{Binding TranscriptionInput, UpdateSourceTrigger=PropertyChanged}"
+                                             TextWrapping="Wrap"
+                                             AcceptsReturn="True"
+                                             FontSize="11"
+                                             Foreground="#2C3E50"
+                                             FontFamily="Segoe UI"
+                                             Background="Transparent"
+                                             BorderThickness="0"
+                                             Padding="8"
+                                             MaxHeight="120"
+                                             VerticalScrollBarVisibility="Auto"
+                                             ToolTip="Tapez ou dictez votre transcription. Cliquez sur 'Extraire avec IA' pour la traiter."/>
                                 </Border>
 
                                 <!-- Blocs complétés — tags compacts (migrent depuis la zone Med à droite) -->
@@ -2044,11 +2110,12 @@
                                                     </Button.Template>
                                                 </Button>
 
-                                                <!-- Arrêter (visible si enregistrement actif) -->
-                                                <Button Content="⏹ Arrêter"
+                                                <!-- Pause (visible si enregistrement actif) — déclenche l'extraction IA automatique en mode Suivi -->
+                                                <Button Content="⏸ Pause"
                                                         Command="{Binding StopRecordingCommand}"
+                                                        ToolTip="Met la dictée en pause et extrait automatiquement les puces cliniques"
                                                         Padding="12,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
-                                                        Background="#E74C3C" Foreground="White" BorderThickness="0"
+                                                        Background="#F39C12" Foreground="White" BorderThickness="0"
                                                         Visibility="{Binding IsRecording, Converter={StaticResource BoolToVis}}">
                                                     <Button.Template>
                                                         <ControlTemplate TargetType="Button">
@@ -2056,7 +2123,7 @@
                                                                 <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                             </Border>
                                                             <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#C0392B"/></Trigger>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#D68910"/></Trigger>
                                                             </ControlTemplate.Triggers>
                                                         </ControlTemplate>
                                                     </Button.Template>
@@ -2853,10 +2920,17 @@
                                                 <TextBlock Text="SYNTHESE" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                                                 <TextBlock Text="Vue d'ensemble du dossier" FontSize="14" Foreground="#7F8C8D"/>
                                             </StackPanel>
-                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Auto">
                                                 <StackPanel>
                                                     <TextBlock Text="Synthese du patient" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                                                    <TextBlock Text="Les donnees du patient s'afficheront ici une fois le dossier charge." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                    <!-- Contenu de la synthèse (lu depuis {patient}/synthese/synthese.md) -->
+                                                    <TextBlock Text="{Binding PatientSynthesisText}" FontSize="13" Foreground="#2C3E50"
+                                                               TextWrapping="Wrap" LineHeight="20"
+                                                               Visibility="{Binding HasPatientSynthesis, Converter={StaticResource BoolToVis}}"/>
+                                                    <!-- Placeholder quand pas de synthèse -->
+                                                    <TextBlock Text="Aucune synthèse pour ce patient. Cliquez sur Actualiser dans la barre de gauche pour la générer."
+                                                               FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
+                                                               Visibility="{Binding HasNoPatientSynthesis, Converter={StaticResource BoolToVis}}"/>
                                                 </StackPanel>
                                             </ScrollViewer>
                                             <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"

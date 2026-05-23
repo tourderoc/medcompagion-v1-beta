@@ -367,6 +367,16 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
                 _documentService, _scannerService);
 
+        // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
+        ConsultationModeContent.NoteSavedToPatient += (_, _) =>
+        {
+            if (_selectedPatient != null)
+            {
+                NoteViewModel.LoadNotes(_selectedPatient.NomComplet, _patientIndex);
+                NotesControlPanel.SetCurrentPatient(_selectedPatient);
+            }
+        };
+
         // Initialiser TemplatesControl
         TemplatesPanel.Initialize(_templateExtractor, _mccLibrary);
         TemplatesPanel.StatusChanged += (s, msg) => {

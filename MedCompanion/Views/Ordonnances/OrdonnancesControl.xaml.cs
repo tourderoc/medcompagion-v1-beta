@@ -86,30 +86,47 @@ namespace MedCompanion.Views.Ordonnances
         }
 
         /// <summary>
-        /// Gère le clic sur le bouton Médicaments - Affiche/masque le panel de médicaments
+        /// Gère le clic sur le bouton Médicaments — Ouvre un dialog modal (comme IDE / Biologie).
         /// </summary>
         private void MedicamentsOrdonnanceButton_Click(object sender, RoutedEventArgs e)
         {
-            // Basculer la visibilité du panel médicaments
-            if (MedicamentsPanel.Visibility == Visibility.Visible)
+            if (DataContext is not OrdonnanceViewModel viewModel)
             {
-                // Masquer le panel Médicaments, afficher la liste des ordonnances
-                MedicamentsPanel.Visibility = Visibility.Collapsed;
-                OrdonnancesListGrid.Visibility = Visibility.Visible;
-                StatusChanged?.Invoke(this, "📋 Retour à la liste des ordonnances");
+                MessageBox.Show("Erreur : ViewModel non initialisé.", "Erreur",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
-            else
-            {
-                // Mettre à jour le patient sélectionné dans MedicamentsControl
-                if (DataContext is OrdonnanceViewModel viewModel && viewModel.SelectedPatient != null)
-                {
-                    MedicamentsControlPanel.SetCurrentPatient(viewModel.SelectedPatient);
-                }
 
-                // Afficher le panel Médicaments, masquer la liste
-                MedicamentsPanel.Visibility = Visibility.Visible;
-                OrdonnancesListGrid.Visibility = Visibility.Collapsed;
-                StatusChanged?.Invoke(this, "💊 Création d'ordonnance de médicaments");
+            if (viewModel.SelectedPatient == null)
+            {
+                MessageBox.Show("Veuillez d'abord sélectionner un patient.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            try
+            {
+                var dialog = new MedCompanion.Dialogs.OrdonnanceMedicamentsDialog(viewModel.SelectedPatient);
+
+                var mainWindow = Window.GetWindow(this);
+                if (mainWindow != null)
+                    dialog.Owner = mainWindow;
+
+                // Rafraîchir la liste des ordonnances quand une nouvelle est générée
+                dialog.OrdonnanceGenerated += (s, _) =>
+                {
+                    if (DataContext is OrdonnanceViewModel vm)
+                        vm.LoadOrdonnances();
+                    StatusChanged?.Invoke(this, "💊 Ordonnance de médicaments générée");
+                };
+
+                dialog.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur : {ex.Message}", "Erreur",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                StatusChanged?.Invoke(this, $"❌ Erreur: {ex.Message}");
             }
         }
 

@@ -71,8 +71,10 @@
             </StackPanel>
         </Border>
 
-        <!-- Interface principale -->
-        <Grid x:Name="MainInterfaceGrid" Grid.Row="2" Visibility="Collapsed">
+        <!-- Interface principale (scrollable pour gérer les contenus longs) -->
+        <ScrollViewer x:Name="MainInterfaceScroll" Grid.Row="2" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled" Padding="0,0,8,0">
+        <Grid x:Name="MainInterfaceGrid" Visibility="Collapsed">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="12"/>
@@ -80,7 +82,7 @@
                 <RowDefinition Height="15"/>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="15"/>
-                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
             <!-- Bouton Renouveler ordonnance -->
@@ -466,7 +468,7 @@
                           FontWeight="SemiBold"
                           Foreground="#2C3E50"/>
 
-                <Border Grid.Row="2" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="6" MaxHeight="400">
+                <Border Grid.Row="2" BorderBrush="#E0E0E0" BorderThickness="1" CornerRadius="6">
                     <ScrollViewer VerticalScrollBarVisibility="Auto">
                         <ListBox x:Name="MedicamentsPrescritsList"
                                 BorderThickness="0"
@@ -650,5 +652,6 @@
                 </Grid>
             </Grid>
         </Grid>
+        </ScrollViewer>
     </Grid>
 </UserControl>

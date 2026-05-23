@@ -442,10 +442,10 @@
         </Grid>
         
         <!-- Zone de prévisualisation -->
-        <Border Grid.Row="4" 
-                BorderBrush="#BDC3C7" 
-                BorderThickness="1" 
-                CornerRadius="6" 
+        <Border Grid.Row="4"
+                BorderBrush="#BDC3C7"
+                BorderThickness="1"
+                CornerRadius="6"
                 Background="#FAFAFA"
                 MinHeight="200">
             <Grid>

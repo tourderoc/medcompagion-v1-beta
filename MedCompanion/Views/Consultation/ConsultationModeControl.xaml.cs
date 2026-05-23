@@ -17,11 +17,30 @@ namespace MedCompanion.Views.Consultation
         private DocumentService? _documentService;
         private ScannerService? _scannerService;
 
+        /// <summary>
+        /// Émis dès qu'une note du mode Consultation est sauvegardée dans le dossier patient.
+        /// MainWindow s'abonne pour rafraîchir la liste de notes du mode Console.
+        /// </summary>
+        public event EventHandler? NoteSavedToPatient;
+
         public ConsultationModeControl()
         {
             InitializeComponent();
             _viewModel = DataContext as ConsultationModeViewModel;
+            DataContextChanged += (_, _) => WireViewModelEvents();
+            WireViewModelEvents();
         }
+
+        private void WireViewModelEvents()
+        {
+            var vm = DataContext as ConsultationModeViewModel;
+            if (vm == null) return;
+            vm.NoteSavedToPatient -= OnViewModelNoteSaved;
+            vm.NoteSavedToPatient += OnViewModelNoteSaved;
+        }
+
+        private void OnViewModelNoteSaved(object? sender, EventArgs e)
+            => NoteSavedToPatient?.Invoke(this, EventArgs.Empty);
 
         public void Initialize(ILLMService llmService, StorageService storageService,
                                WhisperStreamingService? whisperService = null,
@@ -58,9 +77,14 @@ namespace MedCompanion.Views.Consultation
 
             var menu = new ContextMenu();
 
-            var premiere = new MenuItem { Header = "🩺  1ère consultation" };
-            premiere.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("premiere");
-            menu.Items.Add(premiere);
+            // "1ère consultation" n'apparaît que si le patient n'a AUCUNE note/consultation
+            // (par définition la 1ère est unique : si le patient a déjà été vu, plus de 1ère possible)
+            if (!_viewModel.HasConsultationNotes)
+            {
+                var premiere = new MenuItem { Header = "🩺  1ère consultation" };
+                premiere.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("premiere");
+                menu.Items.Add(premiere);
+            }
 
             var suivi = new MenuItem { Header = "🔄  Consultation de suivi" };
             suivi.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("suivi");

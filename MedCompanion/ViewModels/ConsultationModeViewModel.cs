@@ -22,6 +22,15 @@ namespace MedCompanion.ViewModels
     /// </summary>
     public class ConsultationModeViewModel : INotifyPropertyChanged
     {
+        /// <summary>
+        /// Émis dès qu'une note est sauvegardée dans le dossier patient depuis le mode Consultation
+        /// (1ère consult, observations, suivi). Permet au mode Console de rafraîchir sa liste de notes.
+        /// </summary>
+        public event EventHandler? NoteSavedToPatient;
+        private void RaiseNoteSavedToPatient()
+            => NoteSavedToPatient?.Invoke(this, EventArgs.Empty);
+
+
         #region INotifyPropertyChanged
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -665,6 +674,22 @@ namespace MedCompanion.ViewModels
                     break;
 
                 case "suivi":
+                    // Si une consultation de suivi est déjà en cours, proposer de la reprendre
+                    if (HasSuiviInProgress)
+                    {
+                        var r = System.Windows.MessageBox.Show(
+                            "Une consultation de suivi est déjà en cours avec du contenu non sauvegardé.\n\n" +
+                            "OUI = Reprendre la consultation en cours\n" +
+                            "NON = Démarrer une NOUVELLE consultation (le contenu en cours sera perdu)",
+                            "Consultation en cours",
+                            System.Windows.MessageBoxButton.YesNo,
+                            System.Windows.MessageBoxImage.Question);
+                        if (r == System.Windows.MessageBoxResult.Yes)
+                        {
+                            ResumeSuivi();
+                            return;
+                        }
+                    }
                     Suivi.Reset();
                     // Reset des autres modes pour éviter toute superposition
                     IsInClinicalMode = false;
@@ -698,11 +723,31 @@ namespace MedCompanion.ViewModels
         /// </summary>
         private void OpenPastConsultation(ConsultationCardViewModel card)
         {
-            // Sort du mode édition pour revenir à la vue frise/dossier
+            // Sort du mode édition pour revenir au hub
             IsEditingConsultation = false;
-            // Affiche le dossier sur l'onglet Consultations
+            // Affiche le dossier sur l'onglet Consultations dans le panneau de droite
             ActiveDossierTab = DossierTab.Consultations;
-            CurrentState = ConsultationViewState.FocusDossier;
+
+            // Naviguer dans la pagination du dossier vers la note cliquée (sans passer en plein écran)
+            if (!string.IsNullOrEmpty(card.FilePath))
+            {
+                var idx = -1;
+                for (int i = 0; i < ConsultationNotes.Count; i++)
+                {
+                    if (string.Equals(ConsultationNotes[i].FilePath, card.FilePath, StringComparison.OrdinalIgnoreCase))
+                    {
+                        idx = i;
+                        break;
+                    }
+                }
+                if (idx >= 0)
+                {
+                    _singlePageIndex = idx;
+                    _spreadIndex     = idx / 2;
+                    NotifyPageChange();
+                    NotifySpreadChange();
+                }
+            }
         }
 
         /// <summary>
@@ -977,6 +1022,7 @@ namespace MedCompanion.ViewModels
                 IsEditingConsultation = false;
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+                RaiseNoteSavedToPatient();
             }
             else
             {
@@ -1170,6 +1216,7 @@ namespace MedCompanion.ViewModels
                 await RefreshConsultationNotesAsync();
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+                RaiseNoteSavedToPatient();
             }
             else
             {
@@ -2006,7 +2053,23 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
         public ConsultationSuivi Suivi
         {
             get => _suivi;
-            set => SetProperty(ref _suivi, value);
+            set
+            {
+                if (_suivi != null) _suivi.PropertyChanged -= OnSuiviInnerPropertyChanged;
+                if (SetProperty(ref _suivi, value))
+                {
+                    if (_suivi != null) _suivi.PropertyChanged += OnSuiviInnerPropertyChanged;
+                    OnPropertyChanged(nameof(HasSuiviInProgress));
+                }
+            }
+        }
+
+        private void OnSuiviInnerPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+        {
+            // Toute modification interne (case cochée, transcription, extraction) → réévaluer HasSuiviInProgress
+            OnPropertyChanged(nameof(HasSuiviInProgress));
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(
+                System.Windows.Input.CommandManager.InvalidateRequerySuggested);
         }
 
         private bool _isExtractingSuivi;
@@ -2058,6 +2121,11 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
             return sb.ToString().TrimEnd();
         }
 
+        /// <summary>
+        /// Extrait la transcription brute actuelle en puces cliniques compactes.
+        /// Append le résultat à Suivi.AIExtraction (cumulatif sur plusieurs pauses).
+        /// Vide Suivi.Transcription en cas de succès pour la prochaine dictée.
+        /// </summary>
         private async Task ExtractSuiviAsync()
         {
             if (_llmService == null) return;
@@ -2072,7 +2140,7 @@ RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
 
             try
             {
-                var prompt = $@"Tu es pédopsychiatre. Voici la transcription d'une consultation de suivi (souvent bavarde, beaucoup de digressions).
+                var prompt = $@"Tu es pédopsychiatre. Voici un SEGMENT de transcription d'une consultation de suivi (souvent bavarde, beaucoup de digressions).
 
 Ton rôle : extraire UNIQUEMENT les éléments cliniquement pertinents sous forme de PUCES ULTRA-COMPACTES (3-5 puces maximum, une ligne chacune).
 
@@ -2089,11 +2157,14 @@ IGNORE :
 - Activités banales (parc, jeux, vacances sans particularité)
 - Considérations météo, hobbies sans lien clinique
 
-Si rien de cliniquement pertinent : réponds exactement ""RAS"".
+Si rien de cliniquement pertinent dans ce segment : réponds exactement ""RAS"".
 
-Format : puces markdown avec ""- "" (pas de titre, pas d'introduction).
+FORMAT — RÈGLE ABSOLUE :
+- Uniquement des puces markdown avec ""- ""
+- AUCUN titre, AUCUNE introduction, AUCUN préambule (pas de ""Voici…"", ""Dans ce segment…"", etc.)
+- Commence DIRECTEMENT par ""- "" sur la première ligne
 
-TRANSCRIPTION :
+SEGMENT À ANALYSER :
 {Suivi.Transcription}
 
 PUCES :";
@@ -2102,16 +2173,33 @@ PUCES :";
 
                 if (!ok || string.IsNullOrWhiteSpace(result))
                 {
-                    SuiviStatusMessage = $"❌ Erreur LLM : {err}";
+                    SuiviStatusMessage = $"❌ Erreur LLM : {err} (transcription conservée)";
                     return;
                 }
 
-                Suivi.AIExtraction = result.Trim();
-                SuiviStatusMessage = "✅ Extraction terminée.";
+                var newBullets = result.Trim();
+
+                // Filtrer "RAS" simple (segment sans contenu pertinent)
+                if (string.Equals(newBullets, "RAS", StringComparison.OrdinalIgnoreCase))
+                {
+                    Suivi.Transcription = "";
+                    SuiviStatusMessage = "✅ Segment sans élément clinique (RAS).";
+                    return;
+                }
+
+                // Append au cumul existant (séparateur ligne vide entre segments)
+                if (string.IsNullOrWhiteSpace(Suivi.AIExtraction))
+                    Suivi.AIExtraction = newBullets;
+                else
+                    Suivi.AIExtraction = Suivi.AIExtraction.TrimEnd() + "\n" + newBullets;
+
+                // Vider la transcription brute — la valeur est maintenant dans les puces
+                Suivi.Transcription = "";
+                SuiviStatusMessage = "✅ Segment extrait, puces cumulées.";
             }
             catch (Exception ex)
             {
-                SuiviStatusMessage = $"❌ Erreur : {ex.Message}";
+                SuiviStatusMessage = $"❌ Erreur : {ex.Message} (transcription conservée)";
             }
             finally
             {
@@ -2154,11 +2242,60 @@ source: ""MedCompanion""
                 // Sortir du mode édition et retourner au hub
                 IsEditingConsultation = false;
                 ConsultationType = ConsultationType.Normal;
+                Suivi.Reset();  // nettoyage après finalisation
+                OnPropertyChanged(nameof(HasSuiviInProgress));
+                RaiseNoteSavedToPatient();
             }
             catch (Exception ex)
             {
                 SuiviStatusMessage = $"❌ Erreur sauvegarde : {ex.Message}";
             }
+        }
+
+        /// <summary>
+        /// True dès qu'une consultation de suivi a du contenu non sauvegardé
+        /// (case cochée, transcription brute en cours, ou puces déjà extraites).
+        /// Utilisé pour afficher une carte "Reprendre" sur le hub.
+        /// </summary>
+        public bool HasSuiviInProgress =>
+            Suivi.RAS || Suivi.Renouvellement || Suivi.PasEffetsSecondaires ||
+            Suivi.AdhesionOk || Suivi.EvolutionScolaire || Suivi.SommeilCorrect ||
+            Suivi.ARevoir ||
+            !string.IsNullOrWhiteSpace(Suivi.Transcription) ||
+            !string.IsNullOrWhiteSpace(Suivi.AIExtraction);
+
+        /// <summary>
+        /// Reprend la consultation de suivi en cours sans réinitialiser son contenu.
+        /// </summary>
+        private void ResumeSuivi()
+        {
+            IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
+            IsSynthesisMode = false;
+            IsRestitutionMode = false;
+            IsRestitutionReviewMode = false;
+            ConsultationType = ConsultationType.Suivi;
+            IsEditingConsultation = true;
+            SuiviStatusMessage = "▶ Reprise de la consultation en cours.";
+        }
+
+        /// <summary>
+        /// Abandonne le brouillon de suivi en cours (perd les puces et cases).
+        /// </summary>
+        private void DiscardSuivi()
+        {
+            var r = System.Windows.MessageBox.Show(
+                "Abandonner la consultation de suivi en cours ?\n\nToutes les puces extraites et les cases cochées seront perdues.",
+                "Abandonner",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            Suivi.Reset();
+            SuiviStatusMessage = "";
+            OnPropertyChanged(nameof(HasSuiviInProgress));
+            System.Windows.Application.Current?.Dispatcher.InvokeAsync(
+                System.Windows.Input.CommandManager.InvalidateRequerySuggested);
         }
 
         #endregion
@@ -2225,6 +2362,8 @@ source: ""MedCompanion""
 
         public ICommand ExtractSuiviCommand { get; }
         public ICommand SaveSuiviCommand { get; }
+        public ICommand ResumeSuiviCommand { get; }
+        public ICommand DiscardSuiviCommand { get; }
 
         #endregion
 
@@ -2290,6 +2429,13 @@ source: ""MedCompanion""
                     if (_whisperService == null) return;
                     await _whisperService.StopAsync();
                     IsRecording = false;
+
+                    // En mode Suivi : la "pause" déclenche automatiquement l'extraction IA
+                    // → les puces sont cumulées et la transcription brute est vidée
+                    if (IsSuiviMode && !string.IsNullOrWhiteSpace(Suivi.Transcription))
+                    {
+                        await ExtractSuiviAsync();
+                    }
                 },
                 _ => IsRecording);
 
@@ -2470,6 +2616,12 @@ source: ""MedCompanion""
                 _ => IsSuiviMode && (Suivi.RAS || Suivi.Renouvellement || Suivi.PasEffetsSecondaires ||
                                      Suivi.AdhesionOk || Suivi.EvolutionScolaire || Suivi.SommeilCorrect ||
                                      Suivi.ARevoir || !string.IsNullOrWhiteSpace(Suivi.AIExtraction)));
+
+            ResumeSuiviCommand  = new RelayCommand(_ => ResumeSuivi(),  _ => HasSuiviInProgress && !IsEditingConsultation);
+            DiscardSuiviCommand = new RelayCommand(_ => DiscardSuivi(), _ => HasSuiviInProgress);
+
+            // S'abonner aux changements internes du Suivi pour réévaluer HasSuiviInProgress
+            _suivi.PropertyChanged += OnSuiviInnerPropertyChanged;
 
             // Commands pagination dossier
             InitPaginationCommands();
@@ -2708,6 +2860,66 @@ source: ""MedCompanion""
             ActiveDossierTab = DossierTab.Couverture;
             LoadSuggestionsForPatient(patient);
             _ = RefreshConsultationNotesAsync();
+            LoadPatientSynthesisFromDisk();
+        }
+
+        // ── Synthèse globale du patient (dossier bleu, onglet SYNTHESE) ───────
+
+        private string _patientSynthesisText = "";
+        /// <summary>
+        /// Contenu Markdown de {patient}/synthese/synthese.md (sans le YAML header).
+        /// Chargé à chaque LoadPatient et affiché dans le dossier bleu.
+        /// </summary>
+        public string PatientSynthesisText
+        {
+            get => _patientSynthesisText;
+            set
+            {
+                if (SetProperty(ref _patientSynthesisText, value))
+                {
+                    OnPropertyChanged(nameof(HasPatientSynthesis));
+                    OnPropertyChanged(nameof(HasNoPatientSynthesis));
+                }
+            }
+        }
+
+        public bool HasPatientSynthesis   => !string.IsNullOrWhiteSpace(_patientSynthesisText);
+        public bool HasNoPatientSynthesis => !HasPatientSynthesis;
+
+        private void LoadPatientSynthesisFromDisk()
+        {
+            if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+            {
+                PatientSynthesisText = "";
+                return;
+            }
+
+            var path = Path.Combine(_currentPatient.DirectoryPath, "synthese", "synthese.md");
+            if (!File.Exists(path))
+            {
+                PatientSynthesisText = "";
+                return;
+            }
+
+            try
+            {
+                var content = File.ReadAllText(path, System.Text.Encoding.UTF8);
+
+                // Retirer le YAML front matter "--- ... ---" s'il existe
+                if (content.TrimStart().StartsWith("---"))
+                {
+                    var firstDashes = content.IndexOf("---", StringComparison.Ordinal);
+                    var secondDashes = content.IndexOf("---", firstDashes + 3, StringComparison.Ordinal);
+                    if (secondDashes > 0)
+                        content = content.Substring(secondDashes + 3).TrimStart();
+                }
+
+                PatientSynthesisText = content;
+            }
+            catch
+            {
+                PatientSynthesisText = "";
+            }
         }
 
         /// <summary>
