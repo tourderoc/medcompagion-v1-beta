@@ -5,6 +5,7 @@ using MedCompanion.Dialogs;
 using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
+using MedCompanion.Services.Evaluations;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
 using MedCompanion.ViewModels;
@@ -49,7 +50,11 @@ namespace MedCompanion.Views.Consultation
                                ScannerService? scannerService = null,
                                PatientIndexService? patientIndex = null,
                                UrgenceDispatcher? urgenceDispatcher = null,
-                               UrgenceLogService? urgenceLogService = null)
+                               UrgenceLogService? urgenceLogService = null,
+                               EvaluationPhaseService? evaluationPhaseService = null,
+                               PreparationSuggesterService? preparationSuggester = null,
+                               AxesSuggesterService? axesSuggester = null,
+                               AxisExtractorService? axisExtractor = null)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
@@ -57,6 +62,8 @@ namespace MedCompanion.Views.Consultation
                 _viewModel?.InjectPatientIndex(patientIndex);
             if (urgenceDispatcher != null && urgenceLogService != null)
                 _viewModel?.InjectUrgenceDispatcher(urgenceDispatcher, urgenceLogService);
+            if (evaluationPhaseService != null)
+                _viewModel?.InjectEvaluationServices(evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor);
             _documentService = documentService;
             _scannerService = scannerService;
         }
@@ -97,6 +104,12 @@ namespace MedCompanion.Views.Consultation
             var suivi = new MenuItem { Header = "🔄  Consultation de suivi" };
             suivi.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("suivi");
             menu.Items.Add(suivi);
+
+            // Phase d'évaluation — toujours visible (la zone Actions affiche Commencer / Poursuivre selon l'état)
+            menu.Items.Add(new Separator());
+            var evaluation = new MenuItem { Header = "📋  Phase d'évaluation" };
+            evaluation.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("evaluation");
+            menu.Items.Add(evaluation);
 
             menu.PlacementTarget = sender as UIElement;
             menu.Placement       = System.Windows.Controls.Primitives.PlacementMode.Bottom;

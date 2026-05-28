@@ -14,6 +14,7 @@ using MedCompanion.Models;
 using MedCompanion.Models.Urgences;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
+using MedCompanion.Services.Evaluations;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
 
@@ -356,6 +357,38 @@ namespace MedCompanion.ViewModels
 
         private UrgenceDispatcher? _urgenceDispatcher;
         private UrgenceLogService? _urgenceLogService;
+
+        private EvaluationPhaseViewModel? _evaluationPhase;
+        /// <summary>
+        /// VM du panneau "Phase d'évaluation" (Étape 1 V0). Toujours présent une fois injecté ;
+        /// son état interne (CanStart / CanResume / IsWorkingPreparation) détermine ce qui s'affiche.
+        /// </summary>
+        public EvaluationPhaseViewModel? EvaluationPhase
+        {
+            get => _evaluationPhase;
+            private set => SetProperty(ref _evaluationPhase, value);
+        }
+
+        public void InjectEvaluationServices(EvaluationPhaseService phaseService,
+                                             PreparationSuggesterService? suggester,
+                                             AxesSuggesterService? axesSuggester = null,
+                                             AxisExtractorService?  axisExtractor = null)
+        {
+            EvaluationPhase = new EvaluationPhaseViewModel(
+                phaseService, suggester, axesSuggester, axisExtractor, _whisperService);
+            // Si un patient est déjà chargé, on lui passe tout de suite
+            if (_currentPatient != null) EvaluationPhase.SetCurrentPatient(_currentPatient);
+        }
+
+        private bool _isEvaluationPhaseMode;
+        /// <summary>
+        /// True quand le médecin a ouvert le panneau "Phase d'évaluation" via le combo "+".
+        /// </summary>
+        public bool IsEvaluationPhaseMode
+        {
+            get => _isEvaluationPhaseMode;
+            set => SetProperty(ref _isEvaluationPhaseMode, value);
+        }
 
         /// <summary>
         /// Injecte le dispatcher d'urgences cliniques + le log service (Mode Urgence V0).
@@ -816,6 +849,20 @@ namespace MedCompanion.ViewModels
                     ConsultationDate = DateTime.Now;
                     IsEditingConsultation = true;
                     ExtractionStatus = "";
+                    break;
+
+                case "evaluation":
+                    // Bascule en mode "Phase d'évaluation" : sortie des autres modes,
+                    // affichage du panneau EvaluationPhaseControl (3 états gérés par sa VM).
+                    Suivi.Reset();
+                    IsInClinicalMode = false;
+                    IsInObservationsReviewMode = false;
+                    IsSynthesisMode = false;
+                    IsRestitutionMode = false;
+                    IsRestitutionReviewMode = false;
+                    ConsultationType = ConsultationType.Normal;
+                    IsEditingConsultation = false;
+                    IsEvaluationPhaseMode = true;
                     break;
 
                 case "suivi":
@@ -3166,6 +3213,12 @@ source: ""MedCompanion""
             LoadPatientSynthesisFromDisk();
             LoadPatientBilansFromDisk();
             LoadPatientDocumentsFromDisk();
+
+            // Reset du mode évaluation au changement de patient (sinon l'UI précédente reste affichée)
+            IsEvaluationPhaseMode = false;
+
+            // Recharger l'état de la phase d'évaluation pour ce patient
+            EvaluationPhase?.SetCurrentPatient(patient);
         }
 
         // ── Synthèse globale du patient (dossier bleu, onglet SYNTHESE) ───────

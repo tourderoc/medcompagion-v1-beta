@@ -15,6 +15,7 @@ using MedCompanion.Commands;
 using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
+using MedCompanion.Services.Evaluations;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
 using MedCompanion.Services.Urgence.Detectors;
@@ -380,10 +381,23 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 $"detecteur={sig.DetecteurName}, passages={sig.Passages.Count}, fichier={sig.SignalFilePath}");
         };
 
+        // Phase d'évaluation V0/V0.1/V0.1.2 : services + suggesters LLM + extractor
+        var evaluationPhaseService = new EvaluationPhaseService(_pathService);
+        PreparationSuggesterService? preparationSuggester = null;
+        AxesSuggesterService?        axesSuggester        = null;
+        AxisExtractorService?        axisExtractor        = null;
+        if (_currentLLMService != null)
+        {
+            preparationSuggester = new PreparationSuggesterService(_currentLLMService);
+            axesSuggester        = new AxesSuggesterService(_currentLLMService);
+            axisExtractor        = new AxisExtractorService(_currentLLMService);
+        }
+
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
-                _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService);
+                _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
+                evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>
