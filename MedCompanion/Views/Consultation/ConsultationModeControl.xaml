@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="clr-namespace:MedCompanion.ViewModels"
              xmlns:local="clr-namespace:MedCompanion.Views.Consultation"
+             xmlns:urgence="clr-namespace:MedCompanion.Views.Consultation.Urgence"
              xmlns:helpers="clr-namespace:MedCompanion.Helpers"
              xmlns:conv="clr-namespace:MedCompanion.Converters"
              Background="#F5F7FA">
@@ -401,6 +402,10 @@
                     </Style.Triggers>
                 </Style>
             </Grid.Style>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <!-- Espace de travail (67% en mode Consultation) -->
                 <ColumnDefinition x:Name="WorkspaceColumn">
@@ -440,10 +445,20 @@
                 </ColumnDefinition>
             </Grid.ColumnDefinitions>
 
+            <!-- Chip d'urgence clinique (Mode Urgence V0 Étape 3). Span toute la largeur de la zone Travail. -->
+            <ContentPresenter Grid.Row="0" Grid.ColumnSpan="3"
+                              Content="{Binding CurrentUrgenceChip}">
+                <ContentPresenter.Resources>
+                    <DataTemplate DataType="{x:Type vm:UrgenceChipViewModel}">
+                        <urgence:UrgenceChipControl/>
+                    </DataTemplate>
+                </ContentPresenter.Resources>
+            </ContentPresenter>
+
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- ESPACE DE TRAVAIL (Gauche) -->
             <!-- ═══════════════════════════════════════════════════════════ -->
-            <Grid Grid.Column="0">
+            <Grid Grid.Row="1" Grid.Column="0">
                 <Grid.Style>
                     <Style TargetType="Grid">
                         <Style.Triggers>
@@ -2771,7 +2786,7 @@
             <!-- DOSSIER PATIENT SKEUOMORPHIQUE (Droite) -->
             <!-- Design: dossier papier francais avec intercalaires verticaux -->
             <!-- ═══════════════════════════════════════════════════════════ -->
-            <Grid Grid.Column="2" ClipToBounds="False">
+            <Grid Grid.Row="1" Grid.Column="2" ClipToBounds="False">
                 <Grid.Style>
                     <Style TargetType="Grid">
                         <Style.Triggers>
@@ -2951,11 +2966,79 @@
                                             </StackPanel>
                                             <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Auto">
                                                 <StackPanel>
-                                                    <TextBlock Text="Synthese du patient" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                                                    <!-- Contenu de la synthèse (lu depuis {patient}/synthese/synthese.md) -->
-                                                    <TextBlock Text="{Binding PatientSynthesisText}" FontSize="13" Foreground="#2C3E50"
-                                                               TextWrapping="Wrap" LineHeight="20"
-                                                               Visibility="{Binding HasPatientSynthesis, Converter={StaticResource BoolToVis}}"/>
+                                                    <Grid Margin="0,0,0,15">
+                                                        <TextBlock Text="Synthese du patient" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+                                                        <!-- Barre boutons édition -->
+                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                            <!-- Modifier (visible en lecture) -->
+                                                            <Button Content="✏️ Modifier" Command="{Binding StartEditSynthesisCommand}"
+                                                                    Padding="10,5" Background="#3498DB" Foreground="White" BorderThickness="0"
+                                                                    Cursor="Hand" FontSize="11"
+                                                                    Visibility="{Binding IsSynthesisNotEditing, Converter={StaticResource BoolToVis}}">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+                                                            <!-- Enregistrer + Annuler (visible en édition) -->
+                                                            <StackPanel Orientation="Horizontal"
+                                                                        Visibility="{Binding IsSynthesisEditing, Converter={StaticResource BoolToVis}}">
+                                                                <Button Content="💾 Enregistrer" Command="{Binding SaveEditSynthesisCommand}"
+                                                                        Padding="10,5" Background="#27AE60" Foreground="White" BorderThickness="0"
+                                                                        Cursor="Hand" FontSize="11" Margin="0,0,6,0">
+                                                                    <Button.Template>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Button.Template>
+                                                                </Button>
+                                                                <Button Content="✖ Annuler" Command="{Binding CancelEditSynthesisCommand}"
+                                                                        Padding="10,5" Background="#95A5A6" Foreground="White" BorderThickness="0"
+                                                                        Cursor="Hand" FontSize="11">
+                                                                    <Button.Template>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Button.Template>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Grid>
+
+                                                    <!-- Vue READ-ONLY : Markdown formaté -->
+                                                    <RichTextBox helpers:RichTextBoxHelper.Document="{Binding PatientSynthesisDocument}"
+                                                                 IsReadOnly="True" Background="Transparent" BorderThickness="0"
+                                                                 FontSize="13" Foreground="#2C3E50">
+                                                        <RichTextBox.Style>
+                                                            <Style TargetType="RichTextBox">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding HasPatientSynthesis}"   Value="True"/>
+                                                                            <Condition Binding="{Binding IsSynthesisNotEditing}" Value="True"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </RichTextBox.Style>
+                                                    </RichTextBox>
+
+                                                    <!-- Vue EDIT : TextBox éditable avec le Markdown brut -->
+                                                    <TextBox Text="{Binding PatientSynthesisEditText, UpdateSourceTrigger=PropertyChanged}"
+                                                             AcceptsReturn="True" TextWrapping="Wrap"
+                                                             FontFamily="Consolas" FontSize="12" Padding="10"
+                                                             Background="#FAFAFA" BorderBrush="#3498DB" BorderThickness="1"
+                                                             MinHeight="400" VerticalScrollBarVisibility="Auto"
+                                                             Visibility="{Binding IsSynthesisEditing, Converter={StaticResource BoolToVis}}"/>
                                                     <!-- Placeholder quand pas de synthèse -->
                                                     <TextBlock Text="Aucune synthèse pour ce patient. Cliquez sur Actualiser dans la barre de gauche pour la générer."
                                                                FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
@@ -3502,10 +3585,68 @@
                                             <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Auto">
                                                 <StackPanel>
                                                     <TextBlock Text="Bilans et évaluations du patient" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                                                    <!-- Contenu réel des bilans (fichiers + syntheses_documents/) -->
-                                                    <TextBlock Text="{Binding PatientBilansText}" FontSize="13" Foreground="#2C3E50"
-                                                               TextWrapping="Wrap" LineHeight="20"
-                                                               Visibility="{Binding HasPatientBilans, Converter={StaticResource BoolToVis}}"/>
+                                                    <!-- Liste verticale de cartes — clic ouvre la fenêtre de détail/édition -->
+                                                    <ItemsControl ItemsSource="{Binding PatientBilans}"
+                                                                  Visibility="{Binding HasPatientBilans, Converter={StaticResource BoolToVis}}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Vertical"/>
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Margin="0,0,0,10">
+                                                                    <Button Command="{Binding DataContext.OpenDocumentDetailCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                            CommandParameter="{Binding}"
+                                                                            Cursor="Hand" HorizontalContentAlignment="Stretch">
+                                                                        <Button.Template>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="Bd"
+                                                                                        Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                                                                        CornerRadius="8" Padding="14">
+                                                                                    <StackPanel>
+                                                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                                                            <TextBlock Text="📄" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                                            <TextBlock Text="{Binding FileName}" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                                                            <TextBlock Text="{Binding DateFormatted}" FontSize="11" Foreground="#7F8C8D" Margin="12,0,0,0" VerticalAlignment="Center"/>
+                                                                                        </StackPanel>
+                                                                                        <TextBlock Text="{Binding PreviewText}" FontSize="11" Foreground="#5D6D7E" TextWrapping="Wrap" TextTrimming="WordEllipsis" MaxHeight="40" Margin="0,0,40,0"/>
+                                                                                    </StackPanel>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="Bd" Property="Background" Value="#F4F8FB"/>
+                                                                                        <Setter TargetName="Bd" Property="BorderBrush" Value="#3498DB"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Button.Template>
+                                                                    </Button>
+                                                                    <!-- Bouton PDF (ouvre le fichier original) — superposé en haut à droite -->
+                                                                    <Button Command="{Binding DataContext.OpenPdfFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                            CommandParameter="{Binding}"
+                                                                            ToolTip="Ouvrir le PDF original"
+                                                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                            Margin="0,8,10,0" Padding="6,3" Cursor="Hand"
+                                                                            Background="#E74C3C" Foreground="White" FontSize="10" FontWeight="Bold"
+                                                                            BorderThickness="0">
+                                                                        <Button.Template>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="PdfBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                    <TextBlock Text="📕 PDF" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="PdfBd" Property="Background" Value="#C0392B"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Button.Template>
+                                                                    </Button>
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
                                                     <!-- Placeholder quand pas de bilans -->
                                                     <TextBlock Text="Aucun bilan importé pour ce patient. Utilisez 📄 Documents dans la zone Med pour en ajouter."
                                                                FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
@@ -3625,10 +3766,78 @@
                                                 <TextBlock Text="DOCUMENTS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                                                 <TextBlock Text="Pieces jointes" FontSize="14" Foreground="#7F8C8D"/>
                                             </StackPanel>
-                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Hidden">
+                                            <ScrollViewer Grid.Row="1" Margin="40,0,40,20" VerticalScrollBarVisibility="Auto">
                                                 <StackPanel>
-                                                    <TextBlock Text="Documents" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                                                    <TextBlock Text="Courriers, attestations, ordonnances..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                    <TextBlock Text="Documents du patient (hors bilans)" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
+                                                    <!-- Liste verticale de cartes — clic ouvre la fenêtre de détail/édition -->
+                                                    <ItemsControl ItemsSource="{Binding PatientDocumentsList}"
+                                                                  Visibility="{Binding HasPatientDocuments, Converter={StaticResource BoolToVis}}">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <StackPanel Orientation="Vertical"/>
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid Margin="0,0,0,10">
+                                                                    <Button Command="{Binding DataContext.OpenDocumentDetailCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                            CommandParameter="{Binding}"
+                                                                            Cursor="Hand" HorizontalContentAlignment="Stretch">
+                                                                        <Button.Template>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="Bd"
+                                                                                        Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                                                                        CornerRadius="8" Padding="14">
+                                                                                    <StackPanel>
+                                                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                                                            <TextBlock Text="📄" FontSize="14" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                                            <TextBlock Text="{Binding FileName}" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50" TextTrimming="CharacterEllipsis" VerticalAlignment="Center"/>
+                                                                                            <Border Background="#ECF0F1" CornerRadius="3" Padding="6,1" Margin="10,0,0,0">
+                                                                                                <TextBlock Text="{Binding Category}" FontSize="10" Foreground="#7F8C8D"/>
+                                                                                            </Border>
+                                                                                            <TextBlock Text="{Binding DateFormatted}" FontSize="11" Foreground="#7F8C8D" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                                                                                        </StackPanel>
+                                                                                        <TextBlock Text="{Binding PreviewText}" FontSize="11" Foreground="#5D6D7E" TextWrapping="Wrap" TextTrimming="WordEllipsis" MaxHeight="40" Margin="0,0,40,0"/>
+                                                                                    </StackPanel>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="Bd" Property="Background" Value="#F4F8FB"/>
+                                                                                        <Setter TargetName="Bd" Property="BorderBrush" Value="#3498DB"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Button.Template>
+                                                                    </Button>
+                                                                    <!-- Bouton PDF (ouvre le fichier original) — superposé en haut à droite -->
+                                                                    <Button Command="{Binding DataContext.OpenPdfFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                            CommandParameter="{Binding}"
+                                                                            ToolTip="Ouvrir le fichier original"
+                                                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                            Margin="0,8,10,0" Padding="6,3" Cursor="Hand"
+                                                                            Background="#E74C3C" Foreground="White" FontSize="10" FontWeight="Bold"
+                                                                            BorderThickness="0">
+                                                                        <Button.Template>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="PdfBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                    <TextBlock Text="📕 PDF" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="PdfBd" Property="Background" Value="#C0392B"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Button.Template>
+                                                                    </Button>
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                    <!-- Placeholder quand aucun document -->
+                                                    <TextBlock Text="Aucun document importé pour ce patient. Utilisez 📄 Documents dans la zone Med pour en ajouter (courriers, attestations, ordonnances, etc.)."
+                                                               FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
+                                                               Visibility="{Binding HasNoPatientDocuments, Converter={StaticResource BoolToVis}}"/>
                                                 </StackPanel>
                                             </ScrollViewer>
                                             <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
@@ -3885,5 +4094,219 @@
                 </Grid> <!-- Close Tabs (1016) -->
             </Grid> <!-- Close Dossier (660) -->
     </Grid> <!-- Close Row 1 (300) -->
+
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- PANNEAU MODE URGENCE (Étape 4) — slide-in depuis la droite -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <Border Grid.Row="0" Grid.RowSpan="2"
+                Width="520" HorizontalAlignment="Right"
+                Background="White"
+                Panel.ZIndex="100"
+                Visibility="{Binding IsUrgenceEvaluationOpen, Converter={StaticResource BoolToVis}}">
+            <Border.RenderTransform>
+                <TranslateTransform X="520"/>
+            </Border.RenderTransform>
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsUrgenceEvaluationOpen}" Value="True">
+                            <DataTrigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                         From="520" To="0" Duration="0:0:0.22">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.EnterActions>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <ContentPresenter Content="{Binding CurrentUrgenceEvaluation}">
+                <ContentPresenter.Resources>
+                    <DataTemplate DataType="{x:Type vm:UrgenceEvaluationViewModel}">
+                        <urgence:ModeUrgenceControl/>
+                    </DataTemplate>
+                </ContentPresenter.Resources>
+            </ContentPresenter>
+        </Border>
+
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+        <!-- DRAWER "PATIENTS RÉCENTS" (style Doctolib, bord gauche) -->
+        <!-- ═══════════════════════════════════════════════════════════════════ -->
+
+        <!-- (a) Onglet d'accroche, toujours visible sur le bord gauche -->
+        <Button Grid.Row="0" Grid.RowSpan="2"
+                Command="{Binding ToggleRecentDrawerCommand}"
+                HorizontalAlignment="Left" VerticalAlignment="Center"
+                Width="28" Height="120"
+                Background="#3498DB" Foreground="White" BorderThickness="0"
+                Cursor="Hand" Panel.ZIndex="10"
+                ToolTip="Patients récemment ouverts">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="TabBd" Background="{TemplateBinding Background}"
+                            CornerRadius="0,8,8,0">
+                        <StackPanel Orientation="Vertical" VerticalAlignment="Center" HorizontalAlignment="Center">
+                            <TextBlock Text="👥" FontSize="14" Foreground="White" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                            <TextBlock Text="P&#10;A&#10;T&#10;I&#10;E&#10;N&#10;T&#10;S"
+                                       FontSize="9" FontWeight="Bold" Foreground="White"
+                                       TextAlignment="Center" LineHeight="11"/>
+                        </StackPanel>
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="TabBd" Property="Background" Value="#2980B9"/>
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+
+        <!-- (b) Overlay semi-transparent (clic = ferme le drawer) -->
+        <Button Grid.Row="0" Grid.RowSpan="2"
+                Command="{Binding CloseRecentDrawerCommand}"
+                Background="#80000000" BorderThickness="0"
+                Visibility="{Binding IsRecentDrawerOpen, Converter={StaticResource BoolToVis}}"
+                Panel.ZIndex="20" Cursor="Arrow">
+            <Button.Template>
+                <ControlTemplate TargetType="Button">
+                    <Border Background="{TemplateBinding Background}"/>
+                </ControlTemplate>
+            </Button.Template>
+        </Button>
+
+        <!-- (c) Panneau drawer (slide-in depuis la gauche) -->
+        <Border Grid.Row="0" Grid.RowSpan="2"
+                Width="300" HorizontalAlignment="Left"
+                Background="White" BorderBrush="#D6E2EC" BorderThickness="0,0,1,0"
+                Panel.ZIndex="30"
+                Visibility="{Binding IsRecentDrawerOpen, Converter={StaticResource BoolToVis}}">
+            <Border.Effect>
+                <DropShadowEffect ShadowDepth="3" BlurRadius="14" Opacity="0.25" Direction="0"/>
+            </Border.Effect>
+            <Border.RenderTransform>
+                <TranslateTransform x:Name="DrawerTransform" X="-300"/>
+            </Border.RenderTransform>
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding IsRecentDrawerOpen}" Value="True">
+                            <DataTrigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                         From="-300" To="0" Duration="0:0:0.18">
+                                            <DoubleAnimation.EasingFunction>
+                                                <CubicEase EasingMode="EaseOut"/>
+                                            </DoubleAnimation.EasingFunction>
+                                        </DoubleAnimation>
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </DataTrigger.EnterActions>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Entête drawer -->
+                <Border Grid.Row="0" Background="#2C3E50" Padding="16,14">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="Consultations récentes" Foreground="White"
+                                       FontSize="14" FontWeight="SemiBold"/>
+                            <TextBlock Text="Cliquez pour ouvrir le dossier"
+                                       Foreground="#BDC3C7" FontSize="10" Margin="0,2,0,0"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Command="{Binding CloseRecentDrawerCommand}"
+                                Content="✖" Foreground="White" Background="Transparent"
+                                BorderThickness="0" FontSize="14" Cursor="Hand"
+                                Padding="6,2" ToolTip="Fermer"/>
+                    </Grid>
+                </Border>
+
+                <!-- Liste des patients récents -->
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
+                        <ItemsControl ItemsSource="{Binding RecentPatientsForDrawer}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Button Command="{Binding DataContext.SelectRecentPatientCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                            CommandParameter="{Binding}"
+                                            Cursor="Hand" Margin="0" HorizontalContentAlignment="Stretch">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="RpBd" Background="White"
+                                                        BorderBrush="#ECEFF1" BorderThickness="0,0,0,1"
+                                                        Padding="14,10">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                            <ColumnDefinition Width="*"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <!-- Avatar -->
+                                                        <Border Grid.Column="0" Width="36" Height="36" CornerRadius="18"
+                                                                Background="{Binding AvatarBrush}" VerticalAlignment="Center" Margin="0,0,12,0">
+                                                            <TextBlock Text="{Binding Initials}" Foreground="White"
+                                                                       FontSize="13" FontWeight="Bold"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <!-- Texte -->
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding NomComplet}" FontSize="13" FontWeight="SemiBold"
+                                                                       Foreground="#2C3E50" TextTrimming="CharacterEllipsis"/>
+                                                            <StackPanel Orientation="Horizontal" Margin="0,2,0,0">
+                                                                <TextBlock Text="{Binding AgeDisplay}" FontSize="10" Foreground="#7F8C8D"/>
+                                                                <TextBlock Text=" • " FontSize="10" Foreground="#BDC3C7"/>
+                                                                <TextBlock Text="{Binding LastConsultDisplay}" FontSize="10" Foreground="#7F8C8D"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="RpBd" Property="Background" Value="#F4F8FB"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                        <!-- Placeholder si liste vide -->
+                        <TextBlock Text="Aucun dossier récemment ouvert."
+                                   FontSize="12" FontStyle="Italic" Foreground="#95A5A6"
+                                   Margin="16,20,16,16" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding RecentPatientsForDrawer.Count}" Value="0">
+                                            <Setter Property="Visibility" Value="Visible"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+
     </Grid> <!-- Close Root (179) -->
 </UserControl>

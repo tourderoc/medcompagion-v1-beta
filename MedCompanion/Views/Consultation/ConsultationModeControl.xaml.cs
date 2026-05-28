@@ -6,6 +6,7 @@ using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.LLM;
+using MedCompanion.Services.Urgence;
 using MedCompanion.ViewModels;
 using Microsoft.Win32;
 
@@ -45,10 +46,17 @@ namespace MedCompanion.Views.Consultation
         public void Initialize(ILLMService llmService, StorageService storageService,
                                WhisperStreamingService? whisperService = null,
                                DocumentService? documentService = null,
-                               ScannerService? scannerService = null)
+                               ScannerService? scannerService = null,
+                               PatientIndexService? patientIndex = null,
+                               UrgenceDispatcher? urgenceDispatcher = null,
+                               UrgenceLogService? urgenceLogService = null)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
+            if (patientIndex != null)
+                _viewModel?.InjectPatientIndex(patientIndex);
+            if (urgenceDispatcher != null && urgenceLogService != null)
+                _viewModel?.InjectUrgenceDispatcher(urgenceDispatcher, urgenceLogService);
             _documentService = documentService;
             _scannerService = scannerService;
         }
@@ -369,8 +377,9 @@ categorie: {document.Category ?? "Documents"}
                         Weight = 0.6
                     });
 
-                    // Rafraîchit l'onglet BILANS du dossier bleu
+                    // Rafraîchit les onglets BILANS et DOCS du dossier bleu
                     _viewModel.LoadPatientBilansFromDisk();
+                    _viewModel.LoadPatientDocumentsFromDisk();
 
                     _viewModel.MedDocumentStatus = $"✅ {document.FileName} → {document.Category ?? "Documents"} (synthèse auto)";
                 }
@@ -424,8 +433,9 @@ categorie: {document.Category ?? "Documents"}
                         Weight = 0.7
                     });
 
-                    // Rafraîchit l'onglet BILANS du dossier bleu
+                    // Rafraîchit les onglets BILANS et DOCS du dossier bleu
                     _viewModel.LoadPatientBilansFromDisk();
+                    _viewModel.LoadPatientDocumentsFromDisk();
 
                     _viewModel.MedDocumentStatus = $"✅ {document.FileName} → {document.Category ?? "Documents"} (synthèse auto)";
 

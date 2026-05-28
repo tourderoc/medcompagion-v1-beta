@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
+using NAudio.MediaFoundation;
 using NAudio.Wave;
 using Whisper.net;
 using Whisper.net.Ggml;
@@ -40,7 +41,8 @@ namespace MedCompanion.Services.Consultation
         // Pour une consultation réelle (pauses de réflexion, débit lent) :
         // on tolère 2.5s de silence avant de flusher → Whisper reçoit des chunks
         // longs avec contexte = meilleure qualité de transcription.
-        private const int   SampleRate            = 16000;
+        private const int   SampleRate            = 16000;   // cible Whisper
+        private const int   CaptureSampleRate     = 48000;   // format natif des micros USB → resample propre vers SampleRate
         private const int   Channels              = 1;
         private const float SilenceRmsThreshold   = 0.015f;  // VAD : seuil détection silence
         private const int   SilenceDurationMs     = 2500;    // tolère pauses naturelles de réflexion
@@ -102,6 +104,11 @@ namespace MedCompanion.Services.Consultation
 
         // ── Capture audio (recréés à chaque Start/Stop) ───────────────────────
         private WaveInEvent? _waveIn;
+        // Resampling propre 48 kHz → 16 kHz (filtre anti-aliasing via MediaFoundationResampler)
+        private BufferedWaveProvider? _captureBuffer;
+        private MediaFoundationResampler? _resampler;
+        private byte[] _resampleScratch = new byte[64 * 1024];   // buffer de lecture pour MFR
+        private bool _mediaFoundationStarted;
         private CancellationTokenSource? _cts;
         private Channel<float[]>? _audioQueue;
         private Task? _transcriptionTask;
@@ -181,7 +188,9 @@ namespace MedCompanion.Services.Consultation
                 _factory   = WhisperFactory.FromPath(modelManager.ModelPath);
                 _processor = _factory.CreateBuilder()
                                      .WithLanguage("fr")
-                                     .WithSingleSegment()
+                                     // PAS de .WithSingleSegment() : avec des chunks Batch de 90s,
+                                     // Whisper doit pouvoir émettre plusieurs segments (un par fenêtre native de 30s).
+                                     // Sinon seul le dernier segment est conservé → on perd le début du chunk.
                                      .WithNoContext()           // ← clé : pas de propagation entre chunks
                                      .WithPrompt(_dynamicPrompt)
                                      .WithTemperature(0f)
@@ -235,6 +244,9 @@ namespace MedCompanion.Services.Consultation
                 };
                 _waveIn.DataAvailable    += OnAudioData;
                 _waveIn.RecordingStopped += OnRecordingStoppedUnexpectedly;
+                _captureBuffer = null;
+                _resampler = null;
+
                 try
                 {
                     _waveIn.StartRecording();
@@ -301,6 +313,11 @@ namespace MedCompanion.Services.Consultation
                 _waveIn.Dispose();
                 _waveIn = null;
             }
+
+            // 1bis) Disposer du resampler et du buffer de capture
+            try { _resampler?.Dispose(); } catch { }
+            _resampler = null;
+            _captureBuffer = null;
 
             // 2) Flush le buffer restant dans la queue AVANT d'annuler le token
             //    Important: le token n'est PAS encore annulé ici, donc TranscriptionLoop
@@ -598,19 +615,22 @@ namespace MedCompanion.Services.Consultation
         {
             try
             {
-                await foreach (var samples in reader.ReadAllAsync(ct))
+                await foreach (var rawSamples in reader.ReadAllAsync(ct))
                 {
                     if (_processor == null) { Log("Processor null, skip"); continue; }
 
+                    // Audio brut directement vers Whisper — le pipeline NS/AGC dégradait la qualité.
+                    var samples = rawSamples;
+
                     var durationS = samples.Length / (double)SampleRate;
-                    Log($"Transcription chunk {durationS:F1}s...");
+                    Log($"Transcription chunk {durationS:F1}s (raw)...");
                     var sw = System.Diagnostics.Stopwatch.StartNew();
 
                     try
                     {
                         Interlocked.Exchange(ref _isTranscribing, 1);
 
-                        // Sauvegarde audio AVANT transcription (pour avoir le .wav même si Whisper crashe)
+                        // Sauvegarde audio brut tel que reçu du micro
                         _audioRecorder?.SaveChunk(samples);
 
                         var text = await TranscribeAsync(samples);

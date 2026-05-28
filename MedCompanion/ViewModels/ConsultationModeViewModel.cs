@@ -7,12 +7,15 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
+using System.Windows.Documents;
 using System.Windows.Input;
 using MedCompanion.Commands;
 using MedCompanion.Models;
+using MedCompanion.Models.Urgences;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.LLM;
+using MedCompanion.Services.Urgence;
 
 namespace MedCompanion.ViewModels
 {
@@ -339,6 +342,135 @@ namespace MedCompanion.ViewModels
         // File d'extraction : jamais deux appels LLM simultanés
         private readonly SemaphoreSlim _extractionLock    = new(1, 1);
         private string                 _pendingSegment    = "";
+
+        private PatientIndexService? _patientIndex;
+
+        /// <summary>
+        /// Injecte le service d'index patients (partagé avec le mode Console).
+        /// Utilisé par le drawer "Patients récents" (bord gauche).
+        /// </summary>
+        public void InjectPatientIndex(PatientIndexService patientIndex)
+        {
+            _patientIndex = patientIndex;
+        }
+
+        private UrgenceDispatcher? _urgenceDispatcher;
+        private UrgenceLogService? _urgenceLogService;
+
+        /// <summary>
+        /// Injecte le dispatcher d'urgences cliniques + le log service (Mode Urgence V0).
+        /// S'abonne à SignalDetected pour faire apparaître le chip.
+        /// </summary>
+        public void InjectUrgenceDispatcher(UrgenceDispatcher dispatcher, UrgenceLogService logService)
+        {
+            _urgenceDispatcher = dispatcher;
+            _urgenceLogService = logService;
+            dispatcher.SignalDetected += OnUrgenceSignalDetected;
+        }
+
+        private UrgenceChipViewModel? _currentUrgenceChip;
+        /// <summary>
+        /// Chip d'urgence actuellement affiché en haut de la zone Note. Null = rien à afficher.
+        /// </summary>
+        public UrgenceChipViewModel? CurrentUrgenceChip
+        {
+            get => _currentUrgenceChip;
+            private set => SetProperty(ref _currentUrgenceChip, value);
+        }
+
+        private void OnUrgenceSignalDetected(UrgenceSignal signal)
+        {
+            // Dispatcher peut fire depuis un thread arrière → marshalling UI obligatoire
+            System.Windows.Application.Current?.Dispatcher.Invoke(() =>
+            {
+                CurrentUrgenceChip = new UrgenceChipViewModel(
+                    signal,
+                    onOpenEvaluation: () => OnChipOpenEvaluation(signal),
+                    onDismiss:        motif => OnChipDismiss(signal, motif));
+
+                // Le fichier _signal_*.md vient d'être créé → rafraîchir la liste pour le voir apparaître
+                _ = RefreshConsultationNotesAsync();
+            });
+        }
+
+        private UrgenceEvaluationViewModel? _currentUrgenceEvaluation;
+        /// <summary>
+        /// Évaluation actuellement ouverte dans le panneau Mode Urgence (Étape 4). Null = panneau fermé.
+        /// </summary>
+        public UrgenceEvaluationViewModel? CurrentUrgenceEvaluation
+        {
+            get => _currentUrgenceEvaluation;
+            private set
+            {
+                if (SetProperty(ref _currentUrgenceEvaluation, value))
+                    OnPropertyChanged(nameof(IsUrgenceEvaluationOpen));
+            }
+        }
+        public bool IsUrgenceEvaluationOpen => CurrentUrgenceEvaluation != null;
+
+        private void OnChipOpenEvaluation(UrgenceSignal signal)
+        {
+            if (_urgenceLogService == null) return;
+
+            _urgenceLogService.UpdateMedecinAction(signal.SignalFilePath, UrgenceUserAction.OuvertEvaluation);
+
+            var consultLabel = $"Consultation du {ConsultationDate:dd/MM/yyyy}";
+            CurrentUrgenceEvaluation = new UrgenceEvaluationViewModel(
+                signal,
+                _confirmedAge,
+                consultLabel,
+                medecin: Environment.UserName,
+                _urgenceLogService,
+                onSaved:  path =>
+                {
+                    // NB: ne PAS fermer le panneau ici — l'évaluation bascule en mode restitution
+                    _ = RefreshConsultationNotesAsync();
+                },
+                onCancel: ()   => CurrentUrgenceEvaluation = null,
+                llmService: _llmService);
+        }
+
+        private void OnChipDismiss(UrgenceSignal signal, string motif)
+        {
+            _urgenceLogService?.UpdateMedecinAction(signal.SignalFilePath, UrgenceUserAction.Ecarte, motif);
+        }
+
+        /// <summary>
+        /// Déclenche l'analyse d'urgence sur une note fraîchement sauvegardée.
+        /// Async fire-and-forget : ne bloque jamais la sauvegarde de la note.
+        /// </summary>
+        private void TriggerUrgenceAnalysis(string noteFilePath, string noteContent, string consultationType)
+        {
+            if (_urgenceDispatcher == null) return;
+            if (_currentPatient == null) return;
+            if (string.IsNullOrWhiteSpace(noteContent)) return;
+
+            var ctx = new UrgenceNoteContext
+            {
+                PatientNomComplet = _currentPatient.NomComplet,
+                PatientAge        = _confirmedAge,
+                ConsultationType  = consultationType,
+                ConsultationDate  = ConsultationDate,
+                NoteContent       = StripYamlHeader(noteContent),
+                NoteFilePath      = noteFilePath,
+                MotifConsultation = DetectedMotif ?? ""
+            };
+
+            _ = Task.Run(async () =>
+            {
+                try { await _urgenceDispatcher.AnalyzeAsync(ctx); }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[Urgence] Analyse échouée : {ex.Message}"); }
+            });
+        }
+
+        private static string StripYamlHeader(string content)
+        {
+            if (string.IsNullOrEmpty(content) || !content.TrimStart().StartsWith("---")) return content;
+            var first  = content.IndexOf("---", StringComparison.Ordinal);
+            var second = content.IndexOf("---", first + 3, StringComparison.Ordinal);
+            if (second < 0) return content;
+            return content.Substring(second + 3).TrimStart('\r', '\n');
+        }
 
         public void InjectServices(ILLMService llmService, StorageService storageService,
                                    WhisperStreamingService? whisperService = null)
@@ -976,6 +1108,7 @@ source: ""MedCompanion""
                 File.WriteAllText(_premiereConsultationFilePath, content, System.Text.Encoding.UTF8);
                 await RefreshConsultationNotesAsync();
                 RaiseNoteSavedToPatient();
+                TriggerUrgenceAnalysis(_premiereConsultationFilePath, content, "consultation-premiere");
                 return (true, null);
             }
             catch (Exception ex)
@@ -2381,6 +2514,7 @@ source: ""MedCompanion""
                 Suivi.Reset();  // nettoyage après finalisation
                 OnPropertyChanged(nameof(HasSuiviInProgress));
                 RaiseNoteSavedToPatient();
+                TriggerUrgenceAnalysis(filePath, noteContent, "consultation-suivi");
             }
             catch (Exception ex)
             {
@@ -2756,6 +2890,18 @@ source: ""MedCompanion""
                                      Suivi.ARevoir || !string.IsNullOrWhiteSpace(Suivi.AIExtraction)));
 
             ResumeSuiviCommand  = new RelayCommand(_ => ResumeSuivi(),  _ => HasSuiviInProgress && !IsEditingConsultation);
+
+            // Édition de la synthèse globale (dossier bleu)
+            StartEditSynthesisCommand  = new RelayCommand(_ => StartEditSynthesis(),  _ => !IsSynthesisEditing);
+            CancelEditSynthesisCommand = new RelayCommand(_ => CancelEditSynthesis(), _ => IsSynthesisEditing);
+            SaveEditSynthesisCommand   = new RelayCommand(_ => SaveEditSynthesis(),   _ => IsSynthesisEditing);
+            OpenDocumentDetailCommand  = new RelayCommand(OpenDocumentDetail);
+            OpenPdfFileCommand         = new RelayCommand(OpenPdfFile);
+
+            // Drawer "Patients récents" (bord gauche)
+            ToggleRecentDrawerCommand  = new RelayCommand(_ => ToggleRecentDrawer());
+            CloseRecentDrawerCommand   = new RelayCommand(_ => IsRecentDrawerOpen = false);
+            SelectRecentPatientCommand = new RelayCommand(SelectRecentPatient);
             DiscardSuiviCommand = new RelayCommand(_ => DiscardSuivi(), _ => HasSuiviInProgress);
 
             // S'abonner aux changements internes du Suivi pour réévaluer HasSuiviInProgress
@@ -3019,6 +3165,7 @@ source: ""MedCompanion""
             _ = RefreshConsultationNotesAsync();
             LoadPatientSynthesisFromDisk();
             LoadPatientBilansFromDisk();
+            LoadPatientDocumentsFromDisk();
         }
 
         // ── Synthèse globale du patient (dossier bleu, onglet SYNTHESE) ───────
@@ -3035,98 +3182,349 @@ source: ""MedCompanion""
             {
                 if (SetProperty(ref _patientSynthesisText, value))
                 {
+                    PatientSynthesisDocument = MarkdownFlowDocumentConverter.MarkdownToFlowDocument(value ?? "");
                     OnPropertyChanged(nameof(HasPatientSynthesis));
                     OnPropertyChanged(nameof(HasNoPatientSynthesis));
                 }
             }
         }
 
+        private FlowDocument _patientSynthesisDocument = new FlowDocument();
+        public FlowDocument PatientSynthesisDocument
+        {
+            get => _patientSynthesisDocument;
+            set => SetProperty(ref _patientSynthesisDocument, value);
+        }
+
         public bool HasPatientSynthesis   => !string.IsNullOrWhiteSpace(_patientSynthesisText);
         public bool HasNoPatientSynthesis => !HasPatientSynthesis;
 
-        // ── BILANS du dossier bleu (lit documents/bilans/ + documents/syntheses_documents/) ──
-        private string _patientBilansText = "";
-        public string PatientBilansText
+        // ── Édition de la SYNTHESE ──────────────────────────────────────────
+        private bool _isSynthesisEditing;
+        public bool IsSynthesisEditing
         {
-            get => _patientBilansText;
+            get => _isSynthesisEditing;
             set
             {
-                if (SetProperty(ref _patientBilansText, value))
-                {
-                    OnPropertyChanged(nameof(HasPatientBilans));
-                    OnPropertyChanged(nameof(HasNoPatientBilans));
-                }
+                if (SetProperty(ref _isSynthesisEditing, value))
+                    OnPropertyChanged(nameof(IsSynthesisNotEditing));
             }
         }
-        public bool HasPatientBilans   => !string.IsNullOrWhiteSpace(_patientBilansText);
+        public bool IsSynthesisNotEditing => !_isSynthesisEditing;
+
+        private string _patientSynthesisEditText = "";
+        public string PatientSynthesisEditText
+        {
+            get => _patientSynthesisEditText;
+            set => SetProperty(ref _patientSynthesisEditText, value);
+        }
+
+        private void StartEditSynthesis()
+        {
+            // Copie le contenu actuel dans le buffer d'édition (sans YAML)
+            PatientSynthesisEditText = _patientSynthesisText;
+            IsSynthesisEditing = true;
+        }
+
+        private void CancelEditSynthesis()
+        {
+            IsSynthesisEditing = false;
+            PatientSynthesisEditText = "";
+        }
+
+        private void SaveEditSynthesis()
+        {
+            if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath)) return;
+
+            try
+            {
+                var syntheseDir  = Path.Combine(_currentPatient.DirectoryPath, "synthese");
+                Directory.CreateDirectory(syntheseDir);
+                var synthesePath = Path.Combine(syntheseDir, "synthese.md");
+
+                // Backup avant écrasement
+                if (File.Exists(synthesePath))
+                {
+                    var backup = Path.Combine(syntheseDir, $"synthese_backup_{DateTime.Now:yyyyMMdd_HHmmss}.md");
+                    try { File.Copy(synthesePath, backup, true); } catch { }
+                }
+
+                // Préserver le YAML header existant si présent, sinon en créer un
+                string yamlHeader;
+                if (File.Exists(synthesePath))
+                {
+                    var existing = File.ReadAllText(synthesePath, System.Text.Encoding.UTF8);
+                    if (existing.TrimStart().StartsWith("---"))
+                    {
+                        var first  = existing.IndexOf("---", StringComparison.Ordinal);
+                        var second = existing.IndexOf("---", first + 3, StringComparison.Ordinal);
+                        yamlHeader = second > 0
+                            ? existing.Substring(0, second + 3) + "\n\n"
+                            : $"---\ndate_synthese: {DateTime.Now:yyyy-MM-ddTHH:mm:ss}\ntype: edited_manual\n---\n\n";
+                    }
+                    else
+                    {
+                        yamlHeader = $"---\ndate_synthese: {DateTime.Now:yyyy-MM-ddTHH:mm:ss}\ntype: edited_manual\n---\n\n";
+                    }
+                }
+                else
+                {
+                    yamlHeader = $"---\ndate_synthese: {DateTime.Now:yyyy-MM-ddTHH:mm:ss}\ntype: edited_manual\n---\n\n";
+                }
+
+                File.WriteAllText(synthesePath, yamlHeader + _patientSynthesisEditText, System.Text.Encoding.UTF8);
+
+                // Recharge la synthèse depuis le disque (regénère aussi le FlowDocument)
+                LoadPatientSynthesisFromDisk();
+                IsSynthesisEditing = false;
+                PatientSynthesisEditText = "";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[SaveEditSynthesis] Erreur : {ex.Message}");
+            }
+        }
+
+        public ICommand StartEditSynthesisCommand  { get; }
+        public ICommand CancelEditSynthesisCommand { get; }
+        public ICommand SaveEditSynthesisCommand   { get; }
+
+        public ICommand OpenDocumentDetailCommand  { get; private set; } = null!;
+        public ICommand OpenPdfFileCommand         { get; private set; } = null!;
+
+        private void OpenDocumentDetail(object? param)
+        {
+            if (param is not PatientDocumentItem item) return;
+            try
+            {
+                var dlg = new MedCompanion.Dialogs.DocumentDetailDialog(item)
+                {
+                    Owner = System.Windows.Application.Current?.MainWindow
+                };
+                dlg.ShowDialog();
+                // Si modifié → la dialog a déjà sauvegardé, on rafraîchit la liste
+                LoadPatientBilansFromDisk();
+                LoadPatientDocumentsFromDisk();
+            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[OpenDocumentDetail] {ex.Message}"); }
+        }
+
+        // ── Drawer "Patients récents" (bord gauche, style Doctolib) ──────────
+
+        public ObservableCollection<RecentPatientItem> RecentPatientsForDrawer { get; } = new();
+
+        private bool _isRecentDrawerOpen;
+        public bool IsRecentDrawerOpen
+        {
+            get => _isRecentDrawerOpen;
+            set => SetProperty(ref _isRecentDrawerOpen, value);
+        }
+
+        public ICommand ToggleRecentDrawerCommand  { get; private set; } = null!;
+        public ICommand CloseRecentDrawerCommand   { get; private set; } = null!;
+        public ICommand SelectRecentPatientCommand { get; private set; } = null!;
+
+        private void ToggleRecentDrawer()
+        {
+            if (!IsRecentDrawerOpen)
+                RefreshRecentPatientsDrawer();
+            IsRecentDrawerOpen = !IsRecentDrawerOpen;
+        }
+
+        /// <summary>
+        /// Recharge la liste depuis PatientIndexService.GetRecentPatients() (max 20, ordre MRU).
+        /// </summary>
+        public void RefreshRecentPatientsDrawer()
+        {
+            RecentPatientsForDrawer.Clear();
+            if (_patientIndex == null) return;
+
+            foreach (var p in _patientIndex.GetRecentPatients())
+            {
+                var last = _patientIndex.GetLastConsultationDate(p.Id);
+                RecentPatientsForDrawer.Add(new RecentPatientItem
+                {
+                    Patient            = p,
+                    NomComplet         = p.NomComplet,
+                    Initials           = RecentPatientItem.InitialsFor(p.Nom, p.Prenom),
+                    AgeDisplay         = p.Age.HasValue ? $"{p.Age} ans" : "",
+                    LastConsultDisplay = last.HasValue ? last.Value.ToString("dd/MM/yyyy") : "Jamais",
+                    AvatarBrush        = RecentPatientItem.AvatarBrushForName(p.NomComplet)
+                });
+            }
+        }
+
+        private void SelectRecentPatient(object? param)
+        {
+            if (param is not RecentPatientItem item) return;
+            IsRecentDrawerOpen = false;
+            LoadPatient(item.Patient);
+            // MRU : on remet ce patient en tête de la liste
+            _patientIndex?.AddRecentPatient(item.Patient.Id);
+        }
+
+        private void OpenPdfFile(object? param)
+        {
+            if (param is not PatientDocumentItem item) return;
+            if (string.IsNullOrWhiteSpace(item.FilePath) || !File.Exists(item.FilePath))
+            {
+                System.Windows.MessageBox.Show(
+                    "Fichier introuvable :\n" + item.FilePath,
+                    "Document",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+            try
+            {
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName        = item.FilePath,
+                    UseShellExecute = true
+                });
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    "Impossible d'ouvrir le fichier :\n" + ex.Message,
+                    "Document",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
+
+        // ── BILANS du dossier bleu (cartes cliquables, une par bilan) ──
+        public ObservableCollection<PatientDocumentItem> PatientBilans { get; } = new();
+        public bool HasPatientBilans   => PatientBilans.Count > 0;
         public bool HasNoPatientBilans => !HasPatientBilans;
 
         public void LoadPatientBilansFromDisk()
         {
+            PatientBilans.Clear();
             if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
             {
-                PatientBilansText = "";
+                OnPropertyChanged(nameof(HasPatientBilans));
+                OnPropertyChanged(nameof(HasNoPatientBilans));
                 return;
             }
 
             try
             {
-                // Documents sont dans {patient}/{année}/documents/{categorie}/
-                // Synthèses dans {patient}/{année}/documents/syntheses_documents/
-                var sb = new System.Text.StringBuilder();
                 var year = DateTime.Now.Year;
                 var documentsRoot = Path.Combine(_currentPatient.DirectoryPath, year.ToString(), "documents");
-                var bilansDir = Path.Combine(documentsRoot, "bilans");
-                var synthesesDir = Path.Combine(documentsRoot, "syntheses_documents");
+                var bilansDir     = Path.Combine(documentsRoot, "bilans");
+                var synthesesDir  = Path.Combine(documentsRoot, "syntheses_documents");
 
                 if (!Directory.Exists(bilansDir))
                 {
-                    PatientBilansText = "";
+                    OnPropertyChanged(nameof(HasPatientBilans));
+                    OnPropertyChanged(nameof(HasNoPatientBilans));
                     return;
                 }
 
                 var bilanFiles = Directory.GetFiles(bilansDir).OrderByDescending(f => File.GetCreationTime(f)).ToList();
                 foreach (var bilanPath in bilanFiles)
                 {
-                    var name = Path.GetFileName(bilanPath);
-                    sb.AppendLine($"## 📄 {name}");
-
-                    // Chercher la synthèse correspondante (préfixe = nom du bilan sans extension)
-                    var baseName = Path.GetFileNameWithoutExtension(bilanPath);
-                    if (Directory.Exists(synthesesDir))
-                    {
-                        var matchingSynth = Directory.GetFiles(synthesesDir, $"{baseName}_synthese_*.md")
-                                                     .OrderByDescending(f => File.GetCreationTime(f))
-                                                     .FirstOrDefault();
-                        if (matchingSynth != null)
-                        {
-                            try
-                            {
-                                var content = File.ReadAllText(matchingSynth, System.Text.Encoding.UTF8);
-                                // Retirer le YAML front matter
-                                if (content.TrimStart().StartsWith("---"))
-                                {
-                                    var first = content.IndexOf("---", StringComparison.Ordinal);
-                                    var second = content.IndexOf("---", first + 3, StringComparison.Ordinal);
-                                    if (second > 0) content = content.Substring(second + 3).TrimStart();
-                                }
-                                sb.AppendLine(content.Trim());
-                            }
-                            catch { }
-                        }
-                        else
-                        {
-                            sb.AppendLine("_(pas de synthèse générée)_");
-                        }
-                    }
-                    sb.AppendLine();
+                    var item = BuildDocumentItem(bilanPath, "bilans", synthesesDir);
+                    PatientBilans.Add(item);
                 }
-                PatientBilansText = sb.ToString().TrimEnd();
             }
-            catch
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[LoadBilans] {ex.Message}"); }
+
+            OnPropertyChanged(nameof(HasPatientBilans));
+            OnPropertyChanged(nameof(HasNoPatientBilans));
+        }
+
+        /// <summary>
+        /// Construit un PatientDocumentItem en lisant le fichier original + sa synthèse IA associée.
+        /// </summary>
+        private PatientDocumentItem BuildDocumentItem(string filePath, string category, string synthesesDir)
+        {
+            var item = new PatientDocumentItem
             {
-                PatientBilansText = "";
+                FilePath  = filePath,
+                FileName  = Path.GetFileName(filePath),
+                Category  = category,
+                DateAdded = File.GetCreationTime(filePath)
+            };
+
+            var baseName = Path.GetFileNameWithoutExtension(filePath);
+            if (Directory.Exists(synthesesDir))
+            {
+                var matchingSynth = Directory.GetFiles(synthesesDir, $"{baseName}_synthese_*.md")
+                                             .OrderByDescending(f => File.GetCreationTime(f))
+                                             .FirstOrDefault();
+                if (matchingSynth != null)
+                {
+                    item.SynthesisFilePath = matchingSynth;
+                    try
+                    {
+                        var content = File.ReadAllText(matchingSynth, System.Text.Encoding.UTF8);
+                        // Retirer YAML front matter pour la lecture
+                        if (content.TrimStart().StartsWith("---"))
+                        {
+                            var first  = content.IndexOf("---", StringComparison.Ordinal);
+                            var second = content.IndexOf("---", first + 3, StringComparison.Ordinal);
+                            if (second > 0) content = content.Substring(second + 3).TrimStart();
+                        }
+                        item.SynthesisContent = content;
+                    }
+                    catch { }
+                }
             }
+            return item;
+        }
+
+        // ── DOCS du dossier bleu (cartes cliquables, hors bilans) ──
+        public ObservableCollection<PatientDocumentItem> PatientDocumentsList { get; } = new();
+        public bool HasPatientDocuments   => PatientDocumentsList.Count > 0;
+        public bool HasNoPatientDocuments => !HasPatientDocuments;
+
+        public void LoadPatientDocumentsFromDisk()
+        {
+            PatientDocumentsList.Clear();
+            if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+            {
+                OnPropertyChanged(nameof(HasPatientDocuments));
+                OnPropertyChanged(nameof(HasNoPatientDocuments));
+                return;
+            }
+
+            try
+            {
+                var year          = DateTime.Now.Year;
+                var documentsRoot = Path.Combine(_currentPatient.DirectoryPath, year.ToString(), "documents");
+                var synthesesDir  = Path.Combine(documentsRoot, "syntheses_documents");
+
+                if (!Directory.Exists(documentsRoot))
+                {
+                    OnPropertyChanged(nameof(HasPatientDocuments));
+                    OnPropertyChanged(nameof(HasNoPatientDocuments));
+                    return;
+                }
+
+                // Toutes les catégories sauf "bilans" (onglet dédié) et les sous-dossiers techniques
+                var excluded = new[] { "bilans", "syntheses_documents", "syntheses" };
+                var categoryDirs = Directory.GetDirectories(documentsRoot)
+                    .Where(d => !excluded.Contains(Path.GetFileName(d)?.ToLowerInvariant() ?? ""))
+                    .OrderBy(d => d)
+                    .ToList();
+
+                foreach (var catDir in categoryDirs)
+                {
+                    var catName = Path.GetFileName(catDir);
+                    var files = Directory.GetFiles(catDir).OrderByDescending(f => File.GetCreationTime(f)).ToList();
+                    foreach (var docPath in files)
+                    {
+                        var item = BuildDocumentItem(docPath, catName, synthesesDir);
+                        PatientDocumentsList.Add(item);
+                    }
+                }
+            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[LoadDocuments] {ex.Message}"); }
+
+            OnPropertyChanged(nameof(HasPatientDocuments));
+            OnPropertyChanged(nameof(HasNoPatientDocuments));
         }
 
         private void LoadPatientSynthesisFromDisk()

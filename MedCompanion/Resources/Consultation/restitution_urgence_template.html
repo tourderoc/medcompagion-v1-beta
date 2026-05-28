@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<style>
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Segoe UI', Georgia, Arial, sans-serif;
+  background: #FDFBF0;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 32px 40px 28px;
+  font-size: 12px;
+  color: #112240;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #E8834A;
+  margin-bottom: 18px;
+}
+.header-left h1 {
+  font-size: 28px;
+  font-weight: 800;
+  color: #112240;
+  line-height: 1.1;
+}
+.header-left .specialty {
+  font-size: 14px;
+  color: #C4622A;
+  font-weight: 600;
+  margin-top: 5px;
+}
+.header-right {
+  text-align: right;
+  font-size: 11px;
+  color: #6B7A8D;
+  line-height: 1.8;
+}
+
+/* ── Bandeau urgence (conditionnel, seulement si risque élevé) ── */
+.banner-urgence {
+  background: #FEF0E8;
+  border: 1px solid #E8834A;
+  border-left: 5px solid #C4622A;
+  border-radius: 8px;
+  padding: 12px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.banner-urgence .icon { font-size: 20px; }
+.banner-urgence .text {
+  font-size: 12px;
+  color: #7E2D02;
+  line-height: 1.5;
+  font-weight: 600;
+}
+.banner-urgence strong { color: #5E2200; }
+
+/* ── Intro ── */
+.intro-block {
+  border-left: 4px solid #E8834A;
+  padding: 14px 20px;
+  margin-bottom: 18px;
+  background: white;
+  border-radius: 0 8px 8px 0;
+}
+.intro-block p {
+  font-size: 13px;
+  color: #112240;
+  line-height: 1.7;
+  font-style: italic;
+}
+
+/* ── Grille 2×2 ── */
+.grid-2x2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.card {
+  background: white;
+  border-radius: 10px;
+  padding: 16px 18px;
+  border: 1px solid #E8EDF3;
+  border-bottom: 3px solid #CBD5E1;
+}
+.card-title {
+  font-size: 10.5px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 9px;
+  color: #112240;
+}
+.card-body {
+  font-size: 12px;
+  color: #2C3E50;
+  line-height: 1.6;
+}
+.card-body ul { padding-left: 16px; }
+.card-body ul li { margin-bottom: 4px; }
+
+.card-observe   { background: #FEF6F0; border-bottom-color: #E8834A; }
+.card-observe   .card-title { color: #C4622A; }
+.card-ressources{ background: #F0FBF8; border-bottom-color: #2DC5A2; }
+.card-ressources .card-title { color: #1A9E82; }
+.card-reperes   { border-bottom-color: #5B7DB1; }
+.card-reperes   .card-title { color: #2E4A7B; }
+.card-plan      { background: #FFFBE6; border-bottom-color: #F1C40F; }
+.card-plan      .card-title { color: #856404; }
+
+/* ── Sections pleine largeur ── */
+.section-full {
+  background: white;
+  border-radius: 10px;
+  padding: 16px 20px;
+  border: 1px solid #E8EDF3;
+  margin-bottom: 14px;
+}
+.section-full .section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: #112240;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.section-full ul { padding-left: 18px; }
+.section-full ul li { margin-bottom: 4px; font-size: 12px; line-height: 1.55; }
+
+.section-securisation { border-left: 4px solid #C4622A; background: #FEF6F0; }
+.section-securisation .section-title { color: #7E2D02; }
+.section-signaux      { border-left: 4px solid #8B9BB4; }
+.section-signaux      .section-title { color: #2E4A7B; }
+.section-urgence-num  { border-left: 4px solid #C0392B; background: #FDF2F2; }
+.section-urgence-num  .section-title { color: #8E2E26; font-size: 12.5px; }
+.section-urgence-num .num-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+.section-urgence-num .num-cell {
+  background: white;
+  border-radius: 6px;
+  padding: 10px;
+  border: 1px solid #E8C5C0;
+  text-align: center;
+}
+.section-urgence-num .num-cell .number {
+  font-size: 18px;
+  font-weight: 800;
+  color: #8E2E26;
+  display: block;
+}
+.section-urgence-num .num-cell .label {
+  font-size: 10.5px;
+  color: #5E1D17;
+  margin-top: 3px;
+}
+
+/* ── Conclusion ── */
+.conclusion {
+  text-align: center;
+  padding: 14px 28px 6px;
+  border-top: 1px solid #E8EDF3;
+}
+.conclusion .conclusion-text {
+  font-size: 12px;
+  font-weight: 600;
+  color: #112240;
+  margin-bottom: 10px;
+  line-height: 1.6;
+}
+.conclusion .signature {
+  font-style: italic;
+  font-size: 12px;
+  color: #6B7A8D;
+  line-height: 1.7;
+}
+
+/* ── Mention légale ── */
+.legal {
+  border: 1px solid #F39C12;
+  background: #FEF9E7;
+  border-radius: 7px;
+  padding: 9px 14px;
+  margin-top: 12px;
+  font-size: 10px;
+  color: #7D6608;
+  line-height: 1.5;
+}
+
+/* ── Anti-rupture (impression / PDF) ── */
+.card,
+.section-full,
+.section-urgence-num .num-cell,
+.section-urgence-num,
+.section-securisation,
+.section-signaux,
+.conclusion,
+.banner-urgence,
+.legal {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+/* La section urgences (numéros + libellés) doit rester groupée */
+.section-urgence-num .num-grid {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+@media print {
+  body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .card,
+  .section-full,
+  .section-urgence-num .num-cell,
+  .conclusion,
+  .legal { page-break-inside: avoid; break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+
+<!-- En-tête -->
+<div class="header">
+  <div class="header-left">
+    <h1>{{DOCTOR_NAME}}</h1>
+    <div class="specialty">Pédopsychiatre</div>
+  </div>
+  <div class="header-right">
+    Espace de Restitution Familiale<br>
+    Document de suivi partagé<br>
+    Document Confidentiel
+  </div>
+</div>
+
+<!-- Bandeau urgence (vide si risque < Élevé) -->
+{{BANNER_URGENCE}}
+
+<!-- Intro narrative -->
+<div class="intro-block">
+  <p>{{INTRO}}</p>
+</div>
+
+<!-- Grille 2×2 -->
+<div class="grid-2x2">
+
+  <div class="card card-observe">
+    <div class="card-title">Ce que nous avons observé</div>
+    <div class="card-body">{{OBSERVE}}</div>
+  </div>
+
+  <div class="card card-ressources">
+    <div class="card-title">Ressources de votre enfant</div>
+    <div class="card-body">{{RESSOURCES}}</div>
+  </div>
+
+  <div class="card card-reperes">
+    <div class="card-title">Repères pour la maison</div>
+    <div class="card-body">{{REPERES}}</div>
+  </div>
+
+  <div class="card card-plan">
+    <div class="card-title">Plan d'action partagé</div>
+    <div class="card-body">{{PLAN_ACTION}}</div>
+  </div>
+
+</div>
+
+<!-- Sécurisation du domicile (conditionnelle) -->
+{{SECTION_SECURISATION}}
+
+<!-- Signaux à reconnaître -->
+<div class="section-full section-signaux">
+  <div class="section-title">Signaux qui doivent vous alerter</div>
+  <ul>
+    <li>Aggravation brutale du moral, du sommeil ou de l'appétit</li>
+    <li>Messages ou comportements d'adieu (dons d'objets précieux, lettres)</li>
+    <li>Évocation d'un scénario suicidaire précis (moyen, lieu, date)</li>
+    <li>Isolement massif, repli sur soi qui s'accentue</li>
+    <li>Évocation directe d'envie d'en finir, de disparaître</li>
+  </ul>
+</div>
+
+<!-- En cas d'urgence -->
+<div class="section-full section-urgence-num">
+  <div class="section-title">⚠ En cas d'urgence</div>
+  <div class="num-grid">
+    <div class="num-cell">
+      <span class="number">15</span>
+      <div class="label">SAMU<br>Urgence vitale</div>
+    </div>
+    <div class="num-cell">
+      <span class="number">3114</span>
+      <div class="label">Numéro national<br>de prévention du suicide<br>24h/24, gratuit</div>
+    </div>
+    <div class="num-cell">
+      <span class="number">112</span>
+      <div class="label">Urgences pédiatriques<br>de votre secteur</div>
+    </div>
+  </div>
+</div>
+
+<!-- Conclusion -->
+<div class="conclusion">
+  <p class="conclusion-text">Vous n'êtes pas seuls : nous traversons cette période ensemble, avec l'équipe qui entoure votre enfant.</p>
+  <div class="signature">Avec toute ma bienveillance,<br>{{DOCTOR_NAME}}</div>
+</div>
+
+{{MENTION_LEGALE}}
+
+</body>
+</html>

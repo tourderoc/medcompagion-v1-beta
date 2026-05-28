@@ -16,6 +16,8 @@ using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.LLM;
+using MedCompanion.Services.Urgence;
+using MedCompanion.Services.Urgence.Detectors;
 using MedCompanion.Dialogs;
 using MedCompanion.Views.Courriers;
 using MedCompanion.Views.Attestations;
@@ -362,10 +364,26 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             }
         };
 
+        // Mode Urgence V0 (Étape 2) : log service + dispatcher + détecteur LLM (keyword en fallback)
+        var urgenceLogService  = new UrgenceLogService();
+        var urgenceDispatcher  = new UrgenceDispatcher(urgenceLogService);
+        var keywordFallback    = new KeywordSuicideRiskDetector();
+        if (_currentLLMService != null)
+            urgenceDispatcher.Register(new SuicideRiskDetector(_currentLLMService, keywordFallback));
+        else
+            urgenceDispatcher.Register(keywordFallback);
+        urgenceDispatcher.SignalDetected += sig =>
+        {
+            // V0 Étape 2 : log debug seulement. Le chip UI arrive à l'Étape 3.
+            System.Diagnostics.Debug.WriteLine(
+                $"[URGENCE] Signal détecté : type={sig.Type}, confidence={sig.Confidence:0.00}, " +
+                $"detecteur={sig.DetecteurName}, passages={sig.Passages.Count}, fichier={sig.SignalFilePath}");
+        };
+
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
-                _documentService, _scannerService);
+                _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>
