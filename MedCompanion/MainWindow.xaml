@@ -279,11 +279,38 @@
                             ToolTip="LLM initialisation..."
                             Margin="0,0,10,0">
                         <TextBlock x:Name="LLMStatusIcon"
-                                   Text="🤖" 
+                                   Text="🤖"
                                    FontSize="20"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Border>
+
+                    <!-- Bouton décharger Med (reset état GPU local) -->
+                    <Button x:Name="UnloadModelBtn"
+                            Width="40" Height="40"
+                            Background="Transparent"
+                            BorderThickness="1"
+                            BorderBrush="#BDC3C7"
+                            Cursor="Hand"
+                            ToolTip="Décharger Med (reset état GPU). Prochain appel : ~5-10s de réveil."
+                            Click="UnloadModelBtn_Click"
+                            Margin="0,0,10,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="20">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock x:Name="UnloadModelIcon"
+                                   Text="💤"
+                                   FontSize="18"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Button>
                 </StackPanel>
                 
                 <!-- Bouton Analyse des prompts -->

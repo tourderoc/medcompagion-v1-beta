@@ -24,6 +24,7 @@ namespace MedCompanion.ViewModels
         private readonly PreparationSuggesterService? _suggester;
         private readonly AxesSuggesterService? _axesSuggester;
         private readonly AxisExtractorService? _axisExtractor;
+        private readonly SyntheseSuggesterService? _syntheseSuggester;
         private readonly WhisperStreamingService? _whisper;
         private PatientIndexEntry? _patient;
 
@@ -36,20 +37,22 @@ namespace MedCompanion.ViewModels
                                         PreparationSuggesterService? suggester,
                                         AxesSuggesterService? axesSuggester = null,
                                         AxisExtractorService?  axisExtractor = null,
-                                        WhisperStreamingService? whisper = null)
+                                        WhisperStreamingService? whisper = null,
+                                        SyntheseSuggesterService? syntheseSuggester = null)
         {
-            _phaseService  = phaseService;
-            _suggester     = suggester;
-            _axesSuggester = axesSuggester;
-            _axisExtractor = axisExtractor;
-            _whisper       = whisper;
+            _phaseService      = phaseService;
+            _suggester         = suggester;
+            _axesSuggester     = axesSuggester;
+            _axisExtractor     = axisExtractor;
+            _syntheseSuggester = syntheseSuggester;
+            _whisper           = whisper;
 
             StartCommand                  = new RelayCommand(_ => StartNew(),                _ => CanStart);
             ResumeCommand                 = new RelayCommand(_ => Resume(),                  _ => CanResume);
             SuggestPreparationCommand     = new RelayCommand(async _ => await SuggestPreparationAsync(), _ => IsWorkingPreparation && !IsBusy);
             ValidatePreparationCommand    = new RelayCommand(_ => ValidatePreparation(),    _ => CanValidatePreparation);
-            TerminateSessionCommand       = new RelayCommand(_ => TerminateSession(),       _ => IsWorkingPreparation || IsWorkingEvaluation);
-            CancelEvaluationCommand       = new RelayCommand(_ => CancelEvaluation(),       _ => IsWorkingPreparation || IsWorkingEvaluation);
+            TerminateSessionCommand       = new RelayCommand(_ => TerminateSession(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese);
+            CancelEvaluationCommand       = new RelayCommand(_ => CancelEvaluation(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese);
 
             AddItemCommand    = new RelayCommand(param => AddItem(param as string));
             RemoveItemCommand = new RelayCommand(param => RemoveItem(param));
@@ -66,6 +69,16 @@ namespace MedCompanion.ViewModels
             AcceptMedTextCommand     = new RelayCommand(param => AcceptMedText(param as EvaluationAxis));
             RejectMedTextCommand     = new RelayCommand(param => RejectMedText(param as EvaluationAxis));
             OpenRawTranscriptCommand = new RelayCommand(_ => OpenRawTranscript(),                _ => !string.IsNullOrEmpty(LastRawTranscriptPath));
+
+            // Étape 3 — Synthèse diagnostique
+            SuggestSyntheseCommand        = new RelayCommand(async _ => await SuggestSyntheseAsync(), _ => IsWorkingSynthese && !IsBusy && _syntheseSuggester != null);
+            ValidateSyntheseCommand       = new RelayCommand(_ => ValidateSynthese(),                _ => CanValidateSynthese);
+            BackToEvaluationCommand       = new RelayCommand(_ => BackToEvaluation(),                _ => IsWorkingSynthese);
+            AddSyntheseItemCommand        = new RelayCommand(param => AddSyntheseItem(param as string));
+            RemoveSyntheseItemCommand     = new RelayCommand(param => RemoveSyntheseItem(param));
+            AddDiagnosticEcarteCommand    = new RelayCommand(_ => AddDiagnosticEcarte());
+            RemoveDiagnosticEcarteCommand = new RelayCommand(param => RemoveDiagnosticEcarte(param as DiagnosticEcarte));
+            SetCertitudeCommand           = new RelayCommand(param => SetCertitude(param));
         }
 
         // ── Patient courant ─────────────────────────────────────────────────
@@ -92,12 +105,58 @@ namespace MedCompanion.ViewModels
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesPrincipaux);
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesDifferentiels);
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesSystemiques);
+                HookSyntheseHandlers(Phase.Synthese);
             }
 
             IsWorkingPreparation = false;
             IsWorkingEvaluation  = false;
+            IsWorkingSynthese    = false;
             StatusMessage = "";
             NotifyAllStates();
+        }
+
+        private void HookSyntheseHandlers(SyntheseDiagnostique s)
+        {
+            s.PropertyChanged -= OnSyntheseChanged;
+            s.PropertyChanged += OnSyntheseChanged;
+            HookEditableList(s.DiagnosticsRetenus);
+            HookEditableList(s.ElementsEnFaveur);
+            foreach (var e in s.DiagnosticsEcartes)
+            {
+                e.PropertyChanged -= OnEcarteChanged;
+                e.PropertyChanged += OnEcarteChanged;
+            }
+        }
+
+        private void HookEditableList(ObservableCollection<EditableString> list)
+        {
+            foreach (var it in list)
+            {
+                it.PropertyChanged -= OnEditableStringChanged;
+                it.PropertyChanged += OnEditableStringChanged;
+            }
+        }
+
+        private void OnEditableStringChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (Phase == null) return;
+            if (e.PropertyName == nameof(EditableString.Value))
+            { try { _phaseService.Save(Phase); } catch { /* meilleur effort */ } }
+        }
+
+        private void OnSyntheseChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (Phase == null) return;
+            if (e.PropertyName == nameof(SyntheseDiagnostique.Certitude))
+            { try { _phaseService.Save(Phase); } catch { /* meilleur effort */ } }
+        }
+
+        private void OnEcarteChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (Phase == null) return;
+            if (e.PropertyName == nameof(DiagnosticEcarte.Label) ||
+                e.PropertyName == nameof(DiagnosticEcarte.Motif))
+            { try { _phaseService.Save(Phase); } catch { /* meilleur effort */ } }
         }
 
         private void HookAxisHandlers(ObservableCollection<EvaluationAxis> axes)
@@ -143,6 +202,16 @@ namespace MedCompanion.ViewModels
             set { if (_isWorkingEvaluation != value) { _isWorkingEvaluation = value; OnPropertyChanged(); NotifyAllStates(); } }
         }
 
+        private bool _isWorkingSynthese;
+        /// <summary>
+        /// True quand le médecin est en train de travailler l'Étape 3 (Synthèse) dans la séance courante.
+        /// </summary>
+        public bool IsWorkingSynthese
+        {
+            get => _isWorkingSynthese;
+            set { if (_isWorkingSynthese != value) { _isWorkingSynthese = value; OnPropertyChanged(); NotifyAllStates(); } }
+        }
+
         private bool _isBusy;
         public bool IsBusy
         {
@@ -159,8 +228,8 @@ namespace MedCompanion.ViewModels
 
         // ── États dérivés pour la View (3 cas) ──────────────────────────────
 
-        public bool CanStart  => _patient != null && Phase == null && !IsWorkingPreparation && !IsWorkingEvaluation;
-        public bool CanResume => _patient != null && Phase != null && Phase.IsActive && !IsWorkingPreparation && !IsWorkingEvaluation;
+        public bool CanStart  => _patient != null && Phase == null && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese;
+        public bool CanResume => _patient != null && Phase != null && Phase.IsActive && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese;
 
         public string SuspendedMarqueLabel
         {
@@ -171,7 +240,8 @@ namespace MedCompanion.ViewModels
                 {
                     EvaluationStep.Preparation       => "Étape 1 — Préparation",
                     EvaluationStep.EvaluationCiblee  => "Étape 2 — Évaluation ciblée",
-                    EvaluationStep.Cartographie      => "Étape 3 — Cartographie",
+                    EvaluationStep.Synthese          => "Étape 3 — Synthèse diagnostique",
+                    EvaluationStep.Cartographie      => "Étape 4 — Cartographie",
                     _                                 => "?"
                 };
                 return $"Marque-page : {step}";
@@ -250,11 +320,16 @@ namespace MedCompanion.ViewModels
                     StatusMessage = "Reprise de l'évaluation — Étape 2.";
                     NotifyEvaluationCollections();
                     break;
+                case EvaluationStep.Synthese:
+                    IsWorkingSynthese = true;
+                    StatusMessage = "Reprise de l'évaluation — Étape 3 Synthèse diagnostique.";
+                    NotifySyntheseCollections();
+                    break;
                 case EvaluationStep.Cartographie:
-                    // V0.2 : pour l'instant on retombe en Étape 2 si elle existe
-                    IsWorkingEvaluation = true;
-                    StatusMessage = "Reprise — Étape 3 (Cartographie) bientôt disponible.";
-                    NotifyEvaluationCollections();
+                    // V0.3 : Cartographie pas encore implémentée — retour Synthèse pour finir
+                    IsWorkingSynthese = true;
+                    StatusMessage = "Reprise — Étape 4 (Cartographie) bientôt disponible.";
+                    NotifySyntheseCollections();
                     break;
                 default:
                     IsWorkingPreparation = true;
@@ -348,11 +423,23 @@ namespace MedCompanion.ViewModels
             CleanEmpty(Phase.Preparation.PointsVigilance);
             CleanEmpty(Phase.Preparation.QuestionsCliniques);
 
+            // Étape 3 : cleanup
+            CleanEmpty(Phase.Synthese.DiagnosticsRetenus);
+            CleanEmpty(Phase.Synthese.ElementsEnFaveur);
+            CleanEmptyEcartes(Phase.Synthese.DiagnosticsEcartes);
+
             _phaseService.Save(Phase);
             IsWorkingPreparation = false;
             IsWorkingEvaluation  = false;
+            IsWorkingSynthese    = false;
             StatusMessage = "Séance suspendue. Vous reprendrez exactement ici la prochaine fois.";
             NotifyAllStates();
+        }
+
+        private static void CleanEmptyEcartes(ObservableCollection<DiagnosticEcarte> list)
+        {
+            for (int i = list.Count - 1; i >= 0; i--)
+                if (list[i] == null || string.IsNullOrWhiteSpace(list[i].Label)) list.RemoveAt(i);
         }
 
         private void CancelEvaluation()
@@ -380,11 +467,17 @@ namespace MedCompanion.ViewModels
         {
             if (param is EditableString item)
             {
-                // Cherche dans toutes les listes
+                // Préparation (Étape 1)
                 foreach (var cat in new[] { "hypotheses", "differentiels", "a_eliminer", "vigilance", "questions" })
                 {
                     var list = ListForCategory(cat);
                     if (list != null && list.Remove(item)) return;
+                }
+                // Synthèse diagnostique (Étape 3)
+                if (Phase != null)
+                {
+                    if (Phase.Synthese.DiagnosticsRetenus.Remove(item)) { TrySaveSynthese(); return; }
+                    if (Phase.Synthese.ElementsEnFaveur.Remove(item))   { TrySaveSynthese(); return; }
                 }
             }
         }
@@ -526,12 +619,15 @@ namespace MedCompanion.ViewModels
         {
             if (Phase == null) return;
             Phase.EvaluationCiblee.ValidationDate = DateTime.Now;
-            Phase.EtapeCourante = EvaluationStep.Cartographie;
+            Phase.EtapeCourante = EvaluationStep.Synthese;
             _phaseService.Save(Phase);
 
+            // Transition directe vers Étape 3 dans la même séance
             IsWorkingEvaluation = false;
-            StatusMessage = "Étape 2 validée. Étape 3 (Cartographie globale) disponible prochainement.";
+            IsWorkingSynthese   = true;
+            StatusMessage = "Étape 2 validée. Vous pouvez maintenant rédiger la synthèse diagnostique.";
             NotifyAllStates();
+            NotifySyntheseCollections();
         }
 
         private void BackToPreparation()
@@ -835,6 +931,206 @@ namespace MedCompanion.ViewModels
             return content.Substring(second + 3).TrimStart('\r', '\n');
         }
 
+        // ═══════════════════════════════════════════════════════════════════
+        // ÉTAPE 3 — Synthèse diagnostique (V0.2)
+        // ═══════════════════════════════════════════════════════════════════
+
+        public ObservableCollection<EditableString>   DiagnosticsRetenus  => Phase?.Synthese.DiagnosticsRetenus ?? new();
+        public ObservableCollection<EditableString>   ElementsEnFaveur    => Phase?.Synthese.ElementsEnFaveur   ?? new();
+        public ObservableCollection<DiagnosticEcarte> DiagnosticsEcartes  => Phase?.Synthese.DiagnosticsEcartes ?? new();
+
+        public NiveauCertitude SyntheseCertitude
+        {
+            get => Phase?.Synthese.Certitude ?? NiveauCertitude.NonRenseigne;
+            set { if (Phase != null) Phase.Synthese.Certitude = value; }
+        }
+        public bool IsCertitudeHypothese => SyntheseCertitude == NiveauCertitude.HypotheseAConfirmer;
+        public bool IsCertitudeProbable  => SyntheseCertitude == NiveauCertitude.Probable;
+        public bool IsCertitudeCertain   => SyntheseCertitude == NiveauCertitude.Certain;
+
+        public ICommand SuggestSyntheseCommand        { get; private set; } = null!;
+        public ICommand ValidateSyntheseCommand       { get; private set; } = null!;
+        public ICommand BackToEvaluationCommand       { get; private set; } = null!;
+        public ICommand AddSyntheseItemCommand        { get; private set; } = null!;
+        public ICommand RemoveSyntheseItemCommand     { get; private set; } = null!;
+        public ICommand AddDiagnosticEcarteCommand    { get; private set; } = null!;
+        public ICommand RemoveDiagnosticEcarteCommand { get; private set; } = null!;
+        public ICommand SetCertitudeCommand           { get; private set; } = null!;
+
+        private bool CanValidateSynthese
+            => IsWorkingSynthese && Phase != null && (
+                Phase.Synthese.DiagnosticsRetenus.Any(NonEmpty) ||
+                Phase.Synthese.ElementsEnFaveur.Any(NonEmpty) ||
+                Phase.Synthese.DiagnosticsEcartes.Any(e => !string.IsNullOrWhiteSpace(e?.Label)) ||
+                Phase.Synthese.Certitude != NiveauCertitude.NonRenseigne);
+
+        public async Task SuggestSyntheseAsync()
+        {
+            if (Phase == null || _syntheseSuggester == null) return;
+
+            IsBusy = true;
+            StatusMessage = "Génération IA de la synthèse en cours...";
+            try
+            {
+                var allAxes = Phase.EvaluationCiblee.AxesPrincipaux
+                    .Concat(Phase.EvaluationCiblee.AxesDifferentiels)
+                    .Concat(Phase.EvaluationCiblee.AxesSystemiques)
+                    .ToList();
+                var axes = allAxes.Select(a => new SyntheseSuggesterService.AxisInput
+                {
+                    Label         = a.Label,
+                    Justification = a.Justification,
+                    State         = (int)a.State,
+                    Observation   = a.Observation
+                }).ToList();
+
+                var motif = (await BuildContextAsync()).Motif;
+                var (ok, sug, err) = await _syntheseSuggester.SuggestAsync(_patient?.Age, motif, axes);
+                if (!ok || sug == null)
+                {
+                    StatusMessage = $"Suggestion IA indisponible : {err}";
+                    return;
+                }
+
+                // On REMPLACE le contenu — le médecin pourra éditer librement après
+                ReplaceList(Phase.Synthese.DiagnosticsRetenus, sug.DiagnosticsRetenus);
+                ReplaceList(Phase.Synthese.ElementsEnFaveur,   sug.ElementsEnFaveur);
+                ReplaceEcartes(Phase.Synthese.DiagnosticsEcartes, sug.DiagnosticsEcartes);
+                if (sug.Certitude >= 0 && sug.Certitude <= 3)
+                    Phase.Synthese.Certitude = (NiveauCertitude)sug.Certitude;
+
+                HookSyntheseHandlers(Phase.Synthese);
+                _phaseService.Save(Phase);
+                StatusMessage = "Synthèse proposée — vous pouvez éditer librement.";
+                NotifySyntheseCollections();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"Erreur IA : {ex.Message}";
+            }
+            finally
+            {
+                IsBusy = false;
+            }
+        }
+
+        private void ReplaceEcartes(ObservableCollection<DiagnosticEcarte> target,
+                                    System.Collections.Generic.List<SyntheseSuggesterService.EcarteSuggestion> source)
+        {
+            target.Clear();
+            foreach (var s in source)
+            {
+                if (string.IsNullOrWhiteSpace(s.Label)) continue;
+                var e = new DiagnosticEcarte(s.Label, s.Motif ?? "");
+                e.PropertyChanged += OnEcarteChanged;
+                target.Add(e);
+            }
+        }
+
+        private void ValidateSynthese()
+        {
+            if (Phase == null) return;
+            CleanEmpty(Phase.Synthese.DiagnosticsRetenus);
+            CleanEmpty(Phase.Synthese.ElementsEnFaveur);
+            CleanEmptyEcartes(Phase.Synthese.DiagnosticsEcartes);
+
+            Phase.Synthese.ValidationDate = DateTime.Now;
+            Phase.EtapeCourante = EvaluationStep.Cartographie;
+            _phaseService.Save(Phase);
+
+            // V0.2 : Cartographie pas encore implémentée → on clôture l'évaluation
+            _phaseService.Close(Phase);
+            IsWorkingSynthese = false;
+            Phase = null;
+            StatusMessage = "Évaluation clôturée. La Cartographie enfant arrivera en V0.3.";
+            NotifyAllStates();
+        }
+
+        private void BackToEvaluation()
+        {
+            if (Phase == null) return;
+            Phase.EvaluationCiblee.ValidationDate = null;  // ré-éditable
+            Phase.EtapeCourante = EvaluationStep.EvaluationCiblee;
+            _phaseService.Save(Phase);
+
+            IsWorkingSynthese    = false;
+            IsWorkingEvaluation  = true;
+            StatusMessage = "Retour à l'Étape 2 — l'Étape 3 reste conservée si déjà ébauchée.";
+            NotifyAllStates();
+            NotifyEvaluationCollections();
+        }
+
+        private void AddSyntheseItem(string? category)
+        {
+            var list = SyntheseListForCategory(category);
+            if (list == null) return;
+            var newItem = new EditableString("");
+            newItem.PropertyChanged += OnEditableStringChanged;
+            list.Add(newItem);
+        }
+
+        private void RemoveSyntheseItem(object? param)
+        {
+            if (param is EditableString item && Phase != null)
+            {
+                if (Phase.Synthese.DiagnosticsRetenus.Remove(item)) { TrySaveSynthese(); return; }
+                if (Phase.Synthese.ElementsEnFaveur.Remove(item))   { TrySaveSynthese(); return; }
+            }
+        }
+
+        private ObservableCollection<EditableString>? SyntheseListForCategory(string? cat) => cat switch
+        {
+            "retenus"     => Phase?.Synthese.DiagnosticsRetenus,
+            "en_faveur"   => Phase?.Synthese.ElementsEnFaveur,
+            _             => null
+        };
+
+        private void AddDiagnosticEcarte()
+        {
+            if (Phase == null) return;
+            var e = new DiagnosticEcarte();
+            e.PropertyChanged += OnEcarteChanged;
+            Phase.Synthese.DiagnosticsEcartes.Add(e);
+        }
+
+        private void RemoveDiagnosticEcarte(DiagnosticEcarte? e)
+        {
+            if (e == null || Phase == null) return;
+            if (Phase.Synthese.DiagnosticsEcartes.Remove(e)) TrySaveSynthese();
+        }
+
+        private void SetCertitude(object? param)
+        {
+            if (Phase == null) return;
+            NiveauCertitude target;
+            if (param is NiveauCertitude n) target = n;
+            else if (param is int i && i >= 0 && i <= 3) target = (NiveauCertitude)i;
+            else if (param is string s && int.TryParse(s, out var k) && k >= 0 && k <= 3) target = (NiveauCertitude)k;
+            else return;
+            Phase.Synthese.Certitude = target;
+            OnPropertyChanged(nameof(SyntheseCertitude));
+            OnPropertyChanged(nameof(IsCertitudeHypothese));
+            OnPropertyChanged(nameof(IsCertitudeProbable));
+            OnPropertyChanged(nameof(IsCertitudeCertain));
+        }
+
+        private void TrySaveSynthese()
+        {
+            if (Phase == null) return;
+            try { _phaseService.Save(Phase); } catch { /* meilleur effort */ }
+        }
+
+        private void NotifySyntheseCollections()
+        {
+            OnPropertyChanged(nameof(DiagnosticsRetenus));
+            OnPropertyChanged(nameof(ElementsEnFaveur));
+            OnPropertyChanged(nameof(DiagnosticsEcartes));
+            OnPropertyChanged(nameof(SyntheseCertitude));
+            OnPropertyChanged(nameof(IsCertitudeHypothese));
+            OnPropertyChanged(nameof(IsCertitudeProbable));
+            OnPropertyChanged(nameof(IsCertitudeCertain));
+        }
+
         // ── INPC ──────────────────────────────────────────────────────────
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -847,6 +1143,8 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(CanStart));
             OnPropertyChanged(nameof(CanResume));
             OnPropertyChanged(nameof(IsWorkingPreparation));
+            OnPropertyChanged(nameof(IsWorkingEvaluation));
+            OnPropertyChanged(nameof(IsWorkingSynthese));
             OnPropertyChanged(nameof(SuspendedMarqueLabel));
             OnPropertyChanged(nameof(SuspendedAgoLabel));
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(

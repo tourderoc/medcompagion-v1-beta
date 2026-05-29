@@ -123,6 +123,17 @@ namespace MedCompanion.Services.Evaluations
             AppendAxes(sb, "  axes_principaux",    phase.EvaluationCiblee.AxesPrincipaux);
             AppendAxes(sb, "  axes_differentiels", phase.EvaluationCiblee.AxesDifferentiels);
             AppendAxes(sb, "  axes_systemiques",   phase.EvaluationCiblee.AxesSystemiques);
+
+            sb.AppendLine($"etape_3_validee: {(phase.Synthese.IsValidated ? "true" : "false")}");
+            if (phase.Synthese.ValidationDate.HasValue)
+                sb.AppendLine($"etape_3_validation_date: {phase.Synthese.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
+
+            sb.AppendLine("synthese_diagnostique:");
+            AppendList(sb, "  diagnostics_retenus", phase.Synthese.DiagnosticsRetenus);
+            AppendList(sb, "  elements_en_faveur",  phase.Synthese.ElementsEnFaveur);
+            AppendEcartes(sb, "  diagnostics_ecartes", phase.Synthese.DiagnosticsEcartes);
+            sb.AppendLine($"  certitude: {(int)phase.Synthese.Certitude}");
+
             sb.AppendLine("---");
             sb.AppendLine();
             sb.AppendLine($"# Évaluation — {phase.PatientNomComplet}");
@@ -150,6 +161,29 @@ namespace MedCompanion.Services.Evaluations
                 AppendAxesMd(sb, "Axes principaux",    phase.EvaluationCiblee.AxesPrincipaux);
                 AppendAxesMd(sb, "Différentiels",      phase.EvaluationCiblee.AxesDifferentiels);
                 AppendAxesMd(sb, "Facteurs systémiques", phase.EvaluationCiblee.AxesSystemiques);
+            }
+
+            // Étape 3 lisible — synthèse diagnostique
+            if (phase.Synthese.DiagnosticsRetenus.Count > 0 ||
+                phase.Synthese.ElementsEnFaveur.Count > 0 ||
+                phase.Synthese.DiagnosticsEcartes.Count > 0 ||
+                phase.Synthese.Certitude != NiveauCertitude.NonRenseigne)
+            {
+                sb.AppendLine();
+                sb.AppendLine("## Étape 3 — Synthèse diagnostique");
+                sb.AppendLine();
+                AppendSectionMd(sb, "Diagnostic(s) retenu(s)", phase.Synthese.DiagnosticsRetenus);
+                AppendSectionMd(sb, "Éléments cliniques en faveur", phase.Synthese.ElementsEnFaveur);
+                AppendEcartesMd(sb, "Diagnostics différentiels écartés", phase.Synthese.DiagnosticsEcartes);
+                var certLabel = phase.Synthese.Certitude switch
+                {
+                    NiveauCertitude.HypotheseAConfirmer => "Hypothèse à confirmer",
+                    NiveauCertitude.Probable            => "Probable",
+                    NiveauCertitude.Certain             => "Certain",
+                    _                                   => "Non renseigné"
+                };
+                sb.AppendLine($"**Niveau de certitude :** {certLabel}");
+                sb.AppendLine();
             }
 
             return sb.ToString();
@@ -214,6 +248,35 @@ namespace MedCompanion.Services.Evaluations
                 any = true;
             }
             if (!any) sb.AppendLine("_(aucun axe défini)_");
+            sb.AppendLine();
+        }
+
+        private static void AppendEcartes(StringBuilder sb, string key, IEnumerable<DiagnosticEcarte> ecartes)
+        {
+            sb.AppendLine($"{key}:");
+            foreach (var e in ecartes)
+            {
+                if (e == null || string.IsNullOrWhiteSpace(e.Label)) continue;
+                sb.AppendLine($"  - label: \"{Escape(e.Label)}\"");
+                sb.AppendLine($"    motif: \"{Escape(SingleLine(e.Motif ?? ""))}\"");
+            }
+        }
+
+        private static void AppendEcartesMd(StringBuilder sb, string title, IEnumerable<DiagnosticEcarte> ecartes)
+        {
+            sb.AppendLine($"### {title}");
+            sb.AppendLine();
+            var any = false;
+            foreach (var e in ecartes)
+            {
+                if (e == null || string.IsNullOrWhiteSpace(e.Label)) continue;
+                sb.Append($"- **{e.Label.Trim()}**");
+                if (!string.IsNullOrWhiteSpace(e.Motif))
+                    sb.Append($" — {e.Motif.Trim()}");
+                sb.AppendLine();
+                any = true;
+            }
+            if (!any) sb.AppendLine("_(aucun différentiel écarté)_");
             sb.AppendLine();
         }
 
@@ -288,6 +351,22 @@ namespace MedCompanion.Services.Evaluations
                         phase.EvaluationCiblee.AxesDifferentiels.Add(ax);
                     foreach (var ax in GetAxesFromBlock(ciblee, "axes_systemiques",   AxisCategory.Systemique))
                         phase.EvaluationCiblee.AxesSystemiques.Add(ax);
+                }
+
+                // Étape 3 — Synthèse diagnostique
+                if (GetBool(yaml, "etape_3_validee"))
+                    phase.Synthese.ValidationDate = GetDate(yaml, "etape_3_validation_date") ?? DateTime.Now;
+
+                var synth = ExtractSubBlock(yaml, "synthese_diagnostique:");
+                if (synth != null)
+                {
+                    foreach (var it in GetListItems(synth, "diagnostics_retenus")) phase.Synthese.DiagnosticsRetenus.Add(new EditableString(it));
+                    foreach (var it in GetListItems(synth, "elements_en_faveur"))  phase.Synthese.ElementsEnFaveur.Add(new EditableString(it));
+                    foreach (var ec in GetEcartesFromBlock(synth, "diagnostics_ecartes"))
+                        phase.Synthese.DiagnosticsEcartes.Add(ec);
+                    var cert = GetIntInBlock(synth, "certitude") ?? 0;
+                    if (cert >= 0 && cert <= 3)
+                        phase.Synthese.Certitude = (NiveauCertitude)cert;
                 }
 
                 return phase;
@@ -501,6 +580,69 @@ namespace MedCompanion.Services.Evaluations
             if (s.StartsWith("\"") && s.EndsWith("\"") && s.Length >= 2)
                 s = s.Substring(1, s.Length - 2);
             return s.Replace("\\\"", "\"").Replace("\\\\", "\\");
+        }
+
+        /// <summary>
+        /// Parse une liste de différentiels écartés au format :
+        ///   diagnostics_ecartes:
+        ///     - label: "..."
+        ///       motif: "..."
+        /// </summary>
+        private static List<DiagnosticEcarte> GetEcartesFromBlock(string block, string key)
+        {
+            var res = new List<DiagnosticEcarte>();
+            var lines = block.Replace("\r\n", "\n").Split('\n');
+            bool inKey = false;
+            DiagnosticEcarte? current = null;
+
+            foreach (var rawLine in lines)
+            {
+                var t = rawLine.TrimStart();
+
+                if (!inKey)
+                {
+                    if (t.StartsWith(key + ":")) { inKey = true; }
+                    continue;
+                }
+
+                var indent = rawLine.Length - t.Length;
+                if (t.Length > 0 && indent <= 2 && !t.StartsWith("-"))
+                    break;
+
+                if (t.StartsWith("- label:") && indent <= 4)
+                {
+                    if (current != null) res.Add(current);
+                    current = new DiagnosticEcarte
+                    {
+                        Label = ExtractQuoted(t.Substring("- label:".Length).Trim())
+                    };
+                    continue;
+                }
+
+                if (current != null && t.StartsWith("motif:"))
+                {
+                    current.Motif = ExtractQuoted(t.Substring("motif:".Length).Trim());
+                }
+            }
+
+            if (current != null) res.Add(current);
+            return res;
+        }
+
+        /// <summary>
+        /// Lit une clé simple "key: N" dans un sous-bloc indenté (≤ 4 espaces).
+        /// </summary>
+        private static int? GetIntInBlock(string block, string key)
+        {
+            var lines = block.Replace("\r\n", "\n").Split('\n');
+            foreach (var line in lines)
+            {
+                var t = line.TrimStart();
+                if (!t.StartsWith(key + ":")) continue;
+                var val = t.Substring(key.Length + 1).Trim();
+                if (int.TryParse(val, out var n)) return n;
+            }
+            return null;
         }
     }
 }

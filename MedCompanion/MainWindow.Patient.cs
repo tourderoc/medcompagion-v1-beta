@@ -73,7 +73,12 @@ public partial class MainWindow : Window
         {
             // Réinitialiser l'interface pour le nouveau patient
             ResetPatientUI();
- 
+
+            // Décharger Med si on change effectivement de patient (évite la contamination
+            // de contexte entre dossiers + reset le KV cache GPU). No-op pour OpenAI.
+            if (_selectedPatient != null && _selectedPatient.Id != patient.Id)
+                UnloadModelSilently();
+
             _selectedPatient = patient;
  
             // Ajouter à l'historique des patients récemment ouverts

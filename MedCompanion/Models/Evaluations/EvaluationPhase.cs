@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 
 namespace MedCompanion.Models.Evaluations
 {
-    public enum EvaluationStep { Preparation = 1, EvaluationCiblee = 2, Cartographie = 3 }
+    public enum EvaluationStep { Preparation = 1, EvaluationCiblee = 2, Synthese = 3, Cartographie = 4 }
 
     public enum AxisExplorationState { NonAborde = 0, Partiel = 1, Evoque = 2 }
 
@@ -27,11 +27,13 @@ namespace MedCompanion.Models.Evaluations
 
         public EvaluationPreparation Preparation     { get; set; } = new();
         public EvaluationCiblee      EvaluationCiblee { get; set; } = new();
-        // V0.2 ajoutera Cartographie
+        public SyntheseDiagnostique  Synthese         { get; set; } = new();
+        // V0.3 ajoutera Cartographie enfant (3-11 ans)
 
         public bool IsActive                    => !DateCloture.HasValue;
         public bool IsPreparationValidated      => Preparation.IsValidated;
         public bool IsEvaluationCibleeValidated => EvaluationCiblee.IsValidated;
+        public bool IsSyntheseValidated         => Synthese.IsValidated;
     }
 
     /// <summary>

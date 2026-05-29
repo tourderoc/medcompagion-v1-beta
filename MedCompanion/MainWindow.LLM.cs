@@ -177,6 +177,78 @@ public partial class MainWindow : Window
         }
     }
     
+    /// <summary>
+    /// Décharge le modèle LLM courant de la VRAM. Wipe le KV cache et libère la mémoire GPU.
+    /// Utile quand Med "dérive" après usage prolongé sur plusieurs patients.
+    /// Pour OpenAI : no-op (service distant sans état local).
+    /// </summary>
+    private async void UnloadModelBtn_Click(object sender, RoutedEventArgs e)
+    {
+        var provider = _currentLLMService;
+        if (provider == null) return;
+
+        UnloadModelBtn.IsEnabled = false;
+        var originalBrush       = UnloadModelBtn.BorderBrush;
+        UnloadModelBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(255, 193, 7));   // orange : opération en cours
+
+        try
+        {
+            var (success, message) = await provider.UnloadAsync();
+            if (success)
+            {
+                UnloadModelBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(76, 175, 80));   // vert : OK
+                StatusTextBlock.Text       = $"💤 {message}";
+                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+                // Couleur de l'indicateur principal : "froid" jusqu'au prochain appel
+                LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(149, 165, 166));   // gris
+                LLMStatusIndicator.ToolTip    = "Med déchargé. Premier appel : ~5-10s de réveil.";
+            }
+            else
+            {
+                UnloadModelBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));    // rouge : échec
+                StatusTextBlock.Text       = $"❌ {message}";
+                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusTextBlock.Text       = $"❌ Erreur déchargement : {ex.Message}";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+            UnloadModelBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));
+        }
+        finally
+        {
+            UnloadModelBtn.IsEnabled = true;
+            // Revenir au cadre neutre après 2 secondes
+            _ = Task.Delay(2000).ContinueWith(_ =>
+                Dispatcher.Invoke(() => UnloadModelBtn.BorderBrush = originalBrush));
+        }
+    }
+
+    /// <summary>
+    /// Déchargement silencieux du modèle (fire-and-forget) — appelé automatiquement
+    /// lors du changement de patient pour éviter la contamination de contexte entre dossiers.
+    /// </summary>
+    private void UnloadModelSilently()
+    {
+        var provider = _currentLLMService;
+        if (provider == null) return;
+        // Fire-and-forget : on ne bloque pas le changement de patient sur l'unload
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await provider.UnloadAsync();
+                Dispatcher.InvokeAsync(() =>
+                {
+                    LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(149, 165, 166));   // gris
+                    LLMStatusIndicator.ToolTip    = "Med déchargé (changement patient).";
+                });
+            }
+            catch { /* silencieux : meilleur effort */ }
+        });
+    }
+
     private async void LLMModelCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (LLMModelCombo.SelectedItem is not ComboBoxItem selectedItem || selectedItem.Tag == null)

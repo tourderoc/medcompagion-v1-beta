@@ -381,23 +381,25 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 $"detecteur={sig.DetecteurName}, passages={sig.Passages.Count}, fichier={sig.SignalFilePath}");
         };
 
-        // Phase d'évaluation V0/V0.1/V0.1.2 : services + suggesters LLM + extractor
+        // Phase d'évaluation V0/V0.1/V0.1.2/V0.2 : services + suggesters LLM + extractor
         var evaluationPhaseService = new EvaluationPhaseService(_pathService);
         PreparationSuggesterService? preparationSuggester = null;
         AxesSuggesterService?        axesSuggester        = null;
         AxisExtractorService?        axisExtractor        = null;
+        SyntheseSuggesterService?    syntheseSuggester    = null;
         if (_currentLLMService != null)
         {
             preparationSuggester = new PreparationSuggesterService(_currentLLMService);
             axesSuggester        = new AxesSuggesterService(_currentLLMService);
             axisExtractor        = new AxisExtractorService(_currentLLMService);
+            syntheseSuggester    = new SyntheseSuggesterService(_currentLLMService);
         }
 
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
-                evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor);
+                evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, syntheseSuggester);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>

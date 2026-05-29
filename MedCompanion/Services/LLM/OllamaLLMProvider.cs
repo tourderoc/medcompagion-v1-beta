@@ -110,6 +110,39 @@ namespace MedCompanion.Services.LLM
             }
         }
 
+        /// <summary>
+        /// Décharge le modèle de la VRAM. Wipe le KV cache et libère la mémoire GPU.
+        /// Le prochain appel paiera 5-10s de rechargement (selon taille du modèle).
+        /// Mécanisme Ollama : POST /api/generate avec keep_alive=0 → décharge immédiat.
+        /// </summary>
+        public async Task<(bool success, string message)> UnloadAsync()
+        {
+            try
+            {
+                var requestBody = new
+                {
+                    model      = _currentModel,
+                    keep_alive = 0,  // 0 = décharge immédiatement après la requête
+                    prompt     = "",
+                    stream     = false
+                };
+
+                var json    = JsonSerializer.Serialize(requestBody);
+                var content = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync($"{_baseUrl}/api/generate", content).ConfigureAwait(false);
+
+                if (response.IsSuccessStatusCode)
+                    return (true, $"Med déchargé ({_currentModel}). Premier appel : ~5-10s de réveil.");
+
+                return (false, $"Échec déchargement : {response.StatusCode}");
+            }
+            catch (Exception ex)
+            {
+                return (false, $"Erreur déchargement : {ex.Message}");
+            }
+        }
+
         public async Task<(bool success, string message)> WarmupAsync()
         {
             try

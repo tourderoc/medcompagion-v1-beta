@@ -70,5 +70,12 @@ namespace MedCompanion.Services.LLM
         /// Indique si le service est configuré et prêt à l'emploi
         /// </summary>
         bool IsConfigured();
+
+        /// <summary>
+        /// Décharge le modèle de la mémoire GPU (utile pour les LLM locaux qui gardent
+        /// un état persistant entre appels). Pour les providers distants (OpenAI), no-op.
+        /// Le prochain appel rechargera le modèle automatiquement.
+        /// </summary>
+        Task<(bool success, string message)> UnloadAsync();
     }
 }

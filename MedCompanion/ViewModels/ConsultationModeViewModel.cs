@@ -372,10 +372,11 @@ namespace MedCompanion.ViewModels
         public void InjectEvaluationServices(EvaluationPhaseService phaseService,
                                              PreparationSuggesterService? suggester,
                                              AxesSuggesterService? axesSuggester = null,
-                                             AxisExtractorService?  axisExtractor = null)
+                                             AxisExtractorService?  axisExtractor = null,
+                                             SyntheseSuggesterService? syntheseSuggester = null)
         {
             EvaluationPhase = new EvaluationPhaseViewModel(
-                phaseService, suggester, axesSuggester, axisExtractor, _whisperService);
+                phaseService, suggester, axesSuggester, axisExtractor, _whisperService, syntheseSuggester);
             // Si un patient est déjà chargé, on lui passe tout de suite
             if (_currentPatient != null) EvaluationPhase.SetCurrentPatient(_currentPatient);
         }
@@ -2067,19 +2068,43 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                     return;
                 }
 
-                var jsonStart = jsonRaw.IndexOf('{');
-                var jsonEnd   = jsonRaw.LastIndexOf('}');
-                if (jsonStart < 0 || jsonEnd <= jsonStart)
+                // Extraction robuste : strip markdown fences + comptage de profondeur sur les
+                // accolades en ignorant ce qui est dans les chaînes. Tolère les LLM bavards qui
+                // mettent du texte autour du JSON, ou des `}` parasites dans les explications.
+                static string ExtractBalancedJson(string raw)
                 {
-                    RestitutionStatusMessage = "❌ Réponse LLM invalide (JSON attendu).";
+                    raw = System.Text.RegularExpressions.Regex.Replace(
+                              raw, @"```(?:json)?\s*",
+                              "", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                          .Replace("```", "");
+                    int start = raw.IndexOf('{');
+                    if (start < 0) return "";
+                    int depth = 0; bool inStr = false; bool esc = false;
+                    for (int i = start; i < raw.Length; i++)
+                    {
+                        var c = raw[i];
+                        if (esc) { esc = false; continue; }
+                        if (c == '\\') { esc = true; continue; }
+                        if (c == '"') { inStr = !inStr; continue; }
+                        if (inStr) continue;
+                        if (c == '{') depth++;
+                        else if (c == '}') { depth--; if (depth == 0) return raw.Substring(start, i - start + 1); }
+                    }
+                    return "";
+                }
+
+                var jsonExtracted = ExtractBalancedJson(jsonRaw);
+                if (string.IsNullOrEmpty(jsonExtracted))
+                {
+                    RestitutionStatusMessage = "❌ Le LLM n'a pas produit de JSON exploitable. Réessaie.";
                     return;
                 }
 
                 System.Text.Json.JsonDocument doc;
-                try { doc = System.Text.Json.JsonDocument.Parse(jsonRaw[jsonStart..(jsonEnd + 1)]); }
+                try { doc = System.Text.Json.JsonDocument.Parse(jsonExtracted); }
                 catch
                 {
-                    RestitutionStatusMessage = "❌ Impossible de parser le JSON LLM.";
+                    RestitutionStatusMessage = "❌ JSON LLM mal formé. Réessaie.";
                     return;
                 }
 

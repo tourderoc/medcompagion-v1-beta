@@ -91,6 +91,12 @@ namespace MedCompanion.Services.LLM
             }
         }
 
+        /// <summary>
+        /// OpenAI = service distant sans état GPU local. Le déchargement est un no-op.
+        /// </summary>
+        public Task<(bool success, string message)> UnloadAsync()
+            => Task.FromResult((true, "OpenAI : pas de déchargement nécessaire (service distant)."));
+
         public async Task<(bool success, string message)> WarmupAsync()
         {
             if (!IsConfigured())

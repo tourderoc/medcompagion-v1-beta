@@ -514,5 +514,146 @@
             </StackPanel>
         </Border>
 
+        <!-- ═════════════════════════════════════════════════════════════════ -->
+        <!-- CAS 2ter — En cours de séance, Étape 3 Synthèse diagnostique -->
+        <!-- ═════════════════════════════════════════════════════════════════ -->
+        <Border Style="{StaticResource SectionBorder}"
+                BorderBrush="#16A085" BorderThickness="2"
+                Visibility="{Binding IsWorkingSynthese, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="🧩 ÉTAPE 3 — SYNTHÈSE DIAGNOSTIQUE"
+                                   FontSize="12" FontWeight="Bold" Foreground="#0E8074"/>
+                        <TextBlock Text="Mise en cohérence du raisonnement : diagnostic(s), arguments, écartés, certitude."
+                                   FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="✨ Suggérer la synthèse (IA)"
+                            Command="{Binding SuggestSyntheseCommand}"
+                            Style="{StaticResource SecondaryButton}"
+                            VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- DIAGNOSTICS RETENUS -->
+                <StackPanel Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Diagnostic(s) retenu(s)" Style="{StaticResource CategoryTitle}"/>
+                        <Button Grid.Column="1" Content="+ Ajouter" FontSize="11" Padding="6,2"
+                                Background="Transparent" BorderThickness="1" BorderBrush="#16A085"
+                                Foreground="#16A085" Cursor="Hand"
+                                Command="{Binding AddSyntheseItemCommand}" CommandParameter="retenus"/>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding DiagnosticsRetenus}"
+                                  ItemTemplate="{StaticResource EditableItemTemplate}"/>
+                </StackPanel>
+
+                <!-- ÉLÉMENTS EN FAVEUR -->
+                <StackPanel Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Éléments cliniques en faveur" Style="{StaticResource CategoryTitle}"/>
+                        <Button Grid.Column="1" Content="+ Ajouter" FontSize="11" Padding="6,2"
+                                Background="Transparent" BorderThickness="1" BorderBrush="#16A085"
+                                Foreground="#16A085" Cursor="Hand"
+                                Command="{Binding AddSyntheseItemCommand}" CommandParameter="en_faveur"/>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding ElementsEnFaveur}"
+                                  ItemTemplate="{StaticResource EditableItemTemplate}"/>
+                </StackPanel>
+
+                <!-- DIAGNOSTICS ÉCARTÉS -->
+                <StackPanel Margin="0,0,0,12">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Diagnostics différentiels écartés" Style="{StaticResource CategoryTitle}"/>
+                        <Button Grid.Column="1" Content="+ Ajouter" FontSize="11" Padding="6,2"
+                                Background="Transparent" BorderThickness="1" BorderBrush="#16A085"
+                                Foreground="#16A085" Cursor="Hand"
+                                Command="{Binding AddDiagnosticEcarteCommand}"/>
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding DiagnosticsEcartes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="#F8FBFA" BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBox Text="{Binding Label, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     FontSize="12" Padding="6,4" FontWeight="SemiBold"
+                                                     BorderBrush="#D6E2EC" BorderThickness="1" Background="White"
+                                                     ToolTip="Nom du diagnostic écarté"/>
+                                            <TextBox Text="{Binding Motif, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                     FontSize="11" Padding="6,4" Margin="0,4,0,0"
+                                                     BorderBrush="#D6E2EC" BorderThickness="1" Background="White"
+                                                     TextWrapping="Wrap" AcceptsReturn="True"
+                                                     ToolTip="Motif clinique d'élimination"
+                                                     Foreground="#566573"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="✖" FontSize="10"
+                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                Foreground="#95A5A6" Margin="4,0,0,0" Padding="6,2"
+                                                VerticalAlignment="Top"
+                                                ToolTip="Supprimer ce diagnostic écarté"
+                                                Command="{Binding DataContext.RemoveDiagnosticEcarteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- NIVEAU DE CERTITUDE -->
+                <StackPanel Margin="0,0,0,12">
+                    <TextBlock Text="Niveau de certitude" Style="{StaticResource CategoryTitle}"/>
+                    <StackPanel Orientation="Horizontal">
+                        <RadioButton Content="Hypothèse à confirmer" GroupName="Certitude" Margin="0,0,16,0"
+                                     IsChecked="{Binding IsCertitudeHypothese, Mode=OneWay}"
+                                     Command="{Binding SetCertitudeCommand}" CommandParameter="1"/>
+                        <RadioButton Content="Probable" GroupName="Certitude" Margin="0,0,16,0"
+                                     IsChecked="{Binding IsCertitudeProbable, Mode=OneWay}"
+                                     Command="{Binding SetCertitudeCommand}" CommandParameter="2"/>
+                        <RadioButton Content="Certain" GroupName="Certitude"
+                                     IsChecked="{Binding IsCertitudeCertain, Mode=OneWay}"
+                                     Command="{Binding SetCertitudeCommand}" CommandParameter="3"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- STATUS + ACTIONS -->
+                <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#27AE60"
+                           Margin="0,8,0,10" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button Content="↩ Retour Étape 2"
+                            Command="{Binding BackToEvaluationCommand}"
+                            Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
+                            ToolTip="Modifier les axes (l'Étape 3 reste conservée)"/>
+                    <Button Content="⏸ Terminer la séance"
+                            Command="{Binding TerminateSessionCommand}"
+                            Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
+                    <Button Content="✓ Valider et clôturer"
+                            Command="{Binding ValidateSyntheseCommand}"
+                            Style="{StaticResource ValidateButton}"
+                            ToolTip="Valide la synthèse et clôture l'évaluation"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
     </Grid>
 </UserControl>
