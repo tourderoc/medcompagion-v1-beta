@@ -174,13 +174,18 @@ namespace MedCompanion.Services.LLM
         }
 
         public async Task<(bool success, string result, string? error)> GenerateTextAsync(
-            string prompt, 
+            string prompt,
             int maxTokens = 1500,
             System.Threading.CancellationToken cancellationToken = default,
             string? forceModel = null)
         {
             try
             {
+                var activeModel = forceModel ?? _currentModel;
+                // gpt-oss = format harmony : DOIT raisonner (think=true) sinon channel "final" reste vide.
+                // Autres modèles (Gemma 4, etc.) : think=false pour aller plus vite.
+                var thinkMode = IsGptOssModel(activeModel);
+
                 // Créer les options selon maxTokens
                 object requestBody;
 
@@ -189,10 +194,10 @@ namespace MedCompanion.Services.LLM
                     // Pas de limite de tokens
                     requestBody = new
                     {
-                        model = forceModel ?? _currentModel,
+                        model = activeModel,
                         prompt = prompt,
                         stream = false,
-                        think = false,  // Désactive le mode reasoning (Gemma 4, etc.) — inutile pour génération clinique
+                        think = thinkMode,
                         options = new
                         {
                             temperature = 0.3,
@@ -205,10 +210,10 @@ namespace MedCompanion.Services.LLM
                     // Limite spécifiée
                     requestBody = new
                     {
-                        model = forceModel ?? _currentModel,
+                        model = activeModel,
                         prompt = prompt,
                         stream = false,
-                        think = false,
+                        think = thinkMode,
                         options = new
                         {
                             num_predict = maxTokens,
@@ -278,12 +283,13 @@ namespace MedCompanion.Services.LLM
                     ollamaMessages.Add(new { role = role, content = content });
                 }
 
+                var activeModel = forceModel ?? _currentModel;
                 var requestBody = new
                 {
-                    model = forceModel ?? _currentModel,
+                    model = activeModel,
                     messages = ollamaMessages.ToArray(),
                     stream = false,
-                    think = false,  // Désactive le mode reasoning (Gemma 4, etc.)
+                    think = IsGptOssModel(activeModel),  // gpt-oss : harmony nécessite think=true ; autres : false
                     options = new
                     {
                         num_predict = maxTokens,
@@ -410,7 +416,7 @@ namespace MedCompanion.Services.LLM
                     model = _currentModel,
                     messages = ollamaMessages.ToArray(),
                     stream = true, // Activer le streaming
-                    think = false,  // Désactive le mode reasoning (Gemma 4, etc.)
+                    think = IsGptOssModel(_currentModel),  // gpt-oss : harmony nécessite think=true
                     options = new
                     {
                         num_predict = maxTokens,
@@ -501,5 +507,14 @@ namespace MedCompanion.Services.LLM
                 return (false, "", $"Erreur inattendue: {ex.Message}");
             }
         }
+
+        /// <summary>
+        /// gpt-oss utilise le format harmony (channels analysis/final). Il DOIT raisonner :
+        /// avec think=false, le channel "final" reste vide → réponse vide côté client.
+        /// Couvre gpt-oss:20b, gpt-oss:120b, gpt-oss:*-cloud, etc.
+        /// </summary>
+        private static bool IsGptOssModel(string? modelName)
+            => !string.IsNullOrEmpty(modelName)
+               && modelName.StartsWith("gpt-oss", StringComparison.OrdinalIgnoreCase);
     }
 }

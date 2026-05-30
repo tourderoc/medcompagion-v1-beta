@@ -40,6 +40,35 @@ namespace MedCompanion.Services.Evaluations
         }
 
         /// <summary>
+        /// Charge une évaluation depuis un fichier .md spécifique. Renvoie null si le fichier
+        /// n'existe pas ou est illisible.
+        /// </summary>
+        public EvaluationPhase? Load(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return null;
+            return LoadFromFile(filePath);
+        }
+
+        /// <summary>
+        /// Renvoie toutes les évaluations du patient (actives + clôturées), triées par DateDebut.
+        /// Fichiers corrompus = ignorés silencieusement.
+        /// </summary>
+        public List<EvaluationPhase> LoadAll(string patientDirectoryPath)
+        {
+            var result = new List<EvaluationPhase>();
+            if (string.IsNullOrEmpty(patientDirectoryPath)) return result;
+            var dir = Path.Combine(patientDirectoryPath, "evaluations");
+            if (!Directory.Exists(dir)) return result;
+
+            foreach (var file in Directory.GetFiles(dir, "*_evaluation_*.md"))
+            {
+                var phase = LoadFromFile(file);
+                if (phase != null) result.Add(phase);
+            }
+            return result.OrderBy(p => p.DateDebut).ToList();
+        }
+
+        /// <summary>
         /// Crée une nouvelle évaluation pour le patient. Échoue si une est déjà active.
         /// </summary>
         public EvaluationPhase Create(string patientNomComplet, string patientDirectoryPath)
@@ -92,6 +121,25 @@ namespace MedCompanion.Services.Evaluations
             Save(phase);
         }
 
+        /// <summary>
+        /// Supprime définitivement le fichier d'évaluation. Renvoie true si le fichier existait
+        /// et a été supprimé, false sinon (silencieux sur erreur).
+        /// </summary>
+        public bool Delete(string filePath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath)) return false;
+                File.Delete(filePath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[EvaluationPhaseService] Delete failed {filePath}: {ex.Message}");
+                return false;
+            }
+        }
+
         // ── Sérialisation ────────────────────────────────────────────────────
 
         private string SerializeToMarkdown(EvaluationPhase phase)
@@ -133,6 +181,12 @@ namespace MedCompanion.Services.Evaluations
             AppendList(sb, "  elements_en_faveur",  phase.Synthese.ElementsEnFaveur);
             AppendEcartes(sb, "  diagnostics_ecartes", phase.Synthese.DiagnosticsEcartes);
             sb.AppendLine($"  certitude: {(int)phase.Synthese.Certitude}");
+
+            // Étape 4 — Cartographie de l'enfant
+            sb.AppendLine($"etape_4_validee: {(phase.CartographieEnfant.IsValidated ? "true" : "false")}");
+            if (phase.CartographieEnfant.ValidationDate.HasValue)
+                sb.AppendLine($"etape_4_validation_date: {phase.CartographieEnfant.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
+            AppendCartographieEnfant(sb, phase.CartographieEnfant);
 
             sb.AppendLine("---");
             sb.AppendLine();
@@ -186,8 +240,108 @@ namespace MedCompanion.Services.Evaluations
                 sb.AppendLine();
             }
 
+            // Étape 4 lisible — Cartographie de l'enfant
+            if (phase.CartographieEnfant.IsValidated || HasAnyCartographieContent(phase.CartographieEnfant))
+            {
+                sb.AppendLine();
+                sb.AppendLine("## Étape 4 — Cartographie de l'enfant");
+                sb.AppendLine();
+                if (phase.CartographieEnfant.AgeAuMomentDeLaSaisie.HasValue)
+                    sb.AppendLine($"_Âge à la saisie : {phase.CartographieEnfant.AgeAuMomentDeLaSaisie} ans_");
+                sb.AppendLine();
+                AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Attachement,     phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
+                AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Psychomotricite, phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
+                AppendTemperamentMd(sb, phase.CartographieEnfant.Temperament);
+                AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Langage,         phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
+                AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Emotions,        phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
+                AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Imaginaire,      phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
+                AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Pensee,          phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
+            }
+
             return sb.ToString();
         }
+
+        // ── Cartographie de l'enfant (étape 4) ───────────────────────────────
+
+        private static bool HasAnyCartographieContent(CartographieEnfant carto)
+            => carto.Attachement.Score > 0 || carto.Psychomotricite.Score > 0
+            || carto.Langage.Score > 0      || carto.Emotions.Score > 0
+            || carto.Imaginaire.Score > 0   || carto.Pensee.Score > 0
+            || carto.Temperament.IsRenseigne;
+
+        private static void AppendCartographieEnfant(StringBuilder sb, CartographieEnfant carto)
+        {
+            sb.AppendLine("cartographie_enfant:");
+            if (carto.AgeAuMomentDeLaSaisie.HasValue)
+                sb.AppendLine($"  age_au_moment: {carto.AgeAuMomentDeLaSaisie.Value}");
+            AppendChenilleSegmentYaml(sb, "  attachement",     carto.Attachement);
+            AppendChenilleSegmentYaml(sb, "  psychomotricite", carto.Psychomotricite);
+            sb.AppendLine("  temperament:");
+            sb.AppendLine($"    activite: {carto.Temperament.NiveauActivite}");
+            sb.AppendLine($"    regularite: {carto.Temperament.Regularite}");
+            sb.AppendLine($"    reactivite_sensorielle: {carto.Temperament.ReactiviteSensorielle}");
+            sb.AppendLine($"    intensite_emotionnelle: {carto.Temperament.IntensiteEmotionnelle}");
+            sb.AppendLine($"    adaptabilite: {carto.Temperament.Adaptabilite}");
+            sb.AppendLine($"    temps_reaction: {carto.Temperament.TempsDeReaction}");
+            AppendChenilleSegmentYaml(sb, "  langage",    carto.Langage);
+            AppendChenilleSegmentYaml(sb, "  emotions",   carto.Emotions);
+            AppendChenilleSegmentYaml(sb, "  imaginaire", carto.Imaginaire);
+            AppendChenilleSegmentYaml(sb, "  pensee",     carto.Pensee);
+        }
+
+        private static void AppendChenilleSegmentYaml(StringBuilder sb, string key, ChenilleSegment segment)
+        {
+            sb.AppendLine($"{key}:");
+            sb.Append("    items: [");
+            for (int i = 0; i < segment.Items.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(segment.Items[i].IsChecked ? "true" : "false");
+            }
+            sb.AppendLine("]");
+        }
+
+        private static void AppendChenilleSegmentMd(StringBuilder sb, ChenilleSegment segment, int? age)
+        {
+            var niveau = CartographieScoringService.Calculer(segment.Score, age);
+            sb.AppendLine($"### {segment.Label}");
+            sb.AppendLine();
+            sb.AppendLine($"_« {segment.PhraseBoussole} »_");
+            sb.AppendLine();
+            var niveauTxt = niveau.HasValue
+                ? $"{NiveauEmoji(niveau.Value)} **{CartographieContent.NiveauLabel(niveau)}**"
+                : "_niveau non calculé_";
+            sb.AppendLine($"- Score : **{segment.Score}/6** — {niveauTxt}");
+            if (niveau.HasValue)
+                sb.AppendLine($"- _{CartographieContent.LectureEmotionnelle(niveau)}_");
+            sb.AppendLine();
+        }
+
+        private static void AppendTemperamentMd(StringBuilder sb, TemperamentProfile t)
+        {
+            sb.AppendLine("### Tempérament (profil)");
+            sb.AppendLine();
+            sb.AppendLine("_« Il n'est pas trop ou pas assez… il est lui. »_");
+            sb.AppendLine();
+            sb.AppendLine($"- Niveau d'activité : **{t.NiveauActivite}/5**");
+            sb.AppendLine($"- Rythme / Régularité : **{t.Regularite}/5**");
+            sb.AppendLine($"- Réactivité sensorielle : **{t.ReactiviteSensorielle}/5**");
+            sb.AppendLine($"- Intensité émotionnelle : **{t.IntensiteEmotionnelle}/5**");
+            sb.AppendLine($"- Adaptabilité : **{t.Adaptabilite}/5**");
+            sb.AppendLine($"- Temps de réaction : **{t.TempsDeReaction}/5**");
+            sb.AppendLine();
+        }
+
+        private static string NiveauEmoji(NiveauSegment n) => n switch
+        {
+            NiveauSegment.VertFonce  => "🟢",
+            NiveauSegment.VertClair  => "🟢",
+            NiveauSegment.JauneClair => "🟡",
+            NiveauSegment.JauneFonce => "🟡",
+            NiveauSegment.RougeClair => "🔴",
+            NiveauSegment.RougeFonce => "🔴",
+            _                        => "⚪"
+        };
 
         private static void AppendAxes(StringBuilder sb, string key, IEnumerable<EvaluationAxis> axes)
         {
@@ -369,6 +523,34 @@ namespace MedCompanion.Services.Evaluations
                         phase.Synthese.Certitude = (NiveauCertitude)cert;
                 }
 
+                // Étape 4 — Cartographie de l'enfant (chenille universelle)
+                if (GetBool(yaml, "etape_4_validee"))
+                    phase.CartographieEnfant.ValidationDate = GetDate(yaml, "etape_4_validation_date") ?? DateTime.Now;
+
+                var carto = ExtractSubBlock(yaml, "cartographie_enfant:");
+                if (carto != null)
+                {
+                    phase.CartographieEnfant.AgeAuMomentDeLaSaisie = GetIntInBlock(carto, "age_au_moment");
+
+                    ApplyChenilleItemsFromYaml(carto, "attachement",     phase.CartographieEnfant.Attachement);
+                    ApplyChenilleItemsFromYaml(carto, "psychomotricite", phase.CartographieEnfant.Psychomotricite);
+                    ApplyChenilleItemsFromYaml(carto, "langage",         phase.CartographieEnfant.Langage);
+                    ApplyChenilleItemsFromYaml(carto, "emotions",        phase.CartographieEnfant.Emotions);
+                    ApplyChenilleItemsFromYaml(carto, "imaginaire",      phase.CartographieEnfant.Imaginaire);
+                    ApplyChenilleItemsFromYaml(carto, "pensee",          phase.CartographieEnfant.Pensee);
+
+                    var temperament = ExtractNamedSubBlock(carto, "temperament:");
+                    if (temperament != null)
+                    {
+                        phase.CartographieEnfant.Temperament.NiveauActivite        = GetIntInBlock(temperament, "activite")               ?? 0;
+                        phase.CartographieEnfant.Temperament.Regularite            = GetIntInBlock(temperament, "regularite")             ?? 0;
+                        phase.CartographieEnfant.Temperament.ReactiviteSensorielle = GetIntInBlock(temperament, "reactivite_sensorielle") ?? 0;
+                        phase.CartographieEnfant.Temperament.IntensiteEmotionnelle = GetIntInBlock(temperament, "intensite_emotionnelle") ?? 0;
+                        phase.CartographieEnfant.Temperament.Adaptabilite          = GetIntInBlock(temperament, "adaptabilite")           ?? 0;
+                        phase.CartographieEnfant.Temperament.TempsDeReaction       = GetIntInBlock(temperament, "temps_reaction")         ?? 0;
+                    }
+                }
+
                 return phase;
             }
             catch (Exception ex)
@@ -434,6 +616,67 @@ namespace MedCompanion.Services.Evaluations
                 sb.AppendLine(lines[i]);
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Extrait un sous-bloc nommé (ex: "temperament:") à n'importe quelle indentation.
+        /// Collecte les lignes qui suivent avec une indentation strictement supérieure.
+        /// </summary>
+        private static string? ExtractNamedSubBlock(string yaml, string sectionPrefix)
+        {
+            var lines = yaml.Replace("\r\n", "\n").Split('\n').ToList();
+            int start = -1;
+            int baseIndent = 0;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var t = lines[i].TrimStart();
+                if (t.TrimEnd() == sectionPrefix)
+                {
+                    start = i;
+                    baseIndent = lines[i].Length - t.Length;
+                    break;
+                }
+            }
+            if (start < 0) return null;
+
+            var sb = new StringBuilder();
+            for (int i = start + 1; i < lines.Count; i++)
+            {
+                var line = lines[i];
+                if (line.Length == 0) { sb.AppendLine(line); continue; }
+                var indent = line.Length - line.TrimStart().Length;
+                if (indent <= baseIndent) break;
+                sb.AppendLine(line);
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Applique les booléens de "items: [true, false, ...]" trouvés dans un sous-bloc
+        /// nommé (ex: "attachement:") aux items du segment correspondant.
+        /// Tolérant : si la clé ou la ligne items est absente, ne fait rien.
+        /// </summary>
+        private static void ApplyChenilleItemsFromYaml(string yaml, string segmentKey, MedCompanion.Models.Evaluations.ChenilleSegment segment)
+        {
+            var block = ExtractNamedSubBlock(yaml, segmentKey + ":");
+            if (block == null) return;
+
+            // Chercher la ligne items: [true, false, ...]
+            var lines = block.Replace("\r\n", "\n").Split('\n');
+            foreach (var line in lines)
+            {
+                var t = line.TrimStart();
+                if (!t.StartsWith("items:")) continue;
+                var rest = t.Substring("items:".Length).Trim();
+                if (!rest.StartsWith("[") || !rest.EndsWith("]")) continue;
+                var inner = rest.Substring(1, rest.Length - 2);
+                var values = inner.Split(',');
+                for (int i = 0; i < values.Length && i < segment.Items.Count; i++)
+                {
+                    segment.Items[i].IsChecked = values[i].Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+                }
+                break;
+            }
         }
 
         private static List<string> GetListItems(string block, string key)

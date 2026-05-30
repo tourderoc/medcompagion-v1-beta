@@ -17,7 +17,7 @@ namespace MedCompanion.Services.Evaluations
     /// </summary>
     public class SyntheseSuggesterService
     {
-        private const int LlmTimeoutSeconds = 30;
+        private const int LlmTimeoutSeconds = 60;
         // Caps anti-LLM-trop-large
         private const int MaxRetenus      = 3;
         private const int MaxEnFaveur     = 8;
@@ -67,15 +67,24 @@ namespace MedCompanion.Services.Evaluations
             try
             {
                 var prompt = BuildPrompt(age, motif, explored);
-                var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: 1600, cancellationToken: cts.Token);
+                var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: 3500, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
-                    return (false, null, err ?? "Réponse LLM vide.");
+                {
+                    var rawLen = raw?.Length ?? 0;
+                    var preview = rawLen > 0 ? raw!.Substring(0, Math.Min(200, rawLen)).Replace("\r", " ").Replace("\n", " ") : "(vide)";
+                    System.Diagnostics.Debug.WriteLine($"[SyntheseSuggester] LLM réponse inutilisable. ok={ok}, err={err ?? "(null)"}, raw.Length={rawLen}, preview=\"{preview}\"");
+                    return (false, null, err ?? (rawLen == 0
+                        ? "Réponse LLM vide (le modèle n'a produit aucun contenu — possible filtrage harmony channel sur gpt-oss). Voir Sortie Debug."
+                        : "Réponse LLM blanche (whitespace seulement)."));
+                }
 
                 var sug = ParseJson(raw);
                 if (sug == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("[SyntheseSuggester] Parse failed. Raw : " + raw);
-                    return (false, null, "Parsing JSON impossible.");
+                    System.Diagnostics.Debug.WriteLine($"[SyntheseSuggester] Parse failed. raw.Length={raw.Length}. Raw :");
+                    System.Diagnostics.Debug.WriteLine(raw);
+                    System.Diagnostics.Debug.WriteLine("[SyntheseSuggester] FIN raw.");
+                    return (false, null, "Parsing JSON impossible (voir Sortie Debug pour la réponse LLM brute).");
                 }
 
                 sug.DiagnosticsRetenus = TrimList(sug.DiagnosticsRetenus, MaxRetenus);

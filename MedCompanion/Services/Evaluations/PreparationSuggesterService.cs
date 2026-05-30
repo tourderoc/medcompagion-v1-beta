@@ -14,7 +14,7 @@ namespace MedCompanion.Services.Evaluations
     /// </summary>
     public class PreparationSuggesterService
     {
-        private const int LlmTimeoutSeconds = 30;
+        private const int LlmTimeoutSeconds = 60;
         // Caps par catégorie (anti-LLM trop large)
         private const int MaxHypotheses    = 3;
         private const int MaxDifferentiels = 4;
@@ -52,13 +52,27 @@ namespace MedCompanion.Services.Evaluations
             try
             {
                 var prompt = BuildPrompt(patientName, age, motif, synthese, observationsRecentes);
-                var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: 900, cancellationToken: cts.Token);
+                var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: 2500, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
-                    return (false, null, err ?? "Réponse LLM vide.");
+                {
+                    var rawLen = raw?.Length ?? 0;
+                    var preview = rawLen > 0 ? raw!.Substring(0, Math.Min(200, rawLen)).Replace("\r", " ").Replace("\n", " ") : "(vide)";
+                    System.Diagnostics.Debug.WriteLine($"[PreparationSuggester] LLM réponse inutilisable. ok={ok}, err={err ?? "(null)"}, raw.Length={rawLen}, preview=\"{preview}\"");
+                    return (false, null, err ?? "Réponse LLM vide (voir Sortie Debug).");
+                }
 
-                var sug = ParseJson(raw);
+                var sug = ParseJson(raw, out var extracted);
                 if (sug == null)
-                    return (false, null, "Parsing JSON impossible.");
+                {
+                    var truncated = string.IsNullOrEmpty(extracted);
+                    System.Diagnostics.Debug.WriteLine($"[PreparationSuggester] PARSING ÉCHEC. raw.Length={raw.Length}, JSON extrait = {(truncated ? "VIDE (pas d'accolade fermante ou pas de JSON dans la réponse)" : $"{extracted!.Length} chars mais Parse a échoué")}.");
+                    System.Diagnostics.Debug.WriteLine("[PreparationSuggester] Réponse brute :");
+                    System.Diagnostics.Debug.WriteLine(raw);
+                    System.Diagnostics.Debug.WriteLine("[PreparationSuggester] FIN raw.");
+                    return (false, null, truncated
+                        ? "Aucun JSON détecté dans la réponse LLM (probable format markdown/tableau). Voir Sortie Debug."
+                        : "Parsing JSON impossible (voir Sortie Debug).");
+                }
 
                 // Cap dur sur chaque liste
                 sug.HypothesesPrincipales = Trim(sug.HypothesesPrincipales, MaxHypotheses);
@@ -132,14 +146,14 @@ RÉPONDS UNIQUEMENT par un JSON valide :
 }}";
         }
 
-        private static PreparationSuggestion? ParseJson(string raw)
+        private static PreparationSuggestion? ParseJson(string raw, out string? extracted)
         {
-            var json = ExtractJson(raw);
-            if (string.IsNullOrEmpty(json)) return null;
+            extracted = ExtractJson(raw);
+            if (string.IsNullOrEmpty(extracted)) return null;
 
             try
             {
-                using var doc = JsonDocument.Parse(json);
+                using var doc = JsonDocument.Parse(extracted);
                 var root = doc.RootElement;
                 var sug = new PreparationSuggestion
                 {

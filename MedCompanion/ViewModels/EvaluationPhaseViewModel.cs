@@ -51,8 +51,8 @@ namespace MedCompanion.ViewModels
             ResumeCommand                 = new RelayCommand(_ => Resume(),                  _ => CanResume);
             SuggestPreparationCommand     = new RelayCommand(async _ => await SuggestPreparationAsync(), _ => IsWorkingPreparation && !IsBusy);
             ValidatePreparationCommand    = new RelayCommand(_ => ValidatePreparation(),    _ => CanValidatePreparation);
-            TerminateSessionCommand       = new RelayCommand(_ => TerminateSession(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese);
-            CancelEvaluationCommand       = new RelayCommand(_ => CancelEvaluation(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese);
+            TerminateSessionCommand       = new RelayCommand(_ => TerminateSession(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese || IsWorkingCartographieEnfant);
+            CancelEvaluationCommand       = new RelayCommand(_ => CancelEvaluation(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese || IsWorkingCartographieEnfant);
 
             AddItemCommand    = new RelayCommand(param => AddItem(param as string));
             RemoveItemCommand = new RelayCommand(param => RemoveItem(param));
@@ -79,7 +79,22 @@ namespace MedCompanion.ViewModels
             AddDiagnosticEcarteCommand    = new RelayCommand(_ => AddDiagnosticEcarte());
             RemoveDiagnosticEcarteCommand = new RelayCommand(param => RemoveDiagnosticEcarte(param as DiagnosticEcarte));
             SetCertitudeCommand           = new RelayCommand(param => SetCertitude(param));
+
+            // Lecture seule — navigation entre étapes sans modifier la phase ni sauvegarder
+            ViewStepCommand           = new RelayCommand(param => ViewStep(param as string), _ => IsReadOnly);
+            CloseReadOnlyCommand      = new RelayCommand(_ => ReturnToActiveContext(),       _ => IsReadOnly);
+
+            // Étape 4 — Cartographie de l'enfant
+            ValidateCartographieEnfantCommand = new RelayCommand(_ => ValidateCartographieEnfant(), _ => CanValidateCartographieEnfant);
+            BackToSyntheseCommand             = new RelayCommand(_ => BackToSynthese(),             _ => IsWorkingCartographieEnfant);
         }
+
+        /// <summary>
+        /// Notifié à chaque changement notable d'état d'une évaluation (création, clôture).
+        /// L'orchestrateur (ConsultationModeViewModel) s'y abonne pour rafraîchir la frise et
+        /// les blocs de synthèse du dossier bleu.
+        /// </summary>
+        public event Action? PhaseStateChanged;
 
         // ── Patient courant ─────────────────────────────────────────────────
 
@@ -108,9 +123,11 @@ namespace MedCompanion.ViewModels
                 HookSyntheseHandlers(Phase.Synthese);
             }
 
-            IsWorkingPreparation = false;
-            IsWorkingEvaluation  = false;
-            IsWorkingSynthese    = false;
+            RebuildCartographieWrappers();
+            IsWorkingPreparation        = false;
+            IsWorkingEvaluation         = false;
+            IsWorkingSynthese           = false;
+            IsWorkingCartographieEnfant = false;
             StatusMessage = "";
             NotifyAllStates();
         }
@@ -212,6 +229,16 @@ namespace MedCompanion.ViewModels
             set { if (_isWorkingSynthese != value) { _isWorkingSynthese = value; OnPropertyChanged(); NotifyAllStates(); } }
         }
 
+        private bool _isWorkingCartographieEnfant;
+        /// <summary>
+        /// True quand le médecin est en train de remplir l'Étape 4 (Cartographie de l'enfant) dans la séance courante.
+        /// </summary>
+        public bool IsWorkingCartographieEnfant
+        {
+            get => _isWorkingCartographieEnfant;
+            set { if (_isWorkingCartographieEnfant != value) { _isWorkingCartographieEnfant = value; OnPropertyChanged(); NotifyAllStates(); } }
+        }
+
         private bool _isBusy;
         public bool IsBusy
         {
@@ -226,10 +253,71 @@ namespace MedCompanion.ViewModels
             set { if (_statusMessage != value) { _statusMessage = value; OnPropertyChanged(); } }
         }
 
-        // ── États dérivés pour la View (3 cas) ──────────────────────────────
+        private bool _isReadOnly;
+        /// <summary>
+        /// True quand l'évaluation est affichée en lecture seule (consultation d'une évaluation
+        /// clôturée du passé). Les actions de modification doivent être désactivées par la View.
+        /// </summary>
+        public bool IsReadOnly
+        {
+            get => _isReadOnly;
+            private set { if (_isReadOnly != value) { _isReadOnly = value; OnPropertyChanged(); NotifyAllStates(); } }
+        }
 
-        public bool CanStart  => _patient != null && Phase == null && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese;
-        public bool CanResume => _patient != null && Phase != null && Phase.IsActive && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese;
+        // ── États dérivés pour la View (3 cas + lecture seule) ──────────────
+
+        public bool CanStart  => !IsReadOnly && _patient != null && Phase == null && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese && !IsWorkingCartographieEnfant;
+        public bool CanResume => !IsReadOnly && _patient != null && Phase != null && Phase.IsActive && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese && !IsWorkingCartographieEnfant;
+
+        /// <summary>
+        /// True si l'âge du patient est dans la fourchette 3-11 ans où la Cartographie de
+        /// l'enfant est applicable. Si false, l'étape 4 est sautée et l'étape 3 mène directement
+        /// à la clôture.
+        /// </summary>
+        public bool IsCartographieDisponible => CartographieScoringService.IsApplicable(_patient?.Age);
+
+        // ── Étape 4 — Cartographie de l'enfant ──────────────────────────────
+
+        public CartographieSegmentViewModel? AttachementVM     { get; private set; }
+        public CartographieSegmentViewModel? PsychomotriciteVM { get; private set; }
+        public CartographieSegmentViewModel? LangageVM         { get; private set; }
+        public CartographieSegmentViewModel? EmotionsVM        { get; private set; }
+        public CartographieSegmentViewModel? ImaginaireVM      { get; private set; }
+        public CartographieSegmentViewModel? PenseeVM          { get; private set; }
+
+        public TemperamentProfile? Temperament => Phase?.CartographieEnfant.Temperament;
+
+        /// <summary>
+        /// (Re)construit les 6 wrappers segments en pointant vers la Phase active.
+        /// Appelé chaque fois que Phase change (Resume, ShowPhase, StartNew, ReloadState).
+        /// </summary>
+        private void RebuildCartographieWrappers()
+        {
+            if (Phase == null)
+            {
+                AttachementVM = PsychomotriciteVM = LangageVM = EmotionsVM = ImaginaireVM = PenseeVM = null;
+            }
+            else
+            {
+                Func<int?> ageProvider = () => Phase?.CartographieEnfant.AgeAuMomentDeLaSaisie ?? _patient?.Age;
+                AttachementVM     = new CartographieSegmentViewModel(Phase.CartographieEnfant.Attachement,     ageProvider);
+                PsychomotriciteVM = new CartographieSegmentViewModel(Phase.CartographieEnfant.Psychomotricite, ageProvider);
+                LangageVM         = new CartographieSegmentViewModel(Phase.CartographieEnfant.Langage,         ageProvider);
+                EmotionsVM        = new CartographieSegmentViewModel(Phase.CartographieEnfant.Emotions,        ageProvider);
+                ImaginaireVM      = new CartographieSegmentViewModel(Phase.CartographieEnfant.Imaginaire,      ageProvider);
+                PenseeVM          = new CartographieSegmentViewModel(Phase.CartographieEnfant.Pensee,          ageProvider);
+            }
+            OnPropertyChanged(nameof(AttachementVM));
+            OnPropertyChanged(nameof(PsychomotriciteVM));
+            OnPropertyChanged(nameof(LangageVM));
+            OnPropertyChanged(nameof(EmotionsVM));
+            OnPropertyChanged(nameof(ImaginaireVM));
+            OnPropertyChanged(nameof(PenseeVM));
+            OnPropertyChanged(nameof(Temperament));
+        }
+
+        private bool CanValidateCartographieEnfant
+            => IsWorkingCartographieEnfant && Phase != null;
 
         public string SuspendedMarqueLabel
         {
@@ -241,7 +329,7 @@ namespace MedCompanion.ViewModels
                     EvaluationStep.Preparation       => "Étape 1 — Préparation",
                     EvaluationStep.EvaluationCiblee  => "Étape 2 — Évaluation ciblée",
                     EvaluationStep.Synthese          => "Étape 3 — Synthèse diagnostique",
-                    EvaluationStep.Cartographie      => "Étape 4 — Cartographie",
+                    EvaluationStep.CartographieEnfant      => "Étape 4 — Cartographie",
                     _                                 => "?"
                 };
                 return $"Marque-page : {step}";
@@ -298,10 +386,12 @@ namespace MedCompanion.ViewModels
             try
             {
                 Phase = _phaseService.Create(_patient.NomComplet, _patient.DirectoryPath);
+                RebuildCartographieWrappers();
                 IsWorkingPreparation = true;
                 StatusMessage = "Évaluation démarrée — Étape 1 Préparation clinique.";
                 NotifyAllStates();
                 NotifyPreparationCollections();
+                PhaseStateChanged?.Invoke();   // nouvelle card "active" à ajouter à la frise
             }
             catch (Exception ex)
             {
@@ -325,11 +415,20 @@ namespace MedCompanion.ViewModels
                     StatusMessage = "Reprise de l'évaluation — Étape 3 Synthèse diagnostique.";
                     NotifySyntheseCollections();
                     break;
-                case EvaluationStep.Cartographie:
-                    // V0.3 : Cartographie pas encore implémentée — retour Synthèse pour finir
-                    IsWorkingSynthese = true;
-                    StatusMessage = "Reprise — Étape 4 (Cartographie) bientôt disponible.";
-                    NotifySyntheseCollections();
+                case EvaluationStep.CartographieEnfant:
+                    if (IsCartographieDisponible)
+                    {
+                        IsWorkingCartographieEnfant = true;
+                        StatusMessage = "Reprise de l'évaluation — Étape 4 Cartographie de l'enfant.";
+                        NotifyCartographieCollections();
+                    }
+                    else
+                    {
+                        // Patient hors fourchette : retour Synthèse pour clôturer manuellement
+                        IsWorkingSynthese = true;
+                        StatusMessage = "Cartographie de l'enfant non applicable (3-11 ans). Vous pouvez clôturer depuis l'Étape 3.";
+                        NotifySyntheseCollections();
+                    }
                     break;
                 default:
                     IsWorkingPreparation = true;
@@ -338,6 +437,99 @@ namespace MedCompanion.ViewModels
                     break;
             }
             NotifyAllStates();
+        }
+
+        /// <summary>
+        /// Affiche une phase donnée dans le panneau, éventuellement en lecture seule (utilisé pour
+        /// rouvrir une évaluation clôturée depuis la frise).
+        /// Route vers l'étape correspondant au marque-page (EtapeCourante).
+        /// </summary>
+        public void ShowPhase(EvaluationPhase phaseToShow, bool readOnly)
+        {
+            if (phaseToShow == null) return;
+
+            // Reset des working states (on va router vers le bon en fonction de l'étape)
+            IsWorkingPreparation        = false;
+            IsWorkingEvaluation         = false;
+            IsWorkingSynthese           = false;
+            IsWorkingCartographieEnfant = false;
+
+            Phase = phaseToShow;
+            IsReadOnly = readOnly;
+            RebuildCartographieWrappers();
+
+            // Hook auto-save uniquement si éditable — en lecture seule c'est sans effet utile
+            if (!readOnly)
+            {
+                HookAxisHandlers(Phase.EvaluationCiblee.AxesPrincipaux);
+                HookAxisHandlers(Phase.EvaluationCiblee.AxesDifferentiels);
+                HookAxisHandlers(Phase.EvaluationCiblee.AxesSystemiques);
+                HookSyntheseHandlers(Phase.Synthese);
+            }
+
+            // Router selon le marque-page
+            switch (Phase.EtapeCourante)
+            {
+                case EvaluationStep.EvaluationCiblee:
+                    IsWorkingEvaluation = true;
+                    NotifyEvaluationCollections();
+                    break;
+                case EvaluationStep.Synthese:
+                    IsWorkingSynthese = true;
+                    NotifySyntheseCollections();
+                    break;
+                case EvaluationStep.CartographieEnfant:
+                    IsWorkingCartographieEnfant = true;
+                    NotifyCartographieCollections();
+                    break;
+                default:
+                    IsWorkingPreparation = true;
+                    NotifyPreparationCollections();
+                    break;
+            }
+
+            StatusMessage = readOnly
+                ? $"Évaluation clôturée le {Phase.DateCloture:dd/MM/yyyy} — lecture seule."
+                : "Reprise de l'évaluation.";
+            NotifyAllStates();
+        }
+
+        /// <summary>
+        /// Lecture seule : navigation entre les étapes sans modifier la phase ni écrire sur disque.
+        /// Param attendu : "1", "2", "3" ou "4".
+        /// </summary>
+        private void ViewStep(string? step)
+        {
+            if (!IsReadOnly || Phase == null) return;
+            IsWorkingPreparation        = false;
+            IsWorkingEvaluation         = false;
+            IsWorkingSynthese           = false;
+            IsWorkingCartographieEnfant = false;
+            switch (step)
+            {
+                case "1": IsWorkingPreparation        = true; NotifyPreparationCollections(); break;
+                case "2": IsWorkingEvaluation         = true; NotifyEvaluationCollections();  break;
+                case "3": IsWorkingSynthese           = true; NotifySyntheseCollections();    break;
+                case "4": IsWorkingCartographieEnfant = true; NotifyCartographieCollections(); break;
+            }
+            NotifyAllStates();
+        }
+
+        /// <summary>
+        /// Sort du mode lecture seule et restaure l'évaluation active du patient (ou Phase=null
+        /// s'il n'y en a pas). Utilisé quand le médecin quitte une vue clôturée pour revenir
+        /// au contexte de travail courant.
+        /// </summary>
+        public void ReturnToActiveContext()
+        {
+            IsReadOnly = false;
+            IsWorkingPreparation        = false;
+            IsWorkingEvaluation         = false;
+            IsWorkingSynthese           = false;
+            IsWorkingCartographieEnfant = false;
+            StatusMessage = "";
+            // ReloadState charge l'évaluation active s'il y en a une, sinon Phase = null
+            ReloadState();
         }
 
         public async Task SuggestPreparationAsync()
@@ -429,9 +621,10 @@ namespace MedCompanion.ViewModels
             CleanEmptyEcartes(Phase.Synthese.DiagnosticsEcartes);
 
             _phaseService.Save(Phase);
-            IsWorkingPreparation = false;
-            IsWorkingEvaluation  = false;
-            IsWorkingSynthese    = false;
+            IsWorkingPreparation        = false;
+            IsWorkingEvaluation         = false;
+            IsWorkingSynthese           = false;
+            IsWorkingCartographieEnfant = false;
             StatusMessage = "Séance suspendue. Vous reprendrez exactement ici la prochaine fois.";
             NotifyAllStates();
         }
@@ -957,6 +1150,14 @@ namespace MedCompanion.ViewModels
         public ICommand RemoveDiagnosticEcarteCommand { get; private set; } = null!;
         public ICommand SetCertitudeCommand           { get; private set; } = null!;
 
+        // Lecture seule
+        public ICommand ViewStepCommand               { get; private set; } = null!;
+        public ICommand CloseReadOnlyCommand          { get; private set; } = null!;
+
+        // Étape 4 — Cartographie de l'enfant
+        public ICommand ValidateCartographieEnfantCommand { get; private set; } = null!;
+        public ICommand BackToSyntheseCommand             { get; private set; } = null!;
+
         private bool CanValidateSynthese
             => IsWorkingSynthese && Phase != null && (
                 Phase.Synthese.DiagnosticsRetenus.Any(NonEmpty) ||
@@ -1035,15 +1236,69 @@ namespace MedCompanion.ViewModels
             CleanEmptyEcartes(Phase.Synthese.DiagnosticsEcartes);
 
             Phase.Synthese.ValidationDate = DateTime.Now;
-            Phase.EtapeCourante = EvaluationStep.Cartographie;
+
+            // Routing : si âge 3-11 → étape 4 (Cartographie de l'enfant) ; sinon → clôture directe.
+            if (IsCartographieDisponible)
+            {
+                Phase.EtapeCourante = EvaluationStep.CartographieEnfant;
+                Phase.CartographieEnfant.AgeAuMomentDeLaSaisie = _patient?.Age;
+                _phaseService.Save(Phase);
+
+                IsWorkingSynthese = false;
+                IsWorkingCartographieEnfant = true;
+                StatusMessage = "Synthèse validée. Passage à l'Étape 4 — Cartographie de l'enfant.";
+                NotifyAllStates();
+            }
+            else
+            {
+                Phase.EtapeCourante = EvaluationStep.CartographieEnfant;  // marque-page final
+                _phaseService.Save(Phase);
+                _phaseService.Close(Phase);
+                IsWorkingSynthese = false;
+                Phase = null;
+                StatusMessage = "Évaluation clôturée. Cartographie de l'enfant non applicable (outil réservé aux 3-11 ans).";
+                NotifyAllStates();
+                PhaseStateChanged?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Valide l'Étape 4 (Cartographie de l'enfant) ET clôture l'évaluation
+        /// (V0 : étape 5 Cartographie de l'environnement stubbée).
+        /// </summary>
+        private void ValidateCartographieEnfant()
+        {
+            if (Phase == null) return;
+            Phase.CartographieEnfant.ValidationDate = DateTime.Now;
+            // Si l'âge n'a pas été snapshotté (cas d'un retour à l'étape), on le pose ici.
+            if (!Phase.CartographieEnfant.AgeAuMomentDeLaSaisie.HasValue)
+                Phase.CartographieEnfant.AgeAuMomentDeLaSaisie = _patient?.Age;
+
+            _phaseService.Save(Phase);
+            _phaseService.Close(Phase);
+            IsWorkingCartographieEnfant = false;
+            Phase = null;
+            StatusMessage = "Évaluation clôturée. (Étape 5 — Cartographie de l'environnement viendra en V0.3.)";
+            NotifyAllStates();
+            PhaseStateChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Retour à l'Étape 3 depuis l'Étape 4 (le médecin veut modifier la synthèse).
+        /// Réinitialise la validation de l'étape 3 pour la rendre éditable, conserve la cartographie.
+        /// </summary>
+        private void BackToSynthese()
+        {
+            if (Phase == null) return;
+            Phase.Synthese.ValidationDate = null;
+            Phase.EtapeCourante = EvaluationStep.Synthese;
             _phaseService.Save(Phase);
 
-            // V0.2 : Cartographie pas encore implémentée → on clôture l'évaluation
-            _phaseService.Close(Phase);
-            IsWorkingSynthese = false;
-            Phase = null;
-            StatusMessage = "Évaluation clôturée. La Cartographie enfant arrivera en V0.3.";
+            IsWorkingCartographieEnfant = false;
+            IsWorkingSynthese = true;
+            StatusMessage = "Retour à l'Étape 3 — la Cartographie reste conservée.";
             NotifyAllStates();
+            NotifySyntheseCollections();
         }
 
         private void BackToEvaluation()
@@ -1145,10 +1400,23 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(IsWorkingPreparation));
             OnPropertyChanged(nameof(IsWorkingEvaluation));
             OnPropertyChanged(nameof(IsWorkingSynthese));
+            OnPropertyChanged(nameof(IsWorkingCartographieEnfant));
+            OnPropertyChanged(nameof(IsCartographieDisponible));
             OnPropertyChanged(nameof(SuspendedMarqueLabel));
             OnPropertyChanged(nameof(SuspendedAgoLabel));
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                 System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+        }
+
+        private void NotifyCartographieCollections()
+        {
+            // Notifie les wrappers que l'âge peut avoir changé (rare, mais possible si _patient change)
+            AttachementVM?.NotifyAgeChanged();
+            PsychomotriciteVM?.NotifyAgeChanged();
+            LangageVM?.NotifyAgeChanged();
+            EmotionsVM?.NotifyAgeChanged();
+            ImaginaireVM?.NotifyAgeChanged();
+            PenseeVM?.NotifyAgeChanged();
         }
 
         private void NotifyPreparationCollections()

@@ -60,18 +60,21 @@ namespace MedCompanion.Services.Evaluations
             try
             {
                 var prompt = BuildPrompt(age, hypothesesPrincipales, differentiels, pointsVigilance, motif);
-                var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: 2400, cancellationToken: cts.Token);
+                var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: 4500, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
                     return (false, null, err ?? "Réponse LLM vide.");
 
-                var sug = ParseJson(raw);
+                var sug = ParseJson(raw, out var extracted);
                 if (sug == null)
                 {
-                    // Log la réponse brute pour diagnostic
-                    System.Diagnostics.Debug.WriteLine("[AxesSuggesterService] PARSING ÉCHEC. Réponse brute :");
+                    var truncated = string.IsNullOrEmpty(extracted);
+                    System.Diagnostics.Debug.WriteLine($"[AxesSuggesterService] PARSING ÉCHEC. Longueur réponse = {raw.Length}. JSON extrait = {(truncated ? "VIDE (probable troncature : pas d'accolade fermante)" : $"{extracted!.Length} chars mais Parse a échoué")}.");
+                    System.Diagnostics.Debug.WriteLine("[AxesSuggesterService] Réponse brute :");
                     System.Diagnostics.Debug.WriteLine(raw);
                     System.Diagnostics.Debug.WriteLine("[AxesSuggesterService] FIN réponse brute.");
-                    return (false, null, "Parsing JSON impossible (voir Sortie Debug pour la réponse LLM brute).");
+                    return (false, null, truncated
+                        ? "Réponse LLM tronquée (limite tokens atteinte). Voir Sortie Debug."
+                        : "Parsing JSON impossible (voir Sortie Debug pour la réponse LLM brute).");
                 }
 
                 sug.AxesPrincipaux    = TrimAxes(sug.AxesPrincipaux,    MaxAxesPrincipaux);
@@ -138,14 +141,14 @@ RÉPONDS UNIQUEMENT par un JSON valide :
 }}";
         }
 
-        private static AxesSuggestion? ParseJson(string raw)
+        private static AxesSuggestion? ParseJson(string raw, out string? extracted)
         {
-            var json = ExtractJson(raw);
-            if (string.IsNullOrEmpty(json)) return null;
+            extracted = ExtractJson(raw);
+            if (string.IsNullOrEmpty(extracted)) return null;
 
             try
             {
-                using var doc = JsonDocument.Parse(json);
+                using var doc = JsonDocument.Parse(extracted);
                 var root = doc.RootElement;
                 return new AxesSuggestion
                 {

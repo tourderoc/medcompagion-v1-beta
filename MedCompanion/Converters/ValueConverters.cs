@@ -231,4 +231,28 @@ namespace MedCompanion.Converters
         public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
             => throw new NotImplementedException();
     }
+
+    /// <summary>
+    /// Convertit une chaîne couleur (#RRGGBB ou nom WPF) en SolidColorBrush.
+    /// Renvoie un brush gris par défaut si la conversion échoue.
+    /// </summary>
+    public class StringToBrushConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is string s && !string.IsNullOrEmpty(s))
+            {
+                try
+                {
+                    var color = (System.Windows.Media.Color)System.Windows.Media.ColorConverter.ConvertFromString(s);
+                    return new System.Windows.Media.SolidColorBrush(color);
+                }
+                catch { /* fall through */ }
+            }
+            return new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Gray);
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
+    }
 }

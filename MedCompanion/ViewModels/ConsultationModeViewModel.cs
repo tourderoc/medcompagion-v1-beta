@@ -15,6 +15,7 @@ using MedCompanion.Models.Urgences;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.Evaluations;
+using MedCompanion.Models.Evaluations;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
 
@@ -369,14 +370,19 @@ namespace MedCompanion.ViewModels
             private set => SetProperty(ref _evaluationPhase, value);
         }
 
+        private EvaluationPhaseService? _evaluationPhaseService;
+
         public void InjectEvaluationServices(EvaluationPhaseService phaseService,
                                              PreparationSuggesterService? suggester,
                                              AxesSuggesterService? axesSuggester = null,
                                              AxisExtractorService?  axisExtractor = null,
                                              SyntheseSuggesterService? syntheseSuggester = null)
         {
+            _evaluationPhaseService = phaseService;
             EvaluationPhase = new EvaluationPhaseViewModel(
                 phaseService, suggester, axesSuggester, axisExtractor, _whisperService, syntheseSuggester);
+            // À chaque création/clôture d'évaluation, rafraîchit la frise + les blocs de synthèse
+            EvaluationPhase.PhaseStateChanged += LoadEvaluationCards;
             // Si un patient est déjà chargé, on lui passe tout de suite
             if (_currentPatient != null) EvaluationPhase.SetCurrentPatient(_currentPatient);
         }
@@ -864,6 +870,10 @@ namespace MedCompanion.ViewModels
                     ConsultationType = ConsultationType.Normal;
                     IsEditingConsultation = false;
                     IsEvaluationPhaseMode = true;
+                    // Si le panneau était sur une évaluation clôturée (lecture seule),
+                    // on revient au contexte actif pour pouvoir démarrer/reprendre.
+                    if (EvaluationPhase?.IsReadOnly == true)
+                        EvaluationPhase.ReturnToActiveContext();
                     break;
 
                 case "suivi":
@@ -908,6 +918,87 @@ namespace MedCompanion.ViewModels
             // Du contenu existe si transcription saisie ou au moins un bloc rempli
             return !string.IsNullOrWhiteSpace(TranscriptionInput)
                    || InterrogatoireBlocks.Any(b => !string.IsNullOrWhiteSpace(b.FreeText));
+        }
+
+        /// <summary>
+        /// Ouvre une card d'évaluation depuis la frise.
+        /// - Active   : bascule sur le panneau Évaluation en mode reprise à l'étape courante,
+        ///              sans toucher au dossier bleu (on respecte le travail en cours).
+        /// - Clôturée : bascule sur le panneau Évaluation en lecture seule ET met le dossier bleu
+        ///              sur l'onglet SYNTHESE pour afficher la synthèse diagnostique.
+        /// </summary>
+        private void OpenEvaluationCard(EvaluationCardViewModel card)
+        {
+            if (EvaluationPhase == null || _evaluationPhaseService == null) return;
+
+            var phase = _evaluationPhaseService.Load(card.FilePath);
+            if (phase == null)
+            {
+                System.Windows.MessageBox.Show(
+                    "Impossible de charger cette évaluation (fichier introuvable ou illisible).",
+                    "Évaluation",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            IsEvaluationPhaseMode = true;
+            EvaluationPhase.ShowPhase(phase, readOnly: !phase.IsActive);
+
+            // Évaluation clôturée → on bascule le dossier bleu sur le tab pertinent :
+            // - BILANS si la cartographie a du contenu (la chenille est un bilan d'évaluation)
+            // - SYNTHESE sinon (uniquement la synthèse diagnostique à montrer)
+            if (!phase.IsActive)
+            {
+                var hasCartographie = phase.CartographieEnfant.IsValidated
+                    || phase.CartographieEnfant.Attachement.Score > 0
+                    || phase.CartographieEnfant.Psychomotricite.Score > 0
+                    || phase.CartographieEnfant.Langage.Score > 0
+                    || phase.CartographieEnfant.Emotions.Score > 0
+                    || phase.CartographieEnfant.Imaginaire.Score > 0
+                    || phase.CartographieEnfant.Pensee.Score > 0
+                    || phase.CartographieEnfant.Temperament.IsRenseigne;
+                ActiveDossierTab = hasCartographie ? DossierTab.Bilans : DossierTab.Synthese;
+            }
+        }
+
+        /// <summary>
+        /// Supprime définitivement une évaluation après confirmation.
+        /// Si c'était l'évaluation active, recharge l'état de l'EvaluationPhase pour libérer le slot.
+        /// </summary>
+        private void DeleteEvaluationCard(EvaluationCardViewModel card)
+        {
+            if (_evaluationPhaseService == null) return;
+
+            var label = card.IsActive
+                ? $"l'évaluation en cours (Étape {(int)card.EtapeCourante})"
+                : $"l'évaluation clôturée le {card.DateCloture:dd/MM/yyyy}";
+
+            var r = System.Windows.MessageBox.Show(
+                $"Supprimer définitivement {label} ?\n\nCette action est irréversible.",
+                "Supprimer l'évaluation",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            if (!_evaluationPhaseService.Delete(card.FilePath))
+            {
+                System.Windows.MessageBox.Show(
+                    "Le fichier d'évaluation n'a pas pu être supprimé.",
+                    "Erreur",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+                return;
+            }
+
+            // Recharge à la fois les cards de la frise ET les blocs de synthèse du dossier bleu
+            // (si on a supprimé une éval clôturée, son bloc disparaît aussi).
+            LoadEvaluationCards();
+
+            // Si on a supprimé l'évaluation active, recharger l'état pour que le panneau Évaluation
+            // (CanStart / CanResume) reflète la réalité (plus aucune phase active).
+            if (card.IsActive && EvaluationPhase != null && CurrentPatient != null)
+                EvaluationPhase.SetCurrentPatient(CurrentPatient);
         }
 
         /// <summary>
@@ -2665,8 +2756,10 @@ source: ""MedCompanion""
         public ICommand StopRecordingCommand { get; }
 
         // Hub de consultations (frise + bouton +)
-        public ICommand NewConsultationCommand { get; }   // param : "premiere" | "suivi"
-        public ICommand OpenCardCommand { get; }          // param : ConsultationCardViewModel
+        public ICommand NewConsultationCommand { get; }       // param : "premiere" | "suivi"
+        public ICommand OpenCardCommand { get; }              // param : ConsultationCardViewModel
+        public ICommand OpenEvaluationCardCommand { get; }    // param : EvaluationCardViewModel
+        public ICommand DeleteEvaluationCardCommand { get; }  // param : EvaluationCardViewModel
 
         // V0b : Commande pour confirmer l'âge manuellement
         public ICommand ConfirmAgeCommand { get; }
@@ -2807,6 +2900,21 @@ source: ""MedCompanion""
             {
                 if (param is ConsultationCardViewModel card)
                     OpenPastConsultation(card);
+            });
+
+            // Hub : ouvrir une card évaluation (active → Resume, clôturée → ReadOnly + tab SYNTHESE)
+            // Implémentation complète à l'étape 2.
+            OpenEvaluationCardCommand = new RelayCommand(param =>
+            {
+                if (param is EvaluationCardViewModel ecard)
+                    OpenEvaluationCard(ecard);
+            });
+
+            // Hub : supprimer une card évaluation (utile pour nettoyer les tests)
+            DeleteEvaluationCardCommand = new RelayCommand(param =>
+            {
+                if (param is EvaluationCardViewModel ecard)
+                    DeleteEvaluationCard(ecard);
             });
 
             // V0b : Commande confirmation âge
@@ -3002,6 +3110,21 @@ source: ""MedCompanion""
         // Frise chronologique (hub de consultations)
         public ObservableCollection<ConsultationCardViewModel> ConsultationCards { get; } = new();
 
+        // Frise chronologique (cards d'évaluation — active + clôturées, en parallèle des consultations)
+        public ObservableCollection<EvaluationCardViewModel> EvaluationCards { get; } = new();
+
+        // Blocs de synthèse diagnostique (issus des évaluations clôturées) affichés
+        // dans l'onglet SYNTHESE du dossier bleu, SOUS la synthèse rédigée manuellement.
+        // Trié du plus récent au plus ancien.
+        public ObservableCollection<DiagnosticSyntheseCardViewModel> DiagnosticSyntheseBlocks { get; } = new();
+        public bool HasDiagnosticSyntheseBlocks => DiagnosticSyntheseBlocks.Count > 0;
+
+        // Cartographies (étape 4) issues des évaluations clôturées, affichées dans l'onglet
+        // BILANS du dossier bleu. La cartographie de l'enfant EST un bilan d'évaluation.
+        // Trié du plus récent au plus ancien.
+        public ObservableCollection<CartographieBilanCardViewModel> CartographieBilans { get; } = new();
+        public bool HasCartographieBilans => CartographieBilans.Count > 0;
+
         public bool HasNoConsultationNotes => ConsultationNotes.Count == 0;
         public bool HasConsultationNotes   => ConsultationNotes.Count > 0;
 
@@ -3032,6 +3155,7 @@ source: ""MedCompanion""
             ResetPagination();
 
             LoadConsultationCards();
+            LoadEvaluationCards();
         }
 
         /// <summary>
@@ -3051,7 +3175,64 @@ source: ""MedCompanion""
             OnPropertyChanged(nameof(HasNoConsultationCards));
         }
 
+        /// <summary>
+        /// Alimente la frise des évaluations (actives + clôturées) ET les blocs de synthèse
+        /// diagnostique du dossier SYNTHESE, à partir du dossier patient.
+        /// Cards triées par DateDebut (ancienne → récente). Blocs de synthèse triés du plus
+        /// récent au plus ancien (les dernières conclusions d'abord).
+        /// </summary>
+        private void LoadEvaluationCards()
+        {
+            EvaluationCards.Clear();
+            DiagnosticSyntheseBlocks.Clear();
+            CartographieBilans.Clear();
+            if (_evaluationPhaseService == null || CurrentPatient == null
+                || string.IsNullOrEmpty(CurrentPatient.DirectoryPath)) return;
+
+            var phases = _evaluationPhaseService.LoadAll(CurrentPatient.DirectoryPath);
+            foreach (var p in phases)
+                EvaluationCards.Add(new EvaluationCardViewModel(p));
+
+            // Synthèses : uniquement les évaluations clôturées avec au moins un diagnostic
+            // retenu OU une certitude renseignée OU un élément en faveur OU un écarté.
+            // (Pas de bruit pour les évaluations abandonnées sans synthèse.)
+            var blocks = phases
+                .Where(p => !p.IsActive)
+                .Where(p => p.Synthese.DiagnosticsRetenus.Any(s => !string.IsNullOrWhiteSpace(s?.Value))
+                         || p.Synthese.ElementsEnFaveur.Any(s => !string.IsNullOrWhiteSpace(s?.Value))
+                         || p.Synthese.DiagnosticsEcartes.Any(e => !string.IsNullOrWhiteSpace(e?.Label))
+                         || p.Synthese.Certitude != NiveauCertitude.NonRenseigne)
+                .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                .Select(p => new DiagnosticSyntheseCardViewModel(p))
+                .ToList();
+            foreach (var b in blocks)
+                DiagnosticSyntheseBlocks.Add(b);
+
+            // Cartographies : évaluations clôturées avec l'étape 4 validée OU au moins du contenu
+            // (score > 0 sur un segment ou tempérament renseigné). Affichées dans l'onglet BILANS.
+            var cartoBlocks = phases
+                .Where(p => !p.IsActive)
+                .Where(p => p.CartographieEnfant.IsValidated
+                         || p.CartographieEnfant.Attachement.Score > 0
+                         || p.CartographieEnfant.Psychomotricite.Score > 0
+                         || p.CartographieEnfant.Langage.Score > 0
+                         || p.CartographieEnfant.Emotions.Score > 0
+                         || p.CartographieEnfant.Imaginaire.Score > 0
+                         || p.CartographieEnfant.Pensee.Score > 0
+                         || p.CartographieEnfant.Temperament.IsRenseigne)
+                .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                .Select(p => new CartographieBilanCardViewModel(p))
+                .ToList();
+            foreach (var b in cartoBlocks)
+                CartographieBilans.Add(b);
+
+            OnPropertyChanged(nameof(HasNoTimelineCards));
+            OnPropertyChanged(nameof(HasDiagnosticSyntheseBlocks));
+            OnPropertyChanged(nameof(HasCartographieBilans));
+        }
+
         public bool HasNoConsultationCards => ConsultationCards.Count == 0;
+        public bool HasNoTimelineCards     => ConsultationCards.Count == 0 && EvaluationCards.Count == 0;
 
         #endregion
 

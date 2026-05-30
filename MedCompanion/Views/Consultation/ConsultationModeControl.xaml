@@ -17,6 +17,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <conv:StringEqualsMultiConverter x:Key="StringEquals"/>
         <conv:StringNotWhiteSpaceToVisibilityConverter x:Key="StringNotWS"/>
+        <conv:StringToBrushConverter x:Key="StringToBrush"/>
 
         <!-- Template réutilisable : affichage/édition d'une note sur une page A4 -->
         <DataTemplate x:Key="NotePageTemplate" DataType="{x:Type vm:ConsultationNoteViewModel}">
@@ -595,56 +596,140 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Placeholder si aucune consultation -->
-                                <TextBlock Text="Aucune consultation — cliquez sur ＋ pour en créer une"
+                                <!-- Placeholder si aucun élément dans la frise (ni consult ni évaluation) -->
+                                <TextBlock Text="Aucun élément — cliquez sur ＋ pour en créer un"
                                            FontSize="12" Foreground="#AAAAAA" VerticalAlignment="Center"
-                                           Visibility="{Binding HasNoConsultationCards, Converter={StaticResource BoolToVis}}"/>
+                                           Visibility="{Binding HasNoTimelineCards, Converter={StaticResource BoolToVis}}"/>
 
-                                <!-- Frise scrollable horizontale -->
+                                <!-- Frise scrollable horizontale : consultations + évaluations côte à côte -->
                                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                               VerticalScrollBarVisibility="Disabled">
-                                    <ItemsControl ItemsSource="{Binding ConsultationCards}">
-                                        <ItemsControl.ItemsPanel>
-                                            <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal"/>
-                                            </ItemsPanelTemplate>
-                                        </ItemsControl.ItemsPanel>
-                                        <ItemsControl.ItemTemplate>
-                                            <DataTemplate>
-                                                <Button Margin="0,0,8,0" Cursor="Hand"
-                                                        Command="{Binding DataContext.OpenCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                        CommandParameter="{Binding}">
-                                                    <Button.Template>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border x:Name="Cd" Width="130" Height="64"
-                                                                    CornerRadius="8" Padding="8,6"
-                                                                    Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1">
-                                                                <StackPanel>
-                                                                    <StackPanel Orientation="Horizontal">
-                                                                        <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
-                                                                        <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                                                                   Foreground="#2C3E50" TextTrimming="CharacterEllipsis"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <ItemsControl ItemsSource="{Binding ConsultationCards}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Button Margin="0,0,8,0" Cursor="Hand"
+                                                            Command="{Binding DataContext.OpenCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                            CommandParameter="{Binding}">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="Cd" Width="130" Height="64"
+                                                                        CornerRadius="8" Padding="8,6"
+                                                                        Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1">
+                                                                    <StackPanel>
+                                                                        <StackPanel Orientation="Horizontal">
+                                                                            <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
+                                                                            <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
+                                                                                       Foreground="#2C3E50" TextTrimming="CharacterEllipsis"/>
+                                                                        </StackPanel>
+                                                                        <TextBlock Text="{Binding DateText}" FontSize="11"
+                                                                                   Foreground="#7F8C8D" Margin="0,6,0,0"/>
                                                                     </StackPanel>
-                                                                    <TextBlock Text="{Binding DateText}" FontSize="11"
-                                                                               Foreground="#7F8C8D" Margin="0,6,0,0"/>
-                                                                </StackPanel>
-                                                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter TargetName="Cd" Property="Background" Value="#E8F1F8"/>
-                                                                    <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
-                                                                </Trigger>
-                                                                <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                    <Setter TargetName="Cd" Property="Background" Value="#D6EAF8"/>
-                                                                    <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
-                                                                </DataTrigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Button.Template>
-                                                </Button>
-                                            </DataTemplate>
-                                        </ItemsControl.ItemTemplate>
-                                    </ItemsControl>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="Cd" Property="Background" Value="#E8F1F8"/>
+                                                                        <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
+                                                                    </Trigger>
+                                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                        <Setter TargetName="Cd" Property="Background" Value="#D6EAF8"/>
+                                                                        <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
+                                                                    </DataTrigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+
+                                        <!-- Cards d'évaluation (icône 🧠) : active = bordure violette, clôturée = grise -->
+                                        <ItemsControl ItemsSource="{Binding EvaluationCards}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <!-- Grid pour superposer le bouton supprimer (visible au survol) -->
+                                                    <Grid x:Name="CardHost" Margin="0,0,8,0">
+                                                        <Button Cursor="Hand"
+                                                                Command="{Binding DataContext.OpenEvaluationCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="Ec" Width="140" Height="64"
+                                                                            CornerRadius="8" Padding="8,6"
+                                                                            Background="#F4F0FB" BorderBrush="#D8CCE8" BorderThickness="1">
+                                                                        <StackPanel>
+                                                                            <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
+                                                                                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
+                                                                                           Foreground="#4A2C6A" TextTrimming="CharacterEllipsis"/>
+                                                                            </StackPanel>
+                                                                            <TextBlock Text="{Binding StateText}" FontSize="11"
+                                                                                       Foreground="#7F6E91" Margin="0,6,0,0"
+                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="Ec" Property="Background" Value="#EAE0F5"/>
+                                                                            <Setter TargetName="Ec" Property="BorderBrush" Value="#8E5BC2"/>
+                                                                        </Trigger>
+                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                            <Setter TargetName="Ec" Property="Background" Value="#E3D6F2"/>
+                                                                            <Setter TargetName="Ec" Property="BorderBrush" Value="#8E5BC2"/>
+                                                                        </DataTrigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+
+                                                        <!-- Bouton supprimer (haut-droit, visible au survol de la card) -->
+                                                        <Button x:Name="DeleteBtn"
+                                                                Width="20" Height="20"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                Margin="0,-4,-4,0"
+                                                                Cursor="Hand"
+                                                                Visibility="Collapsed"
+                                                                Background="Transparent" BorderThickness="0"
+                                                                ToolTip="Supprimer cette évaluation"
+                                                                Command="{Binding DataContext.DeleteEvaluationCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="DBorder" Background="#FFFFFF"
+                                                                            BorderBrush="#D8CCE8" BorderThickness="1"
+                                                                            CornerRadius="10">
+                                                                        <TextBlock Text="🗑" FontSize="11"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
+                                                                            <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                    </Grid>
+                                                    <DataTemplate.Triggers>
+                                                        <Trigger SourceName="CardHost" Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
+                                                        </Trigger>
+                                                    </DataTemplate.Triggers>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                 </ScrollViewer>
                             </DockPanel>
 
@@ -3053,6 +3138,84 @@
                                                     <TextBlock Text="Aucune synthèse pour ce patient. Cliquez sur Actualiser dans la barre de gauche pour la générer."
                                                                FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
                                                                Visibility="{Binding HasNoPatientSynthesis, Converter={StaticResource BoolToVis}}"/>
+
+                                                    <!-- Blocs Synthèse diagnostique (générés depuis les évaluations clôturées, ajoutés sous la synthèse manuelle) -->
+                                                    <ItemsControl ItemsSource="{Binding DiagnosticSyntheseBlocks}" Margin="0,18,0,0"
+                                                                  Visibility="{Binding HasDiagnosticSyntheseBlocks, Converter={StaticResource BoolToVis}}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Background="#F8F4FB" BorderBrush="#D8CCE8" BorderThickness="1"
+                                                                        CornerRadius="6" Padding="14" Margin="0,0,0,12">
+                                                                    <StackPanel>
+                                                                        <!-- En-tête : icône + titre + date + badge certitude -->
+                                                                        <Grid Margin="0,0,0,10">
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="Auto"/>
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                                                                <TextBlock Text="🧠" FontSize="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                                                <TextBlock Text="Synthèse diagnostique — " FontSize="14" FontWeight="SemiBold" Foreground="#4A2C6A" VerticalAlignment="Center"/>
+                                                                                <TextBlock Text="{Binding DateClotureText}" FontSize="14" Foreground="#4A2C6A" VerticalAlignment="Center"/>
+                                                                            </StackPanel>
+                                                                            <Border Grid.Column="1" Background="{Binding CertitudeColor}" CornerRadius="10" Padding="8,3" VerticalAlignment="Center">
+                                                                                <TextBlock Text="{Binding CertitudeLabel}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                                                            </Border>
+                                                                        </Grid>
+
+                                                                        <!-- Diagnostics retenus -->
+                                                                        <StackPanel Margin="0,0,0,8"
+                                                                                    Visibility="{Binding HasDiagnosticsRetenus, Converter={StaticResource BoolToVis}}">
+                                                                            <TextBlock Text="Diagnostic(s) retenu(s)" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,4"/>
+                                                                            <ItemsControl ItemsSource="{Binding DiagnosticsRetenus}">
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <TextBlock Text="{Binding StringFormat='• {0}'}" FontSize="12" Foreground="#34495E"
+                                                                                                   TextWrapping="Wrap" Margin="6,0,0,2"/>
+                                                                                    </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                            </ItemsControl>
+                                                                        </StackPanel>
+
+                                                                        <!-- Éléments en faveur -->
+                                                                        <StackPanel Margin="0,0,0,8"
+                                                                                    Visibility="{Binding HasElementsEnFaveur, Converter={StaticResource BoolToVis}}">
+                                                                            <TextBlock Text="Éléments cliniques en faveur" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,4"/>
+                                                                            <ItemsControl ItemsSource="{Binding ElementsEnFaveur}">
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <TextBlock Text="{Binding StringFormat='• {0}'}" FontSize="12" Foreground="#34495E"
+                                                                                                   TextWrapping="Wrap" Margin="6,0,0,2"/>
+                                                                                    </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                            </ItemsControl>
+                                                                        </StackPanel>
+
+                                                                        <!-- Différentiels écartés -->
+                                                                        <StackPanel
+                                                                            Visibility="{Binding HasDiagnosticsEcartes, Converter={StaticResource BoolToVis}}">
+                                                                            <TextBlock Text="Diagnostics différentiels écartés" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,4"/>
+                                                                            <ItemsControl ItemsSource="{Binding DiagnosticsEcartes}">
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <StackPanel Margin="6,0,0,3">
+                                                                                            <TextBlock FontSize="12" Foreground="#34495E" TextWrapping="Wrap">
+                                                                                                <Run Text="• "/>
+                                                                                                <Run Text="{Binding Label, Mode=OneWay}" FontWeight="SemiBold"/>
+                                                                                            </TextBlock>
+                                                                                            <TextBlock Text="{Binding Motif}" FontSize="11" Foreground="#7F8C8D"
+                                                                                                       TextWrapping="Wrap" Margin="14,1,0,0" FontStyle="Italic"
+                                                                                                       Visibility="{Binding HasMotif, Converter={StaticResource BoolToVis}}"/>
+                                                                                        </StackPanel>
+                                                                                    </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                            </ItemsControl>
+                                                                        </StackPanel>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
                                                 </StackPanel>
                                             </ScrollViewer>
                                             <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
@@ -3657,10 +3820,85 @@
                                                             </DataTemplate>
                                                         </ItemsControl.ItemTemplate>
                                                     </ItemsControl>
-                                                    <!-- Placeholder quand pas de bilans -->
-                                                    <TextBlock Text="Aucun bilan importé pour ce patient. Utilisez 📄 Documents dans la zone Med pour en ajouter."
-                                                               FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
-                                                               Visibility="{Binding HasNoPatientBilans, Converter={StaticResource BoolToVis}}"/>
+                                                    <!-- Placeholder quand pas de bilans ET pas de cartographies -->
+                                                    <TextBlock FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
+                                                               Text="Aucun bilan importé pour ce patient. Utilisez 📄 Documents dans la zone Med pour en ajouter.">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Style.Triggers>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding HasNoPatientBilans}"   Value="True"/>
+                                                                            <Condition Binding="{Binding HasCartographieBilans}" Value="False"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+
+                                                    <!-- Cartographies de l'enfant (étape 4 des évaluations clôturées) -->
+                                                    <ItemsControl ItemsSource="{Binding CartographieBilans}" Margin="0,18,0,0"
+                                                                  Visibility="{Binding HasCartographieBilans, Converter={StaticResource BoolToVis}}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Background="#F8F4FB" BorderBrush="#D8CCE8" BorderThickness="1"
+                                                                        CornerRadius="6" Padding="14" Margin="0,0,0,12">
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="{Binding TitreCard}" FontSize="14" FontWeight="SemiBold" Foreground="#4A2C6A" Margin="0,0,0,10"/>
+
+                                                                        <!-- 6 lignes segments avec badge couleur -->
+                                                                        <ItemsControl ItemsSource="{Binding Segments}">
+                                                                            <ItemsControl.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                    <Grid Margin="0,0,0,4">
+                                                                                        <Grid.ColumnDefinitions>
+                                                                                            <ColumnDefinition Width="*"/>
+                                                                                            <ColumnDefinition Width="Auto"/>
+                                                                                        </Grid.ColumnDefinitions>
+                                                                                        <TextBlock Grid.Column="0" Text="{Binding Label}" FontSize="12" Foreground="#34495E" VerticalAlignment="Center"/>
+                                                                                        <Border Grid.Column="1" CornerRadius="10" Padding="8,2"
+                                                                                                Background="{Binding NiveauColor, Converter={StaticResource StringToBrush}}"
+                                                                                                Visibility="{Binding HasNiveau, Converter={StaticResource BoolToVis}}">
+                                                                                            <StackPanel Orientation="Horizontal">
+                                                                                                <TextBlock Text="{Binding Score}" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                                                                                                <TextBlock Text="/6 — " FontSize="11" Foreground="White"/>
+                                                                                                <TextBlock Text="{Binding NiveauLabel}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                                                                            </StackPanel>
+                                                                                        </Border>
+                                                                                    </Grid>
+                                                                                </DataTemplate>
+                                                                            </ItemsControl.ItemTemplate>
+                                                                        </ItemsControl>
+
+                                                                        <!-- Tempérament : 6 lignes de profil -->
+                                                                        <StackPanel Margin="0,10,0,0"
+                                                                                    Visibility="{Binding HasTemperament, Converter={StaticResource BoolToVis}}">
+                                                                            <TextBlock Text="Tempérament" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,4"/>
+                                                                            <ItemsControl ItemsSource="{Binding TemperamentLignes}">
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <Grid Margin="0,0,0,2">
+                                                                                            <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="*"/>
+                                                                                                <ColumnDefinition Width="Auto"/>
+                                                                                            </Grid.ColumnDefinitions>
+                                                                                            <TextBlock Grid.Column="0" Text="{Binding Label}" FontSize="11" Foreground="#566573"/>
+                                                                                            <TextBlock Grid.Column="1" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50">
+                                                                                                <Run Text="{Binding Value, Mode=OneWay}"/><Run Text="/5"/>
+                                                                                            </TextBlock>
+                                                                                        </Grid>
+                                                                                    </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                            </ItemsControl>
+                                                                        </StackPanel>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
                                                 </StackPanel>
                                             </ScrollViewer>
                                             <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
