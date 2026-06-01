@@ -25,6 +25,8 @@ namespace MedCompanion.ViewModels
         private readonly AxesSuggesterService? _axesSuggester;
         private readonly AxisExtractorService? _axisExtractor;
         private readonly SyntheseSuggesterService? _syntheseSuggester;
+        private readonly FeuilleLectureService? _feuilleLecture;
+        private readonly BrancheEnvironnementLectureService? _brancheLecture;
         private readonly WhisperStreamingService? _whisper;
         private PatientIndexEntry? _patient;
 
@@ -38,13 +40,17 @@ namespace MedCompanion.ViewModels
                                         AxesSuggesterService? axesSuggester = null,
                                         AxisExtractorService?  axisExtractor = null,
                                         WhisperStreamingService? whisper = null,
-                                        SyntheseSuggesterService? syntheseSuggester = null)
+                                        SyntheseSuggesterService? syntheseSuggester = null,
+                                        FeuilleLectureService? feuilleLecture = null,
+                                        BrancheEnvironnementLectureService? brancheLecture = null)
         {
             _phaseService      = phaseService;
             _suggester         = suggester;
             _axesSuggester     = axesSuggester;
             _axisExtractor     = axisExtractor;
             _syntheseSuggester = syntheseSuggester;
+            _feuilleLecture    = feuilleLecture;
+            _brancheLecture    = brancheLecture;
             _whisper           = whisper;
 
             StartCommand                  = new RelayCommand(_ => StartNew(),                _ => CanStart);
@@ -91,6 +97,8 @@ namespace MedCompanion.ViewModels
             // Étape 5 — Cartographie de l'environnement
             ValidateCartographieEnvironnementCommand = new RelayCommand(_ => ValidateCartographieEnvironnement(), _ => CanValidateCartographieEnvironnement);
             BackToCartographieEnfantCommand          = new RelayCommand(_ => BackToCartographieEnfant(),          _ => IsWorkingCartographieEnvironnement);
+            LireBrancheCommand                       = new RelayCommand(async _ => await LireBrancheAsync(),       _ => CanLireBranche);
+            EffacerLectureBrancheCommand             = new RelayCommand(_ => EffacerLectureBranche(),              _ => HasLectureBranche && !IsLectureBrancheEnCours);
         }
 
         /// <summary>
@@ -314,7 +322,7 @@ namespace MedCompanion.ViewModels
         public NiveauFeuille EnvironnementSynthese
             => Phase != null
                 ? EnvironnementScoringService.CalculerGlobal(Phase.CartographieEnvironnement)
-                : NiveauFeuille.Vert;
+                : NiveauFeuille.VertFonce;
 
         /// <summary>True si au moins une feuille a au moins un item coché.</summary>
         public bool HasAnyEnvironnementScore
@@ -375,12 +383,34 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(ValeursSocietalesVM));
             OnPropertyChanged(nameof(CadreEducatifVM));
             NotifyEnvironnementSynthese();
+            NotifyLectureBranche();
         }
 
         private FeuilleEnvironnementViewModel BuildFeuilleVM(FeuilleEnvironnement modele)
         {
             var vm = new FeuilleEnvironnementViewModel(modele);
             vm.CouleurChanged += NotifyEnvironnementSynthese;
+
+            // V0.3 — branchement lecture LLM par feuille
+            if (_feuilleLecture != null)
+            {
+                vm.LectureCallback = async (feuilleVm, ct) =>
+                {
+                    var age   = Phase?.CartographieEnvironnement.AgeAuMomentDeLaSaisie ?? _patient?.Age;
+                    var motif = ""; // V0.3 : pas de motif structuré pour l'instant
+                    return await _feuilleLecture.ReadFeuilleAsync(feuilleVm.Modele, age, motif, ct);
+                };
+            }
+
+            // Auto-save à chaque mise à jour de la lecture (texte ou édition manuelle)
+            vm.LectureChanged += () =>
+            {
+                if (Phase != null)
+                {
+                    try { _phaseService.Save(Phase); } catch { /* meilleur effort */ }
+                }
+            };
+
             return vm;
         }
 
@@ -390,6 +420,128 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(EnvironnementSynthese));
             OnPropertyChanged(nameof(EnvironnementSyntheseLabel));
             OnPropertyChanged(nameof(EnvironnementSyntheseColor));
+        }
+
+        // ── V0.4 — Lecture LLM de la branche globale ─────────────────────────
+
+        public string? LectureBrancheMed
+        {
+            get => Phase?.CartographieEnvironnement.LectureBrancheMed;
+            set
+            {
+                if (Phase == null) return;
+                if (Phase.CartographieEnvironnement.LectureBrancheMed != value)
+                {
+                    Phase.CartographieEnvironnement.LectureBrancheMed = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(HasLectureBranche));
+                    (LireBrancheCommand            as RelayCommand)?.RaiseCanExecuteChanged();
+                    (EffacerLectureBrancheCommand  as RelayCommand)?.RaiseCanExecuteChanged();
+                    try { _phaseService.Save(Phase); } catch { /* meilleur effort */ }
+                }
+            }
+        }
+
+        public DateTime? LectureBrancheDate
+        {
+            get => Phase?.CartographieEnvironnement.LectureBrancheDate;
+            set
+            {
+                if (Phase == null) return;
+                if (Phase.CartographieEnvironnement.LectureBrancheDate != value)
+                {
+                    Phase.CartographieEnvironnement.LectureBrancheDate = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool HasLectureBranche => !string.IsNullOrWhiteSpace(LectureBrancheMed);
+
+        private bool _isLectureBrancheEnCours;
+        public bool IsLectureBrancheEnCours
+        {
+            get => _isLectureBrancheEnCours;
+            private set
+            {
+                if (_isLectureBrancheEnCours != value)
+                {
+                    _isLectureBrancheEnCours = value;
+                    OnPropertyChanged();
+                    (LireBrancheCommand            as RelayCommand)?.RaiseCanExecuteChanged();
+                    (EffacerLectureBrancheCommand  as RelayCommand)?.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        private string? _lectureBrancheError;
+        public string? LectureBrancheError
+        {
+            get => _lectureBrancheError;
+            private set
+            {
+                if (_lectureBrancheError != value)
+                {
+                    _lectureBrancheError = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(HasLectureBrancheError));
+                }
+            }
+        }
+        public bool HasLectureBrancheError => !string.IsNullOrWhiteSpace(_lectureBrancheError);
+
+        private bool CanLireBranche
+            => IsWorkingCartographieEnvironnement
+            && Phase != null
+            && _brancheLecture != null
+            && !IsLectureBrancheEnCours;
+
+        private async Task LireBrancheAsync()
+        {
+            if (Phase == null || _brancheLecture == null) return;
+            IsLectureBrancheEnCours = true;
+            LectureBrancheError = null;
+            try
+            {
+                var age   = Phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie ?? _patient?.Age;
+                var motif = ""; // V0.4 : pas de motif structuré pour l'instant
+                var (ok, lecture, error) = await _brancheLecture.ReadBrancheAsync(
+                    Phase.CartographieEnvironnement, age, motif, CancellationToken.None);
+                if (ok && !string.IsNullOrWhiteSpace(lecture))
+                {
+                    LectureBrancheMed  = lecture;
+                    LectureBrancheDate = DateTime.Now;
+                }
+                else
+                {
+                    LectureBrancheError = error ?? "Lecture branche impossible.";
+                }
+            }
+            catch (Exception ex)
+            {
+                LectureBrancheError = ex.Message;
+            }
+            finally
+            {
+                IsLectureBrancheEnCours = false;
+            }
+        }
+
+        private void EffacerLectureBranche()
+        {
+            LectureBrancheMed  = null;
+            LectureBrancheDate = null;
+            LectureBrancheError = null;
+        }
+
+        private void NotifyLectureBranche()
+        {
+            OnPropertyChanged(nameof(LectureBrancheMed));
+            OnPropertyChanged(nameof(LectureBrancheDate));
+            OnPropertyChanged(nameof(HasLectureBranche));
+            OnPropertyChanged(nameof(IsLectureBrancheEnCours));
+            OnPropertyChanged(nameof(LectureBrancheError));
+            OnPropertyChanged(nameof(HasLectureBrancheError));
         }
 
         private bool CanValidateCartographieEnfant
@@ -1264,6 +1416,8 @@ namespace MedCompanion.ViewModels
         // Étape 5 — Cartographie de l'environnement
         public ICommand ValidateCartographieEnvironnementCommand { get; private set; } = null!;
         public ICommand BackToCartographieEnfantCommand          { get; private set; } = null!;
+        public ICommand LireBrancheCommand                       { get; private set; } = null!;
+        public ICommand EffacerLectureBrancheCommand             { get; private set; } = null!;
 
         private bool CanValidateSynthese
             => IsWorkingSynthese && Phase != null && (

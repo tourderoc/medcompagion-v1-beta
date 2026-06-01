@@ -3863,27 +3863,48 @@
                                                                             </Border>
                                                                         </Grid>
 
-                                                                        <!-- 5 lignes feuilles avec badge couleur -->
+                                                                        <!-- 5 lignes feuilles avec badge couleur + lecture Med par feuille -->
                                                                         <ItemsControl ItemsSource="{Binding Feuilles}">
                                                                             <ItemsControl.ItemTemplate>
                                                                                 <DataTemplate>
-                                                                                    <Grid Margin="0,0,0,4">
-                                                                                        <Grid.ColumnDefinitions>
-                                                                                            <ColumnDefinition Width="*"/>
-                                                                                            <ColumnDefinition Width="Auto"/>
-                                                                                        </Grid.ColumnDefinitions>
-                                                                                        <StackPanel Grid.Column="0">
-                                                                                            <TextBlock Text="{Binding Label}"     FontSize="12" Foreground="#34495E"/>
-                                                                                            <TextBlock Text="{Binding SousTitre}" FontSize="10" FontStyle="Italic" Foreground="#7F8C8D"/>
-                                                                                        </StackPanel>
-                                                                                        <Border Grid.Column="1" CornerRadius="10" Padding="8,2" VerticalAlignment="Center"
-                                                                                                Background="{Binding NiveauColor, Converter={StaticResource StringToBrush}}">
-                                                                                            <TextBlock Text="{Binding NiveauLabel}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                                                                    <StackPanel Margin="0,0,0,10">
+                                                                                        <Grid>
+                                                                                            <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="*"/>
+                                                                                                <ColumnDefinition Width="Auto"/>
+                                                                                            </Grid.ColumnDefinitions>
+                                                                                            <StackPanel Grid.Column="0">
+                                                                                                <TextBlock Text="{Binding Label}"     FontSize="12" Foreground="#34495E"/>
+                                                                                                <TextBlock Text="{Binding SousTitre}" FontSize="10" FontStyle="Italic" Foreground="#7F8C8D"/>
+                                                                                            </StackPanel>
+                                                                                            <Border Grid.Column="1" CornerRadius="10" Padding="8,2" VerticalAlignment="Center"
+                                                                                                    Background="{Binding NiveauColor, Converter={StaticResource StringToBrush}}">
+                                                                                                <TextBlock Text="{Binding NiveauLabel}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                                                                            </Border>
+                                                                                        </Grid>
+                                                                                        <!-- Lecture Med de la feuille (V0.3) -->
+                                                                                        <Border Background="#FBFCFD" BorderBrush="#D6E2EC" BorderThickness="0,0,0,0"
+                                                                                                Margin="0,4,0,0" Padding="8,4"
+                                                                                                Visibility="{Binding HasLecture, Converter={StaticResource BoolToVis}}">
+                                                                                            <StackPanel>
+                                                                                                <TextBlock Text="📝 Lecture Med" FontSize="10" FontWeight="SemiBold" Foreground="#16A085" Margin="0,0,0,2"/>
+                                                                                                <TextBlock Text="{Binding LectureMed}" FontSize="11" Foreground="#566573" TextWrapping="Wrap" FontStyle="Italic"/>
+                                                                                            </StackPanel>
                                                                                         </Border>
-                                                                                    </Grid>
+                                                                                    </StackPanel>
                                                                                 </DataTemplate>
                                                                             </ItemsControl.ItemTemplate>
                                                                         </ItemsControl>
+
+                                                                        <!-- Lecture globale de la branche (V0.4) -->
+                                                                        <Border Background="#EAF8F5" BorderBrush="#16A085" BorderThickness="1" CornerRadius="4"
+                                                                                Margin="0,10,0,0" Padding="10"
+                                                                                Visibility="{Binding HasLectureBranche, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel>
+                                                                                <TextBlock Text="🌳 Lecture globale de la branche" FontSize="11" FontWeight="SemiBold" Foreground="#117864" Margin="0,0,0,4"/>
+                                                                                <TextBlock Text="{Binding LectureBrancheMed}" FontSize="11" Foreground="#2C3E50" TextWrapping="Wrap"/>
+                                                                            </StackPanel>
+                                                                        </Border>
                                                                     </StackPanel>
                                                                 </Border>
                                                             </DataTemplate>

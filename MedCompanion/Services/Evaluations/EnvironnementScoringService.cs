@@ -26,52 +26,46 @@ namespace MedCompanion.Services.Evaluations
         // ─── Nervure ──────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Couleur d'une nervure selon son score et son maximum.
-        /// Centrale (max=5) : 5 → Vert ; 3-4 → Jaune ; &lt;3 → Rouge.
-        /// Secondaire (max=3) : 3 → Vert ; 2 → Jaune ; &lt;2 → Rouge.
-        /// Secondaire (max=4) : 4 → Vert ; 3 → Jaune ; &lt;3 → Rouge.
+        /// Couleur d'une nervure par pourcentage de complétion, uniforme quel que soit le max
+        /// (3, 4 ou 5 items). Adaptation 5 niveaux décidée en session 2026-06-01.
+        /// Seuils :
+        ///   ≥ 90 % → VertFonce (Fluide)
+        ///   ≥ 70 % → VertClair (Globalement fluide)
+        ///   ≥ 50 % → Jaune     (Mitigé)
+        ///   ≥ 30 % → Orange    (Fragile)
+        ///   &lt; 30 % → Rouge     (Bloqué)
+        /// Exemples sur centrale (5 items) : 5/5=VertFonce, 4/5=VertClair, 3/5=Jaune,
+        /// 2/5=Orange, 1/5=Rouge, 0/5=Rouge.
+        /// Exemples sur secondaire (3 items) : 3/3=VertFonce, 2/3=Jaune, 1/3=Orange, 0/3=Rouge.
         /// </summary>
         public static NiveauFeuille CalculerNervure(Nervure nervure)
         {
-            int score = nervure.Score;
-            int max   = nervure.MaxScore;
-
-            return max switch
-            {
-                5 => score >= 5 ? NiveauFeuille.Vert
-                   : score >= 3 ? NiveauFeuille.Jaune
-                   :              NiveauFeuille.Rouge,
-                4 => score >= 4 ? NiveauFeuille.Vert
-                   : score >= 3 ? NiveauFeuille.Jaune
-                   :              NiveauFeuille.Rouge,
-                _ => score >= 3 ? NiveauFeuille.Vert      // max == 3 par défaut
-                   : score >= 2 ? NiveauFeuille.Jaune
-                   :              NiveauFeuille.Rouge,
-            };
+            if (nervure.MaxScore <= 0) return NiveauFeuille.Rouge;
+            double pct = (double)nervure.Score / nervure.MaxScore;
+            if (pct >= 0.90) return NiveauFeuille.VertFonce;
+            if (pct >= 0.70) return NiveauFeuille.VertClair;
+            if (pct >= 0.50) return NiveauFeuille.Jaune;
+            if (pct >= 0.30) return NiveauFeuille.Orange;
+            return NiveauFeuille.Rouge;
         }
 
         // ─── Feuille ──────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Couleur d'une feuille selon les règles du Tome 3 :
-        /// - Si la centrale est Rouge → feuille Rouge (priorité absolue).
-        /// - Sinon, si la centrale est Vert ET toutes secondaires ≥ Jaune → feuille Vert.
-        /// - Sinon → Jaune (centrale Jaune, ou centrale Vert mais une secondaire Rouge).
+        /// Couleur d'une feuille = pire couleur entre la nervure centrale et la pire des
+        /// secondaires. Règle simplifiée et progressive sur 5 niveaux : la centrale n'a plus
+        /// de priorité spéciale d'occultation, mais elle reste influente puisque les nervures
+        /// participent à égalité au signal global. Cohérent avec la lecture clinique :
+        /// si une dimension craque (centrale OU secondaire), la feuille reflète ce craquement.
         /// </summary>
         public static NiveauFeuille CalculerFeuille(FeuilleEnvironnement feuille)
         {
             var centrale = CalculerNervure(feuille.NervureCentrale);
-            if (centrale == NiveauFeuille.Rouge) return NiveauFeuille.Rouge;
-
             var pireSecondaire = feuille.NervuresSecondaires
                 .Select(CalculerNervure)
-                .DefaultIfEmpty(NiveauFeuille.Vert)
-                .Max();   // enum Vert=0, Jaune=1, Rouge=2 → Max = pire
-
-            if (centrale == NiveauFeuille.Vert && pireSecondaire != NiveauFeuille.Rouge)
-                return NiveauFeuille.Vert;
-
-            return NiveauFeuille.Jaune;
+                .DefaultIfEmpty(NiveauFeuille.VertFonce)
+                .Max();   // enum croissant Vert→Rouge → Max = pire
+            return centrale > pireSecondaire ? centrale : pireSecondaire;
         }
 
         // ─── Synthèse globale ─────────────────────────────────────────────────

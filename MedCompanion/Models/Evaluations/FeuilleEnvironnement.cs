@@ -85,6 +85,24 @@ namespace MedCompanion.Models.Evaluations
         public Nervure NervureCentrale { get; }
         public ObservableCollection<Nervure> NervuresSecondaires { get; } = new();
 
+        private string? _lectureMed;
+        /// <summary>
+        /// Lecture clinique courte produite par Med pour cette feuille (D3 V0.3).
+        /// Éditable manuellement par le psy après génération.
+        /// </summary>
+        public string? LectureMed
+        {
+            get => _lectureMed;
+            set { if (_lectureMed != value) { _lectureMed = value; OnPropertyChanged(); } }
+        }
+
+        private DateTime? _lectureDate;
+        public DateTime? LectureDate
+        {
+            get => _lectureDate;
+            set { if (_lectureDate != value) { _lectureDate = value; OnPropertyChanged(); } }
+        }
+
         public FeuilleEnvironnement(string key, string label, string sousTitre,
                                     Nervure centrale, params Nervure[] secondaires)
         {
@@ -118,6 +136,26 @@ namespace MedCompanion.Models.Evaluations
         public FeuilleEnvironnement EcransMedias      { get; }
         public FeuilleEnvironnement ValeursSocietales { get; }
         public FeuilleEnvironnement CadreEducatif     { get; }
+
+        // ── Lecture LLM globale de la branche (V0.4) ────────────────────────
+
+        private string? _lectureBrancheMed;
+        /// <summary>
+        /// Lecture clinique globale (V0.4) qui croise les 5 feuilles. Générée à la demande
+        /// par BrancheEnvironnementLectureService. Éditable manuellement par le psy.
+        /// </summary>
+        public string? LectureBrancheMed
+        {
+            get => _lectureBrancheMed;
+            set { if (_lectureBrancheMed != value) { _lectureBrancheMed = value; OnPropertyChanged(); } }
+        }
+
+        private DateTime? _lectureBrancheDate;
+        public DateTime? LectureBrancheDate
+        {
+            get => _lectureBrancheDate;
+            set { if (_lectureBrancheDate != value) { _lectureBrancheDate = value; OnPropertyChanged(); } }
+        }
 
         private DateTime? _validationDate;
         public DateTime? ValidationDate

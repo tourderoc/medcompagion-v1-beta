@@ -198,27 +198,33 @@ namespace MedCompanion.Models.Evaluations
 
         public static string NiveauLabel(NiveauFeuille? niveau) => niveau switch
         {
-            NiveauFeuille.Vert  => "Fluide",
-            NiveauFeuille.Jaune => "Fragile",
-            NiveauFeuille.Rouge => "Bloqué",
-            _                   => "—"
+            NiveauFeuille.VertFonce => "Fluide",
+            NiveauFeuille.VertClair => "Globalement fluide",
+            NiveauFeuille.Jaune     => "Mitigé",
+            NiveauFeuille.Orange    => "Fragile",
+            NiveauFeuille.Rouge     => "Bloqué",
+            _                       => "—"
         };
 
         public static string NiveauDescription(NiveauFeuille? niveau) => niveau switch
         {
-            NiveauFeuille.Vert  => "Circulation harmonieuse ; l'enfant dispose d'un oxygène psychologique suffisant.",
-            NiveauFeuille.Jaune => "Circulation fluctuante ; présence de tensions ou d'incohérences nécessitant un étayage.",
-            NiveauFeuille.Rouge => "Contradictions majeures ou absences nettes ; zone de surcharge ou de confusion clinique.",
-            _                   => ""
+            NiveauFeuille.VertFonce => "Circulation harmonieuse ; l'enfant dispose d'un oxygène psychologique suffisant.",
+            NiveauFeuille.VertClair => "Globalement solide, avec quelques points à observer sans urgence.",
+            NiveauFeuille.Jaune     => "Zones tenues et zones qui interrogent ; étayage à envisager.",
+            NiveauFeuille.Orange    => "Plus de manques que de soutiens ; fragilité clinique nette.",
+            NiveauFeuille.Rouge     => "Contradictions majeures ou absences nettes ; zone de surcharge ou de confusion clinique.",
+            _                       => ""
         };
 
         /// <summary>Code couleur hex pour binding XAML (badge, fond, etc).</summary>
         public static string NiveauColor(NiveauFeuille? niveau) => niveau switch
         {
-            NiveauFeuille.Vert  => "#27AE60",
-            NiveauFeuille.Jaune => "#F1C40F",
-            NiveauFeuille.Rouge => "#C0392B",
-            _                   => "#BDC3C7"
+            NiveauFeuille.VertFonce => "#1E8449",
+            NiveauFeuille.VertClair => "#58D68D",
+            NiveauFeuille.Jaune     => "#F1C40F",
+            NiveauFeuille.Orange    => "#E67E22",
+            NiveauFeuille.Rouge     => "#C0392B",
+            _                       => "#BDC3C7"
         };
     }
 }

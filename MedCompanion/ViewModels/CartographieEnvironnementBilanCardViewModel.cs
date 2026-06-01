@@ -21,6 +21,10 @@ namespace MedCompanion.ViewModels
 
         public List<CartographieEnvironnementBilanLine> Feuilles { get; }
 
+        /// <summary>Lecture LLM globale de la branche (V0.4). Vide si non générée.</summary>
+        public string LectureBrancheMed  { get; }
+        public bool   HasLectureBranche  => !string.IsNullOrWhiteSpace(LectureBrancheMed);
+
         public CartographieEnvironnementBilanCardViewModel(EvaluationPhase phase)
         {
             FilePath    = phase.FilePath ?? "";
@@ -47,6 +51,8 @@ namespace MedCompanion.ViewModels
                 BuildLine(phase.CartographieEnvironnement.ValeursSocietales),
                 BuildLine(phase.CartographieEnvironnement.CadreEducatif),
             };
+
+            LectureBrancheMed = phase.CartographieEnvironnement.LectureBrancheMed ?? "";
         }
 
         private static bool HasAnyScore(CartographieEnvironnement c)
@@ -71,6 +77,7 @@ namespace MedCompanion.ViewModels
                 SousTitre   = f.SousTitre,
                 NiveauLabel = hasScore ? CartographieEnvironnementContent.NiveauLabel(couleur) : CartographieEnvironnementContent.NonEvalueLabel,
                 NiveauColor = hasScore ? CartographieEnvironnementContent.NiveauColor(couleur) : CartographieEnvironnementContent.NonEvalueColor,
+                LectureMed  = f.LectureMed ?? "",
             };
         }
     }
@@ -81,5 +88,7 @@ namespace MedCompanion.ViewModels
         public string SousTitre   { get; set; } = "";
         public string NiveauLabel { get; set; } = "";
         public string NiveauColor { get; set; } = "";
+        public string LectureMed  { get; set; } = "";
+        public bool   HasLecture  => !string.IsNullOrWhiteSpace(LectureMed);
     }
 }

@@ -376,11 +376,13 @@ namespace MedCompanion.ViewModels
                                              PreparationSuggesterService? suggester,
                                              AxesSuggesterService? axesSuggester = null,
                                              AxisExtractorService?  axisExtractor = null,
-                                             SyntheseSuggesterService? syntheseSuggester = null)
+                                             SyntheseSuggesterService? syntheseSuggester = null,
+                                             FeuilleLectureService? feuilleLecture = null,
+                                             BrancheEnvironnementLectureService? brancheLecture = null)
         {
             _evaluationPhaseService = phaseService;
             EvaluationPhase = new EvaluationPhaseViewModel(
-                phaseService, suggester, axesSuggester, axisExtractor, _whisperService, syntheseSuggester);
+                phaseService, suggester, axesSuggester, axisExtractor, _whisperService, syntheseSuggester, feuilleLecture, brancheLecture);
             // À chaque création/clôture d'évaluation, rafraîchit la frise + les blocs de synthèse
             EvaluationPhase.PhaseStateChanged += LoadEvaluationCards;
             // Si un patient est déjà chargé, on lui passe tout de suite

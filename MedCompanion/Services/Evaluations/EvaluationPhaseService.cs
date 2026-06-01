@@ -284,6 +284,15 @@ namespace MedCompanion.Services.Evaluations
                 AppendFeuilleMd(sb, phase.CartographieEnvironnement.EcransMedias);
                 AppendFeuilleMd(sb, phase.CartographieEnvironnement.ValeursSocietales);
                 AppendFeuilleMd(sb, phase.CartographieEnvironnement.CadreEducatif);
+
+                if (!string.IsNullOrWhiteSpace(phase.CartographieEnvironnement.LectureBrancheMed))
+                {
+                    sb.AppendLine("### Lecture globale de la branche");
+                    sb.AppendLine();
+                    foreach (var line in phase.CartographieEnvironnement.LectureBrancheMed!.Split('\n'))
+                        sb.AppendLine($"> {line.TrimEnd('\r')}");
+                    sb.AppendLine();
+                }
             }
 
             return sb.ToString();
@@ -313,6 +322,14 @@ namespace MedCompanion.Services.Evaluations
             AppendFeuilleYaml(sb, carto.EcransMedias);
             AppendFeuilleYaml(sb, carto.ValeursSocietales);
             AppendFeuilleYaml(sb, carto.CadreEducatif);
+            if (!string.IsNullOrWhiteSpace(carto.LectureBrancheMed))
+            {
+                sb.AppendLine("  lecture_branche_med: |");
+                foreach (var line in carto.LectureBrancheMed!.Split('\n'))
+                    sb.AppendLine($"    {line.TrimEnd('\r')}");
+            }
+            if (carto.LectureBrancheDate.HasValue)
+                sb.AppendLine($"  lecture_branche_date: {carto.LectureBrancheDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
         }
 
         private static void AppendFeuilleYaml(StringBuilder sb, FeuilleEnvironnement feuille)
@@ -321,6 +338,14 @@ namespace MedCompanion.Services.Evaluations
             AppendNervureYaml(sb, feuille.NervureCentrale);
             foreach (var n in feuille.NervuresSecondaires)
                 AppendNervureYaml(sb, n);
+            if (!string.IsNullOrWhiteSpace(feuille.LectureMed))
+            {
+                sb.AppendLine("    lecture_med: |");
+                foreach (var line in feuille.LectureMed!.Split('\n'))
+                    sb.AppendLine($"      {line.TrimEnd('\r')}");
+            }
+            if (feuille.LectureDate.HasValue)
+                sb.AppendLine($"    lecture_date: {feuille.LectureDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
         }
 
         private static void AppendNervureYaml(StringBuilder sb, Nervure n)
@@ -345,6 +370,13 @@ namespace MedCompanion.Services.Evaluations
             AppendNervureMd(sb, feuille.NervureCentrale);
             foreach (var n in feuille.NervuresSecondaires)
                 AppendNervureMd(sb, n);
+            if (!string.IsNullOrWhiteSpace(feuille.LectureMed))
+            {
+                sb.AppendLine();
+                sb.AppendLine("**Lecture Med :**");
+                foreach (var line in feuille.LectureMed!.Split('\n'))
+                    sb.AppendLine($"> {line.TrimEnd('\r')}");
+            }
             sb.AppendLine();
         }
 
@@ -360,10 +392,12 @@ namespace MedCompanion.Services.Evaluations
 
         private static string EnvironnementEmoji(NiveauFeuille n) => n switch
         {
-            NiveauFeuille.Vert  => "🟢",
-            NiveauFeuille.Jaune => "🟡",
-            NiveauFeuille.Rouge => "🔴",
-            _                   => "⚪"
+            NiveauFeuille.VertFonce => "🟢",
+            NiveauFeuille.VertClair => "🟩",
+            NiveauFeuille.Jaune     => "🟡",
+            NiveauFeuille.Orange    => "🟠",
+            NiveauFeuille.Rouge     => "🔴",
+            _                       => "⚪"
         };
 
         // ── Cartographie de l'enfant (étape 4) ───────────────────────────────
@@ -669,6 +703,8 @@ namespace MedCompanion.Services.Evaluations
                     ApplyFeuilleFromYaml(env, phase.CartographieEnvironnement.EcransMedias);
                     ApplyFeuilleFromYaml(env, phase.CartographieEnvironnement.ValeursSocietales);
                     ApplyFeuilleFromYaml(env, phase.CartographieEnvironnement.CadreEducatif);
+                    phase.CartographieEnvironnement.LectureBrancheMed  = ExtractLiteralBlock(env, "lecture_branche_med");
+                    phase.CartographieEnvironnement.LectureBrancheDate = ExtractDateInBlock(env, "lecture_branche_date");
                 }
 
                 return phase;
@@ -1004,6 +1040,54 @@ namespace MedCompanion.Services.Evaluations
             ApplyNervureItemsFromYaml(block, feuille.NervureCentrale);
             foreach (var n in feuille.NervuresSecondaires)
                 ApplyNervureItemsFromYaml(block, n);
+
+            // V0.3 — lecture Med par feuille
+            feuille.LectureMed  = ExtractLiteralBlock(block, "lecture_med");
+            feuille.LectureDate = ExtractDateInBlock(block, "lecture_date");
+        }
+
+        /// <summary>
+        /// Extrait un bloc literal YAML "key: |" : toutes les lignes suivantes plus indentées
+        /// que la ligne de la clé sont concaténées (indentation interne du bloc retirée).
+        /// </summary>
+        private static string? ExtractLiteralBlock(string block, string key)
+        {
+            var lines = block.Replace("\r\n", "\n").Split('\n');
+            for (int i = 0; i < lines.Length; i++)
+            {
+                var line = lines[i];
+                var t = line.TrimStart();
+                if (!t.StartsWith(key + ":")) continue;
+                var rest = t.Substring(key.Length + 1).Trim();
+                if (rest != "|" && rest != "|-") continue;
+                int keyIndent = line.Length - t.Length;
+                var collected = new StringBuilder();
+                for (int j = i + 1; j < lines.Length; j++)
+                {
+                    var l = lines[j];
+                    if (string.IsNullOrEmpty(l)) { collected.AppendLine(); continue; }
+                    int indent = 0;
+                    while (indent < l.Length && l[indent] == ' ') indent++;
+                    if (indent <= keyIndent) break;
+                    collected.AppendLine(l.Substring(System.Math.Min(keyIndent + 2, indent)));
+                }
+                var s = collected.ToString().TrimEnd('\r', '\n');
+                return string.IsNullOrWhiteSpace(s) ? null : s;
+            }
+            return null;
+        }
+
+        private static DateTime? ExtractDateInBlock(string block, string key)
+        {
+            var lines = block.Replace("\r\n", "\n").Split('\n');
+            foreach (var line in lines)
+            {
+                var t = line.TrimStart();
+                if (!t.StartsWith(key + ":")) continue;
+                var val = t.Substring(key.Length + 1).Trim();
+                if (DateTime.TryParse(val, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var d)) return d;
+            }
+            return null;
         }
 
         private static void ApplyNervureItemsFromYaml(string feuilleBlock, Nervure nervure)

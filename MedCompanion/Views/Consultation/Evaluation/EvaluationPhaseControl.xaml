@@ -198,6 +198,53 @@
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
+
+                        <!-- Bloc Lecture Med (V0.3) : bouton générer / relancer + texte éditable -->
+                        <Border Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="4"
+                                Margin="0,10,0,0" Padding="8">
+                            <StackPanel>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" Text="📝 Lecture clinique de Med" FontSize="11" FontWeight="SemiBold" Foreground="#16A085" VerticalAlignment="Center"/>
+                                    <Button Grid.Column="1" Margin="6,0,0,0" Padding="8,3"
+                                            Command="{Binding LireFeuilleCommand}"
+                                            ToolTip="Demander à Med une lecture clinique de cette feuille">
+                                        <Button.Style>
+                                            <Style TargetType="Button">
+                                                <Setter Property="Content" Value="🪶 Lire"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding HasLecture}" Value="True">
+                                                        <Setter Property="Content" Value="🔄 Relancer"/>
+                                                    </DataTrigger>
+                                                    <DataTrigger Binding="{Binding IsLectureEnCours}" Value="True">
+                                                        <Setter Property="Content" Value="⏳ Lecture..."/>
+                                                        <Setter Property="IsEnabled" Value="False"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Button.Style>
+                                    </Button>
+                                    <Button Grid.Column="2" Margin="6,0,0,0" Padding="8,3" Content="🗑"
+                                            Command="{Binding EffacerLectureCommand}"
+                                            ToolTip="Effacer la lecture"
+                                            Visibility="{Binding HasLecture, Converter={StaticResource BoolToVis}}"/>
+                                </Grid>
+                                <TextBox Text="{Binding LectureMed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         FontSize="12" Foreground="#2C3E50" Background="White"
+                                         BorderBrush="#D6E2EC" BorderThickness="1"
+                                         TextWrapping="Wrap" AcceptsReturn="True"
+                                         MinHeight="60" Padding="6"
+                                         Margin="0,6,0,0"
+                                         Visibility="{Binding HasLecture, Converter={StaticResource BoolToVis}}"/>
+                                <TextBlock Text="{Binding LectureError}" FontSize="11" Foreground="#C0392B"
+                                           TextWrapping="Wrap" Margin="0,6,0,0"
+                                           Visibility="{Binding HasLectureError, Converter={StaticResource BoolToVis}}"/>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Expander>
             </Border>
@@ -1049,6 +1096,60 @@
                 <ContentControl Content="{Binding EcransMediasVM}"      ContentTemplate="{StaticResource FeuilleEnvironnementTemplate}"/>
                 <ContentControl Content="{Binding ValeursSocietalesVM}" ContentTemplate="{StaticResource FeuilleEnvironnementTemplate}"/>
                 <ContentControl Content="{Binding CadreEducatifVM}"     ContentTemplate="{StaticResource FeuilleEnvironnementTemplate}"/>
+
+                <!-- V0.4 — Lecture globale de la branche -->
+                <Border Background="#EAF8F5" BorderBrush="#16A085" BorderThickness="1" CornerRadius="6"
+                        Margin="0,10,0,4" Padding="10">
+                    <StackPanel>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="🌳 Lecture globale de la branche environnement"
+                                           FontSize="12" FontWeight="SemiBold" Foreground="#117864"/>
+                                <TextBlock Text="Croise les 5 feuilles — à demander après avoir rempli (et idéalement fait lire) chaque feuille."
+                                           FontSize="10" FontStyle="Italic" Foreground="#566573" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                            </StackPanel>
+                            <Button Grid.Column="1" Margin="6,0,0,0" Padding="10,4"
+                                    Command="{Binding LireBrancheCommand}"
+                                    VerticalAlignment="Top"
+                                    ToolTip="Demander à Med une lecture clinique globale qui croise les 5 feuilles">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="Content" Value="🪶 Lire la branche"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding HasLectureBranche}" Value="True">
+                                                <Setter Property="Content" Value="🔄 Relancer"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding IsLectureBrancheEnCours}" Value="True">
+                                                <Setter Property="Content" Value="⏳ Lecture..."/>
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button Grid.Column="2" Margin="6,0,0,0" Padding="10,4" Content="🗑"
+                                    Command="{Binding EffacerLectureBrancheCommand}"
+                                    VerticalAlignment="Top"
+                                    ToolTip="Effacer la lecture branche"
+                                    Visibility="{Binding HasLectureBranche, Converter={StaticResource BoolToVis}}"/>
+                        </Grid>
+                        <TextBox Text="{Binding LectureBrancheMed, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="12" Foreground="#2C3E50" Background="White"
+                                 BorderBrush="#D6E2EC" BorderThickness="1"
+                                 TextWrapping="Wrap" AcceptsReturn="True"
+                                 MinHeight="100" Padding="8"
+                                 Margin="0,8,0,0"
+                                 Visibility="{Binding HasLectureBranche, Converter={StaticResource BoolToVis}}"/>
+                        <TextBlock Text="{Binding LectureBrancheError}" FontSize="11" Foreground="#C0392B"
+                                   TextWrapping="Wrap" Margin="0,8,0,0"
+                                   Visibility="{Binding HasLectureBrancheError, Converter={StaticResource BoolToVis}}"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- STATUS + ACTIONS -->
                 <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#27AE60" Margin="0,8,0,10" TextWrapping="Wrap"/>

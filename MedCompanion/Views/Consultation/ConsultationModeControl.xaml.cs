@@ -55,7 +55,9 @@ namespace MedCompanion.Views.Consultation
                                PreparationSuggesterService? preparationSuggester = null,
                                AxesSuggesterService? axesSuggester = null,
                                AxisExtractorService? axisExtractor = null,
-                               SyntheseSuggesterService? syntheseSuggester = null)
+                               SyntheseSuggesterService? syntheseSuggester = null,
+                               FeuilleLectureService? feuilleLecture = null,
+                               BrancheEnvironnementLectureService? brancheLecture = null)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
@@ -64,7 +66,7 @@ namespace MedCompanion.Views.Consultation
             if (urgenceDispatcher != null && urgenceLogService != null)
                 _viewModel?.InjectUrgenceDispatcher(urgenceDispatcher, urgenceLogService);
             if (evaluationPhaseService != null)
-                _viewModel?.InjectEvaluationServices(evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, syntheseSuggester);
+                _viewModel?.InjectEvaluationServices(evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, syntheseSuggester, feuilleLecture, brancheLecture);
             _documentService = documentService;
             _scannerService = scannerService;
         }
