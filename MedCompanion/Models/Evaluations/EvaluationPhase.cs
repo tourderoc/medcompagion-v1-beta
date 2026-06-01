@@ -32,17 +32,18 @@ namespace MedCompanion.Models.Evaluations
 
         public EvaluationStep EtapeCourante { get; set; } = EvaluationStep.Preparation;
 
-        public EvaluationPreparation Preparation       { get; set; } = new();
-        public EvaluationCiblee      EvaluationCiblee  { get; set; } = new();
-        public SyntheseDiagnostique  Synthese          { get; set; } = new();
-        public CartographieEnfant    CartographieEnfant { get; set; } = new();
-        // Étape 5 (CartographieEnvironnement) viendra dans une V0.x ultérieure.
+        public EvaluationPreparation      Preparation                { get; set; } = new();
+        public EvaluationCiblee           EvaluationCiblee           { get; set; } = new();
+        public SyntheseDiagnostique       Synthese                   { get; set; } = new();
+        public CartographieEnfant         CartographieEnfant         { get; set; } = new();
+        public CartographieEnvironnement  CartographieEnvironnement  { get; set; } = new();
 
-        public bool IsActive                       => !DateCloture.HasValue;
-        public bool IsPreparationValidated         => Preparation.IsValidated;
-        public bool IsEvaluationCibleeValidated    => EvaluationCiblee.IsValidated;
-        public bool IsSyntheseValidated            => Synthese.IsValidated;
-        public bool IsCartographieEnfantValidated  => CartographieEnfant.IsValidated;
+        public bool IsActive                              => !DateCloture.HasValue;
+        public bool IsPreparationValidated                => Preparation.IsValidated;
+        public bool IsEvaluationCibleeValidated           => EvaluationCiblee.IsValidated;
+        public bool IsSyntheseValidated                   => Synthese.IsValidated;
+        public bool IsCartographieEnfantValidated         => CartographieEnfant.IsValidated;
+        public bool IsCartographieEnvironnementValidated  => CartographieEnvironnement.IsValidated;
     }
 
     /// <summary>

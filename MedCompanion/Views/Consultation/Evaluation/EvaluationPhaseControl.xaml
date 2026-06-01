@@ -113,6 +113,96 @@
             </Border>
         </DataTemplate>
 
+        <!-- Template d'une nervure (étape 5) : titre + badge score + items checkboxes.
+             DataContext = NervureViewModel. -->
+        <DataTemplate x:Key="NervureTemplate">
+            <Border Background="White" BorderBrush="#E5EAF0" BorderThickness="1" CornerRadius="4" Padding="10,8" Margin="0,0,0,6">
+                <StackPanel>
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" Orientation="Horizontal">
+                            <Border Background="#34495E" CornerRadius="3" Padding="5,1" Margin="0,0,6,0"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IsCentrale, Converter={StaticResource BoolToVis}}">
+                                <TextBlock Text="Centrale" FontSize="9" FontWeight="SemiBold" Foreground="White"/>
+                            </Border>
+                            <TextBlock Text="{Binding Label}" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <Border Grid.Column="1" CornerRadius="9" Padding="8,3" VerticalAlignment="Top"
+                                Background="{Binding DisplayColor, Converter={StaticResource StringToBrush}}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding Score}"    FontSize="11" FontWeight="Bold" Foreground="White"/>
+                                <TextBlock Text="/"                  FontSize="11" Foreground="White"/>
+                                <TextBlock Text="{Binding MaxScore}" FontSize="11" Foreground="White"/>
+                                <TextBlock Text=" — "                FontSize="11" Foreground="White"/>
+                                <TextBlock Text="{Binding DisplayLabel}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+
+                    <ItemsControl ItemsSource="{Binding Modele.Items}" Margin="0,6,0,0">
+                        <ItemsControl.Style>
+                            <Style TargetType="ItemsControl">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ItemsControl.Style>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <CheckBox Content="{Binding Affirmation}" IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                          FontSize="12" Foreground="#2C3E50" Margin="0,2,0,2"
+                                          VerticalContentAlignment="Center"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+        </DataTemplate>
+
+        <!-- Template d'une feuille dimensionnelle (étape 5) : Expander avec header
+             (label + sous-titre + badge couleur) et contenu (centrale + secondaires).
+             DataContext = FeuilleEnvironnementViewModel. -->
+        <DataTemplate x:Key="FeuilleEnvironnementTemplate">
+            <Border Background="#FBFCFD" BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,8">
+                <Expander IsExpanded="{Binding IsExpanded, Mode=TwoWay}" Background="Transparent" BorderThickness="0">
+                    <Expander.Header>
+                        <Grid Margin="0,4,0,4" HorizontalAlignment="Stretch" Width="{Binding ActualWidth, RelativeSource={RelativeSource AncestorType=Border}}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="{Binding Label}"     FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <TextBlock Text="{Binding SousTitre}" FontSize="10" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,1,0,0"/>
+                            </StackPanel>
+                            <Border Grid.Column="1" CornerRadius="10" Padding="10,4" VerticalAlignment="Center" Margin="0,0,30,0"
+                                    Background="{Binding DisplayColor, Converter={StaticResource StringToBrush}}">
+                                <TextBlock Text="{Binding DisplayLabel}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                            </Border>
+                        </Grid>
+                    </Expander.Header>
+                    <StackPanel Margin="10,8,10,10">
+                        <TextBlock Text="{Binding DisplayDescription}" FontSize="11" FontStyle="Italic" Foreground="#566573"
+                                   TextWrapping="Wrap" Margin="0,0,0,8"/>
+                        <ContentControl Content="{Binding Centrale}" ContentTemplate="{StaticResource NervureTemplate}"/>
+                        <ItemsControl ItemsSource="{Binding Secondaires}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <ContentControl Content="{Binding}" ContentTemplate="{StaticResource NervureTemplate}"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Expander>
+            </Border>
+        </DataTemplate>
+
         <!-- Item éditable : TextBox lié à Value + bouton supprimer -->
         <DataTemplate x:Key="EditableItemTemplate">
             <Grid Margin="0,0,0,4">
@@ -366,10 +456,14 @@
                                 Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
                                 Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
                                 Command="{Binding ViewStepCommand}" CommandParameter="3"/>
-                        <Button Content="Étape 4 — Cartographie" FontSize="11" Padding="8,4"
+                        <Button Content="Étape 4 — Cartographie enfant" FontSize="11" Padding="8,4"
+                                Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
+                                Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
+                                Command="{Binding ViewStepCommand}" CommandParameter="4"/>
+                        <Button Content="Étape 5 — Cartographie environnement" FontSize="11" Padding="8,4"
                                 Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
                                 Foreground="#4A2C6A" Cursor="Hand"
-                                Command="{Binding ViewStepCommand}" CommandParameter="4"/>
+                                Command="{Binding ViewStepCommand}" CommandParameter="5"/>
                     </StackPanel>
                 </StackPanel>
 
@@ -913,10 +1007,64 @@
                     <Button Content="⏸ Terminer la séance"
                             Command="{Binding TerminateSessionCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
-                    <Button Content="✓ Valider et clôturer"
+                    <Button Content="✓ Valider l'étape 4"
                             Command="{Binding ValidateCartographieEnfantCommand}"
                             Style="{StaticResource ValidateButton}"
-                            ToolTip="Valide la cartographie et clôture l'évaluation"/>
+                            ToolTip="Valide la cartographie de l'enfant — passage à l'Étape 5 (Cartographie de l'environnement) si patient 3-11 ans, sinon clôture directe."/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- ═════════════════════════════════════════════════════════════════ -->
+        <!-- CAS 2quinquies — En cours de séance, Étape 5 Cartographie environnement -->
+        <!-- ═════════════════════════════════════════════════════════════════ -->
+        <Border Style="{StaticResource SectionBorder}"
+                BorderBrush="#2980B9" BorderThickness="2"
+                Visibility="{Binding IsWorkingCartographieEnvironnement, Converter={StaticResource BoolToVis}}">
+            <StackPanel>
+                <Grid Margin="0,0,0,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="🌿 ÉTAPE 5 — CARTOGRAPHIE DE L'ENVIRONNEMENT"
+                                   FontSize="12" FontWeight="Bold" Foreground="#1F618D"/>
+                        <TextBlock Text="Feuilles dimensionnelles (Tome 3) — 3 niveaux Vert/Jaune/Rouge. 5 dimensions de l'écosystème de l'enfant."
+                                   FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                    </StackPanel>
+                    <!-- Synthèse globale -->
+                    <Border Grid.Column="1" CornerRadius="12" Padding="12,6" VerticalAlignment="Center"
+                            Background="{Binding EnvironnementSyntheseColor, Converter={StaticResource StringToBrush}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Synthèse : " FontSize="11" Foreground="White"/>
+                            <TextBlock Text="{Binding EnvironnementSyntheseLabel}" FontSize="11" FontWeight="Bold" Foreground="White"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- 5 feuilles dépliables -->
+                <ContentControl Content="{Binding FamilleVM}"           ContentTemplate="{StaticResource FeuilleEnvironnementTemplate}"/>
+                <ContentControl Content="{Binding EcolePairsVM}"        ContentTemplate="{StaticResource FeuilleEnvironnementTemplate}"/>
+                <ContentControl Content="{Binding EcransMediasVM}"      ContentTemplate="{StaticResource FeuilleEnvironnementTemplate}"/>
+                <ContentControl Content="{Binding ValeursSocietalesVM}" ContentTemplate="{StaticResource FeuilleEnvironnementTemplate}"/>
+                <ContentControl Content="{Binding CadreEducatifVM}"     ContentTemplate="{StaticResource FeuilleEnvironnementTemplate}"/>
+
+                <!-- STATUS + ACTIONS -->
+                <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#27AE60" Margin="0,8,0,10" TextWrapping="Wrap"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                            Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}">
+                    <Button Content="↩ Retour Étape 4"
+                            Command="{Binding BackToCartographieEnfantCommand}"
+                            Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
+                            ToolTip="Modifier la cartographie de l'enfant (la cartographie de l'environnement reste conservée)"/>
+                    <Button Content="⏸ Terminer la séance"
+                            Command="{Binding TerminateSessionCommand}"
+                            Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
+                    <Button Content="✓ Valider et clôturer"
+                            Command="{Binding ValidateCartographieEnvironnementCommand}"
+                            Style="{StaticResource ValidateButton}"
+                            ToolTip="Valide la cartographie de l'environnement et clôture l'évaluation"/>
                 </StackPanel>
             </StackPanel>
         </Border>

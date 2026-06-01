@@ -51,8 +51,8 @@ namespace MedCompanion.ViewModels
             ResumeCommand                 = new RelayCommand(_ => Resume(),                  _ => CanResume);
             SuggestPreparationCommand     = new RelayCommand(async _ => await SuggestPreparationAsync(), _ => IsWorkingPreparation && !IsBusy);
             ValidatePreparationCommand    = new RelayCommand(_ => ValidatePreparation(),    _ => CanValidatePreparation);
-            TerminateSessionCommand       = new RelayCommand(_ => TerminateSession(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese || IsWorkingCartographieEnfant);
-            CancelEvaluationCommand       = new RelayCommand(_ => CancelEvaluation(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese || IsWorkingCartographieEnfant);
+            TerminateSessionCommand       = new RelayCommand(_ => TerminateSession(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese || IsWorkingCartographieEnfant || IsWorkingCartographieEnvironnement);
+            CancelEvaluationCommand       = new RelayCommand(_ => CancelEvaluation(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese || IsWorkingCartographieEnfant || IsWorkingCartographieEnvironnement);
 
             AddItemCommand    = new RelayCommand(param => AddItem(param as string));
             RemoveItemCommand = new RelayCommand(param => RemoveItem(param));
@@ -87,6 +87,10 @@ namespace MedCompanion.ViewModels
             // Étape 4 — Cartographie de l'enfant
             ValidateCartographieEnfantCommand = new RelayCommand(_ => ValidateCartographieEnfant(), _ => CanValidateCartographieEnfant);
             BackToSyntheseCommand             = new RelayCommand(_ => BackToSynthese(),             _ => IsWorkingCartographieEnfant);
+
+            // Étape 5 — Cartographie de l'environnement
+            ValidateCartographieEnvironnementCommand = new RelayCommand(_ => ValidateCartographieEnvironnement(), _ => CanValidateCartographieEnvironnement);
+            BackToCartographieEnfantCommand          = new RelayCommand(_ => BackToCartographieEnfant(),          _ => IsWorkingCartographieEnvironnement);
         }
 
         /// <summary>
@@ -124,10 +128,11 @@ namespace MedCompanion.ViewModels
             }
 
             RebuildCartographieWrappers();
-            IsWorkingPreparation        = false;
-            IsWorkingEvaluation         = false;
-            IsWorkingSynthese           = false;
-            IsWorkingCartographieEnfant = false;
+            IsWorkingPreparation               = false;
+            IsWorkingEvaluation                = false;
+            IsWorkingSynthese                  = false;
+            IsWorkingCartographieEnfant        = false;
+            IsWorkingCartographieEnvironnement = false;
             StatusMessage = "";
             NotifyAllStates();
         }
@@ -239,6 +244,16 @@ namespace MedCompanion.ViewModels
             set { if (_isWorkingCartographieEnfant != value) { _isWorkingCartographieEnfant = value; OnPropertyChanged(); NotifyAllStates(); } }
         }
 
+        private bool _isWorkingCartographieEnvironnement;
+        /// <summary>
+        /// True quand le médecin est en train de remplir l'Étape 5 (Cartographie de l'environnement) dans la séance courante.
+        /// </summary>
+        public bool IsWorkingCartographieEnvironnement
+        {
+            get => _isWorkingCartographieEnvironnement;
+            set { if (_isWorkingCartographieEnvironnement != value) { _isWorkingCartographieEnvironnement = value; OnPropertyChanged(); NotifyAllStates(); } }
+        }
+
         private bool _isBusy;
         public bool IsBusy
         {
@@ -266,8 +281,8 @@ namespace MedCompanion.ViewModels
 
         // ── États dérivés pour la View (3 cas + lecture seule) ──────────────
 
-        public bool CanStart  => !IsReadOnly && _patient != null && Phase == null && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese && !IsWorkingCartographieEnfant;
-        public bool CanResume => !IsReadOnly && _patient != null && Phase != null && Phase.IsActive && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese && !IsWorkingCartographieEnfant;
+        public bool CanStart  => !IsReadOnly && _patient != null && Phase == null && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese && !IsWorkingCartographieEnfant && !IsWorkingCartographieEnvironnement;
+        public bool CanResume => !IsReadOnly && _patient != null && Phase != null && Phase.IsActive && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese && !IsWorkingCartographieEnfant && !IsWorkingCartographieEnvironnement;
 
         /// <summary>
         /// True si l'âge du patient est dans la fourchette 3-11 ans où la Cartographie de
@@ -287,15 +302,48 @@ namespace MedCompanion.ViewModels
 
         public TemperamentProfile? Temperament => Phase?.CartographieEnfant.Temperament;
 
+        // ── Étape 5 — Cartographie de l'environnement ───────────────────────
+
+        public FeuilleEnvironnementViewModel? FamilleVM           { get; private set; }
+        public FeuilleEnvironnementViewModel? EcolePairsVM        { get; private set; }
+        public FeuilleEnvironnementViewModel? EcransMediasVM      { get; private set; }
+        public FeuilleEnvironnementViewModel? ValeursSocietalesVM { get; private set; }
+        public FeuilleEnvironnementViewModel? CadreEducatifVM     { get; private set; }
+
+        /// <summary>Couleur synthèse globale de l'étape 5 (pire parmi les feuilles évaluées).</summary>
+        public NiveauFeuille EnvironnementSynthese
+            => Phase != null
+                ? EnvironnementScoringService.CalculerGlobal(Phase.CartographieEnvironnement)
+                : NiveauFeuille.Vert;
+
+        /// <summary>True si au moins une feuille a au moins un item coché.</summary>
+        public bool HasAnyEnvironnementScore
+            => (FamilleVM?.HasAnyScore ?? false)
+            || (EcolePairsVM?.HasAnyScore ?? false)
+            || (EcransMediasVM?.HasAnyScore ?? false)
+            || (ValeursSocietalesVM?.HasAnyScore ?? false)
+            || (CadreEducatifVM?.HasAnyScore ?? false);
+
+        public string EnvironnementSyntheseLabel
+            => HasAnyEnvironnementScore
+                ? CartographieEnvironnementContent.NiveauLabel(EnvironnementSynthese)
+                : CartographieEnvironnementContent.NonEvalueLabel;
+
+        public string EnvironnementSyntheseColor
+            => HasAnyEnvironnementScore
+                ? CartographieEnvironnementContent.NiveauColor(EnvironnementSynthese)
+                : CartographieEnvironnementContent.NonEvalueColor;
+
         /// <summary>
-        /// (Re)construit les 6 wrappers segments en pointant vers la Phase active.
-        /// Appelé chaque fois que Phase change (Resume, ShowPhase, StartNew, ReloadState).
+        /// (Re)construit les wrappers segments (étape 4) et feuilles (étape 5) en pointant
+        /// vers la Phase active. Appelé chaque fois que Phase change.
         /// </summary>
         private void RebuildCartographieWrappers()
         {
             if (Phase == null)
             {
                 AttachementVM = PsychomotriciteVM = LangageVM = EmotionsVM = ImaginaireVM = PenseeVM = null;
+                FamilleVM = EcolePairsVM = EcransMediasVM = ValeursSocietalesVM = CadreEducatifVM = null;
             }
             else
             {
@@ -306,6 +354,12 @@ namespace MedCompanion.ViewModels
                 EmotionsVM        = new CartographieSegmentViewModel(Phase.CartographieEnfant.Emotions,        ageProvider);
                 ImaginaireVM      = new CartographieSegmentViewModel(Phase.CartographieEnfant.Imaginaire,      ageProvider);
                 PenseeVM          = new CartographieSegmentViewModel(Phase.CartographieEnfant.Pensee,          ageProvider);
+
+                FamilleVM           = BuildFeuilleVM(Phase.CartographieEnvironnement.Famille);
+                EcolePairsVM        = BuildFeuilleVM(Phase.CartographieEnvironnement.EcolePairs);
+                EcransMediasVM      = BuildFeuilleVM(Phase.CartographieEnvironnement.EcransMedias);
+                ValeursSocietalesVM = BuildFeuilleVM(Phase.CartographieEnvironnement.ValeursSocietales);
+                CadreEducatifVM     = BuildFeuilleVM(Phase.CartographieEnvironnement.CadreEducatif);
             }
             OnPropertyChanged(nameof(AttachementVM));
             OnPropertyChanged(nameof(PsychomotriciteVM));
@@ -314,10 +368,35 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(ImaginaireVM));
             OnPropertyChanged(nameof(PenseeVM));
             OnPropertyChanged(nameof(Temperament));
+
+            OnPropertyChanged(nameof(FamilleVM));
+            OnPropertyChanged(nameof(EcolePairsVM));
+            OnPropertyChanged(nameof(EcransMediasVM));
+            OnPropertyChanged(nameof(ValeursSocietalesVM));
+            OnPropertyChanged(nameof(CadreEducatifVM));
+            NotifyEnvironnementSynthese();
+        }
+
+        private FeuilleEnvironnementViewModel BuildFeuilleVM(FeuilleEnvironnement modele)
+        {
+            var vm = new FeuilleEnvironnementViewModel(modele);
+            vm.CouleurChanged += NotifyEnvironnementSynthese;
+            return vm;
+        }
+
+        private void NotifyEnvironnementSynthese()
+        {
+            OnPropertyChanged(nameof(HasAnyEnvironnementScore));
+            OnPropertyChanged(nameof(EnvironnementSynthese));
+            OnPropertyChanged(nameof(EnvironnementSyntheseLabel));
+            OnPropertyChanged(nameof(EnvironnementSyntheseColor));
         }
 
         private bool CanValidateCartographieEnfant
             => IsWorkingCartographieEnfant && Phase != null;
+
+        private bool CanValidateCartographieEnvironnement
+            => IsWorkingCartographieEnvironnement && Phase != null;
 
         public string SuspendedMarqueLabel
         {
@@ -326,11 +405,12 @@ namespace MedCompanion.ViewModels
                 if (Phase == null) return "";
                 var step = Phase.EtapeCourante switch
                 {
-                    EvaluationStep.Preparation       => "Étape 1 — Préparation",
-                    EvaluationStep.EvaluationCiblee  => "Étape 2 — Évaluation ciblée",
-                    EvaluationStep.Synthese          => "Étape 3 — Synthèse diagnostique",
-                    EvaluationStep.CartographieEnfant      => "Étape 4 — Cartographie",
-                    _                                 => "?"
+                    EvaluationStep.Preparation                => "Étape 1 — Préparation",
+                    EvaluationStep.EvaluationCiblee           => "Étape 2 — Évaluation ciblée",
+                    EvaluationStep.Synthese                   => "Étape 3 — Synthèse diagnostique",
+                    EvaluationStep.CartographieEnfant         => "Étape 4 — Cartographie de l'enfant",
+                    EvaluationStep.CartographieEnvironnement  => "Étape 5 — Cartographie de l'environnement",
+                    _                                         => "?"
                 };
                 return $"Marque-page : {step}";
             }
@@ -430,6 +510,20 @@ namespace MedCompanion.ViewModels
                         NotifySyntheseCollections();
                     }
                     break;
+                case EvaluationStep.CartographieEnvironnement:
+                    if (IsCartographieDisponible)
+                    {
+                        IsWorkingCartographieEnvironnement = true;
+                        StatusMessage = "Reprise de l'évaluation — Étape 5 Cartographie de l'environnement.";
+                        NotifyEnvironnementSynthese();
+                    }
+                    else
+                    {
+                        IsWorkingSynthese = true;
+                        StatusMessage = "Cartographie de l'environnement non applicable (3-11 ans). Vous pouvez clôturer depuis l'Étape 3.";
+                        NotifySyntheseCollections();
+                    }
+                    break;
                 default:
                     IsWorkingPreparation = true;
                     StatusMessage = "Reprise de l'évaluation — Étape 1.";
@@ -449,10 +543,11 @@ namespace MedCompanion.ViewModels
             if (phaseToShow == null) return;
 
             // Reset des working states (on va router vers le bon en fonction de l'étape)
-            IsWorkingPreparation        = false;
-            IsWorkingEvaluation         = false;
-            IsWorkingSynthese           = false;
-            IsWorkingCartographieEnfant = false;
+            IsWorkingPreparation               = false;
+            IsWorkingEvaluation                = false;
+            IsWorkingSynthese                  = false;
+            IsWorkingCartographieEnfant        = false;
+            IsWorkingCartographieEnvironnement = false;
 
             Phase = phaseToShow;
             IsReadOnly = readOnly;
@@ -482,6 +577,10 @@ namespace MedCompanion.ViewModels
                     IsWorkingCartographieEnfant = true;
                     NotifyCartographieCollections();
                     break;
+                case EvaluationStep.CartographieEnvironnement:
+                    IsWorkingCartographieEnvironnement = true;
+                    NotifyEnvironnementSynthese();
+                    break;
                 default:
                     IsWorkingPreparation = true;
                     NotifyPreparationCollections();
@@ -496,21 +595,23 @@ namespace MedCompanion.ViewModels
 
         /// <summary>
         /// Lecture seule : navigation entre les étapes sans modifier la phase ni écrire sur disque.
-        /// Param attendu : "1", "2", "3" ou "4".
+        /// Param attendu : "1", "2", "3", "4" ou "5".
         /// </summary>
         private void ViewStep(string? step)
         {
             if (!IsReadOnly || Phase == null) return;
-            IsWorkingPreparation        = false;
-            IsWorkingEvaluation         = false;
-            IsWorkingSynthese           = false;
-            IsWorkingCartographieEnfant = false;
+            IsWorkingPreparation               = false;
+            IsWorkingEvaluation                = false;
+            IsWorkingSynthese                  = false;
+            IsWorkingCartographieEnfant        = false;
+            IsWorkingCartographieEnvironnement = false;
             switch (step)
             {
-                case "1": IsWorkingPreparation        = true; NotifyPreparationCollections(); break;
-                case "2": IsWorkingEvaluation         = true; NotifyEvaluationCollections();  break;
-                case "3": IsWorkingSynthese           = true; NotifySyntheseCollections();    break;
-                case "4": IsWorkingCartographieEnfant = true; NotifyCartographieCollections(); break;
+                case "1": IsWorkingPreparation               = true; NotifyPreparationCollections(); break;
+                case "2": IsWorkingEvaluation                = true; NotifyEvaluationCollections();  break;
+                case "3": IsWorkingSynthese                  = true; NotifySyntheseCollections();    break;
+                case "4": IsWorkingCartographieEnfant        = true; NotifyCartographieCollections(); break;
+                case "5": IsWorkingCartographieEnvironnement = true; NotifyEnvironnementSynthese();   break;
             }
             NotifyAllStates();
         }
@@ -523,10 +624,11 @@ namespace MedCompanion.ViewModels
         public void ReturnToActiveContext()
         {
             IsReadOnly = false;
-            IsWorkingPreparation        = false;
-            IsWorkingEvaluation         = false;
-            IsWorkingSynthese           = false;
-            IsWorkingCartographieEnfant = false;
+            IsWorkingPreparation               = false;
+            IsWorkingEvaluation                = false;
+            IsWorkingSynthese                  = false;
+            IsWorkingCartographieEnfant        = false;
+            IsWorkingCartographieEnvironnement = false;
             StatusMessage = "";
             // ReloadState charge l'évaluation active s'il y en a une, sinon Phase = null
             ReloadState();
@@ -621,10 +723,11 @@ namespace MedCompanion.ViewModels
             CleanEmptyEcartes(Phase.Synthese.DiagnosticsEcartes);
 
             _phaseService.Save(Phase);
-            IsWorkingPreparation        = false;
-            IsWorkingEvaluation         = false;
-            IsWorkingSynthese           = false;
-            IsWorkingCartographieEnfant = false;
+            IsWorkingPreparation               = false;
+            IsWorkingEvaluation                = false;
+            IsWorkingSynthese                  = false;
+            IsWorkingCartographieEnfant        = false;
+            IsWorkingCartographieEnvironnement = false;
             StatusMessage = "Séance suspendue. Vous reprendrez exactement ici la prochaine fois.";
             NotifyAllStates();
         }
@@ -1158,6 +1261,10 @@ namespace MedCompanion.ViewModels
         public ICommand ValidateCartographieEnfantCommand { get; private set; } = null!;
         public ICommand BackToSyntheseCommand             { get; private set; } = null!;
 
+        // Étape 5 — Cartographie de l'environnement
+        public ICommand ValidateCartographieEnvironnementCommand { get; private set; } = null!;
+        public ICommand BackToCartographieEnfantCommand          { get; private set; } = null!;
+
         private bool CanValidateSynthese
             => IsWorkingSynthese && Phase != null && (
                 Phase.Synthese.DiagnosticsRetenus.Any(NonEmpty) ||
@@ -1263,24 +1370,75 @@ namespace MedCompanion.ViewModels
         }
 
         /// <summary>
-        /// Valide l'Étape 4 (Cartographie de l'enfant) ET clôture l'évaluation
-        /// (V0 : étape 5 Cartographie de l'environnement stubbée).
+        /// Valide l'Étape 4 (Cartographie de l'enfant) et passe à l'Étape 5
+        /// (Cartographie de l'environnement) si patient 3-11 ans, sinon clôture directe.
         /// </summary>
         private void ValidateCartographieEnfant()
         {
             if (Phase == null) return;
             Phase.CartographieEnfant.ValidationDate = DateTime.Now;
-            // Si l'âge n'a pas été snapshotté (cas d'un retour à l'étape), on le pose ici.
             if (!Phase.CartographieEnfant.AgeAuMomentDeLaSaisie.HasValue)
                 Phase.CartographieEnfant.AgeAuMomentDeLaSaisie = _patient?.Age;
 
+            if (IsCartographieDisponible)
+            {
+                Phase.EtapeCourante = EvaluationStep.CartographieEnvironnement;
+                Phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie = _patient?.Age;
+                _phaseService.Save(Phase);
+
+                IsWorkingCartographieEnfant = false;
+                IsWorkingCartographieEnvironnement = true;
+                StatusMessage = "Étape 4 validée. Passage à l'Étape 5 — Cartographie de l'environnement.";
+                NotifyAllStates();
+            }
+            else
+            {
+                _phaseService.Save(Phase);
+                _phaseService.Close(Phase);
+                IsWorkingCartographieEnfant = false;
+                Phase = null;
+                StatusMessage = "Évaluation clôturée. Cartographie de l'environnement non applicable (3-11 ans).";
+                NotifyAllStates();
+                PhaseStateChanged?.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Valide l'Étape 5 (Cartographie de l'environnement) ET clôture l'évaluation.
+        /// Dernière étape de la Phase d'Évaluation.
+        /// </summary>
+        private void ValidateCartographieEnvironnement()
+        {
+            if (Phase == null) return;
+            Phase.CartographieEnvironnement.ValidationDate = DateTime.Now;
+            if (!Phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie.HasValue)
+                Phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie = _patient?.Age;
+
             _phaseService.Save(Phase);
             _phaseService.Close(Phase);
-            IsWorkingCartographieEnfant = false;
+            IsWorkingCartographieEnvironnement = false;
             Phase = null;
-            StatusMessage = "Évaluation clôturée. (Étape 5 — Cartographie de l'environnement viendra en V0.3.)";
+            StatusMessage = "Évaluation clôturée — Phase d'Évaluation terminée.";
             NotifyAllStates();
             PhaseStateChanged?.Invoke();
+        }
+
+        /// <summary>
+        /// Retour à l'Étape 4 depuis l'Étape 5. Réinitialise la validation de l'étape 4
+        /// pour la rendre éditable, conserve la cartographie de l'environnement.
+        /// </summary>
+        private void BackToCartographieEnfant()
+        {
+            if (Phase == null) return;
+            Phase.CartographieEnfant.ValidationDate = null;
+            Phase.EtapeCourante = EvaluationStep.CartographieEnfant;
+            _phaseService.Save(Phase);
+
+            IsWorkingCartographieEnvironnement = false;
+            IsWorkingCartographieEnfant = true;
+            StatusMessage = "Retour à l'Étape 4 — la Cartographie de l'environnement reste conservée.";
+            NotifyAllStates();
+            NotifyCartographieCollections();
         }
 
         /// <summary>
@@ -1401,6 +1559,7 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(IsWorkingEvaluation));
             OnPropertyChanged(nameof(IsWorkingSynthese));
             OnPropertyChanged(nameof(IsWorkingCartographieEnfant));
+            OnPropertyChanged(nameof(IsWorkingCartographieEnvironnement));
             OnPropertyChanged(nameof(IsCartographieDisponible));
             OnPropertyChanged(nameof(SuspendedMarqueLabel));
             OnPropertyChanged(nameof(SuspendedAgoLabel));

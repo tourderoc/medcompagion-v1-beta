@@ -3125,6 +3125,10 @@ source: ""MedCompanion""
         public ObservableCollection<CartographieBilanCardViewModel> CartographieBilans { get; } = new();
         public bool HasCartographieBilans => CartographieBilans.Count > 0;
 
+        // Cartographies de l'environnement (étape 5) issues des évaluations clôturées.
+        public ObservableCollection<CartographieEnvironnementBilanCardViewModel> CartographieEnvironnementBilans { get; } = new();
+        public bool HasCartographieEnvironnementBilans => CartographieEnvironnementBilans.Count > 0;
+
         public bool HasNoConsultationNotes => ConsultationNotes.Count == 0;
         public bool HasConsultationNotes   => ConsultationNotes.Count > 0;
 
@@ -3186,6 +3190,7 @@ source: ""MedCompanion""
             EvaluationCards.Clear();
             DiagnosticSyntheseBlocks.Clear();
             CartographieBilans.Clear();
+            CartographieEnvironnementBilans.Clear();
             if (_evaluationPhaseService == null || CurrentPatient == null
                 || string.IsNullOrEmpty(CurrentPatient.DirectoryPath)) return;
 
@@ -3226,9 +3231,38 @@ source: ""MedCompanion""
             foreach (var b in cartoBlocks)
                 CartographieBilans.Add(b);
 
+            // Cartographies de l'environnement (étape 5) : évaluations clôturées avec étape 5
+            // validée OU au moins une nervure avec score > 0.
+            var envBlocks = phases
+                .Where(p => !p.IsActive)
+                .Where(p => p.CartographieEnvironnement.IsValidated || HasAnyEnvironnementScore(p.CartographieEnvironnement))
+                .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                .Select(p => new CartographieEnvironnementBilanCardViewModel(p))
+                .ToList();
+            foreach (var b in envBlocks)
+                CartographieEnvironnementBilans.Add(b);
+
             OnPropertyChanged(nameof(HasNoTimelineCards));
             OnPropertyChanged(nameof(HasDiagnosticSyntheseBlocks));
             OnPropertyChanged(nameof(HasCartographieBilans));
+            OnPropertyChanged(nameof(HasCartographieEnvironnementBilans));
+        }
+
+        private static bool HasAnyEnvironnementScore(MedCompanion.Models.Evaluations.CartographieEnvironnement carto)
+        {
+            if (FeuilleHasAnyScore(carto.Famille))           return true;
+            if (FeuilleHasAnyScore(carto.EcolePairs))        return true;
+            if (FeuilleHasAnyScore(carto.EcransMedias))      return true;
+            if (FeuilleHasAnyScore(carto.ValeursSocietales)) return true;
+            if (FeuilleHasAnyScore(carto.CadreEducatif))     return true;
+            return false;
+        }
+
+        private static bool FeuilleHasAnyScore(MedCompanion.Models.Evaluations.FeuilleEnvironnement f)
+        {
+            if (f.NervureCentrale.Score > 0) return true;
+            foreach (var s in f.NervuresSecondaires) if (s.Score > 0) return true;
+            return false;
         }
 
         public bool HasNoConsultationCards => ConsultationCards.Count == 0;

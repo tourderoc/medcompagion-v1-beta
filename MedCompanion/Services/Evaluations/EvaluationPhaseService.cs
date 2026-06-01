@@ -188,6 +188,12 @@ namespace MedCompanion.Services.Evaluations
                 sb.AppendLine($"etape_4_validation_date: {phase.CartographieEnfant.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
             AppendCartographieEnfant(sb, phase.CartographieEnfant);
 
+            // Étape 5 — Cartographie de l'environnement
+            sb.AppendLine($"etape_5_validee: {(phase.CartographieEnvironnement.IsValidated ? "true" : "false")}");
+            if (phase.CartographieEnvironnement.ValidationDate.HasValue)
+                sb.AppendLine($"etape_5_validation_date: {phase.CartographieEnvironnement.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
+            AppendCartographieEnvironnement(sb, phase.CartographieEnvironnement);
+
             sb.AppendLine("---");
             sb.AppendLine();
             sb.AppendLine($"# Évaluation — {phase.PatientNomComplet}");
@@ -258,8 +264,107 @@ namespace MedCompanion.Services.Evaluations
                 AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Pensee,          phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
             }
 
+            // Étape 5 lisible — Cartographie de l'environnement
+            if (phase.CartographieEnvironnement.IsValidated || HasAnyEnvironnementContent(phase.CartographieEnvironnement))
+            {
+                sb.AppendLine();
+                sb.AppendLine("## Étape 5 — Cartographie de l'environnement");
+                sb.AppendLine();
+                if (phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie.HasValue)
+                    sb.AppendLine($"_Âge à la saisie : {phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie} ans_");
+                sb.AppendLine();
+                var hasGlobal = HasAnyEnvironnementContent(phase.CartographieEnvironnement);
+                var synth = EnvironnementScoringService.CalculerGlobal(phase.CartographieEnvironnement);
+                var synthLabel = hasGlobal ? CartographieEnvironnementContent.NiveauLabel(synth) : CartographieEnvironnementContent.NonEvalueLabel;
+                var synthEmoji = hasGlobal ? EnvironnementEmoji(synth) : "⚪";
+                sb.AppendLine($"**Synthèse globale :** {synthEmoji} {synthLabel}");
+                sb.AppendLine();
+                AppendFeuilleMd(sb, phase.CartographieEnvironnement.Famille);
+                AppendFeuilleMd(sb, phase.CartographieEnvironnement.EcolePairs);
+                AppendFeuilleMd(sb, phase.CartographieEnvironnement.EcransMedias);
+                AppendFeuilleMd(sb, phase.CartographieEnvironnement.ValeursSocietales);
+                AppendFeuilleMd(sb, phase.CartographieEnvironnement.CadreEducatif);
+            }
+
             return sb.ToString();
         }
+
+        // ── Cartographie de l'environnement (étape 5) ────────────────────────
+
+        private static bool HasAnyEnvironnementContent(CartographieEnvironnement carto)
+            => FeuilleHasAnyScore(carto.Famille) || FeuilleHasAnyScore(carto.EcolePairs)
+            || FeuilleHasAnyScore(carto.EcransMedias) || FeuilleHasAnyScore(carto.ValeursSocietales)
+            || FeuilleHasAnyScore(carto.CadreEducatif);
+
+        private static bool FeuilleHasAnyScore(FeuilleEnvironnement f)
+        {
+            if (f.NervureCentrale.Score > 0) return true;
+            foreach (var s in f.NervuresSecondaires) if (s.Score > 0) return true;
+            return false;
+        }
+
+        private static void AppendCartographieEnvironnement(StringBuilder sb, CartographieEnvironnement carto)
+        {
+            sb.AppendLine("cartographie_environnement:");
+            if (carto.AgeAuMomentDeLaSaisie.HasValue)
+                sb.AppendLine($"  age_au_moment: {carto.AgeAuMomentDeLaSaisie.Value}");
+            AppendFeuilleYaml(sb, carto.Famille);
+            AppendFeuilleYaml(sb, carto.EcolePairs);
+            AppendFeuilleYaml(sb, carto.EcransMedias);
+            AppendFeuilleYaml(sb, carto.ValeursSocietales);
+            AppendFeuilleYaml(sb, carto.CadreEducatif);
+        }
+
+        private static void AppendFeuilleYaml(StringBuilder sb, FeuilleEnvironnement feuille)
+        {
+            sb.AppendLine($"  {feuille.Key}:");
+            AppendNervureYaml(sb, feuille.NervureCentrale);
+            foreach (var n in feuille.NervuresSecondaires)
+                AppendNervureYaml(sb, n);
+        }
+
+        private static void AppendNervureYaml(StringBuilder sb, Nervure n)
+        {
+            sb.Append($"    {n.Key}: [");
+            for (int i = 0; i < n.Items.Count; i++)
+            {
+                if (i > 0) sb.Append(", ");
+                sb.Append(n.Items[i].IsChecked ? "true" : "false");
+            }
+            sb.AppendLine("]");
+        }
+
+        private static void AppendFeuilleMd(StringBuilder sb, FeuilleEnvironnement feuille)
+        {
+            var hasScore = FeuilleHasAnyScore(feuille);
+            var couleur = EnvironnementScoringService.CalculerFeuille(feuille);
+            var label = hasScore ? CartographieEnvironnementContent.NiveauLabel(couleur) : CartographieEnvironnementContent.NonEvalueLabel;
+            var emoji = hasScore ? EnvironnementEmoji(couleur) : "⚪";
+            sb.AppendLine($"### {feuille.Label} — _{feuille.SousTitre}_  {emoji} **{label}**");
+            sb.AppendLine();
+            AppendNervureMd(sb, feuille.NervureCentrale);
+            foreach (var n in feuille.NervuresSecondaires)
+                AppendNervureMd(sb, n);
+            sb.AppendLine();
+        }
+
+        private static void AppendNervureMd(StringBuilder sb, Nervure n)
+        {
+            var hasScore = n.Score > 0;
+            var couleur = EnvironnementScoringService.CalculerNervure(n);
+            var label = hasScore ? CartographieEnvironnementContent.NiveauLabel(couleur) : CartographieEnvironnementContent.NonEvalueLabel;
+            var emoji = hasScore ? EnvironnementEmoji(couleur) : "⚪";
+            var role = n.IsCentrale ? " *(centrale)*" : "";
+            sb.AppendLine($"- **{n.Label}**{role} : {n.Score}/{n.MaxScore} — {emoji} {label}");
+        }
+
+        private static string EnvironnementEmoji(NiveauFeuille n) => n switch
+        {
+            NiveauFeuille.Vert  => "🟢",
+            NiveauFeuille.Jaune => "🟡",
+            NiveauFeuille.Rouge => "🔴",
+            _                   => "⚪"
+        };
 
         // ── Cartographie de l'enfant (étape 4) ───────────────────────────────
 
@@ -549,6 +654,21 @@ namespace MedCompanion.Services.Evaluations
                         phase.CartographieEnfant.Temperament.Adaptabilite          = GetIntInBlock(temperament, "adaptabilite")           ?? 0;
                         phase.CartographieEnfant.Temperament.TempsDeReaction       = GetIntInBlock(temperament, "temps_reaction")         ?? 0;
                     }
+                }
+
+                // Étape 5 — Cartographie de l'environnement
+                if (GetBool(yaml, "etape_5_validee"))
+                    phase.CartographieEnvironnement.ValidationDate = GetDate(yaml, "etape_5_validation_date") ?? DateTime.Now;
+
+                var env = ExtractSubBlock(yaml, "cartographie_environnement:");
+                if (env != null)
+                {
+                    phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie = GetIntInBlock(env, "age_au_moment");
+                    ApplyFeuilleFromYaml(env, phase.CartographieEnvironnement.Famille);
+                    ApplyFeuilleFromYaml(env, phase.CartographieEnvironnement.EcolePairs);
+                    ApplyFeuilleFromYaml(env, phase.CartographieEnvironnement.EcransMedias);
+                    ApplyFeuilleFromYaml(env, phase.CartographieEnvironnement.ValeursSocietales);
+                    ApplyFeuilleFromYaml(env, phase.CartographieEnvironnement.CadreEducatif);
                 }
 
                 return phase;
@@ -870,6 +990,38 @@ namespace MedCompanion.Services.Evaluations
 
             if (current != null) res.Add(current);
             return res;
+        }
+
+        /// <summary>
+        /// Applique les booléens YAML aux items d'une feuille (étape 5). Recherche le sous-bloc
+        /// nommé par la Key de la feuille, puis pour chaque nervure (centrale et secondaires)
+        /// cherche une ligne `<nervure.Key>: [true, false, ...]` et applique.
+        /// </summary>
+        private static void ApplyFeuilleFromYaml(string envBlock, FeuilleEnvironnement feuille)
+        {
+            var block = ExtractNamedSubBlock(envBlock, feuille.Key + ":");
+            if (block == null) return;
+            ApplyNervureItemsFromYaml(block, feuille.NervureCentrale);
+            foreach (var n in feuille.NervuresSecondaires)
+                ApplyNervureItemsFromYaml(block, n);
+        }
+
+        private static void ApplyNervureItemsFromYaml(string feuilleBlock, Nervure nervure)
+        {
+            var lines = feuilleBlock.Replace("\r\n", "\n").Split('\n');
+            var prefix = nervure.Key + ":";
+            foreach (var line in lines)
+            {
+                var t = line.TrimStart();
+                if (!t.StartsWith(prefix)) continue;
+                var rest = t.Substring(prefix.Length).Trim();
+                if (!rest.StartsWith("[") || !rest.EndsWith("]")) continue;
+                var inner = rest.Substring(1, rest.Length - 2);
+                var values = inner.Split(',');
+                for (int i = 0; i < values.Length && i < nervure.Items.Count; i++)
+                    nervure.Items[i].IsChecked = values[i].Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+                return;
+            }
         }
 
         /// <summary>

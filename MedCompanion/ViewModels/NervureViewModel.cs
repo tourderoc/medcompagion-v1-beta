@@ -1,0 +1,68 @@
+using System.ComponentModel;
+using System.Runtime.CompilerServices;
+using MedCompanion.Models.Evaluations;
+using MedCompanion.Services.Evaluations;
+
+namespace MedCompanion.ViewModels
+{
+    /// <summary>
+    /// Wrapper bindable autour d'une Nervure (centrale ou secondaire) d'une feuille
+    /// dimensionnelle. Expose la couleur calculée par EnvironnementScoringService et
+    /// notifie le parent quand un item change (pour que la feuille puisse recalculer
+    /// sa propre couleur globale).
+    /// </summary>
+    public class NervureViewModel : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void OnPropertyChanged([CallerMemberName] string? n = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
+
+        public Nervure Modele { get; }
+
+        public NervureViewModel(Nervure modele)
+        {
+            Modele = modele;
+            Modele.PropertyChanged += OnModelChanged;
+        }
+
+        private void OnModelChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(Nervure.Score))
+            {
+                OnPropertyChanged(nameof(Score));
+                OnPropertyChanged(nameof(HasScore));
+                OnPropertyChanged(nameof(Niveau));
+                OnPropertyChanged(nameof(NiveauLabel));
+                OnPropertyChanged(nameof(NiveauColor));
+                OnPropertyChanged(nameof(DisplayLabel));
+                OnPropertyChanged(nameof(DisplayColor));
+                ScoreChanged?.Invoke();
+            }
+        }
+
+        /// <summary>Notifié à chaque coche/décoche pour que la feuille parente recalcule.</summary>
+        public event System.Action? ScoreChanged;
+
+        // ── Passthrough ─────────────────────────────────────────────────────
+
+        public string Label      => Modele.Label;
+        public bool   IsCentrale => Modele.IsCentrale;
+        public int    Score      => Modele.Score;
+        public int    MaxScore   => Modele.MaxScore;
+
+        // ── Calculés ────────────────────────────────────────────────────────
+
+        /// <summary>True si au moins un item est coché — sinon la nervure est « non évaluée ».</summary>
+        public bool HasScore => Modele.Score > 0;
+
+        public NiveauFeuille Niveau      => EnvironnementScoringService.CalculerNervure(Modele);
+        public string        NiveauLabel => CartographieEnvironnementContent.NiveauLabel(Niveau);
+        public string        NiveauColor => CartographieEnvironnementContent.NiveauColor(Niveau);
+
+        /// <summary>Libellé affiché : neutre tant qu'aucun item n'est coché.</summary>
+        public string DisplayLabel => HasScore ? NiveauLabel : CartographieEnvironnementContent.NonEvalueLabel;
+
+        /// <summary>Couleur affichée : grise tant qu'aucun item n'est coché.</summary>
+        public string DisplayColor => HasScore ? NiveauColor : CartographieEnvironnementContent.NonEvalueColor;
+    }
+}
