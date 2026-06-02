@@ -6,6 +6,7 @@ using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.Evaluations;
+using MedCompanion.Services.Synthesis;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
 using MedCompanion.ViewModels;
@@ -57,7 +58,8 @@ namespace MedCompanion.Views.Consultation
                                AxisExtractorService? axisExtractor = null,
                                BilanFinalSuggesterService? bilanFinalSuggester = null,
                                FeuilleLectureService? feuilleLecture = null,
-                               BrancheEnvironnementLectureService? brancheLecture = null)
+                               BrancheEnvironnementLectureService? brancheLecture = null,
+                               SyntheseGlobaleService? syntheseGlobaleService = null)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
@@ -67,6 +69,8 @@ namespace MedCompanion.Views.Consultation
                 _viewModel?.InjectUrgenceDispatcher(urgenceDispatcher, urgenceLogService);
             if (evaluationPhaseService != null)
                 _viewModel?.InjectEvaluationServices(evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture);
+            if (syntheseGlobaleService != null)
+                _viewModel?.InjectSyntheseGlobaleService(syntheseGlobaleService);
             _documentService = documentService;
             _scannerService = scannerService;
         }
@@ -113,6 +117,11 @@ namespace MedCompanion.Views.Consultation
             var evaluation = new MenuItem { Header = "📋  Phase d'évaluation" };
             evaluation.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("evaluation");
             menu.Items.Add(evaluation);
+
+            // Synthèse Globale — document de référence du patient, versionné, source de vérité
+            var synthese = new MenuItem { Header = "🧭  Synthèse Globale" };
+            synthese.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("synthese_globale");
+            menu.Items.Add(synthese);
 
             menu.PlacementTarget = sender as UIElement;
             menu.Placement       = System.Windows.Controls.Primitives.PlacementMode.Bottom;

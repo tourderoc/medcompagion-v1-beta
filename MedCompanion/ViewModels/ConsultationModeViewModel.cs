@@ -15,6 +15,7 @@ using MedCompanion.Models.Urgences;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.Evaluations;
+using MedCompanion.Services.Synthesis;
 using MedCompanion.Models.Evaluations;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
@@ -397,6 +398,77 @@ namespace MedCompanion.ViewModels
         {
             get => _isEvaluationPhaseMode;
             set => SetProperty(ref _isEvaluationPhaseMode, value);
+        }
+
+        private bool _isSyntheseGlobaleMode;
+        /// <summary>
+        /// True quand le médecin a ouvert le panneau "Synthèse Globale" via le combo "+".
+        /// </summary>
+        public bool IsSyntheseGlobaleMode
+        {
+            get => _isSyntheseGlobaleMode;
+            set => SetProperty(ref _isSyntheseGlobaleMode, value);
+        }
+
+        private SyntheseGlobaleViewModel? _syntheseGlobaleVM;
+        /// <summary>
+        /// ViewModel d'édition de la Synthèse Globale (V0.1).
+        /// Instancié à l'injection du SyntheseGlobaleService.
+        /// </summary>
+        public SyntheseGlobaleViewModel? SyntheseGlobaleVM
+        {
+            get => _syntheseGlobaleVM;
+            private set => SetProperty(ref _syntheseGlobaleVM, value);
+        }
+
+        private SyntheseGlobaleService? _syntheseGlobaleService;
+
+        /// <summary>
+        /// Injecte le service Synthèse Globale (V0.1). Construit le ViewModel
+        /// associé et le branche sur l'événement Closed pour sortir du mode.
+        /// </summary>
+        public void InjectSyntheseGlobaleService(SyntheseGlobaleService service)
+        {
+            _syntheseGlobaleService = service;
+            SyntheseGlobaleVM = new SyntheseGlobaleViewModel(service);
+            SyntheseGlobaleVM.Closed += () => IsSyntheseGlobaleMode = false;
+        }
+
+        private void OuvrirSyntheseGlobale()
+        {
+            if (_syntheseGlobaleService == null || SyntheseGlobaleVM == null)
+            {
+                System.Windows.MessageBox.Show(
+                    "Service Synthèse Globale non initialisé.",
+                    "Synthèse Globale",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+            if (_currentPatient == null)
+            {
+                System.Windows.MessageBox.Show(
+                    "Sélectionnez d'abord un patient.",
+                    "Synthèse Globale",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
+            Suivi.Reset();
+            IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
+            IsSynthesisMode = false;
+            IsRestitutionMode = false;
+            IsRestitutionReviewMode = false;
+            ConsultationType = ConsultationType.Normal;
+            IsEditingConsultation = false;
+            IsEvaluationPhaseMode = false;
+
+            SyntheseGlobaleVM.OuvrirBrouillonOuCreer(
+                _currentPatient.NomComplet,
+                psychiatre: "");
+            IsSyntheseGlobaleMode = true;
         }
 
         /// <summary>
@@ -876,6 +948,12 @@ namespace MedCompanion.ViewModels
                     // on revient au contexte actif pour pouvoir démarrer/reprendre.
                     if (EvaluationPhase?.IsReadOnly == true)
                         EvaluationPhase.ReturnToActiveContext();
+                    break;
+
+                case "synthese_globale":
+                    // Bascule en mode "Synthèse Globale" : ouvre le brouillon courant
+                    // ou crée un nouveau brouillon v(N+1).
+                    OuvrirSyntheseGlobale();
                     break;
 
                 case "suivi":

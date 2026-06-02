@@ -16,6 +16,7 @@ using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.Evaluations;
+using MedCompanion.Services.Synthesis;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
 using MedCompanion.Services.Urgence.Detectors;
@@ -399,11 +400,15 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             brancheLecture       = new BrancheEnvironnementLectureService(_currentLLMService);
         }
 
+        // Synthèse Globale V0.1 — service de persistance (pas de LLM pour V0.1)
+        var syntheseGlobaleService = new SyntheseGlobaleService(_pathService);
+
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
-                evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture);
+                evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture,
+                syntheseGlobaleService);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>

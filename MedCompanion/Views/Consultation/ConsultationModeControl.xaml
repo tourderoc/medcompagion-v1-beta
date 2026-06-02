@@ -5,6 +5,7 @@
              xmlns:local="clr-namespace:MedCompanion.Views.Consultation"
              xmlns:urgence="clr-namespace:MedCompanion.Views.Consultation.Urgence"
              xmlns:eval="clr-namespace:MedCompanion.Views.Consultation.Evaluation"
+             xmlns:synth="clr-namespace:MedCompanion.Views.Consultation.SyntheseGlobale"
              xmlns:helpers="clr-namespace:MedCompanion.Helpers"
              xmlns:conv="clr-namespace:MedCompanion.Converters"
              Background="#F5F7FA">
@@ -771,6 +772,14 @@
                                           Visibility="{Binding IsEvaluationPhaseMode, Converter={StaticResource BoolToVis}}">
                                 <eval:EvaluationPhaseControl DataContext="{Binding EvaluationPhase}" Margin="4"/>
                             </ScrollViewer>
+
+                            <!-- MODE SYNTHÈSE GLOBALE : overlay au-dessus du mode normal -->
+                            <Grid Grid.Row="0" Grid.RowSpan="2"
+                                  Panel.ZIndex="101"
+                                  Background="#F5F7FA"
+                                  Visibility="{Binding IsSyntheseGlobaleMode, Converter={StaticResource BoolToVis}}">
+                                <synth:SyntheseGlobaleControl DataContext="{Binding SyntheseGlobaleVM}"/>
+                            </Grid>
 
                             <!-- MODE NORMAL : note libre classique -->
                             <TextBox Grid.Row="1" Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
