@@ -311,6 +311,33 @@
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Button>
+
+                    <!-- Bouton reset Whisper (anti-saturation transcription sur longue session) -->
+                    <Button x:Name="WhisperResetButton"
+                            Width="40" Height="40"
+                            Background="Transparent"
+                            BorderThickness="1"
+                            BorderBrush="#BDC3C7"
+                            Cursor="Hand"
+                            ToolTip="Reset Whisper (anti-saturation). À cliquer si la qualité de transcription se dégrade après plusieurs consultations."
+                            Click="WhisperResetButton_Click"
+                            Margin="0,0,10,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="20">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock x:Name="WhisperResetIcon"
+                                   Text="🎙"
+                                   FontSize="18"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Button>
                 </StackPanel>
                 
                 <!-- Bouton Analyse des prompts -->

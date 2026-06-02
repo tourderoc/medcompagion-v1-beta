@@ -226,6 +226,49 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Bouton manuel "🎙 Reset Whisper" — appelé quand l'utilisateur sent que la qualité
+    /// de transcription se dégrade sur une longue session de consultations.
+    /// </summary>
+    private async void WhisperResetButton_Click(object sender, RoutedEventArgs e)
+    {
+        var whisper = _whisperStreamingService;
+        if (whisper == null) return;
+
+        WhisperResetButton.IsEnabled = false;
+        var originalBrush = WhisperResetButton.BorderBrush;
+        WhisperResetButton.BorderBrush = new SolidColorBrush(Color.FromRgb(255, 193, 7));   // orange : en cours
+
+        try
+        {
+            var (success, message) = await whisper.ResetEngineAsync();
+            if (success)
+            {
+                WhisperResetButton.BorderBrush = new SolidColorBrush(Color.FromRgb(76, 175, 80));   // vert
+                StatusTextBlock.Text       = $"🎙 {message}";
+                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+            }
+            else
+            {
+                WhisperResetButton.BorderBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));   // rouge
+                StatusTextBlock.Text       = $"❌ {message}";
+                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusTextBlock.Text       = $"❌ Erreur reset Whisper : {ex.Message}";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+            WhisperResetButton.BorderBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));
+        }
+        finally
+        {
+            WhisperResetButton.IsEnabled = true;
+            _ = Task.Delay(2000).ContinueWith(_ =>
+                Dispatcher.Invoke(() => WhisperResetButton.BorderBrush = originalBrush));
+        }
+    }
+
+    /// <summary>
     /// Déchargement silencieux du modèle (fire-and-forget) — appelé automatiquement
     /// lors du changement de patient pour éviter la contamination de contexte entre dossiers.
     /// </summary>
@@ -244,6 +287,33 @@ public partial class MainWindow : Window
                     LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(149, 165, 166));   // gris
                     LLMStatusIndicator.ToolTip    = "Med déchargé (changement patient).";
                 });
+            }
+            catch { /* silencieux : meilleur effort */ }
+        });
+    }
+
+    /// <summary>
+    /// Réinitialise le processor Whisper en arrière-plan, sans bloquer l'UI.
+    /// Appelé au changement de patient pour éviter la dégradation progressive de la
+    /// qualité de transcription (KV cache décodeur, fragmentation VRAM, résidus de contexte).
+    /// </summary>
+    private void ResetWhisperEngineSilently()
+    {
+        var whisper = _whisperStreamingService;
+        if (whisper == null) return;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var (ok, _) = await whisper.ResetEngineAsync();
+                if (ok)
+                {
+                    Dispatcher.InvokeAsync(() =>
+                    {
+                        if (WhisperResetButton != null)
+                            WhisperResetButton.ToolTip = "Whisper réinitialisé (changement patient).";
+                    });
+                }
             }
             catch { /* silencieux : meilleur effort */ }
         });

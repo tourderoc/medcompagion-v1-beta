@@ -813,6 +813,59 @@ namespace MedCompanion.Services.Consultation
         private static int CountWords(string text) =>
             text.Split(new[] { ' ', '\t', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
 
+        // ── Reset engine (anti-saturation Whisper) ────────────────────────────
+
+        /// <summary>
+        /// Réinitialise le processor Whisper sans recharger le modèle depuis disque.
+        /// À appeler entre 2 patients ou manuellement lorsque la qualité de transcription
+        /// se dégrade après plusieurs heures d'usage (KV cache décodeur, fragmentation VRAM,
+        /// résidus de contexte). Coût ≈ 200-500 ms, le modèle reste en RAM via le factory.
+        /// No-op si Whisper n'a jamais été initialisé OU si une session est active.
+        /// </summary>
+        public async Task<(bool ok, string message)> ResetEngineAsync()
+        {
+            if (!_whisperInitialized) return (true, "Whisper non initialisé — rien à réinitialiser.");
+            if (IsActive) return (false, "Enregistrement en cours — arrêtez d'abord la transcription.");
+
+            await _initLock.WaitAsync();
+            try
+            {
+                Log("ResetEngineAsync : disposal processor + recréation");
+                StatusChanged?.Invoke("🔄 Réinitialisation Whisper...");
+                try { _processor?.Dispose(); } catch { /* ignoré */ }
+                _processor = null;
+
+                // Force la libération de la mémoire native (KV cache décodeur, etc.)
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+
+                if (_factory == null)
+                {
+                    _whisperInitialized = false;
+                    return (false, "Factory Whisper nulle — réinitialisation impossible (relancez l'app).");
+                }
+
+                _processor = _factory.CreateBuilder()
+                                     .WithLanguage("fr")
+                                     .WithNoContext()
+                                     .WithPrompt(_dynamicPrompt)
+                                     .WithTemperature(0f)
+                                     .Build();
+                StatusChanged?.Invoke("✓ Whisper réinitialisé.");
+                return (true, "Whisper réinitialisé.");
+            }
+            catch (Exception ex)
+            {
+                Log($"ResetEngineAsync échec : {ex.Message}");
+                return (false, $"Réinitialisation échouée : {ex.Message}");
+            }
+            finally
+            {
+                _initLock.Release();
+            }
+        }
+
         // ── Dispose ───────────────────────────────────────────────────────────
 
         public void Dispose()

@@ -76,8 +76,13 @@ public partial class MainWindow : Window
 
             // Décharger Med si on change effectivement de patient (évite la contamination
             // de contexte entre dossiers + reset le KV cache GPU). No-op pour OpenAI.
+            // Idem pour Whisper : reset du processor pour éviter la dégradation progressive
+            // de la qualité de transcription sur plusieurs consultations consécutives.
             if (_selectedPatient != null && _selectedPatient.Id != patient.Id)
+            {
                 UnloadModelSilently();
+                ResetWhisperEngineSilently();
+            }
 
             _selectedPatient = patient;
  
