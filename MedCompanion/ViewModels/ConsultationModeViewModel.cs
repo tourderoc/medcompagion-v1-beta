@@ -424,13 +424,13 @@ namespace MedCompanion.ViewModels
         private SyntheseGlobaleService? _syntheseGlobaleService;
 
         /// <summary>
-        /// Injecte le service Synthèse Globale (V0.1). Construit le ViewModel
+        /// Injecte les services Synthèse Globale (V0.1 + V0.2). Construit le ViewModel
         /// associé et le branche sur l'événement Closed pour sortir du mode.
         /// </summary>
-        public void InjectSyntheseGlobaleService(SyntheseGlobaleService service)
+        public void InjectSyntheseGlobaleService(SyntheseGlobaleService service, SyntheseGlobaleSuggesterService? suggester = null)
         {
             _syntheseGlobaleService = service;
-            SyntheseGlobaleVM = new SyntheseGlobaleViewModel(service);
+            SyntheseGlobaleVM = new SyntheseGlobaleViewModel(service, suggester);
             SyntheseGlobaleVM.Closed += () => IsSyntheseGlobaleMode = false;
         }
 
@@ -467,7 +467,8 @@ namespace MedCompanion.ViewModels
 
             SyntheseGlobaleVM.OuvrirBrouillonOuCreer(
                 _currentPatient.NomComplet,
-                psychiatre: "");
+                psychiatre: "",
+                patientDirectoryPath: _currentPatient.DirectoryPath ?? "");
             IsSyntheseGlobaleMode = true;
         }
 

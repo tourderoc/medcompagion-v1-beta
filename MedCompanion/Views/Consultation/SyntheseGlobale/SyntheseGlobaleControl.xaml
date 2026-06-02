@@ -21,6 +21,26 @@
                     <TextBlock Text="{Binding StatutLabel}" FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Padding="10,5" Margin="0,0,6,0"
+                            Command="{Binding ProposerCommand}"
+                            Visibility="{Binding ProposerVisible, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Med lit le dossier complet (évaluations, notes, documents) et propose une v1. REMPLACE le contenu du brouillon.">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Content" Value="✨ Proposer (Med)"/>
+                                <Setter Property="Background" Value="#8E44AD"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsProposerEnCours}" Value="True">
+                                        <Setter Property="Content" Value="⏳ Med..."/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     <Button Content="⏸ Fermer" Padding="10,5" Margin="0,0,6,0"
                             Command="{Binding FermerCommand}"
                             ToolTip="Quitter sans valider (le brouillon reste sauvegardé)"/>

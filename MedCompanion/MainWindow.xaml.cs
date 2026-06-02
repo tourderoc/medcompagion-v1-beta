@@ -400,15 +400,19 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             brancheLecture       = new BrancheEnvironnementLectureService(_currentLLMService);
         }
 
-        // Synthèse Globale V0.1 — service de persistance (pas de LLM pour V0.1)
+        // Synthèse Globale V0.1 (persistance) + V0.2 (génération initiale par Med)
         var syntheseGlobaleService = new SyntheseGlobaleService(_pathService);
+        SyntheseGlobaleSuggesterService? syntheseGlobaleSuggester = null;
+        if (_currentLLMService != null && _patientContextService != null)
+            syntheseGlobaleSuggester = new SyntheseGlobaleSuggesterService(
+                _currentLLMService, _patientContextService, evaluationPhaseService);
 
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
                 evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture,
-                syntheseGlobaleService);
+                syntheseGlobaleService, syntheseGlobaleSuggester);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>

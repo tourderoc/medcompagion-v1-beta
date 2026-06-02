@@ -25,16 +25,39 @@ namespace MedCompanion.ViewModels
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
 
         private readonly SyntheseGlobaleService _service;
+        private readonly SyntheseGlobaleSuggesterService? _suggester;
         private SyntheseGlobale? _synthese;
         private CancellationTokenSource? _autoSaveCts;
+        private string _patientDirectoryPath = "";
 
-        public SyntheseGlobaleViewModel(SyntheseGlobaleService service)
+        public SyntheseGlobaleViewModel(SyntheseGlobaleService service, SyntheseGlobaleSuggesterService? suggester = null)
         {
-            _service = service;
+            _service   = service;
+            _suggester = suggester;
 
-            ValiderCommand = new RelayCommand(_ => Valider(),         _ => CanValider);
-            FermerCommand  = new RelayCommand(_ => FermerSansValider(), _ => Synthese != null);
+            ValiderCommand   = new RelayCommand(_ => Valider(),              _ => CanValider);
+            FermerCommand    = new RelayCommand(_ => FermerSansValider(),    _ => Synthese != null);
+            ProposerCommand  = new RelayCommand(async _ => await ProposerAsync(),
+                                                _ => CanProposer);
         }
+
+        public ICommand ProposerCommand { get; }
+
+        private bool _isProposerEnCours;
+        public bool IsProposerEnCours
+        {
+            get => _isProposerEnCours;
+            private set { if (_isProposerEnCours != value) { _isProposerEnCours = value; OnPropertyChanged();
+                (ProposerCommand as RelayCommand)?.RaiseCanExecuteChanged(); } }
+        }
+
+        private bool CanProposer
+            => _suggester != null
+            && Synthese != null
+            && Synthese.IsBrouillon
+            && !IsProposerEnCours;
+
+        public bool ProposerVisible => _suggester != null;
 
         /// <summary>Synthèse en cours d'édition (brouillon).</summary>
         public SyntheseGlobale? Synthese
@@ -94,8 +117,9 @@ namespace MedCompanion.ViewModels
         /// Ouvre une synthèse pour un patient : reprend le brouillon courant s'il existe,
         /// sinon crée un nouveau brouillon vide v(N+1) où N = dernière version validée.
         /// </summary>
-        public void OuvrirBrouillonOuCreer(string patientNomComplet, string psychiatre)
+        public void OuvrirBrouillonOuCreer(string patientNomComplet, string psychiatre, string patientDirectoryPath = "")
         {
+            _patientDirectoryPath = patientDirectoryPath ?? "";
             if (string.IsNullOrWhiteSpace(patientNomComplet)) return;
 
             var brouillonMeta = _service.GetBrouillon(patientNomComplet);
@@ -126,6 +150,62 @@ namespace MedCompanion.ViewModels
             _service.SaveBrouillon(nouveau);
             Synthese = nouveau;
             StatusMessage = $"Nouveau brouillon v{nouvelleVersion} créé.";
+        }
+
+        /// <summary>
+        /// Demande à Med de proposer une v1 à partir du dossier complet (V0.2 — génération
+        /// initiale). REMPLACE le contenu du brouillon. Le psy peut ensuite éditer librement.
+        /// </summary>
+        private async Task ProposerAsync()
+        {
+            if (_suggester == null || Synthese == null || Synthese.IsValidee) return;
+
+            // Confirmation si du contenu existe déjà
+            if (Synthese.HasAnyContenu)
+            {
+                var r = System.Windows.MessageBox.Show(
+                    "Le brouillon contient déjà du contenu. La proposition de Med va le REMPLACER.\n\nContinuer ?",
+                    "Proposer (Med)",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning);
+                if (r != System.Windows.MessageBoxResult.Yes) return;
+            }
+
+            IsProposerEnCours = true;
+            StatusMessage = "⏳ Med analyse le dossier complet...";
+
+            try
+            {
+                var (ok, sug, error) = await _suggester.GenerateInitialAsync(
+                    Synthese.PatientNomComplet, _patientDirectoryPath, CancellationToken.None);
+                if (!ok || sug == null)
+                {
+                    StatusMessage = $"❌ Proposition impossible : {error ?? "réponse vide"}";
+                    return;
+                }
+
+                Synthese.Hypotheses.Contenu    = sug.Hypotheses;
+                Synthese.Enfant.Contenu        = sug.Enfant;
+                Synthese.Environnement.Contenu = sug.Environnement;
+                Synthese.Articulation.Contenu  = sug.Articulation;
+                Synthese.Conclusion.Contenu    = sug.Conclusion;
+                // Évolution reste vide en v1 (se remplit à partir de v2 en mode patch)
+
+                Synthese.SourcesEvaluations    = sug.EvaluationsSources;
+                Synthese.SourcesNombreNotes    = sug.NotesUtilisees;
+
+                _service.SaveBrouillon(Synthese);
+                StatusMessage = $"✓ Proposition Med insérée — {sug.EvaluationsSources.Count} évaluation(s) consultée(s). Éditez librement.";
+                (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsProposerEnCours = false;
+            }
         }
 
         private void Valider()
