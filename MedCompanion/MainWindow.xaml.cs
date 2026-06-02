@@ -386,7 +386,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         PreparationSuggesterService? preparationSuggester = null;
         AxesSuggesterService?        axesSuggester        = null;
         AxisExtractorService?        axisExtractor        = null;
-        SyntheseSuggesterService?            syntheseSuggester    = null;
+        BilanFinalSuggesterService?            bilanFinalSuggester    = null;
         FeuilleLectureService?               feuilleLecture       = null;
         BrancheEnvironnementLectureService?  brancheLecture       = null;
         if (_currentLLMService != null)
@@ -394,7 +394,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             preparationSuggester = new PreparationSuggesterService(_currentLLMService);
             axesSuggester        = new AxesSuggesterService(_currentLLMService);
             axisExtractor        = new AxisExtractorService(_currentLLMService);
-            syntheseSuggester    = new SyntheseSuggesterService(_currentLLMService);
+            bilanFinalSuggester    = new BilanFinalSuggesterService(_currentLLMService);
             feuilleLecture       = new FeuilleLectureService(_currentLLMService);
             brancheLecture       = new BrancheEnvironnementLectureService(_currentLLMService);
         }
@@ -403,7 +403,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         if (_currentLLMService != null)
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
-                evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, syntheseSuggester, feuilleLecture, brancheLecture);
+                evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>

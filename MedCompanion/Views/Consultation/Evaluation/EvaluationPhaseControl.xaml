@@ -499,15 +499,15 @@
                                 Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
                                 Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
                                 Command="{Binding ViewStepCommand}" CommandParameter="2"/>
-                        <Button Content="Étape 3 — Synthèse" FontSize="11" Padding="8,4"
+                        <Button Content="Étape 3 — Cartographie enfant" FontSize="11" Padding="8,4"
                                 Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
                                 Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
                                 Command="{Binding ViewStepCommand}" CommandParameter="3"/>
-                        <Button Content="Étape 4 — Cartographie enfant" FontSize="11" Padding="8,4"
+                        <Button Content="Étape 4 — Cartographie environnement" FontSize="11" Padding="8,4"
                                 Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
                                 Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
                                 Command="{Binding ViewStepCommand}" CommandParameter="4"/>
-                        <Button Content="Étape 5 — Cartographie environnement" FontSize="11" Padding="8,4"
+                        <Button Content="Étape 5 — Bilan Final" FontSize="11" Padding="8,4"
                                 Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
                                 Foreground="#4A2C6A" Cursor="Hand"
                                 Command="{Binding ViewStepCommand}" CommandParameter="5"/>
@@ -805,7 +805,7 @@
         <!-- ═════════════════════════════════════════════════════════════════ -->
         <Border Style="{StaticResource SectionBorder}"
                 BorderBrush="#16A085" BorderThickness="2"
-                Visibility="{Binding IsWorkingSynthese, Converter={StaticResource BoolToVis}}">
+                Visibility="{Binding IsWorkingBilanFinal, Converter={StaticResource BoolToVis}}">
             <StackPanel>
                 <Grid Margin="0,0,0,12">
                     <Grid.ColumnDefinitions>
@@ -813,13 +813,13 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="🧩 ÉTAPE 3 — SYNTHÈSE DIAGNOSTIQUE"
+                        <TextBlock Text="🧩 ÉTAPE 5 — BILAN FINAL"
                                    FontSize="12" FontWeight="Bold" Foreground="#0E8074"/>
-                        <TextBlock Text="Mise en cohérence du raisonnement : diagnostic(s), arguments, écartés, certitude."
+                        <TextBlock Text="Synthèse intégrative : croise axes (Étape 2), cartographie de l'enfant (Étape 3) et cartographie de l'environnement (Étape 4)."
                                    FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
-                    <Button Grid.Column="1" Content="✨ Suggérer la synthèse (IA)"
-                            Command="{Binding SuggestSyntheseCommand}"
+                    <Button Grid.Column="1" Content="✨ Proposer le bilan (Med)"
+                            Command="{Binding SuggestBilanFinalCommand}"
                             Style="{StaticResource SecondaryButton}"
                             VerticalAlignment="Center"
                             Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}"/>
@@ -837,7 +837,7 @@
                                 Visibility="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"
                                 Background="Transparent" BorderThickness="1" BorderBrush="#16A085"
                                 Foreground="#16A085" Cursor="Hand"
-                                Command="{Binding AddSyntheseItemCommand}" CommandParameter="retenus"/>
+                                Command="{Binding AddBilanFinalItemCommand}" CommandParameter="retenus"/>
                     </Grid>
                     <ItemsControl ItemsSource="{Binding DiagnosticsRetenus}"
                                   ItemTemplate="{StaticResource EditableItemTemplate}"/>
@@ -855,7 +855,7 @@
                                 Visibility="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"
                                 Background="Transparent" BorderThickness="1" BorderBrush="#16A085"
                                 Foreground="#16A085" Cursor="Hand"
-                                Command="{Binding AddSyntheseItemCommand}" CommandParameter="en_faveur"/>
+                                Command="{Binding AddBilanFinalItemCommand}" CommandParameter="en_faveur"/>
                     </Grid>
                     <ItemsControl ItemsSource="{Binding ElementsEnFaveur}"
                                   ItemTemplate="{StaticResource EditableItemTemplate}"/>
@@ -938,28 +938,54 @@
                     </StackPanel>
                 </StackPanel>
 
+                <!-- SYNTHÈSE INTÉGRATIVE (paragraphe Med + édition libre) -->
+                <Border Background="#EAF8F5" BorderBrush="#16A085" BorderThickness="1" CornerRadius="6"
+                        Margin="0,4,0,12" Padding="10">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.Column="0" Text="🧠 Synthèse intégrative" FontSize="12" FontWeight="SemiBold" Foreground="#117864"/>
+                            <Button Grid.Column="1" Content="🗑" Padding="6,2"
+                                    Command="{Binding EffacerSyntheseIntegrativeCommand}"
+                                    ToolTip="Effacer la synthèse intégrative"
+                                    Visibility="{Binding HasSyntheseIntegrative, Converter={StaticResource BoolToVis}}"/>
+                        </Grid>
+                        <TextBox Text="{Binding SyntheseIntegrative, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="12" Foreground="#2C3E50" Background="White"
+                                 BorderBrush="#D6E2EC" BorderThickness="1"
+                                 TextWrapping="Wrap" AcceptsReturn="True"
+                                 MinHeight="100" Padding="8"
+                                 IsReadOnly="{Binding IsReadOnly}"/>
+                        <TextBlock FontSize="10" Foreground="#566573" Margin="0,4,0,0" FontStyle="Italic"
+                                   Text="Paragraphe synthétique généré par Med (croise axes + cartographies) — éditable."/>
+                    </StackPanel>
+                </Border>
+
                 <!-- STATUS + ACTIONS -->
                 <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#27AE60"
                            Margin="0,8,0,10" TextWrapping="Wrap"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}">
-                    <Button Content="↩ Retour Étape 2"
-                            Command="{Binding BackToEvaluationCommand}"
+                    <Button Content="↩ Retour Étape 4"
+                            Command="{Binding BackToCartographieEnvironnementCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
-                            ToolTip="Modifier les axes (l'Étape 3 reste conservée)"/>
+                            ToolTip="Modifier la cartographie de l'environnement (le Bilan Final reste conservé)"/>
                     <Button Content="⏸ Terminer la séance"
                             Command="{Binding TerminateSessionCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
-                    <Button Content="✓ Valider l'étape 3"
-                            Command="{Binding ValidateSyntheseCommand}"
+                    <Button Content="✓ Valider et clôturer"
+                            Command="{Binding ValidateBilanFinalCommand}"
                             Style="{StaticResource ValidateButton}"
-                            ToolTip="Valide la synthèse — passage à l'étape 4 (Cartographie de l'enfant) si patient 3-11 ans, sinon clôture directe."/>
+                            ToolTip="Valide le Bilan Final et clôture l'évaluation."/>
                 </StackPanel>
             </StackPanel>
         </Border>
 
         <!-- ═════════════════════════════════════════════════════════════════ -->
-        <!-- CAS 2quater — En cours de séance, Étape 4 Cartographie de l'enfant -->
+        <!-- CAS 2quater — En cours de séance, Étape 3 Cartographie de l'enfant -->
         <!-- ═════════════════════════════════════════════════════════════════ -->
         <Border Style="{StaticResource SectionBorder}"
                 BorderBrush="#16A085" BorderThickness="2"
@@ -971,7 +997,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="🐛 ÉTAPE 4 — CARTOGRAPHIE DE L'ENFANT"
+                        <TextBlock Text="🐛 ÉTAPE 3 — CARTOGRAPHIE DE L'ENFANT"
                                    FontSize="12" FontWeight="Bold" Foreground="#0E8074"/>
                         <TextBlock Text="Chenille universelle — outil de repérage 3-11 ans. 6 segments à 6 items + profil tempérament."
                                    FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0" TextWrapping="Wrap"/>
@@ -1047,17 +1073,17 @@
                 <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#27AE60" Margin="0,8,0,10" TextWrapping="Wrap"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}">
-                    <Button Content="↩ Retour Étape 3"
-                            Command="{Binding BackToSyntheseCommand}"
+                    <Button Content="↩ Retour Étape 2"
+                            Command="{Binding BackToEvaluationCibleeCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
-                            ToolTip="Modifier la synthèse (la Cartographie reste conservée)"/>
+                            ToolTip="Modifier les axes (la Cartographie reste conservée)"/>
                     <Button Content="⏸ Terminer la séance"
                             Command="{Binding TerminateSessionCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
-                    <Button Content="✓ Valider l'étape 4"
+                    <Button Content="✓ Valider l'étape 3"
                             Command="{Binding ValidateCartographieEnfantCommand}"
                             Style="{StaticResource ValidateButton}"
-                            ToolTip="Valide la cartographie de l'enfant — passage à l'Étape 5 (Cartographie de l'environnement) si patient 3-11 ans, sinon clôture directe."/>
+                            ToolTip="Valide la cartographie de l'enfant — passage à l'Étape 4 (Cartographie de l'environnement)."/>
                 </StackPanel>
             </StackPanel>
         </Border>
@@ -1075,9 +1101,9 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <StackPanel Grid.Column="0">
-                        <TextBlock Text="🌿 ÉTAPE 5 — CARTOGRAPHIE DE L'ENVIRONNEMENT"
+                        <TextBlock Text="🌿 ÉTAPE 4 — CARTOGRAPHIE DE L'ENVIRONNEMENT"
                                    FontSize="12" FontWeight="Bold" Foreground="#1F618D"/>
-                        <TextBlock Text="Feuilles dimensionnelles (Tome 3) — 3 niveaux Vert/Jaune/Rouge. 5 dimensions de l'écosystème de l'enfant."
+                        <TextBlock Text="Feuilles dimensionnelles (Tome 3) — 5 niveaux par % (Fluide → Bloqué). 5 dimensions de l'écosystème de l'enfant."
                                    FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0" TextWrapping="Wrap"/>
                     </StackPanel>
                     <!-- Synthèse globale -->
@@ -1155,17 +1181,17 @@
                 <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#27AE60" Margin="0,8,0,10" TextWrapping="Wrap"/>
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
                             Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}">
-                    <Button Content="↩ Retour Étape 4"
+                    <Button Content="↩ Retour Étape 3"
                             Command="{Binding BackToCartographieEnfantCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"
                             ToolTip="Modifier la cartographie de l'enfant (la cartographie de l'environnement reste conservée)"/>
                     <Button Content="⏸ Terminer la séance"
                             Command="{Binding TerminateSessionCommand}"
                             Style="{StaticResource SecondaryButton}" Margin="0,0,8,0"/>
-                    <Button Content="✓ Valider et clôturer"
+                    <Button Content="✓ Valider l'étape 4"
                             Command="{Binding ValidateCartographieEnvironnementCommand}"
                             Style="{StaticResource ValidateButton}"
-                            ToolTip="Valide la cartographie de l'environnement et clôture l'évaluation"/>
+                            ToolTip="Valide la cartographie de l'environnement — passage à l'Étape 5 (Bilan Final)"/>
                 </StackPanel>
             </StackPanel>
         </Border>

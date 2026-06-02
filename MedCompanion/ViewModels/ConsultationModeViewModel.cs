@@ -376,13 +376,13 @@ namespace MedCompanion.ViewModels
                                              PreparationSuggesterService? suggester,
                                              AxesSuggesterService? axesSuggester = null,
                                              AxisExtractorService?  axisExtractor = null,
-                                             SyntheseSuggesterService? syntheseSuggester = null,
+                                             BilanFinalSuggesterService? bilanFinalSuggester = null,
                                              FeuilleLectureService? feuilleLecture = null,
                                              BrancheEnvironnementLectureService? brancheLecture = null)
         {
             _evaluationPhaseService = phaseService;
             EvaluationPhase = new EvaluationPhaseViewModel(
-                phaseService, suggester, axesSuggester, axisExtractor, _whisperService, syntheseSuggester, feuilleLecture, brancheLecture);
+                phaseService, suggester, axesSuggester, axisExtractor, _whisperService, bilanFinalSuggester, feuilleLecture, brancheLecture);
             // À chaque création/clôture d'évaluation, rafraîchit la frise + les blocs de synthèse
             EvaluationPhase.PhaseStateChanged += LoadEvaluationCards;
             // Si un patient est déjà chargé, on lui passe tout de suite
@@ -3205,10 +3205,10 @@ source: ""MedCompanion""
             // (Pas de bruit pour les évaluations abandonnées sans synthèse.)
             var blocks = phases
                 .Where(p => !p.IsActive)
-                .Where(p => p.Synthese.DiagnosticsRetenus.Any(s => !string.IsNullOrWhiteSpace(s?.Value))
-                         || p.Synthese.ElementsEnFaveur.Any(s => !string.IsNullOrWhiteSpace(s?.Value))
-                         || p.Synthese.DiagnosticsEcartes.Any(e => !string.IsNullOrWhiteSpace(e?.Label))
-                         || p.Synthese.Certitude != NiveauCertitude.NonRenseigne)
+                .Where(p => p.BilanFinal.DiagnosticsRetenus.Any(s => !string.IsNullOrWhiteSpace(s?.Value))
+                         || p.BilanFinal.ElementsEnFaveur.Any(s => !string.IsNullOrWhiteSpace(s?.Value))
+                         || p.BilanFinal.DiagnosticsEcartes.Any(e => !string.IsNullOrWhiteSpace(e?.Label))
+                         || p.BilanFinal.Certitude != NiveauCertitude.NonRenseigne)
                 .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
                 .Select(p => new DiagnosticSyntheseCardViewModel(p))
                 .ToList();

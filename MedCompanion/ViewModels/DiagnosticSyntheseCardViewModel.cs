@@ -6,8 +6,8 @@ using MedCompanion.Models.Evaluations;
 namespace MedCompanion.ViewModels
 {
     /// <summary>
-    /// Bloc d'affichage d'une synthèse diagnostique (issue d'une évaluation clôturée),
-    /// destiné à s'ajouter sous la synthèse globale du patient dans le dossier bleu (onglet SYNTHESE).
+    /// Bloc d'affichage d'un Bilan Final (issu d'une évaluation clôturée), destiné à
+    /// s'ajouter sous la synthèse globale du patient dans le dossier bleu (onglet SYNTHESE).
     /// Présentation lecture seule — pour modifier, rouvrir l'évaluation depuis la frise.
     /// </summary>
     public class DiagnosticSyntheseCardViewModel
@@ -22,6 +22,10 @@ namespace MedCompanion.ViewModels
         public string                  CertitudeLabel     { get; }
         public string                  CertitudeColor     { get; }
 
+        /// <summary>Paragraphe synthèse intégrative (Étape 5). Vide si non générée.</summary>
+        public string SyntheseIntegrative   { get; }
+        public bool   HasSyntheseIntegrative => !string.IsNullOrWhiteSpace(SyntheseIntegrative);
+
         public bool HasDiagnosticsRetenus => DiagnosticsRetenus.Count > 0;
         public bool HasElementsEnFaveur   => ElementsEnFaveur.Count > 0;
         public bool HasDiagnosticsEcartes => DiagnosticsEcartes.Count > 0;
@@ -31,28 +35,30 @@ namespace MedCompanion.ViewModels
             FilePath    = phase.FilePath ?? "";
             DateCloture = phase.DateCloture ?? phase.DateDerniereModif;
 
-            DiagnosticsRetenus = phase.Synthese.DiagnosticsRetenus
+            DiagnosticsRetenus = phase.BilanFinal.DiagnosticsRetenus
                 .Select(s => s?.Value ?? "")
                 .Where(v => !string.IsNullOrWhiteSpace(v))
                 .ToList();
 
-            ElementsEnFaveur = phase.Synthese.ElementsEnFaveur
+            ElementsEnFaveur = phase.BilanFinal.ElementsEnFaveur
                 .Select(s => s?.Value ?? "")
                 .Where(v => !string.IsNullOrWhiteSpace(v))
                 .ToList();
 
-            DiagnosticsEcartes = phase.Synthese.DiagnosticsEcartes
+            DiagnosticsEcartes = phase.BilanFinal.DiagnosticsEcartes
                 .Where(e => e != null && !string.IsNullOrWhiteSpace(e.Label))
                 .Select(e => new DiagnosticEcarteText(e.Label, e.Motif ?? ""))
                 .ToList();
 
-            (CertitudeLabel, CertitudeColor) = phase.Synthese.Certitude switch
+            (CertitudeLabel, CertitudeColor) = phase.BilanFinal.Certitude switch
             {
                 NiveauCertitude.HypotheseAConfirmer => ("Hypothèse à confirmer", "#F39C12"),
                 NiveauCertitude.Probable            => ("Probable",              "#3498DB"),
                 NiveauCertitude.Certain             => ("Certain",               "#27AE60"),
                 _                                   => ("Non renseigné",         "#95A5A6"),
             };
+
+            SyntheseIntegrative = phase.BilanFinal.SyntheseIntegrative ?? "";
         }
     }
 

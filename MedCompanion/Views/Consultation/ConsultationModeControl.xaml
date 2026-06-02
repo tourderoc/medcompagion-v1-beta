@@ -3155,7 +3155,7 @@
                                                                             </Grid.ColumnDefinitions>
                                                                             <StackPanel Grid.Column="0" Orientation="Horizontal">
                                                                                 <TextBlock Text="🧠" FontSize="16" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                                                <TextBlock Text="Synthèse diagnostique — " FontSize="14" FontWeight="SemiBold" Foreground="#4A2C6A" VerticalAlignment="Center"/>
+                                                                                <TextBlock Text="Bilan Final — " FontSize="14" FontWeight="SemiBold" Foreground="#4A2C6A" VerticalAlignment="Center"/>
                                                                                 <TextBlock Text="{Binding DateClotureText}" FontSize="14" Foreground="#4A2C6A" VerticalAlignment="Center"/>
                                                                             </StackPanel>
                                                                             <Border Grid.Column="1" Background="{Binding CertitudeColor}" CornerRadius="10" Padding="8,3" VerticalAlignment="Center">
@@ -3192,7 +3192,7 @@
                                                                         </StackPanel>
 
                                                                         <!-- Différentiels écartés -->
-                                                                        <StackPanel
+                                                                        <StackPanel Margin="0,0,0,8"
                                                                             Visibility="{Binding HasDiagnosticsEcartes, Converter={StaticResource BoolToVis}}">
                                                                             <TextBlock Text="Diagnostics différentiels écartés" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,4"/>
                                                                             <ItemsControl ItemsSource="{Binding DiagnosticsEcartes}">
@@ -3211,6 +3211,16 @@
                                                                                 </ItemsControl.ItemTemplate>
                                                                             </ItemsControl>
                                                                         </StackPanel>
+
+                                                                        <!-- Synthèse intégrative (V0.5) -->
+                                                                        <Border Background="#EAF8F5" BorderBrush="#16A085" BorderThickness="1" CornerRadius="4"
+                                                                                Padding="10" Margin="0,4,0,0"
+                                                                                Visibility="{Binding HasSyntheseIntegrative, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel>
+                                                                                <TextBlock Text="🧠 Synthèse intégrative" FontSize="11" FontWeight="SemiBold" Foreground="#117864" Margin="0,0,0,4"/>
+                                                                                <TextBlock Text="{Binding SyntheseIntegrative}" FontSize="11" Foreground="#2C3E50" TextWrapping="Wrap"/>
+                                                                            </StackPanel>
+                                                                        </Border>
                                                                     </StackPanel>
                                                                 </Border>
                                                             </DataTemplate>

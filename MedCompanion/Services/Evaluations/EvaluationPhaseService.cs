@@ -172,27 +172,36 @@ namespace MedCompanion.Services.Evaluations
             AppendAxes(sb, "  axes_differentiels", phase.EvaluationCiblee.AxesDifferentiels);
             AppendAxes(sb, "  axes_systemiques",   phase.EvaluationCiblee.AxesSystemiques);
 
-            sb.AppendLine($"etape_3_validee: {(phase.Synthese.IsValidated ? "true" : "false")}");
-            if (phase.Synthese.ValidationDate.HasValue)
-                sb.AppendLine($"etape_3_validation_date: {phase.Synthese.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
-
-            sb.AppendLine("synthese_diagnostique:");
-            AppendList(sb, "  diagnostics_retenus", phase.Synthese.DiagnosticsRetenus);
-            AppendList(sb, "  elements_en_faveur",  phase.Synthese.ElementsEnFaveur);
-            AppendEcartes(sb, "  diagnostics_ecartes", phase.Synthese.DiagnosticsEcartes);
-            sb.AppendLine($"  certitude: {(int)phase.Synthese.Certitude}");
-
-            // Étape 4 — Cartographie de l'enfant
-            sb.AppendLine($"etape_4_validee: {(phase.CartographieEnfant.IsValidated ? "true" : "false")}");
+            // Étape 3 — Cartographie de l'enfant (nouveau flow V0.5 : carto enfant avant carto env avant bilan)
+            sb.AppendLine($"etape_3_validee: {(phase.CartographieEnfant.IsValidated ? "true" : "false")}");
             if (phase.CartographieEnfant.ValidationDate.HasValue)
-                sb.AppendLine($"etape_4_validation_date: {phase.CartographieEnfant.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
+                sb.AppendLine($"etape_3_validation_date: {phase.CartographieEnfant.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
             AppendCartographieEnfant(sb, phase.CartographieEnfant);
 
-            // Étape 5 — Cartographie de l'environnement
-            sb.AppendLine($"etape_5_validee: {(phase.CartographieEnvironnement.IsValidated ? "true" : "false")}");
+            // Étape 4 — Cartographie de l'environnement
+            sb.AppendLine($"etape_4_validee: {(phase.CartographieEnvironnement.IsValidated ? "true" : "false")}");
             if (phase.CartographieEnvironnement.ValidationDate.HasValue)
-                sb.AppendLine($"etape_5_validation_date: {phase.CartographieEnvironnement.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
+                sb.AppendLine($"etape_4_validation_date: {phase.CartographieEnvironnement.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
             AppendCartographieEnvironnement(sb, phase.CartographieEnvironnement);
+
+            // Étape 5 — Bilan Final (ex-Étape 3 Synthèse Diagnostique)
+            sb.AppendLine($"etape_5_validee: {(phase.BilanFinal.IsValidated ? "true" : "false")}");
+            if (phase.BilanFinal.ValidationDate.HasValue)
+                sb.AppendLine($"etape_5_validation_date: {phase.BilanFinal.ValidationDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
+
+            sb.AppendLine("bilan_final:");
+            AppendList(sb, "  diagnostics_retenus", phase.BilanFinal.DiagnosticsRetenus);
+            AppendList(sb, "  elements_en_faveur",  phase.BilanFinal.ElementsEnFaveur);
+            AppendEcartes(sb, "  diagnostics_ecartes", phase.BilanFinal.DiagnosticsEcartes);
+            sb.AppendLine($"  certitude: {(int)phase.BilanFinal.Certitude}");
+            if (!string.IsNullOrWhiteSpace(phase.BilanFinal.SyntheseIntegrative))
+            {
+                sb.AppendLine("  synthese_integrative: |");
+                foreach (var line in phase.BilanFinal.SyntheseIntegrative!.Split('\n'))
+                    sb.AppendLine($"    {line.TrimEnd('\r')}");
+            }
+            if (phase.BilanFinal.SyntheseIntegrativeDate.HasValue)
+                sb.AppendLine($"  synthese_integrative_date: {phase.BilanFinal.SyntheseIntegrativeDate.Value.ToString("o", CultureInfo.InvariantCulture)}");
 
             sb.AppendLine("---");
             sb.AppendLine();
@@ -223,34 +232,11 @@ namespace MedCompanion.Services.Evaluations
                 AppendAxesMd(sb, "Facteurs systémiques", phase.EvaluationCiblee.AxesSystemiques);
             }
 
-            // Étape 3 lisible — synthèse diagnostique
-            if (phase.Synthese.DiagnosticsRetenus.Count > 0 ||
-                phase.Synthese.ElementsEnFaveur.Count > 0 ||
-                phase.Synthese.DiagnosticsEcartes.Count > 0 ||
-                phase.Synthese.Certitude != NiveauCertitude.NonRenseigne)
-            {
-                sb.AppendLine();
-                sb.AppendLine("## Étape 3 — Synthèse diagnostique");
-                sb.AppendLine();
-                AppendSectionMd(sb, "Diagnostic(s) retenu(s)", phase.Synthese.DiagnosticsRetenus);
-                AppendSectionMd(sb, "Éléments cliniques en faveur", phase.Synthese.ElementsEnFaveur);
-                AppendEcartesMd(sb, "Diagnostics différentiels écartés", phase.Synthese.DiagnosticsEcartes);
-                var certLabel = phase.Synthese.Certitude switch
-                {
-                    NiveauCertitude.HypotheseAConfirmer => "Hypothèse à confirmer",
-                    NiveauCertitude.Probable            => "Probable",
-                    NiveauCertitude.Certain             => "Certain",
-                    _                                   => "Non renseigné"
-                };
-                sb.AppendLine($"**Niveau de certitude :** {certLabel}");
-                sb.AppendLine();
-            }
-
-            // Étape 4 lisible — Cartographie de l'enfant
+            // Étape 3 lisible — Cartographie de l'enfant
             if (phase.CartographieEnfant.IsValidated || HasAnyCartographieContent(phase.CartographieEnfant))
             {
                 sb.AppendLine();
-                sb.AppendLine("## Étape 4 — Cartographie de l'enfant");
+                sb.AppendLine("## Étape 3 — Cartographie de l'enfant");
                 sb.AppendLine();
                 if (phase.CartographieEnfant.AgeAuMomentDeLaSaisie.HasValue)
                     sb.AppendLine($"_Âge à la saisie : {phase.CartographieEnfant.AgeAuMomentDeLaSaisie} ans_");
@@ -264,11 +250,11 @@ namespace MedCompanion.Services.Evaluations
                 AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Pensee,          phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
             }
 
-            // Étape 5 lisible — Cartographie de l'environnement
+            // Étape 4 lisible — Cartographie de l'environnement
             if (phase.CartographieEnvironnement.IsValidated || HasAnyEnvironnementContent(phase.CartographieEnvironnement))
             {
                 sb.AppendLine();
-                sb.AppendLine("## Étape 5 — Cartographie de l'environnement");
+                sb.AppendLine("## Étape 4 — Cartographie de l'environnement");
                 sb.AppendLine();
                 if (phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie.HasValue)
                     sb.AppendLine($"_Âge à la saisie : {phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie} ans_");
@@ -290,6 +276,38 @@ namespace MedCompanion.Services.Evaluations
                     sb.AppendLine("### Lecture globale de la branche");
                     sb.AppendLine();
                     foreach (var line in phase.CartographieEnvironnement.LectureBrancheMed!.Split('\n'))
+                        sb.AppendLine($"> {line.TrimEnd('\r')}");
+                    sb.AppendLine();
+                }
+            }
+
+            // Étape 5 lisible — Bilan Final
+            if (phase.BilanFinal.DiagnosticsRetenus.Count > 0 ||
+                phase.BilanFinal.ElementsEnFaveur.Count > 0 ||
+                phase.BilanFinal.DiagnosticsEcartes.Count > 0 ||
+                phase.BilanFinal.Certitude != NiveauCertitude.NonRenseigne ||
+                !string.IsNullOrWhiteSpace(phase.BilanFinal.SyntheseIntegrative))
+            {
+                sb.AppendLine();
+                sb.AppendLine("## Étape 5 — Bilan Final");
+                sb.AppendLine();
+                AppendSectionMd(sb, "Diagnostic(s) retenu(s)", phase.BilanFinal.DiagnosticsRetenus);
+                AppendSectionMd(sb, "Éléments cliniques en faveur", phase.BilanFinal.ElementsEnFaveur);
+                AppendEcartesMd(sb, "Diagnostics différentiels écartés", phase.BilanFinal.DiagnosticsEcartes);
+                var certLabel = phase.BilanFinal.Certitude switch
+                {
+                    NiveauCertitude.HypotheseAConfirmer => "Hypothèse à confirmer",
+                    NiveauCertitude.Probable            => "Probable",
+                    NiveauCertitude.Certain             => "Certain",
+                    _                                   => "Non renseigné"
+                };
+                sb.AppendLine($"**Niveau de certitude :** {certLabel}");
+                sb.AppendLine();
+                if (!string.IsNullOrWhiteSpace(phase.BilanFinal.SyntheseIntegrative))
+                {
+                    sb.AppendLine("### Synthèse intégrative");
+                    sb.AppendLine();
+                    foreach (var line in phase.BilanFinal.SyntheseIntegrative!.Split('\n'))
                         sb.AppendLine($"> {line.TrimEnd('\r')}");
                     sb.AppendLine();
                 }
@@ -646,25 +664,27 @@ namespace MedCompanion.Services.Evaluations
                         phase.EvaluationCiblee.AxesSystemiques.Add(ax);
                 }
 
-                // Étape 3 — Synthèse diagnostique
-                if (GetBool(yaml, "etape_3_validee"))
-                    phase.Synthese.ValidationDate = GetDate(yaml, "etape_3_validation_date") ?? DateTime.Now;
+                // Détection du flow legacy : fichiers ANTÉRIEURS à V0.5 où Synthèse était Étape 3
+                // (clé `synthese_diagnostique:` présente). On les charge dans BilanFinal mais en
+                // respectant leur numérotation d'origine pour ne pas perturber l'utilisateur.
+                bool isLegacyFlow = yaml.Contains("synthese_diagnostique:");
 
-                var synth = ExtractSubBlock(yaml, "synthese_diagnostique:");
-                if (synth != null)
+                // Étape 3 — Cartographie de l'enfant (nouveau flow) OU Synthèse diagnostique (legacy)
+                if (isLegacyFlow)
                 {
-                    foreach (var it in GetListItems(synth, "diagnostics_retenus")) phase.Synthese.DiagnosticsRetenus.Add(new EditableString(it));
-                    foreach (var it in GetListItems(synth, "elements_en_faveur"))  phase.Synthese.ElementsEnFaveur.Add(new EditableString(it));
-                    foreach (var ec in GetEcartesFromBlock(synth, "diagnostics_ecartes"))
-                        phase.Synthese.DiagnosticsEcartes.Add(ec);
-                    var cert = GetIntInBlock(synth, "certitude") ?? 0;
-                    if (cert >= 0 && cert <= 3)
-                        phase.Synthese.Certitude = (NiveauCertitude)cert;
-                }
+                    if (GetBool(yaml, "etape_3_validee"))
+                        phase.BilanFinal.ValidationDate = GetDate(yaml, "etape_3_validation_date") ?? DateTime.Now;
+                    var synthLegacy = ExtractSubBlock(yaml, "synthese_diagnostique:");
+                    if (synthLegacy != null) ApplyBilanFinalFromYaml(synthLegacy, phase.BilanFinal);
 
-                // Étape 4 — Cartographie de l'enfant (chenille universelle)
-                if (GetBool(yaml, "etape_4_validee"))
-                    phase.CartographieEnfant.ValidationDate = GetDate(yaml, "etape_4_validation_date") ?? DateTime.Now;
+                    if (GetBool(yaml, "etape_4_validee"))
+                        phase.CartographieEnfant.ValidationDate = GetDate(yaml, "etape_4_validation_date") ?? DateTime.Now;
+                }
+                else
+                {
+                    if (GetBool(yaml, "etape_3_validee"))
+                        phase.CartographieEnfant.ValidationDate = GetDate(yaml, "etape_3_validation_date") ?? DateTime.Now;
+                }
 
                 var carto = ExtractSubBlock(yaml, "cartographie_enfant:");
                 if (carto != null)
@@ -690,9 +710,22 @@ namespace MedCompanion.Services.Evaluations
                     }
                 }
 
-                // Étape 5 — Cartographie de l'environnement
-                if (GetBool(yaml, "etape_5_validee"))
-                    phase.CartographieEnvironnement.ValidationDate = GetDate(yaml, "etape_5_validation_date") ?? DateTime.Now;
+                // Étape 4/5 — Cartographie de l'environnement et Bilan Final selon le flow
+                if (isLegacyFlow)
+                {
+                    // legacy : env était étape 5, pas de bilan final structuré
+                    if (GetBool(yaml, "etape_5_validee"))
+                        phase.CartographieEnvironnement.ValidationDate = GetDate(yaml, "etape_5_validation_date") ?? DateTime.Now;
+                }
+                else
+                {
+                    if (GetBool(yaml, "etape_4_validee"))
+                        phase.CartographieEnvironnement.ValidationDate = GetDate(yaml, "etape_4_validation_date") ?? DateTime.Now;
+                    if (GetBool(yaml, "etape_5_validee"))
+                        phase.BilanFinal.ValidationDate = GetDate(yaml, "etape_5_validation_date") ?? DateTime.Now;
+                    var bf = ExtractSubBlock(yaml, "bilan_final:");
+                    if (bf != null) ApplyBilanFinalFromYaml(bf, phase.BilanFinal);
+                }
 
                 var env = ExtractSubBlock(yaml, "cartographie_environnement:");
                 if (env != null)
@@ -714,6 +747,23 @@ namespace MedCompanion.Services.Evaluations
                 System.Diagnostics.Debug.WriteLine($"[EvaluationPhaseService] Erreur load {path}: {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Applique un sous-bloc YAML "bilan_final:" (ou legacy "synthese_diagnostique:")
+        /// au modèle BilanFinal. Charge diagnostics, écartés, certitude, synthèse intégrative.
+        /// </summary>
+        private static void ApplyBilanFinalFromYaml(string block, BilanFinal target)
+        {
+            foreach (var it in GetListItems(block, "diagnostics_retenus")) target.DiagnosticsRetenus.Add(new EditableString(it));
+            foreach (var it in GetListItems(block, "elements_en_faveur"))  target.ElementsEnFaveur.Add(new EditableString(it));
+            foreach (var ec in GetEcartesFromBlock(block, "diagnostics_ecartes"))
+                target.DiagnosticsEcartes.Add(ec);
+            var cert = GetIntInBlock(block, "certitude") ?? 0;
+            if (cert >= 0 && cert <= 3)
+                target.Certitude = (NiveauCertitude)cert;
+            target.SyntheseIntegrative     = ExtractLiteralBlock(block, "synthese_integrative");
+            target.SyntheseIntegrativeDate = ExtractDateInBlock(block, "synthese_integrative_date");
         }
 
         // ── Parsers YAML minimalistes ────────────────────────────────────────

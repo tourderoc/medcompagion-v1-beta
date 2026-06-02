@@ -39,12 +39,12 @@ namespace MedCompanion.ViewModels
                     return $"Clôturée {DateCloture!.Value:dd/MM}";
                 var step = EtapeCourante switch
                 {
-                    EvaluationStep.Preparation      => "Étape 1",
-                    EvaluationStep.EvaluationCiblee => "Étape 2",
-                    EvaluationStep.Synthese         => "Étape 3",
-                    EvaluationStep.CartographieEnfant         => "Étape 4",
-                    EvaluationStep.CartographieEnvironnement  => "Étape 5",
-                    _                               => ""
+                    EvaluationStep.Preparation                => "Étape 1",
+                    EvaluationStep.EvaluationCiblee           => "Étape 2",
+                    EvaluationStep.CartographieEnfant         => "Étape 3",
+                    EvaluationStep.CartographieEnvironnement  => "Étape 4",
+                    EvaluationStep.BilanFinal                 => "Étape 5",
+                    _                                         => ""
                 };
                 return $"En cours · {step}";
             }

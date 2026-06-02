@@ -24,7 +24,7 @@ namespace MedCompanion.ViewModels
         private readonly PreparationSuggesterService? _suggester;
         private readonly AxesSuggesterService? _axesSuggester;
         private readonly AxisExtractorService? _axisExtractor;
-        private readonly SyntheseSuggesterService? _syntheseSuggester;
+        private readonly BilanFinalSuggesterService? _bilanFinalSuggester;
         private readonly FeuilleLectureService? _feuilleLecture;
         private readonly BrancheEnvironnementLectureService? _brancheLecture;
         private readonly WhisperStreamingService? _whisper;
@@ -40,7 +40,7 @@ namespace MedCompanion.ViewModels
                                         AxesSuggesterService? axesSuggester = null,
                                         AxisExtractorService?  axisExtractor = null,
                                         WhisperStreamingService? whisper = null,
-                                        SyntheseSuggesterService? syntheseSuggester = null,
+                                        BilanFinalSuggesterService? bilanFinalSuggester = null,
                                         FeuilleLectureService? feuilleLecture = null,
                                         BrancheEnvironnementLectureService? brancheLecture = null)
         {
@@ -48,7 +48,7 @@ namespace MedCompanion.ViewModels
             _suggester         = suggester;
             _axesSuggester     = axesSuggester;
             _axisExtractor     = axisExtractor;
-            _syntheseSuggester = syntheseSuggester;
+            _bilanFinalSuggester = bilanFinalSuggester;
             _feuilleLecture    = feuilleLecture;
             _brancheLecture    = brancheLecture;
             _whisper           = whisper;
@@ -57,8 +57,8 @@ namespace MedCompanion.ViewModels
             ResumeCommand                 = new RelayCommand(_ => Resume(),                  _ => CanResume);
             SuggestPreparationCommand     = new RelayCommand(async _ => await SuggestPreparationAsync(), _ => IsWorkingPreparation && !IsBusy);
             ValidatePreparationCommand    = new RelayCommand(_ => ValidatePreparation(),    _ => CanValidatePreparation);
-            TerminateSessionCommand       = new RelayCommand(_ => TerminateSession(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese || IsWorkingCartographieEnfant || IsWorkingCartographieEnvironnement);
-            CancelEvaluationCommand       = new RelayCommand(_ => CancelEvaluation(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingSynthese || IsWorkingCartographieEnfant || IsWorkingCartographieEnvironnement);
+            TerminateSessionCommand       = new RelayCommand(_ => TerminateSession(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingBilanFinal || IsWorkingCartographieEnfant || IsWorkingCartographieEnvironnement);
+            CancelEvaluationCommand       = new RelayCommand(_ => CancelEvaluation(),       _ => IsWorkingPreparation || IsWorkingEvaluation || IsWorkingBilanFinal || IsWorkingCartographieEnfant || IsWorkingCartographieEnvironnement);
 
             AddItemCommand    = new RelayCommand(param => AddItem(param as string));
             RemoveItemCommand = new RelayCommand(param => RemoveItem(param));
@@ -77,11 +77,11 @@ namespace MedCompanion.ViewModels
             OpenRawTranscriptCommand = new RelayCommand(_ => OpenRawTranscript(),                _ => !string.IsNullOrEmpty(LastRawTranscriptPath));
 
             // Étape 3 — Synthèse diagnostique
-            SuggestSyntheseCommand        = new RelayCommand(async _ => await SuggestSyntheseAsync(), _ => IsWorkingSynthese && !IsBusy && _syntheseSuggester != null);
-            ValidateSyntheseCommand       = new RelayCommand(_ => ValidateSynthese(),                _ => CanValidateSynthese);
-            BackToEvaluationCommand       = new RelayCommand(_ => BackToEvaluation(),                _ => IsWorkingSynthese);
-            AddSyntheseItemCommand        = new RelayCommand(param => AddSyntheseItem(param as string));
-            RemoveSyntheseItemCommand     = new RelayCommand(param => RemoveSyntheseItem(param));
+            SuggestBilanFinalCommand        = new RelayCommand(async _ => await SuggestBilanFinalAsync(), _ => IsWorkingBilanFinal && !IsBusy && _bilanFinalSuggester != null);
+            ValidateBilanFinalCommand       = new RelayCommand(_ => ValidateBilanFinal(),                _ => CanValidateBilanFinal);
+            BackToCartographieEnvironnementCommand = new RelayCommand(_ => BackToCartographieEnvironnementFromBilan(), _ => IsWorkingBilanFinal);
+            AddBilanFinalItemCommand        = new RelayCommand(param => AddBilanFinalItem(param as string));
+            RemoveBilanFinalItemCommand     = new RelayCommand(param => RemoveBilanFinalItem(param));
             AddDiagnosticEcarteCommand    = new RelayCommand(_ => AddDiagnosticEcarte());
             RemoveDiagnosticEcarteCommand = new RelayCommand(param => RemoveDiagnosticEcarte(param as DiagnosticEcarte));
             SetCertitudeCommand           = new RelayCommand(param => SetCertitude(param));
@@ -92,7 +92,7 @@ namespace MedCompanion.ViewModels
 
             // Étape 4 — Cartographie de l'enfant
             ValidateCartographieEnfantCommand = new RelayCommand(_ => ValidateCartographieEnfant(), _ => CanValidateCartographieEnfant);
-            BackToSyntheseCommand             = new RelayCommand(_ => BackToSynthese(),             _ => IsWorkingCartographieEnfant);
+            BackToEvaluationCibleeCommand     = new RelayCommand(_ => BackToEvaluationCibleeFromCarto(), _ => IsWorkingCartographieEnfant);
 
             // Étape 5 — Cartographie de l'environnement
             ValidateCartographieEnvironnementCommand = new RelayCommand(_ => ValidateCartographieEnvironnement(), _ => CanValidateCartographieEnvironnement);
@@ -132,23 +132,23 @@ namespace MedCompanion.ViewModels
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesPrincipaux);
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesDifferentiels);
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesSystemiques);
-                HookSyntheseHandlers(Phase.Synthese);
+                HookBilanFinalHandlers(Phase.BilanFinal);
             }
 
             RebuildCartographieWrappers();
             IsWorkingPreparation               = false;
             IsWorkingEvaluation                = false;
-            IsWorkingSynthese                  = false;
+            IsWorkingBilanFinal                  = false;
             IsWorkingCartographieEnfant        = false;
             IsWorkingCartographieEnvironnement = false;
             StatusMessage = "";
             NotifyAllStates();
         }
 
-        private void HookSyntheseHandlers(SyntheseDiagnostique s)
+        private void HookBilanFinalHandlers(BilanFinal s)
         {
-            s.PropertyChanged -= OnSyntheseChanged;
-            s.PropertyChanged += OnSyntheseChanged;
+            s.PropertyChanged -= OnBilanFinalChanged;
+            s.PropertyChanged += OnBilanFinalChanged;
             HookEditableList(s.DiagnosticsRetenus);
             HookEditableList(s.ElementsEnFaveur);
             foreach (var e in s.DiagnosticsEcartes)
@@ -174,10 +174,10 @@ namespace MedCompanion.ViewModels
             { try { _phaseService.Save(Phase); } catch { /* meilleur effort */ } }
         }
 
-        private void OnSyntheseChanged(object? sender, PropertyChangedEventArgs e)
+        private void OnBilanFinalChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (Phase == null) return;
-            if (e.PropertyName == nameof(SyntheseDiagnostique.Certitude))
+            if (e.PropertyName == nameof(BilanFinal.Certitude))
             { try { _phaseService.Save(Phase); } catch { /* meilleur effort */ } }
         }
 
@@ -232,14 +232,14 @@ namespace MedCompanion.ViewModels
             set { if (_isWorkingEvaluation != value) { _isWorkingEvaluation = value; OnPropertyChanged(); NotifyAllStates(); } }
         }
 
-        private bool _isWorkingSynthese;
+        private bool _isWorkingBilanFinal;
         /// <summary>
         /// True quand le médecin est en train de travailler l'Étape 3 (Synthèse) dans la séance courante.
         /// </summary>
-        public bool IsWorkingSynthese
+        public bool IsWorkingBilanFinal
         {
-            get => _isWorkingSynthese;
-            set { if (_isWorkingSynthese != value) { _isWorkingSynthese = value; OnPropertyChanged(); NotifyAllStates(); } }
+            get => _isWorkingBilanFinal;
+            set { if (_isWorkingBilanFinal != value) { _isWorkingBilanFinal = value; OnPropertyChanged(); NotifyAllStates(); } }
         }
 
         private bool _isWorkingCartographieEnfant;
@@ -289,8 +289,8 @@ namespace MedCompanion.ViewModels
 
         // ── États dérivés pour la View (3 cas + lecture seule) ──────────────
 
-        public bool CanStart  => !IsReadOnly && _patient != null && Phase == null && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese && !IsWorkingCartographieEnfant && !IsWorkingCartographieEnvironnement;
-        public bool CanResume => !IsReadOnly && _patient != null && Phase != null && Phase.IsActive && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingSynthese && !IsWorkingCartographieEnfant && !IsWorkingCartographieEnvironnement;
+        public bool CanStart  => !IsReadOnly && _patient != null && Phase == null && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingBilanFinal && !IsWorkingCartographieEnfant && !IsWorkingCartographieEnvironnement;
+        public bool CanResume => !IsReadOnly && _patient != null && Phase != null && Phase.IsActive && !IsWorkingPreparation && !IsWorkingEvaluation && !IsWorkingBilanFinal && !IsWorkingCartographieEnfant && !IsWorkingCartographieEnvironnement;
 
         /// <summary>
         /// True si l'âge du patient est dans la fourchette 3-11 ans où la Cartographie de
@@ -559,7 +559,7 @@ namespace MedCompanion.ViewModels
                 {
                     EvaluationStep.Preparation                => "Étape 1 — Préparation",
                     EvaluationStep.EvaluationCiblee           => "Étape 2 — Évaluation ciblée",
-                    EvaluationStep.Synthese                   => "Étape 3 — Synthèse diagnostique",
+                    EvaluationStep.BilanFinal                   => "Étape 3 — Synthèse diagnostique",
                     EvaluationStep.CartographieEnfant         => "Étape 4 — Cartographie de l'enfant",
                     EvaluationStep.CartographieEnvironnement  => "Étape 5 — Cartographie de l'environnement",
                     _                                         => "?"
@@ -642,10 +642,10 @@ namespace MedCompanion.ViewModels
                     StatusMessage = "Reprise de l'évaluation — Étape 2.";
                     NotifyEvaluationCollections();
                     break;
-                case EvaluationStep.Synthese:
-                    IsWorkingSynthese = true;
+                case EvaluationStep.BilanFinal:
+                    IsWorkingBilanFinal = true;
                     StatusMessage = "Reprise de l'évaluation — Étape 3 Synthèse diagnostique.";
-                    NotifySyntheseCollections();
+                    NotifyBilanFinalCollections();
                     break;
                 case EvaluationStep.CartographieEnfant:
                     if (IsCartographieDisponible)
@@ -657,9 +657,9 @@ namespace MedCompanion.ViewModels
                     else
                     {
                         // Patient hors fourchette : retour Synthèse pour clôturer manuellement
-                        IsWorkingSynthese = true;
+                        IsWorkingBilanFinal = true;
                         StatusMessage = "Cartographie de l'enfant non applicable (3-11 ans). Vous pouvez clôturer depuis l'Étape 3.";
-                        NotifySyntheseCollections();
+                        NotifyBilanFinalCollections();
                     }
                     break;
                 case EvaluationStep.CartographieEnvironnement:
@@ -671,9 +671,9 @@ namespace MedCompanion.ViewModels
                     }
                     else
                     {
-                        IsWorkingSynthese = true;
+                        IsWorkingBilanFinal = true;
                         StatusMessage = "Cartographie de l'environnement non applicable (3-11 ans). Vous pouvez clôturer depuis l'Étape 3.";
-                        NotifySyntheseCollections();
+                        NotifyBilanFinalCollections();
                     }
                     break;
                 default:
@@ -697,7 +697,7 @@ namespace MedCompanion.ViewModels
             // Reset des working states (on va router vers le bon en fonction de l'étape)
             IsWorkingPreparation               = false;
             IsWorkingEvaluation                = false;
-            IsWorkingSynthese                  = false;
+            IsWorkingBilanFinal                  = false;
             IsWorkingCartographieEnfant        = false;
             IsWorkingCartographieEnvironnement = false;
 
@@ -711,7 +711,7 @@ namespace MedCompanion.ViewModels
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesPrincipaux);
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesDifferentiels);
                 HookAxisHandlers(Phase.EvaluationCiblee.AxesSystemiques);
-                HookSyntheseHandlers(Phase.Synthese);
+                HookBilanFinalHandlers(Phase.BilanFinal);
             }
 
             // Router selon le marque-page
@@ -721,9 +721,9 @@ namespace MedCompanion.ViewModels
                     IsWorkingEvaluation = true;
                     NotifyEvaluationCollections();
                     break;
-                case EvaluationStep.Synthese:
-                    IsWorkingSynthese = true;
-                    NotifySyntheseCollections();
+                case EvaluationStep.BilanFinal:
+                    IsWorkingBilanFinal = true;
+                    NotifyBilanFinalCollections();
                     break;
                 case EvaluationStep.CartographieEnfant:
                     IsWorkingCartographieEnfant = true;
@@ -754,14 +754,14 @@ namespace MedCompanion.ViewModels
             if (!IsReadOnly || Phase == null) return;
             IsWorkingPreparation               = false;
             IsWorkingEvaluation                = false;
-            IsWorkingSynthese                  = false;
+            IsWorkingBilanFinal                  = false;
             IsWorkingCartographieEnfant        = false;
             IsWorkingCartographieEnvironnement = false;
             switch (step)
             {
                 case "1": IsWorkingPreparation               = true; NotifyPreparationCollections(); break;
                 case "2": IsWorkingEvaluation                = true; NotifyEvaluationCollections();  break;
-                case "3": IsWorkingSynthese                  = true; NotifySyntheseCollections();    break;
+                case "3": IsWorkingBilanFinal                  = true; NotifyBilanFinalCollections();    break;
                 case "4": IsWorkingCartographieEnfant        = true; NotifyCartographieCollections(); break;
                 case "5": IsWorkingCartographieEnvironnement = true; NotifyEnvironnementSynthese();   break;
             }
@@ -778,7 +778,7 @@ namespace MedCompanion.ViewModels
             IsReadOnly = false;
             IsWorkingPreparation               = false;
             IsWorkingEvaluation                = false;
-            IsWorkingSynthese                  = false;
+            IsWorkingBilanFinal                  = false;
             IsWorkingCartographieEnfant        = false;
             IsWorkingCartographieEnvironnement = false;
             StatusMessage = "";
@@ -870,14 +870,14 @@ namespace MedCompanion.ViewModels
             CleanEmpty(Phase.Preparation.QuestionsCliniques);
 
             // Étape 3 : cleanup
-            CleanEmpty(Phase.Synthese.DiagnosticsRetenus);
-            CleanEmpty(Phase.Synthese.ElementsEnFaveur);
-            CleanEmptyEcartes(Phase.Synthese.DiagnosticsEcartes);
+            CleanEmpty(Phase.BilanFinal.DiagnosticsRetenus);
+            CleanEmpty(Phase.BilanFinal.ElementsEnFaveur);
+            CleanEmptyEcartes(Phase.BilanFinal.DiagnosticsEcartes);
 
             _phaseService.Save(Phase);
             IsWorkingPreparation               = false;
             IsWorkingEvaluation                = false;
-            IsWorkingSynthese                  = false;
+            IsWorkingBilanFinal                  = false;
             IsWorkingCartographieEnfant        = false;
             IsWorkingCartographieEnvironnement = false;
             StatusMessage = "Séance suspendue. Vous reprendrez exactement ici la prochaine fois.";
@@ -924,8 +924,8 @@ namespace MedCompanion.ViewModels
                 // Synthèse diagnostique (Étape 3)
                 if (Phase != null)
                 {
-                    if (Phase.Synthese.DiagnosticsRetenus.Remove(item)) { TrySaveSynthese(); return; }
-                    if (Phase.Synthese.ElementsEnFaveur.Remove(item))   { TrySaveSynthese(); return; }
+                    if (Phase.BilanFinal.DiagnosticsRetenus.Remove(item)) { TrySaveBilanFinal(); return; }
+                    if (Phase.BilanFinal.ElementsEnFaveur.Remove(item))   { TrySaveBilanFinal(); return; }
                 }
             }
         }
@@ -1067,15 +1067,31 @@ namespace MedCompanion.ViewModels
         {
             if (Phase == null) return;
             Phase.EvaluationCiblee.ValidationDate = DateTime.Now;
-            Phase.EtapeCourante = EvaluationStep.Synthese;
-            _phaseService.Save(Phase);
 
-            // Transition directe vers Étape 3 dans la même séance
-            IsWorkingEvaluation = false;
-            IsWorkingSynthese   = true;
-            StatusMessage = "Étape 2 validée. Vous pouvez maintenant rédiger la synthèse diagnostique.";
-            NotifyAllStates();
-            NotifySyntheseCollections();
+            // Nouveau flow : Évaluation Ciblée → Cartographie de l'enfant (si 3-11) → Cartographie
+            // de l'environnement → Bilan Final. Si âge hors 3-11, skip direct au Bilan Final.
+            if (IsCartographieDisponible)
+            {
+                Phase.EtapeCourante = EvaluationStep.CartographieEnfant;
+                Phase.CartographieEnfant.AgeAuMomentDeLaSaisie = _patient?.Age;
+                _phaseService.Save(Phase);
+
+                IsWorkingEvaluation = false;
+                IsWorkingCartographieEnfant = true;
+                StatusMessage = "Étape 2 validée. Passage à l'Étape 3 — Cartographie de l'enfant.";
+                NotifyAllStates();
+            }
+            else
+            {
+                Phase.EtapeCourante = EvaluationStep.BilanFinal;
+                _phaseService.Save(Phase);
+
+                IsWorkingEvaluation = false;
+                IsWorkingBilanFinal  = true;
+                StatusMessage = "Étape 2 validée. Cartographies non applicables (3-11 ans) — passage direct au Bilan Final.";
+                NotifyAllStates();
+                NotifyBilanFinalCollections();
+            }
         }
 
         private void BackToPreparation()
@@ -1383,24 +1399,48 @@ namespace MedCompanion.ViewModels
         // ÉTAPE 3 — Synthèse diagnostique (V0.2)
         // ═══════════════════════════════════════════════════════════════════
 
-        public ObservableCollection<EditableString>   DiagnosticsRetenus  => Phase?.Synthese.DiagnosticsRetenus ?? new();
-        public ObservableCollection<EditableString>   ElementsEnFaveur    => Phase?.Synthese.ElementsEnFaveur   ?? new();
-        public ObservableCollection<DiagnosticEcarte> DiagnosticsEcartes  => Phase?.Synthese.DiagnosticsEcartes ?? new();
+        public ObservableCollection<EditableString>   DiagnosticsRetenus  => Phase?.BilanFinal.DiagnosticsRetenus ?? new();
+        public ObservableCollection<EditableString>   ElementsEnFaveur    => Phase?.BilanFinal.ElementsEnFaveur   ?? new();
+        public ObservableCollection<DiagnosticEcarte> DiagnosticsEcartes  => Phase?.BilanFinal.DiagnosticsEcartes ?? new();
 
-        public NiveauCertitude SyntheseCertitude
+        public NiveauCertitude BilanFinalCertitude
         {
-            get => Phase?.Synthese.Certitude ?? NiveauCertitude.NonRenseigne;
-            set { if (Phase != null) Phase.Synthese.Certitude = value; }
+            get => Phase?.BilanFinal.Certitude ?? NiveauCertitude.NonRenseigne;
+            set { if (Phase != null) Phase.BilanFinal.Certitude = value; }
         }
-        public bool IsCertitudeHypothese => SyntheseCertitude == NiveauCertitude.HypotheseAConfirmer;
-        public bool IsCertitudeProbable  => SyntheseCertitude == NiveauCertitude.Probable;
-        public bool IsCertitudeCertain   => SyntheseCertitude == NiveauCertitude.Certain;
+        public bool IsCertitudeHypothese => BilanFinalCertitude == NiveauCertitude.HypotheseAConfirmer;
 
-        public ICommand SuggestSyntheseCommand        { get; private set; } = null!;
-        public ICommand ValidateSyntheseCommand       { get; private set; } = null!;
-        public ICommand BackToEvaluationCommand       { get; private set; } = null!;
-        public ICommand AddSyntheseItemCommand        { get; private set; } = null!;
-        public ICommand RemoveSyntheseItemCommand     { get; private set; } = null!;
+        /// <summary>
+        /// Paragraphe synthèse intégrative (Étape 5). Éditable manuellement par le psy
+        /// après génération LLM. Auto-save à chaque édition.
+        /// </summary>
+        public string? SyntheseIntegrative
+        {
+            get => Phase?.BilanFinal.SyntheseIntegrative;
+            set
+            {
+                if (Phase == null) return;
+                if (Phase.BilanFinal.SyntheseIntegrative != value)
+                {
+                    Phase.BilanFinal.SyntheseIntegrative = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(HasSyntheseIntegrative));
+                    try { _phaseService.Save(Phase); } catch { /* meilleur effort */ }
+                }
+            }
+        }
+        public bool HasSyntheseIntegrative => !string.IsNullOrWhiteSpace(SyntheseIntegrative);
+
+        public ICommand EffacerSyntheseIntegrativeCommand
+            => new RelayCommand(_ => { SyntheseIntegrative = null; }, _ => HasSyntheseIntegrative);
+        public bool IsCertitudeProbable  => BilanFinalCertitude == NiveauCertitude.Probable;
+        public bool IsCertitudeCertain   => BilanFinalCertitude == NiveauCertitude.Certain;
+
+        public ICommand SuggestBilanFinalCommand        { get; private set; } = null!;
+        public ICommand ValidateBilanFinalCommand       { get; private set; } = null!;
+        public ICommand BackToCartographieEnvironnementCommand { get; private set; } = null!;
+        public ICommand AddBilanFinalItemCommand        { get; private set; } = null!;
+        public ICommand RemoveBilanFinalItemCommand     { get; private set; } = null!;
         public ICommand AddDiagnosticEcarteCommand    { get; private set; } = null!;
         public ICommand RemoveDiagnosticEcarteCommand { get; private set; } = null!;
         public ICommand SetCertitudeCommand           { get; private set; } = null!;
@@ -1411,7 +1451,7 @@ namespace MedCompanion.ViewModels
 
         // Étape 4 — Cartographie de l'enfant
         public ICommand ValidateCartographieEnfantCommand { get; private set; } = null!;
-        public ICommand BackToSyntheseCommand             { get; private set; } = null!;
+        public ICommand BackToEvaluationCibleeCommand     { get; private set; } = null!;
 
         // Étape 5 — Cartographie de l'environnement
         public ICommand ValidateCartographieEnvironnementCommand { get; private set; } = null!;
@@ -1419,16 +1459,16 @@ namespace MedCompanion.ViewModels
         public ICommand LireBrancheCommand                       { get; private set; } = null!;
         public ICommand EffacerLectureBrancheCommand             { get; private set; } = null!;
 
-        private bool CanValidateSynthese
-            => IsWorkingSynthese && Phase != null && (
-                Phase.Synthese.DiagnosticsRetenus.Any(NonEmpty) ||
-                Phase.Synthese.ElementsEnFaveur.Any(NonEmpty) ||
-                Phase.Synthese.DiagnosticsEcartes.Any(e => !string.IsNullOrWhiteSpace(e?.Label)) ||
-                Phase.Synthese.Certitude != NiveauCertitude.NonRenseigne);
+        private bool CanValidateBilanFinal
+            => IsWorkingBilanFinal && Phase != null && (
+                Phase.BilanFinal.DiagnosticsRetenus.Any(NonEmpty) ||
+                Phase.BilanFinal.ElementsEnFaveur.Any(NonEmpty) ||
+                Phase.BilanFinal.DiagnosticsEcartes.Any(e => !string.IsNullOrWhiteSpace(e?.Label)) ||
+                Phase.BilanFinal.Certitude != NiveauCertitude.NonRenseigne);
 
-        public async Task SuggestSyntheseAsync()
+        public async Task SuggestBilanFinalAsync()
         {
-            if (Phase == null || _syntheseSuggester == null) return;
+            if (Phase == null || _bilanFinalSuggester == null) return;
 
             IsBusy = true;
             StatusMessage = "Génération IA de la synthèse en cours...";
@@ -1438,7 +1478,7 @@ namespace MedCompanion.ViewModels
                     .Concat(Phase.EvaluationCiblee.AxesDifferentiels)
                     .Concat(Phase.EvaluationCiblee.AxesSystemiques)
                     .ToList();
-                var axes = allAxes.Select(a => new SyntheseSuggesterService.AxisInput
+                var axes = allAxes.Select(a => new BilanFinalSuggesterService.AxisInput
                 {
                     Label         = a.Label,
                     Justification = a.Justification,
@@ -1447,7 +1487,9 @@ namespace MedCompanion.ViewModels
                 }).ToList();
 
                 var motif = (await BuildContextAsync()).Motif;
-                var (ok, sug, err) = await _syntheseSuggester.SuggestAsync(_patient?.Age, motif, axes);
+                var (ok, sug, err) = await _bilanFinalSuggester.SuggestAsync(
+                    _patient?.Age, motif, axes,
+                    Phase.CartographieEnfant, Phase.CartographieEnvironnement);
                 if (!ok || sug == null)
                 {
                     StatusMessage = $"Suggestion IA indisponible : {err}";
@@ -1455,16 +1497,23 @@ namespace MedCompanion.ViewModels
                 }
 
                 // On REMPLACE le contenu — le médecin pourra éditer librement après
-                ReplaceList(Phase.Synthese.DiagnosticsRetenus, sug.DiagnosticsRetenus);
-                ReplaceList(Phase.Synthese.ElementsEnFaveur,   sug.ElementsEnFaveur);
-                ReplaceEcartes(Phase.Synthese.DiagnosticsEcartes, sug.DiagnosticsEcartes);
+                ReplaceList(Phase.BilanFinal.DiagnosticsRetenus, sug.DiagnosticsRetenus);
+                ReplaceList(Phase.BilanFinal.ElementsEnFaveur,   sug.ElementsEnFaveur);
+                ReplaceEcartes(Phase.BilanFinal.DiagnosticsEcartes, sug.DiagnosticsEcartes);
                 if (sug.Certitude >= 0 && sug.Certitude <= 3)
-                    Phase.Synthese.Certitude = (NiveauCertitude)sug.Certitude;
+                    Phase.BilanFinal.Certitude = (NiveauCertitude)sug.Certitude;
+                if (!string.IsNullOrWhiteSpace(sug.SyntheseIntegrative))
+                {
+                    Phase.BilanFinal.SyntheseIntegrative     = sug.SyntheseIntegrative.Trim();
+                    Phase.BilanFinal.SyntheseIntegrativeDate = DateTime.Now;
+                }
 
-                HookSyntheseHandlers(Phase.Synthese);
+                HookBilanFinalHandlers(Phase.BilanFinal);
                 _phaseService.Save(Phase);
-                StatusMessage = "Synthèse proposée — vous pouvez éditer librement.";
-                NotifySyntheseCollections();
+                StatusMessage = "Bilan Final proposé — vous pouvez éditer librement.";
+                NotifyBilanFinalCollections();
+                OnPropertyChanged(nameof(SyntheseIntegrative));
+                OnPropertyChanged(nameof(HasSyntheseIntegrative));
             }
             catch (Exception ex)
             {
@@ -1477,7 +1526,7 @@ namespace MedCompanion.ViewModels
         }
 
         private void ReplaceEcartes(ObservableCollection<DiagnosticEcarte> target,
-                                    System.Collections.Generic.List<SyntheseSuggesterService.EcarteSuggestion> source)
+                                    System.Collections.Generic.List<BilanFinalSuggesterService.EcarteSuggestion> source)
         {
             target.Clear();
             foreach (var s in source)
@@ -1489,38 +1538,23 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        private void ValidateSynthese()
+        private void ValidateBilanFinal()
         {
             if (Phase == null) return;
-            CleanEmpty(Phase.Synthese.DiagnosticsRetenus);
-            CleanEmpty(Phase.Synthese.ElementsEnFaveur);
-            CleanEmptyEcartes(Phase.Synthese.DiagnosticsEcartes);
+            CleanEmpty(Phase.BilanFinal.DiagnosticsRetenus);
+            CleanEmpty(Phase.BilanFinal.ElementsEnFaveur);
+            CleanEmptyEcartes(Phase.BilanFinal.DiagnosticsEcartes);
 
-            Phase.Synthese.ValidationDate = DateTime.Now;
+            Phase.BilanFinal.ValidationDate = DateTime.Now;
 
-            // Routing : si âge 3-11 → étape 4 (Cartographie de l'enfant) ; sinon → clôture directe.
-            if (IsCartographieDisponible)
-            {
-                Phase.EtapeCourante = EvaluationStep.CartographieEnfant;
-                Phase.CartographieEnfant.AgeAuMomentDeLaSaisie = _patient?.Age;
-                _phaseService.Save(Phase);
-
-                IsWorkingSynthese = false;
-                IsWorkingCartographieEnfant = true;
-                StatusMessage = "Synthèse validée. Passage à l'Étape 4 — Cartographie de l'enfant.";
-                NotifyAllStates();
-            }
-            else
-            {
-                Phase.EtapeCourante = EvaluationStep.CartographieEnfant;  // marque-page final
-                _phaseService.Save(Phase);
-                _phaseService.Close(Phase);
-                IsWorkingSynthese = false;
-                Phase = null;
-                StatusMessage = "Évaluation clôturée. Cartographie de l'enfant non applicable (outil réservé aux 3-11 ans).";
-                NotifyAllStates();
-                PhaseStateChanged?.Invoke();
-            }
+            // Étape 5 = dernière étape — la validation clôture l'évaluation.
+            _phaseService.Save(Phase);
+            _phaseService.Close(Phase);
+            IsWorkingBilanFinal = false;
+            Phase = null;
+            StatusMessage = "Bilan Final validé. Évaluation clôturée.";
+            NotifyAllStates();
+            PhaseStateChanged?.Invoke();
         }
 
         /// <summary>
@@ -1558,8 +1592,7 @@ namespace MedCompanion.ViewModels
         }
 
         /// <summary>
-        /// Valide l'Étape 5 (Cartographie de l'environnement) ET clôture l'évaluation.
-        /// Dernière étape de la Phase d'Évaluation.
+        /// Valide l'Étape 4 (Cartographie de l'environnement) et passe à l'Étape 5 (Bilan Final).
         /// </summary>
         private void ValidateCartographieEnvironnement()
         {
@@ -1568,13 +1601,14 @@ namespace MedCompanion.ViewModels
             if (!Phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie.HasValue)
                 Phase.CartographieEnvironnement.AgeAuMomentDeLaSaisie = _patient?.Age;
 
+            Phase.EtapeCourante = EvaluationStep.BilanFinal;
             _phaseService.Save(Phase);
-            _phaseService.Close(Phase);
+
             IsWorkingCartographieEnvironnement = false;
-            Phase = null;
-            StatusMessage = "Évaluation clôturée — Phase d'Évaluation terminée.";
+            IsWorkingBilanFinal = true;
+            StatusMessage = "Étape 4 validée. Passage à l'Étape 5 — Bilan Final.";
             NotifyAllStates();
-            PhaseStateChanged?.Invoke();
+            NotifyBilanFinalCollections();
         }
 
         /// <summary>
@@ -1599,35 +1633,43 @@ namespace MedCompanion.ViewModels
         /// Retour à l'Étape 3 depuis l'Étape 4 (le médecin veut modifier la synthèse).
         /// Réinitialise la validation de l'étape 3 pour la rendre éditable, conserve la cartographie.
         /// </summary>
-        private void BackToSynthese()
+        /// <summary>
+        /// Retour à l'Étape 2 (Évaluation Ciblée) depuis l'Étape 3 (Cartographie Enfant).
+        /// Réinitialise la validation de l'étape 2, conserve la cartographie déjà cotée.
+        /// </summary>
+        private void BackToEvaluationCibleeFromCarto()
         {
             if (Phase == null) return;
-            Phase.Synthese.ValidationDate = null;
-            Phase.EtapeCourante = EvaluationStep.Synthese;
-            _phaseService.Save(Phase);
-
-            IsWorkingCartographieEnfant = false;
-            IsWorkingSynthese = true;
-            StatusMessage = "Retour à l'Étape 3 — la Cartographie reste conservée.";
-            NotifyAllStates();
-            NotifySyntheseCollections();
-        }
-
-        private void BackToEvaluation()
-        {
-            if (Phase == null) return;
-            Phase.EvaluationCiblee.ValidationDate = null;  // ré-éditable
+            Phase.EvaluationCiblee.ValidationDate = null;
             Phase.EtapeCourante = EvaluationStep.EvaluationCiblee;
             _phaseService.Save(Phase);
 
-            IsWorkingSynthese    = false;
-            IsWorkingEvaluation  = true;
-            StatusMessage = "Retour à l'Étape 2 — l'Étape 3 reste conservée si déjà ébauchée.";
+            IsWorkingCartographieEnfant = false;
+            IsWorkingEvaluation = true;
+            StatusMessage = "Retour à l'Étape 2 — les cartographies restent conservées si déjà ébauchées.";
             NotifyAllStates();
             NotifyEvaluationCollections();
         }
 
-        private void AddSyntheseItem(string? category)
+        /// <summary>
+        /// Retour à l'Étape 4 (Cartographie Environnement) depuis l'Étape 5 (Bilan Final).
+        /// Réinitialise la validation de l'étape 4, conserve le Bilan Final déjà ébauché.
+        /// </summary>
+        private void BackToCartographieEnvironnementFromBilan()
+        {
+            if (Phase == null) return;
+            Phase.CartographieEnvironnement.ValidationDate = null;
+            Phase.EtapeCourante = EvaluationStep.CartographieEnvironnement;
+            _phaseService.Save(Phase);
+
+            IsWorkingBilanFinal = false;
+            IsWorkingCartographieEnvironnement = true;
+            StatusMessage = "Retour à l'Étape 4 — le Bilan Final reste conservé si déjà ébauché.";
+            NotifyAllStates();
+            NotifyEnvironnementSynthese();
+        }
+
+        private void AddBilanFinalItem(string? category)
         {
             var list = SyntheseListForCategory(category);
             if (list == null) return;
@@ -1636,19 +1678,19 @@ namespace MedCompanion.ViewModels
             list.Add(newItem);
         }
 
-        private void RemoveSyntheseItem(object? param)
+        private void RemoveBilanFinalItem(object? param)
         {
             if (param is EditableString item && Phase != null)
             {
-                if (Phase.Synthese.DiagnosticsRetenus.Remove(item)) { TrySaveSynthese(); return; }
-                if (Phase.Synthese.ElementsEnFaveur.Remove(item))   { TrySaveSynthese(); return; }
+                if (Phase.BilanFinal.DiagnosticsRetenus.Remove(item)) { TrySaveBilanFinal(); return; }
+                if (Phase.BilanFinal.ElementsEnFaveur.Remove(item))   { TrySaveBilanFinal(); return; }
             }
         }
 
         private ObservableCollection<EditableString>? SyntheseListForCategory(string? cat) => cat switch
         {
-            "retenus"     => Phase?.Synthese.DiagnosticsRetenus,
-            "en_faveur"   => Phase?.Synthese.ElementsEnFaveur,
+            "retenus"     => Phase?.BilanFinal.DiagnosticsRetenus,
+            "en_faveur"   => Phase?.BilanFinal.ElementsEnFaveur,
             _             => null
         };
 
@@ -1657,13 +1699,13 @@ namespace MedCompanion.ViewModels
             if (Phase == null) return;
             var e = new DiagnosticEcarte();
             e.PropertyChanged += OnEcarteChanged;
-            Phase.Synthese.DiagnosticsEcartes.Add(e);
+            Phase.BilanFinal.DiagnosticsEcartes.Add(e);
         }
 
         private void RemoveDiagnosticEcarte(DiagnosticEcarte? e)
         {
             if (e == null || Phase == null) return;
-            if (Phase.Synthese.DiagnosticsEcartes.Remove(e)) TrySaveSynthese();
+            if (Phase.BilanFinal.DiagnosticsEcartes.Remove(e)) TrySaveBilanFinal();
         }
 
         private void SetCertitude(object? param)
@@ -1674,25 +1716,25 @@ namespace MedCompanion.ViewModels
             else if (param is int i && i >= 0 && i <= 3) target = (NiveauCertitude)i;
             else if (param is string s && int.TryParse(s, out var k) && k >= 0 && k <= 3) target = (NiveauCertitude)k;
             else return;
-            Phase.Synthese.Certitude = target;
-            OnPropertyChanged(nameof(SyntheseCertitude));
+            Phase.BilanFinal.Certitude = target;
+            OnPropertyChanged(nameof(BilanFinalCertitude));
             OnPropertyChanged(nameof(IsCertitudeHypothese));
             OnPropertyChanged(nameof(IsCertitudeProbable));
             OnPropertyChanged(nameof(IsCertitudeCertain));
         }
 
-        private void TrySaveSynthese()
+        private void TrySaveBilanFinal()
         {
             if (Phase == null) return;
             try { _phaseService.Save(Phase); } catch { /* meilleur effort */ }
         }
 
-        private void NotifySyntheseCollections()
+        private void NotifyBilanFinalCollections()
         {
             OnPropertyChanged(nameof(DiagnosticsRetenus));
             OnPropertyChanged(nameof(ElementsEnFaveur));
             OnPropertyChanged(nameof(DiagnosticsEcartes));
-            OnPropertyChanged(nameof(SyntheseCertitude));
+            OnPropertyChanged(nameof(BilanFinalCertitude));
             OnPropertyChanged(nameof(IsCertitudeHypothese));
             OnPropertyChanged(nameof(IsCertitudeProbable));
             OnPropertyChanged(nameof(IsCertitudeCertain));
@@ -1711,7 +1753,7 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(CanResume));
             OnPropertyChanged(nameof(IsWorkingPreparation));
             OnPropertyChanged(nameof(IsWorkingEvaluation));
-            OnPropertyChanged(nameof(IsWorkingSynthese));
+            OnPropertyChanged(nameof(IsWorkingBilanFinal));
             OnPropertyChanged(nameof(IsWorkingCartographieEnfant));
             OnPropertyChanged(nameof(IsWorkingCartographieEnvironnement));
             OnPropertyChanged(nameof(IsCartographieDisponible));

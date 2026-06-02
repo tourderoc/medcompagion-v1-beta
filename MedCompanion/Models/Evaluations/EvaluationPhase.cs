@@ -7,11 +7,11 @@ namespace MedCompanion.Models.Evaluations
 {
     public enum EvaluationStep
     {
-        Preparation = 1,
-        EvaluationCiblee = 2,
-        Synthese = 3,
-        CartographieEnfant = 4,
-        CartographieEnvironnement = 5
+        Preparation               = 1,
+        EvaluationCiblee          = 2,
+        CartographieEnfant        = 3,
+        CartographieEnvironnement = 4,
+        BilanFinal                = 5
     }
 
     public enum AxisExplorationState { NonAborde = 0, Partiel = 1, Evoque = 2 }
@@ -34,16 +34,16 @@ namespace MedCompanion.Models.Evaluations
 
         public EvaluationPreparation      Preparation                { get; set; } = new();
         public EvaluationCiblee           EvaluationCiblee           { get; set; } = new();
-        public SyntheseDiagnostique       Synthese                   { get; set; } = new();
         public CartographieEnfant         CartographieEnfant         { get; set; } = new();
         public CartographieEnvironnement  CartographieEnvironnement  { get; set; } = new();
+        public BilanFinal                 BilanFinal                 { get; set; } = new();
 
         public bool IsActive                              => !DateCloture.HasValue;
         public bool IsPreparationValidated                => Preparation.IsValidated;
         public bool IsEvaluationCibleeValidated           => EvaluationCiblee.IsValidated;
-        public bool IsSyntheseValidated                   => Synthese.IsValidated;
         public bool IsCartographieEnfantValidated         => CartographieEnfant.IsValidated;
         public bool IsCartographieEnvironnementValidated  => CartographieEnvironnement.IsValidated;
+        public bool IsBilanFinalValidated                 => BilanFinal.IsValidated;
     }
 
     /// <summary>
