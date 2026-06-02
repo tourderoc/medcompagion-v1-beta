@@ -79,6 +79,9 @@ namespace MedCompanion.ViewModels
         /// <summary>Notifié à la fermeture du panneau (validation OU annulation).</summary>
         public event Action? Closed;
 
+        /// <summary>Notifié à la création d'un nouveau brouillon (pour rafraîchir la frise).</summary>
+        public event Action? BrouillonCreated;
+
         // ── Affichage ────────────────────────────────────────────────────────
 
         public string TitreVue
@@ -150,6 +153,7 @@ namespace MedCompanion.ViewModels
             _service.SaveBrouillon(nouveau);
             Synthese = nouveau;
             StatusMessage = $"Nouveau brouillon v{nouvelleVersion} créé.";
+            BrouillonCreated?.Invoke();
         }
 
         /// <summary>

@@ -431,7 +431,46 @@ namespace MedCompanion.ViewModels
         {
             _syntheseGlobaleService = service;
             SyntheseGlobaleVM = new SyntheseGlobaleViewModel(service, suggester);
-            SyntheseGlobaleVM.Closed += () => IsSyntheseGlobaleMode = false;
+            SyntheseGlobaleVM.Closed += () =>
+            {
+                IsSyntheseGlobaleMode = false;
+                LoadSyntheseGlobaleCards();   // rafraîchit frise + blocs SYNTHESE
+            };
+            SyntheseGlobaleVM.BrouillonCreated += LoadSyntheseGlobaleCards;
+        }
+
+        /// <summary>
+        /// Ouvre une carte de Synthèse Globale au clic depuis la frise. Charge le fichier
+        /// (brouillon → édition libre, validée → lecture seule pour l'instant).
+        /// </summary>
+        private void OpenSyntheseGlobaleCard(SyntheseGlobaleCardViewModel card)
+        {
+            if (_syntheseGlobaleService == null || SyntheseGlobaleVM == null || _currentPatient == null) return;
+            var full = _syntheseGlobaleService.Load(card.FilePath);
+            if (full == null)
+            {
+                System.Windows.MessageBox.Show("Impossible de charger cette synthèse (fichier introuvable).",
+                    "Synthèse Globale",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            Suivi.Reset();
+            IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
+            IsSynthesisMode = false;
+            IsRestitutionMode = false;
+            IsRestitutionReviewMode = false;
+            ConsultationType = ConsultationType.Normal;
+            IsEditingConsultation = false;
+            IsEvaluationPhaseMode = false;
+
+            SyntheseGlobaleVM.Synthese = full;
+            SyntheseGlobaleVM.StatusMessage = full.IsValidee
+                ? $"Lecture seule : v{full.Version} validée le {full.DateValidation:dd/MM/yyyy}."
+                : $"Brouillon v{full.Version} repris.";
+            IsSyntheseGlobaleMode = true;
         }
 
         private void OuvrirSyntheseGlobale()
@@ -2841,6 +2880,7 @@ source: ""MedCompanion""
         public ICommand OpenCardCommand { get; }              // param : ConsultationCardViewModel
         public ICommand OpenEvaluationCardCommand { get; }    // param : EvaluationCardViewModel
         public ICommand DeleteEvaluationCardCommand { get; }  // param : EvaluationCardViewModel
+        public ICommand OpenSyntheseGlobaleCardCommand { get; private set; } = null!;  // param : SyntheseGlobaleCardViewModel
 
         // V0b : Commande pour confirmer l'âge manuellement
         public ICommand ConfirmAgeCommand { get; }
@@ -2996,6 +3036,13 @@ source: ""MedCompanion""
             {
                 if (param is EvaluationCardViewModel ecard)
                     DeleteEvaluationCard(ecard);
+            });
+
+            // Hub : ouvrir une carte de Synthèse Globale (brouillon = édition, validée = lecture seule)
+            OpenSyntheseGlobaleCardCommand = new RelayCommand(param =>
+            {
+                if (param is SyntheseGlobaleCardViewModel sc)
+                    OpenSyntheseGlobaleCard(sc);
             });
 
             // V0b : Commande confirmation âge
@@ -3194,6 +3241,15 @@ source: ""MedCompanion""
         // Frise chronologique (cards d'évaluation — active + clôturées, en parallèle des consultations)
         public ObservableCollection<EvaluationCardViewModel> EvaluationCards { get; } = new();
 
+        // Frise chronologique (cards de Synthèse Globale — brouillon courant + versions validées)
+        public ObservableCollection<SyntheseGlobaleCardViewModel> SyntheseGlobaleCards { get; } = new();
+
+        // Blocs de Synthèse Globale (versions validées) affichés EN PREMIER dans l'onglet
+        // SYNTHESE du dossier bleu, AVANT les blocs Bilan Final des évaluations.
+        // Trié du plus récent au plus ancien (version la plus récente d'abord).
+        public ObservableCollection<SyntheseGlobaleBilanCardViewModel> SyntheseGlobaleBlocks { get; } = new();
+        public bool HasSyntheseGlobaleBlocks => SyntheseGlobaleBlocks.Count > 0;
+
         // Blocs de synthèse diagnostique (issus des évaluations clôturées) affichés
         // dans l'onglet SYNTHESE du dossier bleu, SOUS la synthèse rédigée manuellement.
         // Trié du plus récent au plus ancien.
@@ -3241,6 +3297,7 @@ source: ""MedCompanion""
 
             LoadConsultationCards();
             LoadEvaluationCards();
+            LoadSyntheseGlobaleCards();
         }
 
         /// <summary>
@@ -3329,6 +3386,38 @@ source: ""MedCompanion""
             OnPropertyChanged(nameof(HasCartographieEnvironnementBilans));
         }
 
+        /// <summary>
+        /// Alimente la frise des Synthèses Globales (brouillon courant + versions validées)
+        /// ET les blocs de l'onglet SYNTHESE du dossier bleu (versions validées seulement).
+        /// Cards triées par date de rédaction (ancienne → récente).
+        /// Blocs triés du plus récent au plus ancien (version la plus récente en haut).
+        /// </summary>
+        private void LoadSyntheseGlobaleCards()
+        {
+            SyntheseGlobaleCards.Clear();
+            SyntheseGlobaleBlocks.Clear();
+
+            if (_syntheseGlobaleService == null || CurrentPatient == null
+                || string.IsNullOrEmpty(CurrentPatient.NomComplet)) return;
+
+            var versions = _syntheseGlobaleService.ListVersions(CurrentPatient.NomComplet);
+
+            // Frise : toutes les versions, ancienne → récente
+            foreach (var v in versions.OrderBy(x => x.DateRedaction))
+                SyntheseGlobaleCards.Add(new SyntheseGlobaleCardViewModel(v));
+
+            // Blocs SYNTHESE : versions validées, plus récente d'abord
+            foreach (var v in versions.Where(x => x.IsValidee).OrderByDescending(x => x.Version))
+            {
+                var full = _syntheseGlobaleService.Load(v.FilePath);
+                if (full != null)
+                    SyntheseGlobaleBlocks.Add(new SyntheseGlobaleBilanCardViewModel(full));
+            }
+
+            OnPropertyChanged(nameof(HasSyntheseGlobaleBlocks));
+            OnPropertyChanged(nameof(HasNoTimelineCards));
+        }
+
         private static bool HasAnyEnvironnementScore(MedCompanion.Models.Evaluations.CartographieEnvironnement carto)
         {
             if (FeuilleHasAnyScore(carto.Famille))           return true;
@@ -3347,7 +3436,7 @@ source: ""MedCompanion""
         }
 
         public bool HasNoConsultationCards => ConsultationCards.Count == 0;
-        public bool HasNoTimelineCards     => ConsultationCards.Count == 0 && EvaluationCards.Count == 0;
+        public bool HasNoTimelineCards     => ConsultationCards.Count == 0 && EvaluationCards.Count == 0 && SyntheseGlobaleCards.Count == 0;
 
         #endregion
 
