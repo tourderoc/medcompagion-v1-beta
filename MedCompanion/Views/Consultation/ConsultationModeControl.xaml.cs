@@ -7,6 +7,7 @@ using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.Evaluations;
 using MedCompanion.Services.Synthesis;
+using MedCompanion.Services.Therapeutique;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
 using MedCompanion.ViewModels;
@@ -62,7 +63,8 @@ namespace MedCompanion.Views.Consultation
                                SyntheseGlobaleService? syntheseGlobaleService = null,
                                SyntheseGlobaleSuggesterService? syntheseGlobaleSuggester = null,
                                SynthesisWeightTracker? synthesisWeightTracker = null,
-                               SyntheseGlobaleRelectureService? syntheseGlobaleRelecteur = null)
+                               SyntheseGlobaleRelectureService? syntheseGlobaleRelecteur = null,
+                               ProjetTherapeutiqueService? projetTherapeutiqueService = null)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
@@ -125,6 +127,11 @@ namespace MedCompanion.Views.Consultation
             var synthese = new MenuItem { Header = "🧭  Synthèse Globale" };
             synthese.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("synthese_globale");
             menu.Items.Add(synthese);
+
+            // Projet Thérapeutique — plan d'action structuré avec statuts par action
+            var projet = new MenuItem { Header = "🎯  Projet Thérapeutique" };
+            projet.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("projet_therapeutique");
+            menu.Items.Add(projet);
 
             menu.PlacementTarget = sender as UIElement;
             menu.Placement       = System.Windows.Controls.Primitives.PlacementMode.Bottom;

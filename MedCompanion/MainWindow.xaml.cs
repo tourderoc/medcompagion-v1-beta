@@ -17,6 +17,7 @@ using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.Evaluations;
 using MedCompanion.Services.Synthesis;
+using MedCompanion.Services.Therapeutique;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
 using MedCompanion.Services.Urgence.Detectors;
@@ -415,12 +416,16 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 _currentLLMService, _patientContextService, evaluationPhaseService);
         }
 
+        // Projet Thérapeutique V1.0 — service de persistance
+        var projetTherapeutiqueService = new ProjetTherapeutiqueService(_pathService);
+
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
                 evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture,
-                syntheseGlobaleService, syntheseGlobaleSuggester, _synthesisWeightTracker, syntheseGlobaleRelecteur);
+                syntheseGlobaleService, syntheseGlobaleSuggester, _synthesisWeightTracker, syntheseGlobaleRelecteur,
+                projetTherapeutiqueService);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>

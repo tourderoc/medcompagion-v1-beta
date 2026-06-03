@@ -16,6 +16,7 @@ using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.Evaluations;
 using MedCompanion.Services.Synthesis;
+using MedCompanion.Services.Therapeutique;
 using MedCompanion.Models.Evaluations;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
@@ -408,6 +409,110 @@ namespace MedCompanion.ViewModels
         {
             get => _isSyntheseGlobaleMode;
             set => SetProperty(ref _isSyntheseGlobaleMode, value);
+        }
+
+        private bool _isProjetTherapeutiqueMode;
+        /// <summary>True quand le médecin a ouvert le panneau "Projet Thérapeutique".</summary>
+        public bool IsProjetTherapeutiqueMode
+        {
+            get => _isProjetTherapeutiqueMode;
+            set => SetProperty(ref _isProjetTherapeutiqueMode, value);
+        }
+
+        private ProjetTherapeutiqueViewModel? _projetTherapeutiqueVM;
+        public ProjetTherapeutiqueViewModel? ProjetTherapeutiqueVM
+        {
+            get => _projetTherapeutiqueVM;
+            private set => SetProperty(ref _projetTherapeutiqueVM, value);
+        }
+
+        private ProjetTherapeutiqueService? _projetTherapeutiqueService;
+
+        /// <summary>Injecte le service Projet Thérapeutique (V1.0).</summary>
+        public void InjectProjetTherapeutiqueService(ProjetTherapeutiqueService service)
+        {
+            _projetTherapeutiqueService = service;
+            ProjetTherapeutiqueVM = new ProjetTherapeutiqueViewModel(service);
+            ProjetTherapeutiqueVM.Closed += () =>
+            {
+                IsProjetTherapeutiqueMode = false;
+                LoadProjetTherapeutiqueCards();
+            };
+            ProjetTherapeutiqueVM.BrouillonCreated += LoadProjetTherapeutiqueCards;
+        }
+
+        private void OuvrirProjetTherapeutique()
+        {
+            if (_projetTherapeutiqueService == null || ProjetTherapeutiqueVM == null)
+            {
+                System.Windows.MessageBox.Show("Service Projet Thérapeutique non initialisé.",
+                    "Projet Thérapeutique",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+            if (_currentPatient == null)
+            {
+                System.Windows.MessageBox.Show("Sélectionnez d'abord un patient.",
+                    "Projet Thérapeutique",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
+            Suivi.Reset();
+            IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
+            IsSynthesisMode = false;
+            IsRestitutionMode = false;
+            IsRestitutionReviewMode = false;
+            ConsultationType = ConsultationType.Normal;
+            IsEditingConsultation = false;
+            IsEvaluationPhaseMode = false;
+            IsSyntheseGlobaleMode = false;
+
+            ProjetTherapeutiqueVM.OuvrirBrouillonOuCreer(_currentPatient.NomComplet, psychiatre: "");
+            IsProjetTherapeutiqueMode = true;
+        }
+
+        private void OpenProjetTherapeutiqueCard(ProjetTherapeutiqueCardViewModel card)
+        {
+            if (_projetTherapeutiqueService == null || ProjetTherapeutiqueVM == null || _currentPatient == null) return;
+            var full = _projetTherapeutiqueService.Load(card.FilePath);
+            if (full == null)
+            {
+                System.Windows.MessageBox.Show("Impossible de charger ce projet (fichier introuvable).",
+                    "Projet Thérapeutique",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+            Suivi.Reset();
+            IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
+            IsSynthesisMode = false;
+            IsRestitutionMode = false;
+            IsRestitutionReviewMode = false;
+            ConsultationType = ConsultationType.Normal;
+            IsEditingConsultation = false;
+            IsEvaluationPhaseMode = false;
+            IsSyntheseGlobaleMode = false;
+            ProjetTherapeutiqueVM.Projet = full;
+            ProjetTherapeutiqueVM.StatusMessage = full.IsValidee
+                ? $"Lecture seule : v{full.Version} validé le {full.DateValidation:dd/MM/yyyy}."
+                : $"Brouillon v{full.Version} repris.";
+            IsProjetTherapeutiqueMode = true;
+        }
+
+        private void LoadProjetTherapeutiqueCards()
+        {
+            ProjetTherapeutiqueCards.Clear();
+            if (_projetTherapeutiqueService == null || _currentPatient == null
+                || string.IsNullOrEmpty(_currentPatient.NomComplet)) return;
+            var versions = _projetTherapeutiqueService.ListVersions(_currentPatient.NomComplet);
+            foreach (var v in versions.OrderBy(x => x.DateRedaction))
+                ProjetTherapeutiqueCards.Add(new ProjetTherapeutiqueCardViewModel(v));
+            OnPropertyChanged(nameof(HasNoTimelineCards));
         }
 
         private SyntheseGlobaleViewModel? _syntheseGlobaleVM;
@@ -1044,6 +1149,11 @@ namespace MedCompanion.ViewModels
                     // Bascule en mode "Synthèse Globale" : ouvre le brouillon courant
                     // ou crée un nouveau brouillon v(N+1).
                     OuvrirSyntheseGlobale();
+                    break;
+
+                case "projet_therapeutique":
+                    // V1.0 — Projet Thérapeutique : ouvre le brouillon courant ou crée v(N+1).
+                    OuvrirProjetTherapeutique();
                     break;
 
                 case "suivi":
@@ -2931,6 +3041,7 @@ source: ""MedCompanion""
         public ICommand OpenEvaluationCardCommand { get; }    // param : EvaluationCardViewModel
         public ICommand DeleteEvaluationCardCommand { get; }  // param : EvaluationCardViewModel
         public ICommand OpenSyntheseGlobaleCardCommand { get; private set; } = null!;  // param : SyntheseGlobaleCardViewModel
+        public ICommand OpenProjetTherapeutiqueCardCommand { get; private set; } = null!;  // param : ProjetTherapeutiqueCardViewModel
 
         // V0b : Commande pour confirmer l'âge manuellement
         public ICommand ConfirmAgeCommand { get; }
@@ -3093,6 +3204,13 @@ source: ""MedCompanion""
             {
                 if (param is SyntheseGlobaleCardViewModel sc)
                     OpenSyntheseGlobaleCard(sc);
+            });
+
+            // Hub : ouvrir une carte de Projet Thérapeutique
+            OpenProjetTherapeutiqueCardCommand = new RelayCommand(param =>
+            {
+                if (param is ProjetTherapeutiqueCardViewModel pc)
+                    OpenProjetTherapeutiqueCard(pc);
             });
 
             // V0b : Commande confirmation âge
@@ -3294,6 +3412,9 @@ source: ""MedCompanion""
         // Frise chronologique (cards de Synthèse Globale — brouillon courant + versions validées)
         public ObservableCollection<SyntheseGlobaleCardViewModel> SyntheseGlobaleCards { get; } = new();
 
+        // Frise chronologique (cards de Projet Thérapeutique)
+        public ObservableCollection<ProjetTherapeutiqueCardViewModel> ProjetTherapeutiqueCards { get; } = new();
+
         // Blocs de Synthèse Globale (versions validées) affichés EN PREMIER dans l'onglet
         // SYNTHESE du dossier bleu, AVANT les blocs Bilan Final des évaluations.
         // Trié du plus récent au plus ancien (version la plus récente d'abord).
@@ -3368,6 +3489,7 @@ source: ""MedCompanion""
             LoadConsultationCards();
             LoadEvaluationCards();
             LoadSyntheseGlobaleCards();
+            LoadProjetTherapeutiqueCards();
             RefreshSyntheseUpdateBadge();
         }
 
@@ -3507,7 +3629,7 @@ source: ""MedCompanion""
         }
 
         public bool HasNoConsultationCards => ConsultationCards.Count == 0;
-        public bool HasNoTimelineCards     => ConsultationCards.Count == 0 && EvaluationCards.Count == 0 && SyntheseGlobaleCards.Count == 0;
+        public bool HasNoTimelineCards     => ConsultationCards.Count == 0 && EvaluationCards.Count == 0 && SyntheseGlobaleCards.Count == 0 && ProjetTherapeutiqueCards.Count == 0;
 
         #endregion
 

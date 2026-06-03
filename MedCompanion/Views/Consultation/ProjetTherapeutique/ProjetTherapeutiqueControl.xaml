@@ -1,0 +1,270 @@
+<UserControl x:Class="MedCompanion.Views.Consultation.ProjetTherapeutique.ProjetTherapeutiqueControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:converters="clr-namespace:MedCompanion.Converters"
+             Background="#FAFBFC">
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter             x:Key="BoolToVis"/>
+        <converters:InverseBooleanToVisibilityConverter   x:Key="InverseBoolToVis"/>
+        <converters:StringToBrushConverter                x:Key="StringToBrush"/>
+
+        <!-- Template d'une ProjetAction : statut cliquable + libellé édit + détail + bouton 🗑 -->
+        <DataTemplate x:Key="ActionItemTemplate">
+            <Border Background="White" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="4"
+                    Padding="8" Margin="0,0,0,6">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Chip statut cliquable (cycle ⚪→🟡→✅→⛔→⚪) -->
+                    <Button Grid.Column="0" Width="60" Height="28" Margin="0,0,8,0"
+                            VerticalAlignment="Top"
+                            Background="{Binding StatutColor, Converter={StaticResource StringToBrush}}"
+                            Foreground="White" BorderThickness="0" Cursor="Hand"
+                            ToolTip="Cliquer pour changer le statut (⚪ → 🟡 → ✅ → ⛔)"
+                            Command="{Binding DataContext.CyclerStatutCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="{Binding StatutIcon}" FontSize="13" Margin="0,0,3,0"/>
+                            <TextBlock Text="{Binding StatutLabel}" FontSize="9" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- Contenu de l'action -->
+                    <StackPanel Grid.Column="1">
+                        <TextBox Text="{Binding Libelle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="12" FontWeight="SemiBold" Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                 Padding="4" IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                        <TextBox Text="{Binding Description, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="11" Background="White" BorderBrush="#E5E8EC" BorderThickness="1"
+                                 TextWrapping="Wrap" AcceptsReturn="True" Padding="4" Margin="0,4,0,0"
+                                 IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                 MinHeight="30">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Style.Triggers>
+                                        <Trigger Property="Text" Value="">
+                                            <Setter Property="Background" Value="#FBFCFD"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                        <Grid Margin="0,4,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox Grid.Column="0"
+                                     Text="{Binding IndicateurReussite, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="10" Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1"
+                                     Padding="4" Margin="0,0,2,0"
+                                     ToolTip="Indicateur de réussite (mesurable)"
+                                     IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding LienSyntheseSection, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="10" Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1"
+                                     Padding="4" Margin="2,0,0,0"
+                                     ToolTip="Lien synthèse : hypotheses | enfant | environnement | articulation | conclusion"
+                                     IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Bouton 🗑 supprimer -->
+                    <Button Grid.Column="2" Width="24" Height="24" Margin="6,0,0,0"
+                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                            Foreground="#95A5A6" VerticalAlignment="Top"
+                            Content="🗑" FontSize="11"
+                            ToolTip="Supprimer cette action"
+                            Visibility="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"
+                            Command="{Binding DataContext.SupprimerActionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            CommandParameter="{Binding}"/>
+                </Grid>
+            </Border>
+        </DataTemplate>
+    </UserControl.Resources>
+
+    <Border Background="White" BorderBrush="#27AE60" BorderThickness="2" CornerRadius="8" Margin="10" Padding="16">
+        <DockPanel>
+            <!-- En-tête -->
+            <Grid DockPanel.Dock="Top" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0">
+                    <TextBlock Text="{Binding TitreVue}" FontSize="14" FontWeight="Bold" Foreground="#1E8449"/>
+                    <TextBlock Text="{Binding StatutLabel}" FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Content="⏸ Fermer" Padding="10,5" Margin="0,0,6,0"
+                            Command="{Binding FermerCommand}"
+                            ToolTip="Quitter sans valider (brouillon sauvegardé)"/>
+                    <Button Content="✓ Valider le projet" Padding="10,5"
+                            Background="#27AE60" Foreground="White" FontWeight="SemiBold" BorderThickness="0"
+                            Command="{Binding ValiderCommand}"
+                            ToolTip="Fige cette version (immuable). Une nouvelle version sera nécessaire pour modifier."/>
+                </StackPanel>
+            </Grid>
+
+            <!-- Status -->
+            <TextBlock DockPanel.Dock="Top" Text="{Binding StatusMessage}" FontSize="11" Foreground="#16A085"
+                       Margin="0,0,0,8" TextWrapping="Wrap"/>
+
+            <!-- Bandeau réévaluation passée -->
+            <Border DockPanel.Dock="Top" Background="#FDEDEC" BorderBrush="#E74C3C" BorderThickness="1"
+                    CornerRadius="4" Padding="8" Margin="0,0,0,8"
+                    Visibility="{Binding IsReevaluationPassee, Converter={StaticResource BoolToVis}}">
+                <TextBlock Text="⚠️ La date de réévaluation prévue est dépassée. Mettez à jour les statuts d'action ou créez une nouvelle version."
+                           FontSize="12" Foreground="#922B21" TextWrapping="Wrap"/>
+            </Border>
+
+            <ScrollViewer VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
+                <StackPanel>
+
+                    <!-- 1. Objectifs prioritaires (texte libre) -->
+                    <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="🎯 Objectifs thérapeutiques prioritaires" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                            <TextBox Text="{Binding Projet.ObjectifsPrioritaires, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="12" Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                     TextWrapping="Wrap" AcceptsReturn="True" MinHeight="80" Padding="8" Margin="0,6,0,0"
+                                     IsReadOnly="{Binding IsReadOnly}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 2. Prise en charge médicale -->
+                    <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="💊 Prise en charge médicale" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <Button Grid.Column="1" Content="+ Action" FontSize="11" Padding="6,2"
+                                        Background="Transparent" BorderBrush="#27AE60" BorderThickness="1"
+                                        Foreground="#27AE60" Cursor="Hand"
+                                        Command="{Binding AjouterActionMedicaleCommand}"
+                                        Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}"/>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Projet.ActionsMedicales}" Margin="0,6,0,0"
+                                          ItemTemplate="{StaticResource ActionItemTemplate}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 3. Prise en charge psychologique -->
+                    <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="🧠 Prise en charge psychologique" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <Button Grid.Column="1" Content="+ Action" FontSize="11" Padding="6,2"
+                                        Background="Transparent" BorderBrush="#27AE60" BorderThickness="1"
+                                        Foreground="#27AE60" Cursor="Hand"
+                                        Command="{Binding AjouterActionPsychologiqueCommand}"
+                                        Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}"/>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Projet.ActionsPsychologiques}" Margin="0,6,0,0"
+                                          ItemTemplate="{StaticResource ActionItemTemplate}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 4. Accompagnement développemental -->
+                    <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="🐛 Accompagnement développemental" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <Button Grid.Column="1" Content="+ Action" FontSize="11" Padding="6,2"
+                                        Background="Transparent" BorderBrush="#27AE60" BorderThickness="1"
+                                        Foreground="#27AE60" Cursor="Hand"
+                                        Command="{Binding AjouterActionDeveloppementaleCommand}"
+                                        Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}"/>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Projet.ActionsDeveloppementales}" Margin="0,6,0,0"
+                                          ItemTemplate="{StaticResource ActionItemTemplate}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 5. Actions sur l'environnement -->
+                    <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="🌿 Actions sur l'environnement" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                <Button Grid.Column="1" Content="+ Action" FontSize="11" Padding="6,2"
+                                        Background="Transparent" BorderBrush="#27AE60" BorderThickness="1"
+                                        Foreground="#27AE60" Cursor="Hand"
+                                        Command="{Binding AjouterActionEnvironnementaleCommand}"
+                                        Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}"/>
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding Projet.ActionsEnvironnementales}" Margin="0,6,0,0"
+                                          ItemTemplate="{StaticResource ActionItemTemplate}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 6. Ressources à soutenir (texte libre) -->
+                    <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="💪 Ressources à soutenir" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                            <TextBlock Text="Forces de l'enfant, ressources familiales, alliés (école, GP, asso…)"
+                                       FontSize="10" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0"/>
+                            <TextBox Text="{Binding Projet.RessourcesASoutenir, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="12" Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                     TextWrapping="Wrap" AcceptsReturn="True" MinHeight="80" Padding="8" Margin="0,6,0,0"
+                                     IsReadOnly="{Binding IsReadOnly}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 7. Réévaluation prévue (date + checklist) -->
+                    <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="📅 Réévaluation prévue" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                            <Grid Margin="0,6,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="120"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" Text="Date :" FontSize="11" VerticalAlignment="Center"/>
+                                <DatePicker Grid.Column="1" SelectedDate="{Binding Projet.DateReevaluationPrevue, Mode=TwoWay}"
+                                            IsEnabled="{Binding IsBrouillon}"/>
+                            </Grid>
+                            <TextBlock Text="Checklist (points à revérifier) :" FontSize="11" Foreground="#7F8C8D" Margin="0,8,0,4"/>
+                            <TextBox Text="{Binding Projet.ReevaluationChecklist, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="12" Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                     TextWrapping="Wrap" AcceptsReturn="True" MinHeight="60" Padding="8"
+                                     IsReadOnly="{Binding IsReadOnly}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Section transverse : Co-construction famille -->
+                    <Border Background="#F4F8FB" BorderBrush="#2980B9" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="👨‍👩‍👧 Co-construction avec la famille" FontSize="13" FontWeight="SemiBold" Foreground="#1F618D"/>
+                            <TextBlock Text="Accord, participation, points discutés avec les parents"
+                                       FontSize="10" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0"/>
+                            <TextBox Text="{Binding Projet.CoConstructionFamille, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="12" Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                     TextWrapping="Wrap" AcceptsReturn="True" MinHeight="80" Padding="8" Margin="0,6,0,0"
+                                     IsReadOnly="{Binding IsReadOnly}"/>
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </ScrollViewer>
+        </DockPanel>
+    </Border>
+</UserControl>
