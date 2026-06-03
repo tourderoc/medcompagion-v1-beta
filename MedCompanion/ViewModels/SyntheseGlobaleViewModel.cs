@@ -39,9 +39,30 @@ namespace MedCompanion.ViewModels
             FermerCommand    = new RelayCommand(_ => FermerSansValider(),    _ => Synthese != null);
             ProposerCommand  = new RelayCommand(async _ => await ProposerAsync(),
                                                 _ => CanProposer);
+            PatchCommand     = new RelayCommand(async _ => await PatchAsync(),
+                                                _ => CanPatch);
+            AccepterSectionCommand = new RelayCommand(param => AccepterSection(param as SyntheseSection),
+                                                     param => SectionAUneProposition(param as SyntheseSection));
+            RejeterSectionCommand  = new RelayCommand(param => RejeterSection(param as SyntheseSection),
+                                                     param => SectionAUneProposition(param as SyntheseSection));
         }
 
-        public ICommand ProposerCommand { get; }
+        public ICommand ProposerCommand        { get; }
+        public ICommand PatchCommand           { get; }
+        public ICommand AccepterSectionCommand { get; }
+        public ICommand RejeterSectionCommand  { get; }
+
+        private bool CanPatch
+            => _suggester != null
+            && Synthese != null
+            && Synthese.IsBrouillon
+            && Synthese.Version > 1                        // patch ne fait sens qu'à partir de v2
+            && !IsProposerEnCours;
+
+        public bool PatchVisible => _suggester != null;
+
+        /// <summary>True si version > 1 (donc le bouton Patch est plus pertinent que Proposer initial).</summary>
+        public bool IsModePatch => Synthese != null && Synthese.Version > 1;
 
         private bool _isProposerEnCours;
         public bool IsProposerEnCours
@@ -156,9 +177,34 @@ namespace MedCompanion.ViewModels
                 DateRedaction     = DateTime.Now,
                 VersionPrecedenteFichier = derniere?.FileName
             };
+
+            // V0.4 — Si une version validée existe, hériter de son contenu pour permettre
+            // un mode patch (Med modifie seulement ce qui change). On garde aussi le
+            // ContenuPrecedent par section pour pouvoir afficher le diff.
+            if (derniere != null)
+            {
+                var dernFull = _service.Load(derniere.FilePath);
+                if (dernFull != null)
+                {
+                    foreach (var section in nouveau.Sections)
+                    {
+                        var src = dernFull.GetSection(section.Key);
+                        if (src != null)
+                        {
+                            section.Contenu          = src.Contenu;
+                            section.ContenuPrecedent = src.Contenu;
+                            section.DiffSuggere      = SectionUpdateStatus.Inchangee;
+                        }
+                    }
+                    nouveau.IncrementsDepuisRevisionMajeure = dernFull.IncrementsDepuisRevisionMajeure + 1;
+                }
+            }
+
             _service.SaveBrouillon(nouveau);
             Synthese = nouveau;
-            StatusMessage = $"Nouveau brouillon v{nouvelleVersion} créé.";
+            StatusMessage = derniere != null
+                ? $"Nouveau brouillon v{nouvelleVersion} créé — hérite du contenu de v{derniere.Version}."
+                : $"Nouveau brouillon v{nouvelleVersion} créé.";
             BrouillonCreated?.Invoke();
         }
 
@@ -216,6 +262,106 @@ namespace MedCompanion.ViewModels
             {
                 IsProposerEnCours = false;
             }
+        }
+
+        /// <summary>
+        /// V0.4 — Demande à Med un PATCH (diff par section) plutôt qu'une refonte complète.
+        /// Pour chaque section, statut Inchangée/Modifiée/Nouvelle/Supprimée + nouveau contenu.
+        /// Le contenu de v(N) reste dans ContenuPrecedent pour affichage diff.
+        /// </summary>
+        private async Task PatchAsync()
+        {
+            if (_suggester == null || Synthese == null || Synthese.IsValidee) return;
+
+            IsProposerEnCours = true;
+            StatusMessage = "⏳ Med relit la synthèse et les nouveaux éléments...";
+
+            try
+            {
+                // Sauvegarder le contenu actuel comme "précédent" pour le diff visuel
+                foreach (var s in Synthese.Sections)
+                    s.ContenuPrecedent = s.Contenu;
+
+                var (ok, patch, error) = await _suggester.SuggestPatchAsync(
+                    Synthese, _patientDirectoryPath, CancellationToken.None);
+                if (!ok || patch == null)
+                {
+                    StatusMessage = $"❌ Patch impossible : {error ?? "réponse vide"}";
+                    return;
+                }
+
+                int modifs = 0, nouveau = 0, inchangees = 0;
+                foreach (var sp in patch.Sections)
+                {
+                    var target = Synthese.GetSection(sp.Cle);
+                    if (target == null) continue;
+
+                    var statut = MapStatut(sp.Statut);
+                    target.DiffSuggere = statut;
+                    target.DiffResume  = sp.DiffResume ?? "";
+
+                    if (statut == SectionUpdateStatus.Modifiee || statut == SectionUpdateStatus.Nouvelle)
+                    {
+                        if (!string.IsNullOrWhiteSpace(sp.Contenu))
+                            target.Contenu = sp.Contenu.Trim();
+                        if (statut == SectionUpdateStatus.Modifiee) modifs++;
+                        else nouveau++;
+                    }
+                    else if (statut == SectionUpdateStatus.Supprimee)
+                    {
+                        target.Contenu = "";
+                    }
+                    else
+                    {
+                        inchangees++;
+                    }
+                }
+
+                _service.SaveBrouillon(Synthese);
+                StatusMessage = $"✓ Patch Med proposé — {modifs} modif(s), {nouveau} nouvelle(s), {inchangees} inchangée(s). Acceptez/rejetez section par section.";
+                (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsProposerEnCours = false;
+            }
+        }
+
+        private static SectionUpdateStatus MapStatut(string s) => s switch
+        {
+            "modifiee"  => SectionUpdateStatus.Modifiee,
+            "nouvelle"  => SectionUpdateStatus.Nouvelle,
+            "supprimee" => SectionUpdateStatus.Supprimee,
+            _           => SectionUpdateStatus.Inchangee
+        };
+
+        // ── Accepter / Rejeter une section patchée ──────────────────────────
+
+        private static bool SectionAUneProposition(SyntheseSection? s)
+            => s != null && s.DiffSuggere != SectionUpdateStatus.Inchangee;
+
+        private void AccepterSection(SyntheseSection? s)
+        {
+            if (s == null) return;
+            // Accepter = on garde le nouveau contenu, on remet le statut à Inchangée
+            s.DiffSuggere      = SectionUpdateStatus.Inchangee;
+            s.ContenuPrecedent = s.Contenu;
+            s.DiffResume       = "";
+            if (Synthese != null && Synthese.IsBrouillon) _service.SaveBrouillon(Synthese);
+        }
+
+        private void RejeterSection(SyntheseSection? s)
+        {
+            if (s == null) return;
+            // Rejeter = on revient au contenu précédent
+            s.Contenu          = s.ContenuPrecedent;
+            s.DiffSuggere      = SectionUpdateStatus.Inchangee;
+            s.DiffResume       = "";
+            if (Synthese != null && Synthese.IsBrouillon) _service.SaveBrouillon(Synthese);
         }
 
         private void Valider()
@@ -291,8 +437,10 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(StatutLabel));
             OnPropertyChanged(nameof(IsReadOnly));
             OnPropertyChanged(nameof(IsBrouillon));
+            OnPropertyChanged(nameof(IsModePatch));
             (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (FermerCommand  as RelayCommand)?.RaiseCanExecuteChanged();
+            (PatchCommand    as RelayCommand)?.RaiseCanExecuteChanged();
         }
     }
 }

@@ -60,6 +60,22 @@ namespace MedCompanion.Services.Synthesis
         }
 
         /// <summary>
+        /// Proposition de patch pour une section : statut diff + nouveau contenu + résumé court.
+        /// </summary>
+        public class SectionPatch
+        {
+            public string Cle           = "";   // hypotheses, enfant, environnement, articulation, conclusion, evolution
+            public string Statut        = "";   // "inchangee" | "modifiee" | "nouvelle" | "supprimee"
+            public string Contenu       = "";
+            public string DiffResume    = "";
+        }
+
+        public class PatchSuggestion
+        {
+            public List<SectionPatch> Sections = new();
+        }
+
+        /// <summary>
         /// Produit une proposition v0 pour la Synthèse Globale d'un patient.
         /// </summary>
         public async Task<(bool ok, SyntheseSuggestion? suggestion, string? error)>
@@ -117,6 +133,159 @@ namespace MedCompanion.Services.Synthesis
             {
                 return (false, null, ex.Message);
             }
+        }
+
+        /// <summary>
+        /// V0.4 — Propose un PATCH d'une synthèse existante : pour chaque section, décide
+        /// si elle reste Inchangée, doit être Modifiée, ou est Nouvelle. Reçoit la version
+        /// actuelle complète + les évaluations nouvelles depuis. Sortie : statut par section
+        /// + contenu nouveau (si Modifiée/Nouvelle) + résumé court du changement.
+        /// </summary>
+        public async Task<(bool ok, PatchSuggestion? patch, string? error)> SuggestPatchAsync(
+            Models.Synthesis.SyntheseGlobale synthese,
+            string patientDirectoryPath,
+            CancellationToken ct = default)
+        {
+            if (synthese == null) return (false, null, "Synthèse nulle.");
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(LlmTimeoutSeconds));
+
+            try
+            {
+                // Sources : contexte clinique + évaluations clôturées
+                var bundle = _patientContext.GetCompleteContext(synthese.PatientNomComplet);
+                var clinicalContent = bundle?.ClinicalContext ?? "";
+                var evaluations = !string.IsNullOrEmpty(patientDirectoryPath)
+                    ? _evaluationPhaseService.LoadAll(patientDirectoryPath)
+                        .Where(p => !p.IsActive)
+                        .OrderBy(p => p.DateDebut)
+                        .ToList()
+                    : new List<EvaluationPhase>();
+
+                var prompt = BuildPatchPrompt(synthese, bundle?.Metadata, clinicalContent, evaluations);
+                var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
+                if (!ok || string.IsNullOrWhiteSpace(raw))
+                    return (false, null, err ?? "Réponse LLM vide.");
+
+                var patch = ParsePatchJson(raw);
+                if (patch == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[SyntheseGlobalePatch] Parse failed. Raw : {raw}");
+                    return (false, null, "Parsing JSON impossible (voir Sortie Debug).");
+                }
+                return (true, patch, null);
+            }
+            catch (OperationCanceledException) { return (false, null, "Délai LLM dépassé."); }
+            catch (Exception ex)                { return (false, null, ex.Message); }
+        }
+
+        private static string BuildPatchPrompt(
+            Models.Synthesis.SyntheseGlobale synthese,
+            Models.PatientMetadata? meta,
+            string clinicalContent,
+            List<EvaluationPhase> evaluations)
+        {
+            var ageInfo = !string.IsNullOrWhiteSpace(meta?.Dob)
+                ? $"né(e) le {meta!.Dob}"
+                : "âge non précisé";
+
+            var sbCurrent = new StringBuilder();
+            foreach (var s in synthese.Sections)
+            {
+                sbCurrent.AppendLine($"### {s.Titre} [clé: {s.Key}]");
+                sbCurrent.AppendLine(string.IsNullOrWhiteSpace(s.Contenu) ? "(vide)" : s.Contenu.Trim());
+                sbCurrent.AppendLine();
+            }
+
+            var sbEval = new StringBuilder();
+            if (evaluations.Count > 0)
+            {
+                foreach (var ev in evaluations)
+                {
+                    sbEval.AppendLine($"### Évaluation clôturée {ev.DateCloture:yyyy-MM-dd}");
+                    if (ev.BilanFinal.DiagnosticsRetenus.Count > 0)
+                    {
+                        sbEval.AppendLine("Diagnostics retenus :");
+                        foreach (var d in ev.BilanFinal.DiagnosticsRetenus)
+                            if (!string.IsNullOrWhiteSpace(d?.Value)) sbEval.AppendLine($"- {d.Value}");
+                    }
+                    if (!string.IsNullOrWhiteSpace(ev.BilanFinal.SyntheseIntegrative))
+                    {
+                        sbEval.AppendLine("Synthèse intégrative :");
+                        sbEval.AppendLine(ev.BilanFinal.SyntheseIntegrative.Trim());
+                    }
+                    sbEval.AppendLine();
+                }
+            }
+
+            return $@"Tu es pédopsychiatre. Tu PROPOSES UN PATCH d'une Synthèse Globale existante en intégrant uniquement les nouveaux éléments du dossier (évaluations clôturées depuis, notes récentes).
+
+PRINCIPE FONDAMENTAL : NE PAS RÉÉCRIRE CE QUI NE CHANGE PAS.
+
+Pour chaque section, décide :
+- ""inchangee"" : aucune modification nécessaire (renvoie quand même ""contenu"" identique pour audit)
+- ""modifiee""  : retouche nécessaire (renvoie le nouveau contenu COMPLET de la section)
+- ""nouvelle""  : la section était vide ou très lacunaire dans la version actuelle, et tu y mets du contenu
+- ""supprimee"" : à retirer (rare, à n'utiliser que si la section n'a plus de matière)
+
+Ton clinique direct, prudent. Pas de pistes thérapeutiques. Cite uniquement les sources fournies.
+
+Patient : {synthese.PatientNomComplet} ({ageInfo})
+Version actuelle : v{synthese.Version}
+
+[A] SYNTHÈSE ACTUELLE (à patcher) :
+{sbCurrent.ToString().TrimEnd()}
+
+[B] Contexte clinique existant (synthèse hors ce dossier, notes) :
+{(string.IsNullOrWhiteSpace(clinicalContent) ? "(aucun)" : clinicalContent.Trim())}
+
+[C] Évaluations clôturées du dossier :
+{(sbEval.Length > 0 ? sbEval.ToString().TrimEnd() : "(aucune)")}
+
+PARTICULIER POUR LA SECTION ""evolution"" :
+- Elle décrit ce qui change DEPUIS la version précédente.
+- Si v > 1 et qu'il y a vraiment du nouveau, mets ""statut: nouvelle"" ou ""modifiee"" avec quelques lignes.
+- Sinon laisse-la inchangée (vide ou contenu antérieur).
+
+RÉPONDS UNIQUEMENT par un JSON valide, en respectant l'ordre des clés :
+{{
+  ""sections"": [
+    {{ ""cle"": ""hypotheses"",    ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+    {{ ""cle"": ""enfant"",        ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+    {{ ""cle"": ""environnement"", ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+    {{ ""cle"": ""articulation"",  ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+    {{ ""cle"": ""conclusion"",    ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+    {{ ""cle"": ""evolution"",     ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }}
+  ]
+}}";
+        }
+
+        private static PatchSuggestion? ParsePatchJson(string raw)
+        {
+            var json = ExtractJson(raw);
+            if (string.IsNullOrEmpty(json)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (!root.TryGetProperty("sections", out var arr) || arr.ValueKind != JsonValueKind.Array) return null;
+
+                var patch = new PatchSuggestion();
+                foreach (var e in arr.EnumerateArray())
+                {
+                    if (e.ValueKind != JsonValueKind.Object) continue;
+                    var sp = new SectionPatch
+                    {
+                        Cle        = ReadString(e, "cle"),
+                        Statut     = ReadString(e, "statut").ToLowerInvariant(),
+                        Contenu    = ReadString(e, "contenu"),
+                        DiffResume = ReadString(e, "diff_resume")
+                    };
+                    if (!string.IsNullOrWhiteSpace(sp.Cle)) patch.Sections.Add(sp);
+                }
+                return patch.Sections.Count == 0 ? null : patch;
+            }
+            catch { return null; }
         }
 
         private static string BuildPrompt(

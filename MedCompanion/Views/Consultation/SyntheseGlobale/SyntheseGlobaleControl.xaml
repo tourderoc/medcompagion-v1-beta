@@ -21,10 +21,10 @@
                     <TextBlock Text="{Binding StatutLabel}" FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <!-- ✨ Proposer (Med) : visible si v1 (génération initiale) -->
                     <Button Padding="10,5" Margin="0,0,6,0"
                             Command="{Binding ProposerCommand}"
-                            Visibility="{Binding ProposerVisible, Converter={StaticResource BoolToVis}}"
-                            ToolTip="Med lit le dossier complet (évaluations, notes, documents) et propose une v1. REMPLACE le contenu du brouillon.">
+                            ToolTip="Med lit le dossier complet et propose une v1. REMPLACE le contenu.">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Content" Value="✨ Proposer (Med)"/>
@@ -32,7 +32,14 @@
                                 <Setter Property="Foreground" Value="White"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
                                 <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Visibility" Value="Visible"/>
                                 <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ProposerVisible}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsModePatch}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding IsProposerEnCours}" Value="True">
                                         <Setter Property="Content" Value="⏳ Med..."/>
                                         <Setter Property="IsEnabled" Value="False"/>
@@ -41,13 +48,39 @@
                             </Style>
                         </Button.Style>
                     </Button>
+
+                    <!-- 🔄 Patch (Med) : visible si v > 1 (mode incrémental) -->
+                    <Button Padding="10,5" Margin="0,0,6,0"
+                            Command="{Binding PatchCommand}"
+                            ToolTip="Med propose un patch des sections impactées par les nouveaux éléments. Conserve ce qui ne change pas.">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Content" Value="🔄 Patch (Med)"/>
+                                <Setter Property="Background" Value="#16A085"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsModePatch}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsProposerEnCours}" Value="True">
+                                        <Setter Property="Content" Value="⏳ Med..."/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
                     <Button Content="⏸ Fermer" Padding="10,5" Margin="0,0,6,0"
                             Command="{Binding FermerCommand}"
                             ToolTip="Quitter sans valider (le brouillon reste sauvegardé)"/>
                     <Button Content="✓ Valider la synthèse" Padding="10,5"
                             Background="#27AE60" Foreground="White" FontWeight="SemiBold" BorderThickness="0"
                             Command="{Binding ValiderCommand}"
-                            ToolTip="Fige cette version comme source de vérité (immuable). Une nouvelle version sera nécessaire pour modifier."/>
+                            ToolTip="Fige cette version comme source de vérité (immuable)."/>
                 </StackPanel>
             </Grid>
 
@@ -55,16 +88,132 @@
             <TextBlock DockPanel.Dock="Top" Text="{Binding StatusMessage}" FontSize="11" Foreground="#16A085"
                        Margin="0,0,0,8" TextWrapping="Wrap"/>
 
-            <!-- Contenu : 6 sections empilées -->
+            <!-- Contenu : 6 sections empilées avec diff coloré (V0.4) -->
             <ScrollViewer VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
                 <StackPanel>
                     <ItemsControl ItemsSource="{Binding Synthese.Sections}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1"
-                                        CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                                <Border BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background"  Value="#FBFCFD"/>
+                                            <Setter Property="BorderBrush" Value="#E5E8EC"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DiffSuggere}" Value="Modifiee">
+                                                    <Setter Property="Background"  Value="#FEF5E7"/>
+                                                    <Setter Property="BorderBrush" Value="#F39C12"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding DiffSuggere}" Value="Nouvelle">
+                                                    <Setter Property="Background"  Value="#E8F8F0"/>
+                                                    <Setter Property="BorderBrush" Value="#27AE60"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding DiffSuggere}" Value="Supprimee">
+                                                    <Setter Property="Background"  Value="#FDEDEC"/>
+                                                    <Setter Property="BorderBrush" Value="#E74C3C"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
                                     <StackPanel>
-                                        <TextBlock Text="{Binding Titre}" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0" Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Titre}" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                                <!-- Chip statut diff -->
+                                                <Border Margin="8,0,0,0" Padding="6,1" CornerRadius="3" VerticalAlignment="Center">
+                                                    <Border.Style>
+                                                        <Style TargetType="Border">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding DiffSuggere}" Value="Modifiee">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                    <Setter Property="Background" Value="#F39C12"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding DiffSuggere}" Value="Nouvelle">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                    <Setter Property="Background" Value="#27AE60"/>
+                                                                </DataTrigger>
+                                                                <DataTrigger Binding="{Binding DiffSuggere}" Value="Supprimee">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                    <Setter Property="Background" Value="#E74C3C"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Border.Style>
+                                                    <TextBlock FontSize="10" Foreground="White" FontWeight="SemiBold">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Text" Value=""/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding DiffSuggere}" Value="Modifiee">
+                                                                        <Setter Property="Text" Value="Modifiée"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding DiffSuggere}" Value="Nouvelle">
+                                                                        <Setter Property="Text" Value="Nouvelle"/>
+                                                                    </DataTrigger>
+                                                                    <DataTrigger Binding="{Binding DiffSuggere}" Value="Supprimee">
+                                                                        <Setter Property="Text" Value="Supprimée"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
+                                                </Border>
+                                            </StackPanel>
+                                            <!-- Boutons Accepter / Rejeter (visibles si patch en attente) -->
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                                <StackPanel.Style>
+                                                    <Style TargetType="StackPanel">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding DiffSuggere}" Value="Modifiee">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding DiffSuggere}" Value="Nouvelle">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding DiffSuggere}" Value="Supprimee">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </StackPanel.Style>
+                                                <Button Content="✓" FontSize="11" Padding="6,2" Margin="0,0,4,0"
+                                                        Background="#27AE60" Foreground="White" BorderThickness="0"
+                                                        ToolTip="Accepter cette proposition"
+                                                        Command="{Binding DataContext.AccepterSectionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                                <Button Content="✗" FontSize="11" Padding="6,2"
+                                                        Background="#E74C3C" Foreground="White" BorderThickness="0"
+                                                        ToolTip="Rejeter (revenir au contenu précédent)"
+                                                        Command="{Binding DataContext.RejeterSectionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                        CommandParameter="{Binding}"/>
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- Résumé du diff (1 phrase) -->
+                                        <TextBlock Text="{Binding DiffResume}" FontSize="11" FontStyle="Italic"
+                                                   Foreground="#7F6608" Margin="0,4,0,0" TextWrapping="Wrap">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding DiffSuggere}" Value="Modifiee">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding DiffSuggere}" Value="Nouvelle">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+
+                                        <!-- TextBox du contenu (édition libre) -->
                                         <TextBox Text="{Binding Contenu, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                  FontSize="12" Foreground="#2C3E50" Background="White"
                                                  BorderBrush="#D6E2EC" BorderThickness="1"
