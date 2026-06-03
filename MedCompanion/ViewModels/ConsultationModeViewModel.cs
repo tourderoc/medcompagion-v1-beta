@@ -511,12 +511,27 @@ namespace MedCompanion.ViewModels
         private void LoadProjetTherapeutiqueCards()
         {
             ProjetTherapeutiqueCards.Clear();
+            ProjetTherapeutiqueBlocks.Clear();
+
             if (_projetTherapeutiqueService == null || _currentPatient == null
                 || string.IsNullOrEmpty(_currentPatient.NomComplet)) return;
+
             var versions = _projetTherapeutiqueService.ListVersions(_currentPatient.NomComplet);
+
+            // Frise : toutes versions, ordre chronologique ancien → récent
             foreach (var v in versions.OrderBy(x => x.DateRedaction))
                 ProjetTherapeutiqueCards.Add(new ProjetTherapeutiqueCardViewModel(v));
+
+            // Onglet PROJET du dossier bleu : versions validées, plus récente d'abord
+            foreach (var v in versions.Where(x => x.IsValidee).OrderByDescending(x => x.Version))
+            {
+                var full = _projetTherapeutiqueService.Load(v.FilePath);
+                if (full != null)
+                    ProjetTherapeutiqueBlocks.Add(new ProjetTherapeutiqueBilanCardViewModel(full));
+            }
+
             OnPropertyChanged(nameof(HasNoTimelineCards));
+            OnPropertyChanged(nameof(HasProjetTherapeutiqueBlocks));
         }
 
         private SyntheseGlobaleViewModel? _syntheseGlobaleVM;
@@ -3418,6 +3433,11 @@ source: ""MedCompanion""
 
         // Frise chronologique (cards de Projet Thérapeutique)
         public ObservableCollection<ProjetTherapeutiqueCardViewModel> ProjetTherapeutiqueCards { get; } = new();
+
+        // Blocs d'affichage Projet Thérapeutique (versions validées) — onglet PROJET du dossier bleu.
+        // Trié du plus récent au plus ancien.
+        public ObservableCollection<ProjetTherapeutiqueBilanCardViewModel> ProjetTherapeutiqueBlocks { get; } = new();
+        public bool HasProjetTherapeutiqueBlocks => ProjetTherapeutiqueBlocks.Count > 0;
 
         // Blocs de Synthèse Globale (versions validées) affichés EN PREMIER dans l'onglet
         // SYNTHESE du dossier bleu, AVANT les blocs Bilan Final des évaluations.
