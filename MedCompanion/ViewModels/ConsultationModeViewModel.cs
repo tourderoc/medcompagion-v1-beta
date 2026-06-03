@@ -431,11 +431,12 @@ namespace MedCompanion.ViewModels
         /// </summary>
         public void InjectSyntheseGlobaleService(SyntheseGlobaleService service,
                                                  SyntheseGlobaleSuggesterService? suggester = null,
-                                                 SynthesisWeightTracker? weightTracker = null)
+                                                 SynthesisWeightTracker? weightTracker = null,
+                                                 SyntheseGlobaleRelectureService? relecteur = null)
         {
             _syntheseGlobaleService  = service;
             _synthesisWeightTracker  = weightTracker;
-            SyntheseGlobaleVM = new SyntheseGlobaleViewModel(service, suggester);
+            SyntheseGlobaleVM = new SyntheseGlobaleViewModel(service, suggester, relecteur);
             SyntheseGlobaleVM.Closed += () =>
             {
                 IsSyntheseGlobaleMode = false;

@@ -4,8 +4,10 @@
              xmlns:converters="clr-namespace:MedCompanion.Converters"
              Background="#FAFBFC">
     <UserControl.Resources>
-        <converters:BoolToVisibilityConverter        x:Key="BoolToVis"/>
-        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
+        <converters:BoolToVisibilityConverter             x:Key="BoolToVis"/>
+        <converters:InverseBoolToVisibilityConverter      x:Key="InverseBoolToVis"/>
+        <converters:StringNotWhiteSpaceToVisibilityConverter x:Key="StringNotWhiteSpaceToVis"/>
+        <converters:StringToBrushConverter                   x:Key="StringToBrush"/>
     </UserControl.Resources>
 
     <Border Background="White" BorderBrush="#D4AF37" BorderThickness="2" CornerRadius="8" Margin="10" Padding="16">
@@ -74,6 +76,31 @@
                         </Button.Style>
                     </Button>
 
+                    <!-- 🔍 Relire (Med) : détection contradictions + hallucinations -->
+                    <Button Padding="10,5" Margin="0,0,6,0"
+                            Command="{Binding RelireCommand}"
+                            Visibility="{Binding RelireVisible, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Med relit la synthèse pour détecter contradictions, affirmations non sourcées et sections incomplètes. Obligatoire avant validation.">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Content" Value="🔍 Relire (Med)"/>
+                                <Setter Property="Background" Value="#2980B9"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding RelectureFaite}" Value="True">
+                                        <Setter Property="Content" Value="🔄 Re-relire"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsProposerEnCours}" Value="True">
+                                        <Setter Property="Content" Value="⏳ Med..."/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
                     <Button Content="⏸ Fermer" Padding="10,5" Margin="0,0,6,0"
                             Command="{Binding FermerCommand}"
                             ToolTip="Quitter sans valider (le brouillon reste sauvegardé)"/>
@@ -87,6 +114,74 @@
             <!-- Status message -->
             <TextBlock DockPanel.Dock="Top" Text="{Binding StatusMessage}" FontSize="11" Foreground="#16A085"
                        Margin="0,0,0,8" TextWrapping="Wrap"/>
+
+            <!-- Message de blocage validation (relecture obligatoire / critiques non traités) -->
+            <Border DockPanel.Dock="Top" Background="#FEF9E7" BorderBrush="#F39C12" BorderThickness="1"
+                    CornerRadius="4" Padding="8" Margin="0,0,0,8">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Visibility" Value="Collapsed"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ValidationBlocageMessage, Converter={StaticResource StringNotWhiteSpaceToVis}}" Value="Visible">
+                                <Setter Property="Visibility" Value="Visible"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <TextBlock Text="{Binding ValidationBlocageMessage}" FontSize="12" Foreground="#7D6608" TextWrapping="Wrap"/>
+            </Border>
+
+            <!-- Panneau récap des flags de relecture (V0.5) — affiché sous le status -->
+            <Border DockPanel.Dock="Top" Background="#FBFCFD" BorderBrush="#D6E2EC" BorderThickness="1"
+                    CornerRadius="6" Padding="10" Margin="0,0,0,10"
+                    Visibility="{Binding HasFlags, Converter={StaticResource BoolToVis}}">
+                <StackPanel>
+                    <TextBlock Text="🔍 Relecture critique de Med" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,6"/>
+                    <ItemsControl ItemsSource="{Binding Flags}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,6" Padding="8,6" CornerRadius="4"
+                                        Background="#FFFFFF" BorderThickness="0,0,0,2">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="BorderBrush" Value="{Binding SeveriteColor, Converter={StaticResource StringToBrush}}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Traite}" Value="True">
+                                                    <Setter Property="Opacity" Value="0.5"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding SeveriteIcon}" FontSize="12" Margin="0,0,4,0"/>
+                                                <TextBlock Text="{Binding TypeLabel}" FontSize="11" FontWeight="SemiBold" Foreground="{Binding SeveriteColor, Converter={StaticResource StringToBrush}}"/>
+                                                <TextBlock Text="·" FontSize="11" Foreground="#7F8C8D" Margin="6,0"/>
+                                                <TextBlock Text="{Binding SectionCle}" FontSize="11" FontStyle="Italic" Foreground="#7F8C8D"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Detail}" FontSize="11" Foreground="#2C3E50"
+                                                       TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{Binding Suggestion, StringFormat='💡 {0}'}" FontSize="11" FontStyle="Italic"
+                                                       Foreground="#16A085" TextWrapping="Wrap" Margin="0,2,0,0"
+                                                       Visibility="{Binding Suggestion, Converter={StaticResource StringNotWhiteSpaceToVis}}"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="✓ Traité" Padding="8,3" FontSize="11"
+                                                Margin="6,0,0,0" VerticalAlignment="Top"
+                                                Command="{Binding DataContext.TraiterFlagCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding Traite, Converter={StaticResource InverseBoolToVis}}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
 
             <!-- Contenu : 6 sections empilées avec diff coloré (V0.4) -->
             <ScrollViewer VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">

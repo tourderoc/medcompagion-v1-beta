@@ -1,5 +1,7 @@
 using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,14 +28,18 @@ namespace MedCompanion.ViewModels
 
         private readonly SyntheseGlobaleService _service;
         private readonly SyntheseGlobaleSuggesterService? _suggester;
+        private readonly SyntheseGlobaleRelectureService? _relecteur;
         private SyntheseGlobale? _synthese;
         private CancellationTokenSource? _autoSaveCts;
         private string _patientDirectoryPath = "";
 
-        public SyntheseGlobaleViewModel(SyntheseGlobaleService service, SyntheseGlobaleSuggesterService? suggester = null)
+        public SyntheseGlobaleViewModel(SyntheseGlobaleService service,
+                                        SyntheseGlobaleSuggesterService? suggester = null,
+                                        SyntheseGlobaleRelectureService?  relecteur = null)
         {
             _service   = service;
             _suggester = suggester;
+            _relecteur = relecteur;
 
             ValiderCommand   = new RelayCommand(_ => Valider(),              _ => CanValider);
             FermerCommand    = new RelayCommand(_ => FermerSansValider(),    _ => Synthese != null);
@@ -45,12 +51,26 @@ namespace MedCompanion.ViewModels
                                                      param => SectionAUneProposition(param as SyntheseSection));
             RejeterSectionCommand  = new RelayCommand(param => RejeterSection(param as SyntheseSection),
                                                      param => SectionAUneProposition(param as SyntheseSection));
+            RelireCommand          = new RelayCommand(async _ => await RelireAsync(), _ => CanRelire);
+            TraiterFlagCommand     = new RelayCommand(param => TraiterFlag(param as RelectureFlag),
+                                                     param => param is RelectureFlag f && !f.Traite);
         }
 
         public ICommand ProposerCommand        { get; }
         public ICommand PatchCommand           { get; }
         public ICommand AccepterSectionCommand { get; }
         public ICommand RejeterSectionCommand  { get; }
+        public ICommand RelireCommand          { get; }
+        public ICommand TraiterFlagCommand     { get; }
+
+        private bool CanRelire
+            => _relecteur != null
+            && Synthese != null
+            && Synthese.IsBrouillon
+            && Synthese.HasAnyContenu
+            && !IsProposerEnCours;
+
+        public bool RelireVisible => _relecteur != null;
 
         private bool CanPatch
             => _suggester != null
@@ -91,8 +111,12 @@ namespace MedCompanion.ViewModels
                     DetachSectionHandlers();
                     _synthese = value;
                     AttachSectionHandlers();
+                    // Reset relecture à chaque changement de brouillon
+                    Flags.Clear();
+                    RelectureFaite = false;
                     OnPropertyChanged();
                     NotifyAll();
+                    NotifyRelectureState();
                 }
             }
         }
@@ -139,7 +163,12 @@ namespace MedCompanion.ViewModels
         public ICommand FermerCommand  { get; }
 
         private bool CanValider
-            => Synthese != null && Synthese.IsBrouillon && Synthese.HasAnyContenu;
+            => Synthese != null
+            && Synthese.IsBrouillon
+            && Synthese.HasAnyContenu
+            // V0.5 — Si un relecteur est disponible, la validation requiert qu'au moins une
+            // relecture ait été lancée ET qu'il n'y ait aucun flag Critique non traité.
+            && (_relecteur == null || (RelectureFaite && !HasFlagsCritiquesNonTraites));
 
         // ── Cycle de vie ─────────────────────────────────────────────────────
 
@@ -338,6 +367,97 @@ namespace MedCompanion.ViewModels
             "supprimee" => SectionUpdateStatus.Supprimee,
             _           => SectionUpdateStatus.Inchangee
         };
+
+        // ── V0.5 : Relecture critique anti-contradictions ───────────────────
+
+        /// <summary>Flags de relecture critique pour le brouillon courant.</summary>
+        public ObservableCollection<RelectureFlag> Flags { get; } = new();
+
+        public bool HasFlags => Flags.Count > 0;
+        public bool HasFlagsNonTraites          => Flags.Any(f => !f.Traite);
+        public bool HasFlagsCritiquesNonTraites => Flags.Any(f => !f.Traite && f.Severite == FlagSeverite.Critique);
+
+        private bool _relectureFaite;
+        /// <summary>True si la relecture critique a été lancée au moins une fois pour ce brouillon.</summary>
+        public bool RelectureFaite
+        {
+            get => _relectureFaite;
+            private set
+            {
+                if (_relectureFaite != value)
+                {
+                    _relectureFaite = value;
+                    OnPropertyChanged();
+                    (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        /// <summary>Message d'aide pour expliquer pourquoi la validation est bloquée.</summary>
+        public string ValidationBlocageMessage
+        {
+            get
+            {
+                if (Synthese == null || !Synthese.IsBrouillon) return "";
+                if (_relecteur == null) return "";
+                if (!RelectureFaite) return "ℹ Lancez la relecture critique de Med avant de pouvoir valider.";
+                if (HasFlagsCritiquesNonTraites)
+                    return $"⚠ {Flags.Count(f => !f.Traite && f.Severite == FlagSeverite.Critique)} flag(s) critique(s) non traité(s) — la validation est bloquée.";
+                return "";
+            }
+        }
+
+        private async Task RelireAsync()
+        {
+            if (_relecteur == null || Synthese == null || Synthese.IsValidee) return;
+            IsProposerEnCours = true;
+            StatusMessage = "⏳ Med relit la synthèse pour détecter contradictions et affirmations non sourcées...";
+            try
+            {
+                var (ok, flags, error) = await _relecteur.ReleireAsync(
+                    Synthese, _patientDirectoryPath, CancellationToken.None);
+                if (!ok || flags == null)
+                {
+                    StatusMessage = $"❌ Relecture impossible : {error ?? "réponse vide"}";
+                    return;
+                }
+                Flags.Clear();
+                foreach (var f in flags) Flags.Add(f);
+                RelectureFaite = true;
+
+                var nbCrit = flags.Count(f => f.Severite == FlagSeverite.Critique);
+                var nbMoy  = flags.Count(f => f.Severite == FlagSeverite.Moyenne);
+                var nbMin  = flags.Count(f => f.Severite == FlagSeverite.Mineure);
+                StatusMessage = flags.Count == 0
+                    ? "✓ Relecture terminée — aucun problème détecté."
+                    : $"✓ Relecture : {nbCrit} critique(s), {nbMoy} moyenne(s), {nbMin} mineure(s). Traitez les critiques avant validation.";
+                NotifyRelectureState();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsProposerEnCours = false;
+            }
+        }
+
+        private void TraiterFlag(RelectureFlag? f)
+        {
+            if (f == null) return;
+            f.Traite = true;
+            NotifyRelectureState();
+        }
+
+        private void NotifyRelectureState()
+        {
+            OnPropertyChanged(nameof(HasFlags));
+            OnPropertyChanged(nameof(HasFlagsNonTraites));
+            OnPropertyChanged(nameof(HasFlagsCritiquesNonTraites));
+            OnPropertyChanged(nameof(ValidationBlocageMessage));
+            (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        }
 
         // ── Accepter / Rejeter une section patchée ──────────────────────────
 

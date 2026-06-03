@@ -61,7 +61,8 @@ namespace MedCompanion.Views.Consultation
                                BrancheEnvironnementLectureService? brancheLecture = null,
                                SyntheseGlobaleService? syntheseGlobaleService = null,
                                SyntheseGlobaleSuggesterService? syntheseGlobaleSuggester = null,
-                               SynthesisWeightTracker? synthesisWeightTracker = null)
+                               SynthesisWeightTracker? synthesisWeightTracker = null,
+                               SyntheseGlobaleRelectureService? syntheseGlobaleRelecteur = null)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
@@ -72,7 +73,7 @@ namespace MedCompanion.Views.Consultation
             if (evaluationPhaseService != null)
                 _viewModel?.InjectEvaluationServices(evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture);
             if (syntheseGlobaleService != null)
-                _viewModel?.InjectSyntheseGlobaleService(syntheseGlobaleService, syntheseGlobaleSuggester, synthesisWeightTracker);
+                _viewModel?.InjectSyntheseGlobaleService(syntheseGlobaleService, syntheseGlobaleSuggester, synthesisWeightTracker, syntheseGlobaleRelecteur);
             _documentService = documentService;
             _scannerService = scannerService;
         }
