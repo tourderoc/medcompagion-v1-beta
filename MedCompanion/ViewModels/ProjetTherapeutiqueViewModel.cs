@@ -28,15 +28,20 @@ namespace MedCompanion.ViewModels
             => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
 
         private readonly ProjetTherapeutiqueService _service;
+        private readonly ProjetTherapeutiqueSuggesterService? _suggester;
         private ProjetTherapeutique? _projet;
         private CancellationTokenSource? _autoSaveCts;
+        private string _patientDirectoryPath = "";
 
-        public ProjetTherapeutiqueViewModel(ProjetTherapeutiqueService service)
+        public ProjetTherapeutiqueViewModel(ProjetTherapeutiqueService service,
+                                            ProjetTherapeutiqueSuggesterService? suggester = null)
         {
-            _service = service;
+            _service   = service;
+            _suggester = suggester;
 
             ValiderCommand    = new RelayCommand(_ => Valider(),                _ => CanValider);
             FermerCommand     = new RelayCommand(_ => FermerSansValider(),      _ => Projet != null);
+            ProposerCommand   = new RelayCommand(async _ => await ProposerAsync(), _ => CanProposer);
 
             AjouterActionMedicaleCommand         = new RelayCommand(_ => AjouterAction("medicale"),         _ => Projet?.IsBrouillon == true);
             AjouterActionPsychologiqueCommand    = new RelayCommand(_ => AjouterAction("psychologique"),    _ => Projet?.IsBrouillon == true);
@@ -106,6 +111,23 @@ namespace MedCompanion.ViewModels
 
         public ICommand SupprimerActionCommand { get; }
         public ICommand CyclerStatutCommand    { get; }
+        public ICommand ProposerCommand        { get; }
+
+        private bool _isProposerEnCours;
+        public bool IsProposerEnCours
+        {
+            get => _isProposerEnCours;
+            private set { if (_isProposerEnCours != value) { _isProposerEnCours = value; OnPropertyChanged();
+                (ProposerCommand as RelayCommand)?.RaiseCanExecuteChanged(); } }
+        }
+
+        public bool ProposerVisible => _suggester != null;
+
+        private bool CanProposer
+            => _suggester != null
+            && Projet != null
+            && Projet.IsBrouillon
+            && !IsProposerEnCours;
 
         private bool CanValider
             => Projet != null
@@ -114,8 +136,9 @@ namespace MedCompanion.ViewModels
 
         // ── Cycle de vie ─────────────────────────────────────────────────────
 
-        public void OuvrirBrouillonOuCreer(string patientNomComplet, string psychiatre)
+        public void OuvrirBrouillonOuCreer(string patientNomComplet, string psychiatre, string patientDirectoryPath = "")
         {
+            _patientDirectoryPath = patientDirectoryPath ?? "";
             if (string.IsNullOrWhiteSpace(patientNomComplet)) return;
 
             var brouillonMeta = _service.GetBrouillon(patientNomComplet);
@@ -146,6 +169,93 @@ namespace MedCompanion.ViewModels
             Projet = nouveau;
             StatusMessage = $"Nouveau brouillon v{nouvelleVersion} créé.";
             BrouillonCreated?.Invoke();
+        }
+
+        /// <summary>
+        /// V1.1 — Demande à Med de proposer le contenu du projet à partir de la dernière
+        /// Synthèse Globale validée + évaluations + notes. REMPLACE le contenu actuel.
+        /// </summary>
+        private async Task ProposerAsync()
+        {
+            if (_suggester == null || Projet == null || Projet.IsValidee) return;
+
+            if (Projet.HasAnyContenu)
+            {
+                var r = System.Windows.MessageBox.Show(
+                    "Le brouillon contient déjà du contenu. La proposition de Med va le REMPLACER.\n\nContinuer ?",
+                    "Proposer (Med)",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning);
+                if (r != System.Windows.MessageBoxResult.Yes) return;
+            }
+
+            IsProposerEnCours = true;
+            StatusMessage = "⏳ Med lit la Synthèse Globale et le dossier pour proposer un projet...";
+
+            try
+            {
+                var (ok, sug, error) = await _suggester.GenerateInitialAsync(
+                    Projet.PatientNomComplet, _patientDirectoryPath, CancellationToken.None);
+                if (!ok || sug == null)
+                {
+                    StatusMessage = $"❌ Proposition impossible : {error ?? "réponse vide"}";
+                    return;
+                }
+
+                // Textes
+                Projet.ObjectifsPrioritaires = sug.ObjectifsPrioritaires;
+                Projet.RessourcesASoutenir   = sug.RessourcesASoutenir;
+                Projet.ReevaluationChecklist = sug.ReevaluationChecklist;
+                Projet.CoConstructionFamille = sug.CoConstructionFamille;
+
+                // Listes d'actions : on REMPLACE les collections
+                ReplaceActions(Projet.ActionsMedicales,         sug.ActionsMedicales);
+                ReplaceActions(Projet.ActionsPsychologiques,    sug.ActionsPsychologiques);
+                ReplaceActions(Projet.ActionsDeveloppementales, sug.ActionsDeveloppementales);
+                ReplaceActions(Projet.ActionsEnvironnementales, sug.ActionsEnvironnementales);
+
+                // Lien Synthèse source (traçabilité)
+                if (!string.IsNullOrWhiteSpace(sug.SyntheseGlobaleSourceFichier))
+                    Projet.SyntheseGlobaleSourceFichier = sug.SyntheseGlobaleSourceFichier;
+
+                _service.SaveBrouillon(Projet);
+                StatusMessage = sug.SyntheseGlobaleSourceVersion > 0
+                    ? $"✓ Projet proposé à partir de la Synthèse Globale v{sug.SyntheseGlobaleSourceVersion}. Validez/modifiez chaque action."
+                    : "✓ Projet proposé (sans synthèse de référence). Validez/modifiez chaque action.";
+                (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsProposerEnCours = false;
+            }
+        }
+
+        private void ReplaceActions(ObservableCollection<ProjetAction> target,
+                                    System.Collections.Generic.List<ProjetTherapeutiqueSuggesterService.ActionSuggestion> source)
+        {
+            // Détacher les handlers actuels
+            foreach (var a in target) DetachActionHandlers(a);
+            target.Clear();
+            foreach (var s in source)
+            {
+                if (string.IsNullOrWhiteSpace(s.Libelle)) continue;
+                var a = new ProjetAction
+                {
+                    Libelle             = s.Libelle.Trim(),
+                    Description         = (s.Description ?? "").Trim(),
+                    IndicateurReussite  = (s.IndicateurReussite ?? "").Trim(),
+                    LienSyntheseSection = (s.LienSyntheseSection ?? "").Trim(),
+                    Statut              = ActionStatut.AVenir,
+                    DateDecision        = DateTime.Now,
+                    DateDernierStatut   = DateTime.Now,
+                };
+                AttachActionHandlers(a);
+                target.Add(a);
+            }
         }
 
         private void Valider()

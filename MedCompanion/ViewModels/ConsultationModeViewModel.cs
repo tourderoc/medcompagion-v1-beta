@@ -428,11 +428,12 @@ namespace MedCompanion.ViewModels
 
         private ProjetTherapeutiqueService? _projetTherapeutiqueService;
 
-        /// <summary>Injecte le service Projet Thérapeutique (V1.0).</summary>
-        public void InjectProjetTherapeutiqueService(ProjetTherapeutiqueService service)
+        /// <summary>Injecte les services Projet Thérapeutique (V1.0 + V1.1 si suggester).</summary>
+        public void InjectProjetTherapeutiqueService(ProjetTherapeutiqueService service,
+                                                     ProjetTherapeutiqueSuggesterService? suggester = null)
         {
             _projetTherapeutiqueService = service;
-            ProjetTherapeutiqueVM = new ProjetTherapeutiqueViewModel(service);
+            ProjetTherapeutiqueVM = new ProjetTherapeutiqueViewModel(service, suggester);
             ProjetTherapeutiqueVM.Closed += () =>
             {
                 IsProjetTherapeutiqueMode = false;
@@ -471,7 +472,10 @@ namespace MedCompanion.ViewModels
             IsEvaluationPhaseMode = false;
             IsSyntheseGlobaleMode = false;
 
-            ProjetTherapeutiqueVM.OuvrirBrouillonOuCreer(_currentPatient.NomComplet, psychiatre: "");
+            ProjetTherapeutiqueVM.OuvrirBrouillonOuCreer(
+                _currentPatient.NomComplet,
+                psychiatre: "",
+                patientDirectoryPath: _currentPatient.DirectoryPath ?? "");
             IsProjetTherapeutiqueMode = true;
         }
 

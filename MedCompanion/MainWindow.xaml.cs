@@ -416,8 +416,12 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 _currentLLMService, _patientContextService, evaluationPhaseService);
         }
 
-        // Projet Thérapeutique V1.0 — service de persistance
+        // Projet Thérapeutique V1.0 (persistance) + V1.1 (génération Med depuis Synthèse Globale)
         var projetTherapeutiqueService = new ProjetTherapeutiqueService(_pathService);
+        ProjetTherapeutiqueSuggesterService? projetTherapeutiqueSuggester = null;
+        if (_currentLLMService != null && _patientContextService != null)
+            projetTherapeutiqueSuggester = new ProjetTherapeutiqueSuggesterService(
+                _currentLLMService, _patientContextService, evaluationPhaseService, syntheseGlobaleService);
 
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         if (_currentLLMService != null)
@@ -425,7 +429,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
                 evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture,
                 syntheseGlobaleService, syntheseGlobaleSuggester, _synthesisWeightTracker, syntheseGlobaleRelecteur,
-                projetTherapeutiqueService);
+                projetTherapeutiqueService, projetTherapeutiqueSuggester);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>
