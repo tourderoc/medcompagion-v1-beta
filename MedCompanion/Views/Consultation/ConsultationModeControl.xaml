@@ -17,6 +17,7 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
         <conv:StringEqualsMultiConverter x:Key="StringEquals"/>
         <conv:StringNotWhiteSpaceToVisibilityConverter x:Key="StringNotWS"/>
         <conv:StringToBrushConverter x:Key="StringToBrush"/>
