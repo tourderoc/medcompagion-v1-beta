@@ -76,6 +76,8 @@ namespace MedCompanion.Views.Consultation
                 _viewModel?.InjectEvaluationServices(evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture);
             if (syntheseGlobaleService != null)
                 _viewModel?.InjectSyntheseGlobaleService(syntheseGlobaleService, syntheseGlobaleSuggester, synthesisWeightTracker, syntheseGlobaleRelecteur);
+            if (projetTherapeutiqueService != null)
+                _viewModel?.InjectProjetTherapeutiqueService(projetTherapeutiqueService);
             _documentService = documentService;
             _scannerService = scannerService;
         }
