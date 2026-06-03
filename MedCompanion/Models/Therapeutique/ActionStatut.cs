@@ -24,4 +24,20 @@ namespace MedCompanion.Models.Therapeutique
         Brouillon = 0,
         Validee   = 1
     }
+
+    /// <summary>
+    /// V1.2 — Statut diff d'une action au sein d'une proposition de patch incrémental
+    /// (revue de v(N+1) qui hérite de v(N)).
+    /// </summary>
+    public enum ActionDiffStatut
+    {
+        /// <summary>Med ne propose pas de changement (action déjà bonne).</summary>
+        Inchangee  = 0,
+        /// <summary>Med propose une modification (nouveau libellé / description / indicateur).</summary>
+        Modifiee   = 1,
+        /// <summary>Action ajoutée par Med (n'existait pas en v(N)).</summary>
+        Nouvelle   = 2,
+        /// <summary>Med propose d'archiver / retirer cette action.</summary>
+        AArchiver  = 3
+    }
 }

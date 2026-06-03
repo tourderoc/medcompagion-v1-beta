@@ -77,6 +77,40 @@ namespace MedCompanion.Services.Therapeutique
             public int SyntheseGlobaleSourceVersion { get; set; }
         }
 
+        /// <summary>
+        /// V1.2 — Patch sur une action existante OU nouvelle action proposée.
+        /// </summary>
+        public class ActionPatch
+        {
+            public string Id              = "";   // vide → nouvelle action ; sinon = ID existant
+            public string Statut          = "";   // "inchangee" | "modifiee" | "nouvelle" | "a_archiver"
+            public string Libelle         = "";
+            public string Description     = "";
+            public string IndicateurReussite = "";
+            public string LienSyntheseSection = "";
+            public string DiffResume      = "";
+        }
+
+        public class SectionTextPatch
+        {
+            public string Statut     = "";   // "inchangee" | "modifiee"
+            public string Contenu    = "";
+            public string DiffResume = "";
+        }
+
+        public class ProjetPatchSuggestion
+        {
+            public SectionTextPatch Objectifs       = new();
+            public SectionTextPatch Ressources      = new();
+            public SectionTextPatch Reevaluation    = new();
+            public SectionTextPatch CoConstruction  = new();
+
+            public List<ActionPatch> ActionsMedicales         = new();
+            public List<ActionPatch> ActionsPsychologiques    = new();
+            public List<ActionPatch> ActionsDeveloppementales = new();
+            public List<ActionPatch> ActionsEnvironnementales = new();
+        }
+
         public async Task<(bool ok, ProjetSuggestion? suggestion, string? error)> GenerateInitialAsync(
             string patientNomComplet,
             string patientDirectoryPath,
@@ -136,6 +170,212 @@ namespace MedCompanion.Services.Therapeutique
             }
             catch (OperationCanceledException) { return (false, null, "Délai LLM dépassé."); }
             catch (Exception ex)                { return (false, null, ex.Message); }
+        }
+
+        /// <summary>
+        /// V1.2 — Propose un PATCH d'un Projet Thérapeutique existant : pour chaque
+        /// section et chaque action, statut Inchangee/Modifiee/Nouvelle/AArchiver +
+        /// contenu nouveau (si Modifiee/Nouvelle) + résumé court du changement.
+        /// </summary>
+        public async Task<(bool ok, ProjetPatchSuggestion? patch, string? error)> SuggestPatchAsync(
+            ProjetTherapeutique projet,
+            string patientDirectoryPath,
+            CancellationToken ct = default)
+        {
+            if (projet == null) return (false, null, "Projet nul.");
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            cts.CancelAfter(TimeSpan.FromSeconds(LlmTimeoutSeconds));
+
+            try
+            {
+                var derniereSynth = _syntheseGlobaleService.GetDerniereValidee(projet.PatientNomComplet);
+                SyntheseGlobale? synthese = null;
+                if (derniereSynth != null) synthese = _syntheseGlobaleService.Load(derniereSynth.FilePath);
+
+                var evaluations = !string.IsNullOrEmpty(patientDirectoryPath)
+                    ? _evaluationPhaseService.LoadAll(patientDirectoryPath)
+                        .Where(p => !p.IsActive)
+                        .OrderBy(p => p.DateDebut)
+                        .ToList()
+                    : new List<EvaluationPhase>();
+
+                var bundle = _patientContext.GetCompleteContext(projet.PatientNomComplet);
+                var clinicalContent = bundle?.ClinicalContext ?? "";
+
+                var prompt = BuildPatchPrompt(projet, synthese, evaluations, clinicalContent);
+                var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
+                if (!ok || string.IsNullOrWhiteSpace(raw))
+                    return (false, null, err ?? "Réponse LLM vide.");
+
+                var patch = ParsePatchJson(raw);
+                if (patch == null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ProjetPatch] Parse failed. Raw : {raw}");
+                    return (false, null, "Parsing JSON impossible (voir Sortie Debug).");
+                }
+                return (true, patch, null);
+            }
+            catch (OperationCanceledException) { return (false, null, "Délai LLM dépassé."); }
+            catch (Exception ex)                { return (false, null, ex.Message); }
+        }
+
+        private static string BuildPatchPrompt(
+            ProjetTherapeutique projet,
+            SyntheseGlobale? synthese,
+            List<EvaluationPhase> evaluations,
+            string clinicalContent)
+        {
+            var sbCurrent = new StringBuilder();
+            sbCurrent.AppendLine($"### Objectifs prioritaires");
+            sbCurrent.AppendLine(string.IsNullOrWhiteSpace(projet.ObjectifsPrioritaires) ? "(vide)" : projet.ObjectifsPrioritaires.Trim());
+            sbCurrent.AppendLine();
+            sbCurrent.AppendLine($"### Ressources à soutenir");
+            sbCurrent.AppendLine(string.IsNullOrWhiteSpace(projet.RessourcesASoutenir) ? "(vide)" : projet.RessourcesASoutenir.Trim());
+            sbCurrent.AppendLine();
+            sbCurrent.AppendLine($"### Réévaluation prévue (checklist)");
+            sbCurrent.AppendLine(string.IsNullOrWhiteSpace(projet.ReevaluationChecklist) ? "(vide)" : projet.ReevaluationChecklist.Trim());
+            sbCurrent.AppendLine();
+            sbCurrent.AppendLine($"### Co-construction famille");
+            sbCurrent.AppendLine(string.IsNullOrWhiteSpace(projet.CoConstructionFamille) ? "(vide)" : projet.CoConstructionFamille.Trim());
+            sbCurrent.AppendLine();
+
+            AppendActions(sbCurrent, "Prise en charge médicale",        projet.ActionsMedicales);
+            AppendActions(sbCurrent, "Prise en charge psychologique",   projet.ActionsPsychologiques);
+            AppendActions(sbCurrent, "Accompagnement développemental",  projet.ActionsDeveloppementales);
+            AppendActions(sbCurrent, "Actions sur l'environnement",     projet.ActionsEnvironnementales);
+
+            var sbSynth = new StringBuilder();
+            if (synthese != null)
+            {
+                foreach (var s in synthese.Sections)
+                {
+                    if (string.IsNullOrWhiteSpace(s.Contenu)) continue;
+                    sbSynth.AppendLine($"### {s.Titre}");
+                    sbSynth.AppendLine(s.Contenu.Trim());
+                    sbSynth.AppendLine();
+                }
+            }
+
+            return $@"Tu es pédopsychiatre. Tu PROPOSES UN PATCH d'un Projet Thérapeutique existant en intégrant uniquement les nouveaux éléments (nouvelles évaluations clôturées, notes récentes, ou évolution de la Synthèse Globale).
+
+PRINCIPE FONDAMENTAL : NE PAS RÉÉCRIRE CE QUI NE CHANGE PAS.
+
+Pour chaque section TEXTE LIBRE (objectifs / ressources / réévaluation / co-construction), choisis :
+- ""inchangee"" : pas de modif (renvoie contenu vide)
+- ""modifiee""  : retoucher (renvoie contenu nouveau COMPLET + diff_resume)
+
+Pour chaque ACTION existante, choisis :
+- ""inchangee""  : action toujours pertinente telle quelle
+- ""modifiee""   : ajuster libellé / description / indicateur (renvoie le nouveau contenu complet)
+- ""a_archiver"" : suggérer de retirer cette action (n'est plus pertinente)
+- ""nouvelle""   : interdit pour les actions existantes (réservé aux ajouts)
+
+Pour AJOUTER UNE NOUVELLE ACTION : statut ""nouvelle"" avec id vide.
+
+CONTRAINTES :
+- Ton clinique direct, prudent.
+- Cite uniquement ce que la synthèse / les sources soutiennent.
+- Pas de prescription précise sans appui.
+- Max 2 actions nouvelles par section (rester chirurgical).
+
+Patient : {projet.PatientNomComplet}
+Version actuelle du projet : v{projet.Version}
+
+[A] PROJET ACTUEL (à patcher) :
+{sbCurrent.ToString().TrimEnd()}
+
+[B] SYNTHÈSE GLOBALE actuelle :
+{(sbSynth.Length > 0 ? sbSynth.ToString().TrimEnd() : "(aucune)")}
+
+[C] Évaluations clôturées : {evaluations.Count}
+
+[D] Notes / contexte :
+{(string.IsNullOrWhiteSpace(clinicalContent) ? "(aucun)" : clinicalContent.Trim())}
+
+RÉPONDS UNIQUEMENT par un JSON valide (les listes d'actions DOIVENT inclure une entrée par action existante, avec son id) :
+{{
+  ""objectifs"":       {{ ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+  ""ressources"":      {{ ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+  ""reevaluation"":    {{ ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+  ""co_construction"": {{ ""statut"": ""..."", ""contenu"": ""..."", ""diff_resume"": ""..."" }},
+  ""actions_medicales"": [
+    {{ ""id"": ""..."", ""statut"": ""..."", ""libelle"": ""..."", ""description"": ""..."", ""indicateur_reussite"": ""..."", ""lien_synthese_section"": ""..."", ""diff_resume"": ""..."" }}
+  ],
+  ""actions_psychologiques"":    [ {{ ""id"": ""..."", ""statut"": ""..."", ""libelle"": ""..."", ""description"": ""..."", ""indicateur_reussite"": ""..."", ""lien_synthese_section"": ""..."", ""diff_resume"": ""..."" }} ],
+  ""actions_developpementales"": [ {{ ""id"": ""..."", ""statut"": ""..."", ""libelle"": ""..."", ""description"": ""..."", ""indicateur_reussite"": ""..."", ""lien_synthese_section"": ""..."", ""diff_resume"": ""..."" }} ],
+  ""actions_environnementales"": [ {{ ""id"": ""..."", ""statut"": ""..."", ""libelle"": ""..."", ""description"": ""..."", ""indicateur_reussite"": ""..."", ""lien_synthese_section"": ""..."", ""diff_resume"": ""..."" }} ]
+}}";
+        }
+
+        private static void AppendActions(StringBuilder sb, string section, IEnumerable<ProjetAction> actions)
+        {
+            sb.AppendLine($"### Actions — {section}");
+            var list = actions.ToList();
+            if (list.Count == 0) { sb.AppendLine("(aucune)"); sb.AppendLine(); return; }
+            foreach (var a in list)
+            {
+                sb.AppendLine($"- [id={a.Id}] [statut={a.Statut}] {a.Libelle}");
+                if (!string.IsNullOrWhiteSpace(a.Description))
+                    sb.AppendLine($"  Description : {a.Description}");
+                if (!string.IsNullOrWhiteSpace(a.IndicateurReussite))
+                    sb.AppendLine($"  Indicateur : {a.IndicateurReussite}");
+            }
+            sb.AppendLine();
+        }
+
+        private static ProjetPatchSuggestion? ParsePatchJson(string raw)
+        {
+            var json = ExtractJson(raw);
+            if (string.IsNullOrEmpty(json)) return null;
+            try
+            {
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var patch = new ProjetPatchSuggestion
+                {
+                    Objectifs      = ReadTextPatch(root, "objectifs"),
+                    Ressources     = ReadTextPatch(root, "ressources"),
+                    Reevaluation   = ReadTextPatch(root, "reevaluation"),
+                    CoConstruction = ReadTextPatch(root, "co_construction"),
+                    ActionsMedicales         = ReadActionPatches(root, "actions_medicales"),
+                    ActionsPsychologiques    = ReadActionPatches(root, "actions_psychologiques"),
+                    ActionsDeveloppementales = ReadActionPatches(root, "actions_developpementales"),
+                    ActionsEnvironnementales = ReadActionPatches(root, "actions_environnementales"),
+                };
+                return patch;
+            }
+            catch { return null; }
+        }
+
+        private static SectionTextPatch ReadTextPatch(JsonElement root, string key)
+        {
+            var p = new SectionTextPatch();
+            if (!root.TryGetProperty(key, out var e) || e.ValueKind != JsonValueKind.Object) return p;
+            p.Statut     = ReadString(e, "statut").ToLowerInvariant();
+            p.Contenu    = ReadString(e, "contenu");
+            p.DiffResume = ReadString(e, "diff_resume");
+            return p;
+        }
+
+        private static List<ActionPatch> ReadActionPatches(JsonElement root, string key)
+        {
+            var list = new List<ActionPatch>();
+            if (!root.TryGetProperty(key, out var arr) || arr.ValueKind != JsonValueKind.Array) return list;
+            foreach (var e in arr.EnumerateArray())
+            {
+                if (e.ValueKind != JsonValueKind.Object) continue;
+                list.Add(new ActionPatch
+                {
+                    Id                  = ReadString(e, "id"),
+                    Statut              = ReadString(e, "statut").ToLowerInvariant(),
+                    Libelle             = ReadString(e, "libelle"),
+                    Description         = ReadString(e, "description"),
+                    IndicateurReussite  = ReadString(e, "indicateur_reussite"),
+                    LienSyntheseSection = ReadString(e, "lien_synthese_section"),
+                    DiffResume          = ReadString(e, "diff_resume"),
+                });
+            }
+            return list;
         }
 
         private static string BuildPrompt(

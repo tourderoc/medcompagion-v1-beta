@@ -94,6 +94,38 @@ namespace MedCompanion.Models.Therapeutique
             set { if (_indicateurReussite != value) { _indicateurReussite = value ?? ""; OnPropertyChanged(); } }
         }
 
+        // ── V1.2 — Mode patch incrémental ────────────────────────────────────
+
+        private ActionDiffStatut _diffSuggere = ActionDiffStatut.Inchangee;
+        /// <summary>Statut diff de l'action dans une proposition de patch Med (revue v(N+1)).</summary>
+        public ActionDiffStatut DiffSuggere
+        {
+            get => _diffSuggere;
+            set { if (_diffSuggere != value) { _diffSuggere = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasDiff)); } }
+        }
+        public bool HasDiff => _diffSuggere != ActionDiffStatut.Inchangee;
+
+        private string _libellePrecedent = "";
+        public string LibellePrecedent
+        {
+            get => _libellePrecedent;
+            set { if (_libellePrecedent != value) { _libellePrecedent = value ?? ""; OnPropertyChanged(); } }
+        }
+
+        private string _descriptionPrecedente = "";
+        public string DescriptionPrecedente
+        {
+            get => _descriptionPrecedente;
+            set { if (_descriptionPrecedente != value) { _descriptionPrecedente = value ?? ""; OnPropertyChanged(); } }
+        }
+
+        private string _diffResume = "";
+        public string DiffResume
+        {
+            get => _diffResume;
+            set { if (_diffResume != value) { _diffResume = value ?? ""; OnPropertyChanged(); } }
+        }
+
         // ── Affichage ────────────────────────────────────────────────────────
 
         public string StatutIcon => Statut switch

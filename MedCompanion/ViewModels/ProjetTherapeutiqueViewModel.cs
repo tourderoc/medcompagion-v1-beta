@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -42,6 +43,11 @@ namespace MedCompanion.ViewModels
             ValiderCommand    = new RelayCommand(_ => Valider(),                _ => CanValider);
             FermerCommand     = new RelayCommand(_ => FermerSansValider(),      _ => Projet != null);
             ProposerCommand   = new RelayCommand(async _ => await ProposerAsync(), _ => CanProposer);
+            PatchCommand      = new RelayCommand(async _ => await PatchAsync(),    _ => CanPatch);
+            AccepterActionCommand = new RelayCommand(param => AccepterAction(param as ProjetAction),
+                                                      param => param is ProjetAction a && a.HasDiff);
+            RejeterActionCommand  = new RelayCommand(param => RejeterAction(param as ProjetAction),
+                                                      param => param is ProjetAction a && a.HasDiff);
 
             AjouterActionMedicaleCommand         = new RelayCommand(_ => AjouterAction("medicale"),         _ => Projet?.IsBrouillon == true);
             AjouterActionPsychologiqueCommand    = new RelayCommand(_ => AjouterAction("psychologique"),    _ => Projet?.IsBrouillon == true);
@@ -112,6 +118,19 @@ namespace MedCompanion.ViewModels
         public ICommand SupprimerActionCommand { get; }
         public ICommand CyclerStatutCommand    { get; }
         public ICommand ProposerCommand        { get; }
+        public ICommand PatchCommand           { get; }
+        public ICommand AccepterActionCommand  { get; }
+        public ICommand RejeterActionCommand   { get; }
+
+        private bool CanPatch
+            => _suggester != null
+            && Projet != null
+            && Projet.IsBrouillon
+            && Projet.Version > 1
+            && !IsProposerEnCours;
+
+        /// <summary>True quand v > 1 (mode patch incrémental).</summary>
+        public bool IsModePatch => Projet != null && Projet.Version > 1;
 
         private bool _isProposerEnCours;
         public bool IsProposerEnCours
@@ -165,11 +184,56 @@ namespace MedCompanion.ViewModels
                 DateRedaction     = DateTime.Now,
                 VersionPrecedenteFichier = derniere?.FileName
             };
+
+            // V1.2 — Si une version validée existe, hériter de son contenu pour permettre
+            // le mode patch (Med modifie seulement ce qui change). On garde aussi le
+            // LibellePrecedent / contenu d'origine par action pour préparer le diff.
+            if (derniere != null)
+            {
+                var dernFull = _service.Load(derniere.FilePath);
+                if (dernFull != null)
+                {
+                    // Sections texte libre
+                    nouveau.ObjectifsPrioritaires = dernFull.ObjectifsPrioritaires;
+                    nouveau.RessourcesASoutenir   = dernFull.RessourcesASoutenir;
+                    nouveau.ReevaluationChecklist = dernFull.ReevaluationChecklist;
+                    nouveau.CoConstructionFamille = dernFull.CoConstructionFamille;
+                    nouveau.DateReevaluationPrevue = dernFull.DateReevaluationPrevue;
+                    nouveau.SyntheseGlobaleSourceFichier = dernFull.SyntheseGlobaleSourceFichier;
+
+                    // Actions — hériter avec leur statut courant
+                    foreach (var a in dernFull.ActionsMedicales)         nouveau.ActionsMedicales.Add(CloneAction(a));
+                    foreach (var a in dernFull.ActionsPsychologiques)    nouveau.ActionsPsychologiques.Add(CloneAction(a));
+                    foreach (var a in dernFull.ActionsDeveloppementales) nouveau.ActionsDeveloppementales.Add(CloneAction(a));
+                    foreach (var a in dernFull.ActionsEnvironnementales) nouveau.ActionsEnvironnementales.Add(CloneAction(a));
+                }
+            }
+
             _service.SaveBrouillon(nouveau);
             Projet = nouveau;
-            StatusMessage = $"Nouveau brouillon v{nouvelleVersion} créé.";
+            StatusMessage = derniere != null
+                ? $"Nouveau brouillon v{nouvelleVersion} créé — hérite du contenu de v{derniere.Version}."
+                : $"Nouveau brouillon v{nouvelleVersion} créé.";
             BrouillonCreated?.Invoke();
         }
+
+        /// <summary>
+        /// Clone une action en conservant l'ID (pour le matching inter-versions) et son
+        /// statut courant. Les dates restent immuables (la décision n'est pas re-prise).
+        /// </summary>
+        private static ProjetAction CloneAction(ProjetAction src)
+            => new ProjetAction
+            {
+                Id                     = src.Id,
+                Libelle                = src.Libelle,
+                Description            = src.Description,
+                Statut                 = src.Statut,
+                DateDecision           = src.DateDecision,
+                DateDernierStatut      = src.DateDernierStatut,
+                MotifDernierChangement = src.MotifDernierChangement,
+                LienSyntheseSection    = src.LienSyntheseSection,
+                IndicateurReussite     = src.IndicateurReussite,
+            };
 
         /// <summary>
         /// V1.1 — Demande à Med de proposer le contenu du projet à partir de la dernière
@@ -255,6 +319,172 @@ namespace MedCompanion.ViewModels
                 };
                 AttachActionHandlers(a);
                 target.Add(a);
+            }
+        }
+
+        /// <summary>
+        /// V1.2 — Demande à Med un PATCH du projet existant (diff par section et par action).
+        /// Le contenu de v(N) sert de base, Med modifie chirurgicalement.
+        /// </summary>
+        private async Task PatchAsync()
+        {
+            if (_suggester == null || Projet == null || Projet.IsValidee) return;
+
+            IsProposerEnCours = true;
+            StatusMessage = "⏳ Med relit le projet et les nouveaux éléments du dossier...";
+
+            try
+            {
+                var (ok, patch, error) = await _suggester.SuggestPatchAsync(
+                    Projet, _patientDirectoryPath, CancellationToken.None);
+                if (!ok || patch == null)
+                {
+                    StatusMessage = $"❌ Patch impossible : {error ?? "réponse vide"}";
+                    return;
+                }
+
+                int modifs = 0, nouveaux = 0, archives = 0, inchangees = 0;
+
+                // Sections texte libre
+                ApplyTextPatch(patch.Objectifs,      v => Projet.ObjectifsPrioritaires = v, ref modifs);
+                ApplyTextPatch(patch.Ressources,     v => Projet.RessourcesASoutenir   = v, ref modifs);
+                ApplyTextPatch(patch.Reevaluation,   v => Projet.ReevaluationChecklist = v, ref modifs);
+                ApplyTextPatch(patch.CoConstruction, v => Projet.CoConstructionFamille = v, ref modifs);
+
+                // Actions par section
+                ApplyActionPatches(patch.ActionsMedicales,         Projet.ActionsMedicales,         ref modifs, ref nouveaux, ref archives, ref inchangees);
+                ApplyActionPatches(patch.ActionsPsychologiques,    Projet.ActionsPsychologiques,    ref modifs, ref nouveaux, ref archives, ref inchangees);
+                ApplyActionPatches(patch.ActionsDeveloppementales, Projet.ActionsDeveloppementales, ref modifs, ref nouveaux, ref archives, ref inchangees);
+                ApplyActionPatches(patch.ActionsEnvironnementales, Projet.ActionsEnvironnementales, ref modifs, ref nouveaux, ref archives, ref inchangees);
+
+                _service.SaveBrouillon(Projet);
+                StatusMessage = $"✓ Patch Med proposé — {modifs} modif(s), {nouveaux} nouvelle(s), {archives} à archiver, {inchangees} inchangée(s). Acceptez/rejetez action par action.";
+                (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsProposerEnCours = false;
+            }
+        }
+
+        private static void ApplyTextPatch(
+            ProjetTherapeutiqueSuggesterService.SectionTextPatch p,
+            Action<string> setter,
+            ref int modifs)
+        {
+            if (p == null) return;
+            if (p.Statut == "modifiee" && !string.IsNullOrWhiteSpace(p.Contenu))
+            {
+                setter(p.Contenu.Trim());
+                modifs++;
+            }
+        }
+
+        private void ApplyActionPatches(
+            List<ProjetTherapeutiqueSuggesterService.ActionPatch> patches,
+            ObservableCollection<ProjetAction> target,
+            ref int modifs, ref int nouveaux, ref int archives, ref int inchangees)
+        {
+            foreach (var p in patches)
+            {
+                switch (p.Statut)
+                {
+                    case "nouvelle":
+                        if (string.IsNullOrWhiteSpace(p.Libelle)) continue;
+                        var newAction = new ProjetAction
+                        {
+                            Libelle             = p.Libelle.Trim(),
+                            Description         = (p.Description ?? "").Trim(),
+                            IndicateurReussite  = (p.IndicateurReussite ?? "").Trim(),
+                            LienSyntheseSection = (p.LienSyntheseSection ?? "").Trim(),
+                            DiffSuggere         = ActionDiffStatut.Nouvelle,
+                            DiffResume          = p.DiffResume ?? "",
+                            Statut              = ActionStatut.AVenir,
+                            DateDecision        = DateTime.Now,
+                            DateDernierStatut   = DateTime.Now,
+                        };
+                        AttachActionHandlers(newAction);
+                        target.Add(newAction);
+                        nouveaux++;
+                        break;
+
+                    case "modifiee":
+                        {
+                            var existing = target.FirstOrDefault(a => a.Id == p.Id);
+                            if (existing == null) continue;
+                            existing.LibellePrecedent       = existing.Libelle;
+                            existing.DescriptionPrecedente  = existing.Description;
+                            if (!string.IsNullOrWhiteSpace(p.Libelle))            existing.Libelle = p.Libelle.Trim();
+                            if (!string.IsNullOrWhiteSpace(p.Description))        existing.Description = p.Description.Trim();
+                            if (!string.IsNullOrWhiteSpace(p.IndicateurReussite)) existing.IndicateurReussite = p.IndicateurReussite.Trim();
+                            if (!string.IsNullOrWhiteSpace(p.LienSyntheseSection)) existing.LienSyntheseSection = p.LienSyntheseSection.Trim();
+                            existing.DiffSuggere = ActionDiffStatut.Modifiee;
+                            existing.DiffResume  = p.DiffResume ?? "";
+                            modifs++;
+                            break;
+                        }
+
+                    case "a_archiver":
+                        {
+                            var existing = target.FirstOrDefault(a => a.Id == p.Id);
+                            if (existing == null) continue;
+                            existing.DiffSuggere = ActionDiffStatut.AArchiver;
+                            existing.DiffResume  = p.DiffResume ?? "";
+                            archives++;
+                            break;
+                        }
+
+                    default:
+                        inchangees++;
+                        break;
+                }
+            }
+        }
+
+        private void AccepterAction(ProjetAction? a)
+        {
+            if (a == null || Projet == null || Projet.IsValidee) return;
+            if (a.DiffSuggere == ActionDiffStatut.AArchiver)
+            {
+                // Accepter l'archivage = supprimer l'action
+                SupprimerAction(a);
+                return;
+            }
+            // Sinon = on garde le nouveau contenu, on remet le statut diff à Inchangée
+            a.DiffSuggere      = ActionDiffStatut.Inchangee;
+            a.LibellePrecedent = a.Libelle;
+            a.DescriptionPrecedente = a.Description;
+            a.DiffResume       = "";
+            ScheduleAutoSave();
+        }
+
+        private void RejeterAction(ProjetAction? a)
+        {
+            if (a == null || Projet == null || Projet.IsValidee) return;
+            switch (a.DiffSuggere)
+            {
+                case ActionDiffStatut.Nouvelle:
+                    // Rejeter une nouvelle action = la supprimer
+                    SupprimerAction(a);
+                    break;
+                case ActionDiffStatut.Modifiee:
+                    // Rejeter = revenir au contenu précédent
+                    if (!string.IsNullOrEmpty(a.LibellePrecedent))      a.Libelle     = a.LibellePrecedent;
+                    if (!string.IsNullOrEmpty(a.DescriptionPrecedente)) a.Description = a.DescriptionPrecedente;
+                    a.DiffSuggere = ActionDiffStatut.Inchangee;
+                    a.DiffResume  = "";
+                    ScheduleAutoSave();
+                    break;
+                case ActionDiffStatut.AArchiver:
+                    // Rejeter l'archivage = on garde l'action telle quelle
+                    a.DiffSuggere = ActionDiffStatut.Inchangee;
+                    a.DiffResume  = "";
+                    ScheduleAutoSave();
+                    break;
             }
         }
 
@@ -417,8 +647,11 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(IsReadOnly));
             OnPropertyChanged(nameof(IsBrouillon));
             OnPropertyChanged(nameof(IsReevaluationPassee));
+            OnPropertyChanged(nameof(IsModePatch));
             (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
             (FermerCommand  as RelayCommand)?.RaiseCanExecuteChanged();
+            (ProposerCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (PatchCommand    as RelayCommand)?.RaiseCanExecuteChanged();
         }
     }
 }

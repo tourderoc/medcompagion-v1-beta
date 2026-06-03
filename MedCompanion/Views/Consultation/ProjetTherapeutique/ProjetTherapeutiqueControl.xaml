@@ -8,10 +8,30 @@
         <converters:InverseBooleanToVisibilityConverter   x:Key="InverseBoolToVis"/>
         <converters:StringToBrushConverter                x:Key="StringToBrush"/>
 
-        <!-- Template d'une ProjetAction : statut cliquable + libellé édit + détail + bouton 🗑 -->
+        <!-- Template d'une ProjetAction : statut cliquable + libellé édit + détail + bouton 🗑
+             + bordure colorée selon DiffSuggere (V1.2) + boutons accept/reject si en patch -->
         <DataTemplate x:Key="ActionItemTemplate">
-            <Border Background="White" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="4"
-                    Padding="8" Margin="0,0,0,6">
+            <Border BorderThickness="1" CornerRadius="4" Padding="8" Margin="0,0,0,6">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Setter Property="Background"  Value="White"/>
+                        <Setter Property="BorderBrush" Value="#E5E8EC"/>
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding DiffSuggere}" Value="Modifiee">
+                                <Setter Property="Background"  Value="#FEF5E7"/>
+                                <Setter Property="BorderBrush" Value="#F39C12"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DiffSuggere}" Value="Nouvelle">
+                                <Setter Property="Background"  Value="#E8F8F0"/>
+                                <Setter Property="BorderBrush" Value="#27AE60"/>
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding DiffSuggere}" Value="AArchiver">
+                                <Setter Property="Background"  Value="#FDEDEC"/>
+                                <Setter Property="BorderBrush" Value="#E74C3C"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
@@ -35,6 +55,10 @@
 
                     <!-- Contenu de l'action -->
                     <StackPanel Grid.Column="1">
+                        <!-- Résumé du diff (V1.2) en italique si HasDiff -->
+                        <TextBlock Text="{Binding DiffResume}" FontSize="10" FontStyle="Italic"
+                                   Foreground="#7F6608" TextWrapping="Wrap" Margin="0,0,0,2"
+                                   Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}"/>
                         <TextBox Text="{Binding Libelle, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                  FontSize="12" FontWeight="SemiBold" Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
                                  Padding="4" IsReadOnly="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}"/>
@@ -73,15 +97,30 @@
                         </Grid>
                     </StackPanel>
 
-                    <!-- Bouton 🗑 supprimer -->
-                    <Button Grid.Column="2" Width="24" Height="24" Margin="6,0,0,0"
-                            Background="Transparent" BorderThickness="0" Cursor="Hand"
-                            Foreground="#95A5A6" VerticalAlignment="Top"
-                            Content="🗑" FontSize="11"
-                            ToolTip="Supprimer cette action"
-                            Visibility="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"
-                            Command="{Binding DataContext.SupprimerActionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                            CommandParameter="{Binding}"/>
+                    <!-- Boutons Accepter / Rejeter (visibles si HasDiff) + Supprimer -->
+                    <StackPanel Grid.Column="2" Orientation="Vertical" Margin="6,0,0,0" VerticalAlignment="Top">
+                        <StackPanel Orientation="Horizontal"
+                                    Visibility="{Binding HasDiff, Converter={StaticResource BoolToVis}}">
+                            <Button Content="✓" FontSize="11" Padding="6,2" Margin="0,0,2,0"
+                                    Background="#27AE60" Foreground="White" BorderThickness="0"
+                                    ToolTip="Accepter cette proposition"
+                                    Command="{Binding DataContext.AccepterActionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"/>
+                            <Button Content="✗" FontSize="11" Padding="6,2"
+                                    Background="#E74C3C" Foreground="White" BorderThickness="0"
+                                    ToolTip="Rejeter (revenir au contenu précédent ou supprimer si nouvelle)"
+                                    Command="{Binding DataContext.RejeterActionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                    CommandParameter="{Binding}"/>
+                        </StackPanel>
+                        <Button Width="24" Height="24" Margin="0,4,0,0"
+                                Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                Foreground="#95A5A6"
+                                Content="🗑" FontSize="11"
+                                ToolTip="Supprimer cette action"
+                                Visibility="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource InverseBoolToVis}}"
+                                Command="{Binding DataContext.SupprimerActionCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                CommandParameter="{Binding}"/>
+                    </StackPanel>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -100,11 +139,10 @@
                     <TextBlock Text="{Binding StatutLabel}" FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,0"/>
                 </StackPanel>
                 <StackPanel Grid.Column="1" Orientation="Horizontal">
-                    <!-- ✨ Proposer (Med) : lit Synthèse Globale validée + dossier -->
+                    <!-- ✨ Proposer (Med) : v1 uniquement (génération initiale REMPLACE) -->
                     <Button Padding="10,5" Margin="0,0,6,0"
                             Command="{Binding ProposerCommand}"
-                            Visibility="{Binding ProposerVisible, Converter={StaticResource BoolToVis}}"
-                            ToolTip="Med lit la dernière Synthèse Globale validée et propose objectifs, actions, ressources et checklist. REMPLACE le brouillon.">
+                            ToolTip="Med lit la dernière Synthèse Globale validée et propose une v1 complète. REMPLACE le brouillon.">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="Content" Value="✨ Proposer (Med)"/>
@@ -112,7 +150,39 @@
                                 <Setter Property="Foreground" Value="White"/>
                                 <Setter Property="FontWeight" Value="SemiBold"/>
                                 <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Visibility" Value="Visible"/>
                                 <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ProposerVisible}" Value="False">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsModePatch}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding IsProposerEnCours}" Value="True">
+                                        <Setter Property="Content" Value="⏳ Med..."/>
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
+                    <!-- 🔄 Patch (Med) : v > 1 (mode incrémental) -->
+                    <Button Padding="10,5" Margin="0,0,6,0"
+                            Command="{Binding PatchCommand}"
+                            ToolTip="Med propose des modifications ciblées par section et action. Conserve ce qui ne change pas.">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Content" Value="🔄 Patch (Med)"/>
+                                <Setter Property="Background" Value="#16A085"/>
+                                <Setter Property="Foreground" Value="White"/>
+                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsModePatch}" Value="True">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                    </DataTrigger>
                                     <DataTrigger Binding="{Binding IsProposerEnCours}" Value="True">
                                         <Setter Property="Content" Value="⏳ Med..."/>
                                         <Setter Property="IsEnabled" Value="False"/>
