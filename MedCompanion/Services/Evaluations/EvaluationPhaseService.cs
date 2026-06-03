@@ -15,10 +15,12 @@ namespace MedCompanion.Services.Evaluations
     public class EvaluationPhaseService
     {
         private readonly PathService _pathService;
+        private readonly SynthesisWeightTracker? _weightTracker;
 
-        public EvaluationPhaseService(PathService pathService)
+        public EvaluationPhaseService(PathService pathService, SynthesisWeightTracker? weightTracker = null)
         {
-            _pathService = pathService;
+            _pathService   = pathService;
+            _weightTracker = weightTracker;
         }
 
         /// <summary>
@@ -119,6 +121,19 @@ namespace MedCompanion.Services.Evaluations
         {
             phase.DateCloture = DateTime.Now;
             Save(phase);
+
+            // V0.3 — Notifie le tracker incrémental de la Synthèse Globale.
+            // Poids 1.0 → déclenche à elle seule le seuil (badge 🔔 sur le bouton +).
+            if (_weightTracker != null && !string.IsNullOrWhiteSpace(phase.PatientNomComplet))
+            {
+                var defaultWeight = Models.ContentWeightRules.GetDefaultWeight("evaluation_phase_cloturee") ?? 1.0;
+                _weightTracker.RecordContentWeight(
+                    phase.PatientNomComplet,
+                    "evaluation_phase_cloturee",
+                    phase.FilePath ?? "",
+                    defaultWeight,
+                    $"Évaluation clôturée le {phase.DateCloture:dd/MM/yyyy} (axes + cartographies + bilan final)");
+            }
         }
 
         /// <summary>

@@ -45,6 +45,17 @@ public static class ContentWeightRules
             "bilan_psychologique" => 0.9,
             "compte_rendu_hospitalisation" => 0.9,
 
+            // ÉVALUATIONS (V0.3 — Synthèse Globale incrémentale)
+            // Une évaluation clôturée intègre axes DSM + cartographie enfant + cartographie
+            // environnement + bilan final : impact fort sur la synthèse, déclenche le seuil
+            // à elle seule.
+            "evaluation_phase_cloturee" => 1.0,
+
+            // SYNTHÈSE GLOBALE
+            // Une synthèse globale validée par le psy résume le dossier complet :
+            // poids fort pour signaler aux suiveurs que c'est LA référence à utiliser.
+            "synthese_globale_validee" => 1.0,
+
             // NÉCESSITE IA (retourne null)
             "note_clinique" => null,        // IA évalue pendant structuration
             "synthese_document" => null,    // IA évalue pendant synthèse

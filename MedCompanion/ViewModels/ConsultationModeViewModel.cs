@@ -422,21 +422,70 @@ namespace MedCompanion.ViewModels
         }
 
         private SyntheseGlobaleService? _syntheseGlobaleService;
+        private SynthesisWeightTracker? _synthesisWeightTracker;
 
         /// <summary>
-        /// Injecte les services Synthèse Globale (V0.1 + V0.2). Construit le ViewModel
-        /// associé et le branche sur l'événement Closed pour sortir du mode.
+        /// Injecte les services Synthèse Globale (V0.1 + V0.2 + V0.3). Construit le
+        /// ViewModel d'édition, branche le rafraîchissement à la fermeture, et abonne
+        /// le tracker incrémental pour mettre à jour le badge 🔔.
         /// </summary>
-        public void InjectSyntheseGlobaleService(SyntheseGlobaleService service, SyntheseGlobaleSuggesterService? suggester = null)
+        public void InjectSyntheseGlobaleService(SyntheseGlobaleService service,
+                                                 SyntheseGlobaleSuggesterService? suggester = null,
+                                                 SynthesisWeightTracker? weightTracker = null)
         {
-            _syntheseGlobaleService = service;
+            _syntheseGlobaleService  = service;
+            _synthesisWeightTracker  = weightTracker;
             SyntheseGlobaleVM = new SyntheseGlobaleViewModel(service, suggester);
             SyntheseGlobaleVM.Closed += () =>
             {
                 IsSyntheseGlobaleMode = false;
                 LoadSyntheseGlobaleCards();   // rafraîchit frise + blocs SYNTHESE
+                RefreshSyntheseUpdateBadge();
             };
             SyntheseGlobaleVM.BrouillonCreated += LoadSyntheseGlobaleCards;
+            SyntheseGlobaleVM.SyntheseValidated += OnSyntheseValidated;
+
+            if (_synthesisWeightTracker != null)
+                _synthesisWeightTracker.WeightUpdated += (_, patient) =>
+                {
+                    if (_currentPatient != null
+                        && string.Equals(patient, _currentPatient.NomComplet, StringComparison.OrdinalIgnoreCase))
+                    {
+                        System.Windows.Application.Current?.Dispatcher.InvokeAsync(RefreshSyntheseUpdateBadge);
+                    }
+                };
+        }
+
+        /// <summary>
+        /// Réévalue le badge 🔔 en lisant le tracker pour le patient courant.
+        /// Appelé : ouverture patient, ajout d'un élément avec poids, validation d'une
+        /// nouvelle synthèse (reset → badge éteint).
+        /// </summary>
+        public void RefreshSyntheseUpdateBadge()
+        {
+            if (_synthesisWeightTracker == null || _currentPatient == null
+                || string.IsNullOrEmpty(_currentPatient.NomComplet))
+            {
+                SyntheseUpdateRecommandee = false;
+                _syntheseUpdateBadgeText = "";
+                OnPropertyChanged(nameof(SyntheseUpdateBadge));
+                return;
+            }
+            var (shouldUpdate, weight, items) =
+                _synthesisWeightTracker.CheckUpdateNeeded(_currentPatient.NomComplet, 1.0);
+            SyntheseUpdateRecommandee = shouldUpdate;
+            _syntheseUpdateBadgeText  = shouldUpdate
+                ? $"{items.Count} nouvel(s) élément(s) depuis la dernière synthèse (poids {weight:F1}/1.0)"
+                : "";
+            OnPropertyChanged(nameof(SyntheseUpdateBadge));
+        }
+
+        private void OnSyntheseValidated(string patientNomComplet)
+        {
+            // Reset du tracker à chaque synthèse validée : nouvelle source de vérité.
+            if (_synthesisWeightTracker != null && !string.IsNullOrWhiteSpace(patientNomComplet))
+                _synthesisWeightTracker.ResetAfterSynthesisUpdate(patientNomComplet);
+            RefreshSyntheseUpdateBadge();
         }
 
         /// <summary>
@@ -3250,6 +3299,26 @@ source: ""MedCompanion""
         public ObservableCollection<SyntheseGlobaleBilanCardViewModel> SyntheseGlobaleBlocks { get; } = new();
         public bool HasSyntheseGlobaleBlocks => SyntheseGlobaleBlocks.Count > 0;
 
+        // V0.3 — Tracker incrémental : indique si une mise à jour de la Synthèse Globale
+        // est recommandée (poids accumulé ≥ 1.0 depuis la dernière synthèse validée).
+        private bool _syntheseUpdateRecommandee;
+        public bool SyntheseUpdateRecommandee
+        {
+            get => _syntheseUpdateRecommandee;
+            private set
+            {
+                if (_syntheseUpdateRecommandee != value)
+                {
+                    _syntheseUpdateRecommandee = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(SyntheseUpdateBadge));
+                }
+            }
+        }
+        /// <summary>Texte du tooltip / badge sur le bouton + indiquant le nombre d'éléments en attente.</summary>
+        public string SyntheseUpdateBadge => _syntheseUpdateBadgeText;
+        private string _syntheseUpdateBadgeText = "";
+
         // Blocs de synthèse diagnostique (issus des évaluations clôturées) affichés
         // dans l'onglet SYNTHESE du dossier bleu, SOUS la synthèse rédigée manuellement.
         // Trié du plus récent au plus ancien.
@@ -3298,6 +3367,7 @@ source: ""MedCompanion""
             LoadConsultationCards();
             LoadEvaluationCards();
             LoadSyntheseGlobaleCards();
+            RefreshSyntheseUpdateBadge();
         }
 
         /// <summary>

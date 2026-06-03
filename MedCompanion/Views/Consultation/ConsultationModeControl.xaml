@@ -512,29 +512,42 @@
                         <StackPanel Grid.Row="0" Margin="0,0,0,10">
                             <!-- Frise chronologique des consultations (hub) -->
                             <DockPanel Margin="0,0,0,8">
-                                <!-- Bouton + (nouvelle consultation) -->
-                                <Button DockPanel.Dock="Right" x:Name="NewConsultationBtn"
-                                        Width="40" Height="40" Margin="8,0,0,0"
-                                        Click="NewConsultationBtn_Click"
-                                        Background="#3498DB" Foreground="White"
-                                        BorderThickness="0" Cursor="Hand"
-                                        ToolTip="Nouvelle consultation">
-                                    <Button.Template>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                                    CornerRadius="20">
-                                                <TextBlock Text="＋" FontSize="20" FontWeight="Bold"
-                                                           Foreground="White"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </Border>
-                                            <ControlTemplate.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter TargetName="Bd" Property="Background" Value="#2980B9"/>
-                                                </Trigger>
-                                            </ControlTemplate.Triggers>
-                                        </ControlTemplate>
-                                    </Button.Template>
-                                </Button>
+                                <!-- Bouton + (nouvelle consultation) avec badge 🔔 incrémental Synthèse Globale -->
+                                <Grid DockPanel.Dock="Right" Margin="8,0,0,0">
+                                    <Button x:Name="NewConsultationBtn"
+                                            Width="40" Height="40"
+                                            Click="NewConsultationBtn_Click"
+                                            Background="#3498DB" Foreground="White"
+                                            BorderThickness="0" Cursor="Hand"
+                                            ToolTip="Nouvelle consultation / évaluation / synthèse globale">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                                        CornerRadius="20">
+                                                    <TextBlock Text="＋" FontSize="20" FontWeight="Bold"
+                                                               Foreground="White"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="Bd" Property="Background" Value="#2980B9"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                    <!-- Badge 🔔 : visible si tracker.ShouldUpdateSynthesis() = true -->
+                                    <Border Width="18" Height="18"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top"
+                                            Margin="0,-2,-2,0"
+                                            Background="#D4AF37" CornerRadius="9"
+                                            BorderBrush="White" BorderThickness="2"
+                                            ToolTip="{Binding SyntheseUpdateBadge}"
+                                            Visibility="{Binding SyntheseUpdateRecommandee, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="🔔" FontSize="9" Foreground="White"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                </Grid>
 
                                 <!-- Carte "Reprendre suivi en cours" — visible quand brouillon de suivi non sauvegardé -->
                                 <Border DockPanel.Dock="Left" Margin="0,0,8,0"

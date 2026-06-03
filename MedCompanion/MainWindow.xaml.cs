@@ -383,7 +383,9 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         };
 
         // Phase d'évaluation V0/V0.1/V0.1.2/V0.2 : services + suggesters LLM + extractor
-        var evaluationPhaseService = new EvaluationPhaseService(_pathService);
+        // V0.3 Synthèse Globale : on injecte le SynthesisWeightTracker pour que Close()
+        // enregistre une évaluation clôturée avec poids 1.0 (déclenche le badge 🔔).
+        var evaluationPhaseService = new EvaluationPhaseService(_pathService, _synthesisWeightTracker);
         PreparationSuggesterService? preparationSuggester = null;
         AxesSuggesterService?        axesSuggester        = null;
         AxisExtractorService?        axisExtractor        = null;
@@ -412,7 +414,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
                 evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture,
-                syntheseGlobaleService, syntheseGlobaleSuggester);
+                syntheseGlobaleService, syntheseGlobaleSuggester, _synthesisWeightTracker);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>

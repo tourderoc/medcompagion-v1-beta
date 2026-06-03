@@ -82,6 +82,12 @@ namespace MedCompanion.ViewModels
         /// <summary>Notifié à la création d'un nouveau brouillon (pour rafraîchir la frise).</summary>
         public event Action? BrouillonCreated;
 
+        /// <summary>
+        /// Notifié à la validation d'une nouvelle version (pour reset du tracker incrémental).
+        /// Paramètre : NomComplet du patient.
+        /// </summary>
+        public event Action<string>? SyntheseValidated;
+
         // ── Affichage ────────────────────────────────────────────────────────
 
         public string TitreVue
@@ -217,9 +223,11 @@ namespace MedCompanion.ViewModels
             if (Synthese == null) return;
             try
             {
+                var patientNom = Synthese.PatientNomComplet;
                 _service.Validate(Synthese);
                 StatusMessage = $"✓ Synthèse v{Synthese.Version} validée — nouvelle source de vérité.";
                 NotifyAll();
+                SyntheseValidated?.Invoke(patientNom);   // déclenche reset du tracker
                 Closed?.Invoke();
             }
             catch (Exception ex)
