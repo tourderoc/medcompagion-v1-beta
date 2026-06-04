@@ -31,17 +31,20 @@ namespace MedCompanion.ViewModels
         private readonly ProjetTherapeutiqueService _service;
         private readonly ProjetTherapeutiqueSuggesterService? _suggester;
         private readonly ProjetTherapeutiquePilotageService?  _pilotage;
+        private readonly ProjetTherapeutiqueRelectureService? _relecteur;
         private ProjetTherapeutique? _projet;
         private CancellationTokenSource? _autoSaveCts;
         private string _patientDirectoryPath = "";
 
         public ProjetTherapeutiqueViewModel(ProjetTherapeutiqueService service,
                                             ProjetTherapeutiqueSuggesterService? suggester = null,
-                                            ProjetTherapeutiquePilotageService? pilotage = null)
+                                            ProjetTherapeutiquePilotageService? pilotage = null,
+                                            ProjetTherapeutiqueRelectureService? relecteur = null)
         {
             _service   = service;
             _suggester = suggester;
             _pilotage  = pilotage;
+            _relecteur = relecteur;
 
             ValiderCommand    = new RelayCommand(_ => Valider(),                _ => CanValider);
             FermerCommand     = new RelayCommand(_ => FermerSansValider(),      _ => Projet != null);
@@ -57,6 +60,10 @@ namespace MedCompanion.ViewModels
                                                           param => param is TransitionSuggestion t && !t.Traite);
             RejeterTransitionCommand   = new RelayCommand(param => RejeterTransition(param as TransitionSuggestion),
                                                           param => param is TransitionSuggestion t && !t.Traite);
+
+            RelireCommand       = new RelayCommand(async _ => await RelireAsync(), _ => CanRelire);
+            TraiterFlagCommand  = new RelayCommand(param => TraiterFlag(param as ProjetRelectureFlag),
+                                                   param => param is ProjetRelectureFlag f && !f.Traite);
 
             AjouterActionMedicaleCommand         = new RelayCommand(_ => AjouterAction("medicale"),         _ => Projet?.IsBrouillon == true);
             AjouterActionPsychologiqueCommand    = new RelayCommand(_ => AjouterAction("psychologique"),    _ => Projet?.IsBrouillon == true);
@@ -80,8 +87,12 @@ namespace MedCompanion.ViewModels
                     DetachHandlers();
                     _projet = value;
                     AttachHandlers();
+                    // Reset relecture à chaque changement de projet
+                    Flags.Clear();
+                    RelectureFaite = false;
                     OnPropertyChanged();
                     NotifyAll();
+                    NotifyRelectureState();
                 }
             }
         }
@@ -133,6 +144,8 @@ namespace MedCompanion.ViewModels
         public ICommand PilotageCommand            { get; }
         public ICommand AccepterTransitionCommand  { get; }
         public ICommand RejeterTransitionCommand   { get; }
+        public ICommand RelireCommand              { get; }
+        public ICommand TraiterFlagCommand         { get; }
 
         private bool CanPatch
             => _suggester != null
@@ -183,7 +196,55 @@ namespace MedCompanion.ViewModels
         private bool CanValider
             => Projet != null
             && Projet.IsBrouillon
-            && Projet.HasAnyContenu;
+            && Projet.HasAnyContenu
+            // V1.4 — Si un relecteur est disponible, la validation requiert qu'au moins une
+            // relecture ait été lancée ET qu'il n'y ait aucun flag Critique non traité.
+            && (_relecteur == null || (RelectureFaite && !HasFlagsCritiquesNonTraites));
+
+        private bool CanRelire
+            => _relecteur != null
+            && Projet != null
+            && Projet.IsBrouillon
+            && Projet.HasAnyContenu
+            && !IsProposerEnCours
+            && !IsPilotageEnCours;
+
+        public bool RelireVisible => _relecteur != null;
+
+        /// <summary>V1.4 — Flags de relecture critique pour le brouillon courant.</summary>
+        public ObservableCollection<ProjetRelectureFlag> Flags { get; } = new();
+        public bool HasFlags                    => Flags.Count > 0;
+        public bool HasFlagsNonTraites          => Flags.Any(f => !f.Traite);
+        public bool HasFlagsCritiquesNonTraites => Flags.Any(f => !f.Traite && f.Severite == ProjetFlagSeverite.Critique);
+
+        private bool _relectureFaite;
+        public bool RelectureFaite
+        {
+            get => _relectureFaite;
+            private set
+            {
+                if (_relectureFaite != value)
+                {
+                    _relectureFaite = value;
+                    OnPropertyChanged();
+                    (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        /// <summary>Message d'aide expliquant pourquoi la validation est bloquée.</summary>
+        public string ValidationBlocageMessage
+        {
+            get
+            {
+                if (Projet == null || !Projet.IsBrouillon) return "";
+                if (_relecteur == null) return "";
+                if (!RelectureFaite) return "ℹ Lancez la relecture critique de Med avant de pouvoir valider.";
+                if (HasFlagsCritiquesNonTraites)
+                    return $"⚠ {Flags.Count(f => !f.Traite && f.Severite == ProjetFlagSeverite.Critique)} flag(s) critique(s) non traité(s) — la validation est bloquée.";
+                return "";
+            }
+        }
 
         // ── Cycle de vie ─────────────────────────────────────────────────────
 
@@ -518,6 +579,59 @@ namespace MedCompanion.ViewModels
                     ScheduleAutoSave();
                     break;
             }
+        }
+
+        // ── V1.4 — Relecture critique (cohérence Synthèse ↔ Projet) ──────────
+
+        private async Task RelireAsync()
+        {
+            if (_relecteur == null || Projet == null || Projet.IsValidee) return;
+            IsProposerEnCours = true;
+            StatusMessage = "⏳ Med relit le projet pour détecter incohérences et lacunes...";
+            try
+            {
+                var (ok, flags, error) = await _relecteur.ReleireAsync(Projet, CancellationToken.None);
+                if (!ok || flags == null)
+                {
+                    StatusMessage = $"❌ Relecture impossible : {error ?? "réponse vide"}";
+                    return;
+                }
+                Flags.Clear();
+                foreach (var f in flags) Flags.Add(f);
+                RelectureFaite = true;
+
+                var nbCrit = flags.Count(f => f.Severite == ProjetFlagSeverite.Critique);
+                var nbMoy  = flags.Count(f => f.Severite == ProjetFlagSeverite.Moyenne);
+                var nbMin  = flags.Count(f => f.Severite == ProjetFlagSeverite.Mineure);
+                StatusMessage = flags.Count == 0
+                    ? "✓ Relecture terminée — aucun problème détecté."
+                    : $"✓ Relecture : {nbCrit} critique(s), {nbMoy} moyenne(s), {nbMin} mineure(s). Traitez les critiques avant validation.";
+                NotifyRelectureState();
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsProposerEnCours = false;
+            }
+        }
+
+        private void TraiterFlag(ProjetRelectureFlag? f)
+        {
+            if (f == null) return;
+            f.Traite = true;
+            NotifyRelectureState();
+        }
+
+        private void NotifyRelectureState()
+        {
+            OnPropertyChanged(nameof(HasFlags));
+            OnPropertyChanged(nameof(HasFlagsNonTraites));
+            OnPropertyChanged(nameof(HasFlagsCritiquesNonTraites));
+            OnPropertyChanged(nameof(ValidationBlocageMessage));
+            (ValiderCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
 
         // ── V1.3 — Pilotage Med (transitions de statut) ──────────────────────

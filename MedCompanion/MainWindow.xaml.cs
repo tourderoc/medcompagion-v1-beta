@@ -416,16 +416,19 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 _currentLLMService, _patientContextService, evaluationPhaseService);
         }
 
-        // Projet Thérapeutique V1.0 (persistance) + V1.1 (génération Med) + V1.3 (pilotage statuts)
+        // Projet Thérapeutique V1.0 → V1.4
         var projetTherapeutiqueService = new ProjetTherapeutiqueService(_pathService);
         ProjetTherapeutiqueSuggesterService? projetTherapeutiqueSuggester = null;
         ProjetTherapeutiquePilotageService?  projetTherapeutiquePilotage  = null;
+        ProjetTherapeutiqueRelectureService? projetTherapeutiqueRelecteur = null;
         if (_currentLLMService != null && _patientContextService != null)
         {
             projetTherapeutiqueSuggester = new ProjetTherapeutiqueSuggesterService(
                 _currentLLMService, _patientContextService, evaluationPhaseService, syntheseGlobaleService);
             projetTherapeutiquePilotage  = new ProjetTherapeutiquePilotageService(
                 _currentLLMService, _patientContextService);
+            projetTherapeutiqueRelecteur = new ProjetTherapeutiqueRelectureService(
+                _currentLLMService, syntheseGlobaleService);
         }
 
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
@@ -434,7 +437,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
                 evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture,
                 syntheseGlobaleService, syntheseGlobaleSuggester, _synthesisWeightTracker, syntheseGlobaleRelecteur,
-                projetTherapeutiqueService, projetTherapeutiqueSuggester, projetTherapeutiquePilotage);
+                projetTherapeutiqueService, projetTherapeutiqueSuggester, projetTherapeutiquePilotage, projetTherapeutiqueRelecteur);
 
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>
