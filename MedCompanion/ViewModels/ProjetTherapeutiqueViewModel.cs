@@ -30,15 +30,18 @@ namespace MedCompanion.ViewModels
 
         private readonly ProjetTherapeutiqueService _service;
         private readonly ProjetTherapeutiqueSuggesterService? _suggester;
+        private readonly ProjetTherapeutiquePilotageService?  _pilotage;
         private ProjetTherapeutique? _projet;
         private CancellationTokenSource? _autoSaveCts;
         private string _patientDirectoryPath = "";
 
         public ProjetTherapeutiqueViewModel(ProjetTherapeutiqueService service,
-                                            ProjetTherapeutiqueSuggesterService? suggester = null)
+                                            ProjetTherapeutiqueSuggesterService? suggester = null,
+                                            ProjetTherapeutiquePilotageService? pilotage = null)
         {
             _service   = service;
             _suggester = suggester;
+            _pilotage  = pilotage;
 
             ValiderCommand    = new RelayCommand(_ => Valider(),                _ => CanValider);
             FermerCommand     = new RelayCommand(_ => FermerSansValider(),      _ => Projet != null);
@@ -48,6 +51,12 @@ namespace MedCompanion.ViewModels
                                                       param => param is ProjetAction a && a.HasDiff);
             RejeterActionCommand  = new RelayCommand(param => RejeterAction(param as ProjetAction),
                                                       param => param is ProjetAction a && a.HasDiff);
+
+            PilotageCommand            = new RelayCommand(async _ => await PilotageAsync(), _ => CanPilotage);
+            AccepterTransitionCommand  = new RelayCommand(param => AccepterTransition(param as TransitionSuggestion),
+                                                          param => param is TransitionSuggestion t && !t.Traite);
+            RejeterTransitionCommand   = new RelayCommand(param => RejeterTransition(param as TransitionSuggestion),
+                                                          param => param is TransitionSuggestion t && !t.Traite);
 
             AjouterActionMedicaleCommand         = new RelayCommand(_ => AjouterAction("medicale"),         _ => Projet?.IsBrouillon == true);
             AjouterActionPsychologiqueCommand    = new RelayCommand(_ => AjouterAction("psychologique"),    _ => Projet?.IsBrouillon == true);
@@ -121,6 +130,9 @@ namespace MedCompanion.ViewModels
         public ICommand PatchCommand           { get; }
         public ICommand AccepterActionCommand  { get; }
         public ICommand RejeterActionCommand   { get; }
+        public ICommand PilotageCommand            { get; }
+        public ICommand AccepterTransitionCommand  { get; }
+        public ICommand RejeterTransitionCommand   { get; }
 
         private bool CanPatch
             => _suggester != null
@@ -131,6 +143,26 @@ namespace MedCompanion.ViewModels
 
         /// <summary>True quand v > 1 (mode patch incrémental).</summary>
         public bool IsModePatch => Projet != null && Projet.Version > 1;
+
+        private bool CanPilotage
+            => _pilotage != null
+            && Projet != null
+            && !IsProposerEnCours
+            && Projet.ToutesActions.Any();
+
+        public bool PilotageVisible => _pilotage != null;
+
+        /// <summary>V1.3 — Suggestions de transition de statut produites par Med.</summary>
+        public ObservableCollection<TransitionSuggestion> TransitionsSuggested { get; } = new();
+        public bool HasTransitionsSuggested => TransitionsSuggested.Any(t => !t.Traite);
+
+        private bool _isPilotageEnCours;
+        public bool IsPilotageEnCours
+        {
+            get => _isPilotageEnCours;
+            private set { if (_isPilotageEnCours != value) { _isPilotageEnCours = value; OnPropertyChanged();
+                (PilotageCommand as RelayCommand)?.RaiseCanExecuteChanged(); } }
+        }
 
         private bool _isProposerEnCours;
         public bool IsProposerEnCours
@@ -486,6 +518,68 @@ namespace MedCompanion.ViewModels
                     ScheduleAutoSave();
                     break;
             }
+        }
+
+        // ── V1.3 — Pilotage Med (transitions de statut) ──────────────────────
+
+        private async Task PilotageAsync()
+        {
+            if (_pilotage == null || Projet == null) return;
+
+            IsPilotageEnCours = true;
+            StatusMessage = "⏳ Med relit les notes pour proposer des transitions de statut...";
+
+            try
+            {
+                var (ok, suggestions, error) = await _pilotage.SuggerTransitionsAsync(Projet, CancellationToken.None);
+                if (!ok)
+                {
+                    StatusMessage = $"❌ Pilotage impossible : {error ?? "réponse vide"}";
+                    return;
+                }
+                TransitionsSuggested.Clear();
+                if (suggestions != null)
+                    foreach (var s in suggestions) TransitionsSuggested.Add(s);
+
+                StatusMessage = (suggestions == null || suggestions.Count == 0)
+                    ? "✓ Pilotage : aucune transition à proposer (rien de nouveau dans les notes)."
+                    : $"✓ Pilotage : {suggestions.Count} transition(s) proposée(s). Acceptez ou rejetez chacune.";
+                OnPropertyChanged(nameof(HasTransitionsSuggested));
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsPilotageEnCours = false;
+            }
+        }
+
+        private void AccepterTransition(TransitionSuggestion? t)
+        {
+            if (t == null || Projet == null) return;
+            var action = Projet.ToutesActions.FirstOrDefault(a => a.Id == t.ActionId);
+            if (action == null) { t.Traite = true; return; }
+            // Si projet validé : on autorise quand même la mise à jour statut (suivi).
+            action.Statut = t.StatutPropose;
+            action.MotifDernierChangement = string.IsNullOrWhiteSpace(t.Source)
+                ? t.Justification
+                : $"{t.Justification} (source: {t.Source})";
+            t.Traite = true;
+            OnPropertyChanged(nameof(HasTransitionsSuggested));
+            (AccepterTransitionCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (RejeterTransitionCommand  as RelayCommand)?.RaiseCanExecuteChanged();
+            ScheduleAutoSave();
+        }
+
+        private void RejeterTransition(TransitionSuggestion? t)
+        {
+            if (t == null) return;
+            t.Traite = true;
+            OnPropertyChanged(nameof(HasTransitionsSuggested));
+            (AccepterTransitionCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            (RejeterTransitionCommand  as RelayCommand)?.RaiseCanExecuteChanged();
         }
 
         private void Valider()

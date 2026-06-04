@@ -65,7 +65,8 @@ namespace MedCompanion.Views.Consultation
                                SynthesisWeightTracker? synthesisWeightTracker = null,
                                SyntheseGlobaleRelectureService? syntheseGlobaleRelecteur = null,
                                ProjetTherapeutiqueService? projetTherapeutiqueService = null,
-                               ProjetTherapeutiqueSuggesterService? projetTherapeutiqueSuggester = null)
+                               ProjetTherapeutiqueSuggesterService? projetTherapeutiqueSuggester = null,
+                               ProjetTherapeutiquePilotageService? projetTherapeutiquePilotage = null)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
@@ -78,7 +79,7 @@ namespace MedCompanion.Views.Consultation
             if (syntheseGlobaleService != null)
                 _viewModel?.InjectSyntheseGlobaleService(syntheseGlobaleService, syntheseGlobaleSuggester, synthesisWeightTracker, syntheseGlobaleRelecteur);
             if (projetTherapeutiqueService != null)
-                _viewModel?.InjectProjetTherapeutiqueService(projetTherapeutiqueService, projetTherapeutiqueSuggester);
+                _viewModel?.InjectProjetTherapeutiqueService(projetTherapeutiqueService, projetTherapeutiqueSuggester, projetTherapeutiquePilotage);
             _documentService = documentService;
             _scannerService = scannerService;
         }

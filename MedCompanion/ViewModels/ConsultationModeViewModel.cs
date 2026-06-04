@@ -428,12 +428,13 @@ namespace MedCompanion.ViewModels
 
         private ProjetTherapeutiqueService? _projetTherapeutiqueService;
 
-        /// <summary>Injecte les services Projet Thérapeutique (V1.0 + V1.1 si suggester).</summary>
+        /// <summary>Injecte les services Projet Thérapeutique (V1.0 + V1.1 + V1.3 pilotage).</summary>
         public void InjectProjetTherapeutiqueService(ProjetTherapeutiqueService service,
-                                                     ProjetTherapeutiqueSuggesterService? suggester = null)
+                                                     ProjetTherapeutiqueSuggesterService? suggester = null,
+                                                     ProjetTherapeutiquePilotageService? pilotage = null)
         {
             _projetTherapeutiqueService = service;
-            ProjetTherapeutiqueVM = new ProjetTherapeutiqueViewModel(service, suggester);
+            ProjetTherapeutiqueVM = new ProjetTherapeutiqueViewModel(service, suggester, pilotage);
             ProjetTherapeutiqueVM.Closed += () =>
             {
                 IsProjetTherapeutiqueMode = false;
