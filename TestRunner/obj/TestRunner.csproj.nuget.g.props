@@ -7,9 +7,17 @@
     <NuGetPackageRoot Condition=" '$(NuGetPackageRoot)' == '' ">$(UserProfile)\.nuget\packages\</NuGetPackageRoot>
     <NuGetPackageFolders Condition=" '$(NuGetPackageFolders)' == '' ">C:\Users\nair\.nuget\packages\</NuGetPackageFolders>
     <NuGetProjectStyle Condition=" '$(NuGetProjectStyle)' == '' ">PackageReference</NuGetProjectStyle>
-    <NuGetToolVersion Condition=" '$(NuGetToolVersion)' == '' ">6.11.1</NuGetToolVersion>
+    <NuGetToolVersion Condition=" '$(NuGetToolVersion)' == '' ">6.14.0</NuGetToolVersion>
   </PropertyGroup>
   <ItemGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
     <SourceRoot Include="C:\Users\nair\.nuget\packages\" />
   </ItemGroup>
+  <ImportGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <Import Project="$(NuGetPackageRoot)sungaila.pdfium.blazorwebassembly\133.0.6872\buildTransitive\net8.0\Sungaila.PDFium.BlazorWebAssembly.props" Condition="Exists('$(NuGetPackageRoot)sungaila.pdfium.blazorwebassembly\133.0.6872\buildTransitive\net8.0\Sungaila.PDFium.BlazorWebAssembly.props')" />
+    <Import Project="$(NuGetPackageRoot)skiasharp.nativeassets.webassembly\3.116.1\buildTransitive\netstandard1.0\SkiaSharp.NativeAssets.WebAssembly.props" Condition="Exists('$(NuGetPackageRoot)skiasharp.nativeassets.webassembly\3.116.1\buildTransitive\netstandard1.0\SkiaSharp.NativeAssets.WebAssembly.props')" />
+    <Import Project="$(NuGetPackageRoot)pdftoimage\5.0.0\buildTransitive\net8.0\PDFtoImage.props" Condition="Exists('$(NuGetPackageRoot)pdftoimage\5.0.0\buildTransitive\net8.0\PDFtoImage.props')" />
+  </ImportGroup>
+  <PropertyGroup Condition=" '$(ExcludeRestorePackageImports)' != 'true' ">
+    <PkgMicrosoft_Web_WebView2 Condition=" '$(PkgMicrosoft_Web_WebView2)' == '' ">C:\Users\nair\.nuget\packages\microsoft.web.webview2\1.0.3595.46</PkgMicrosoft_Web_WebView2>
+  </PropertyGroup>
 </Project>

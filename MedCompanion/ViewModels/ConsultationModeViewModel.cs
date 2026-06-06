@@ -12,6 +12,7 @@ using System.Windows.Input;
 using MedCompanion.Commands;
 using MedCompanion.Models;
 using MedCompanion.Models.Urgences;
+using MedCompanion.Models.Restitutions;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
 using MedCompanion.Services.Evaluations;
@@ -20,6 +21,8 @@ using MedCompanion.Services.Therapeutique;
 using MedCompanion.Models.Evaluations;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Urgence;
+using MedCompanion.ViewModels.Restitutions;
+using MedCompanion.Services.Restitutions;
 
 namespace MedCompanion.ViewModels
 {
@@ -464,15 +467,9 @@ namespace MedCompanion.ViewModels
             }
 
             Suivi.Reset();
-            IsInClinicalMode = false;
-            IsInObservationsReviewMode = false;
-            IsSynthesisMode = false;
-            IsRestitutionMode = false;
-            IsRestitutionReviewMode = false;
             ConsultationType = ConsultationType.Normal;
             IsEditingConsultation = false;
-            IsEvaluationPhaseMode = false;
-            IsSyntheseGlobaleMode = false;
+            ResetWorkspaceModes();
 
             ProjetTherapeutiqueVM.OuvrirBrouillonOuCreer(
                 _currentPatient.NomComplet,
@@ -494,15 +491,9 @@ namespace MedCompanion.ViewModels
                 return;
             }
             Suivi.Reset();
-            IsInClinicalMode = false;
-            IsInObservationsReviewMode = false;
-            IsSynthesisMode = false;
-            IsRestitutionMode = false;
-            IsRestitutionReviewMode = false;
             ConsultationType = ConsultationType.Normal;
             IsEditingConsultation = false;
-            IsEvaluationPhaseMode = false;
-            IsSyntheseGlobaleMode = false;
+            ResetWorkspaceModes();
             ProjetTherapeutiqueVM.Projet = full;
             ProjetTherapeutiqueVM.StatusMessage = full.IsValidee
                 ? $"Lecture seule : v{full.Version} validé le {full.DateValidation:dd/MM/yyyy}."
@@ -633,14 +624,9 @@ namespace MedCompanion.ViewModels
             }
 
             Suivi.Reset();
-            IsInClinicalMode = false;
-            IsInObservationsReviewMode = false;
-            IsSynthesisMode = false;
-            IsRestitutionMode = false;
-            IsRestitutionReviewMode = false;
             ConsultationType = ConsultationType.Normal;
             IsEditingConsultation = false;
-            IsEvaluationPhaseMode = false;
+            ResetWorkspaceModes();
 
             SyntheseGlobaleVM.Synthese = full;
             SyntheseGlobaleVM.StatusMessage = full.IsValidee
@@ -671,14 +657,9 @@ namespace MedCompanion.ViewModels
             }
 
             Suivi.Reset();
-            IsInClinicalMode = false;
-            IsInObservationsReviewMode = false;
-            IsSynthesisMode = false;
-            IsRestitutionMode = false;
-            IsRestitutionReviewMode = false;
             ConsultationType = ConsultationType.Normal;
             IsEditingConsultation = false;
-            IsEvaluationPhaseMode = false;
+            ResetWorkspaceModes();
 
             SyntheseGlobaleVM.OuvrirBrouillonOuCreer(
                 _currentPatient.NomComplet,
@@ -921,7 +902,6 @@ namespace MedCompanion.ViewModels
                         blockVm.AddTheme(theme);
                 }
                 UpdateBlockCollections(); // V0c : mettre à jour Active/Completed
-                ExtractionStatus = "● Enregistrement...";
 
                 // Confirmation de l'âge via le bloc "age" dédié (thème "age" extrait par le LLM).
                 // Tant que ce n'est pas confirmé en consultation, les règles d'auto-masquage
@@ -1130,6 +1110,25 @@ namespace MedCompanion.ViewModels
         // ── Hub de consultations ───────────────────────────────────────────────
 
         /// <summary>
+        /// Helper pour réinitialiser tous les modes d'affichage de l'espace de travail principal.
+        /// </summary>
+        private void ResetWorkspaceModes()
+        {
+            IsInClinicalMode = false;
+            IsInObservationsReviewMode = false;
+            IsSynthesisMode = false;
+            IsRestitutionMode = false;
+            IsRestitutionReviewMode = false;
+            IsEvaluationPhaseMode = false;
+            IsSyntheseGlobaleMode = false;
+            IsProjetTherapeutiqueMode = false;
+            IsSelectingRestitutionTypeMode = false;
+            IsDossierRestitutionCliniqueMode = false;
+            // Ne touche pas à IsEditingConsultation qui a une sémantique légèrement différente,
+            // bien qu'il soit souvent basculé en même temps.
+        }
+
+        /// <summary>
         /// Démarre une nouvelle consultation selon le type choisi dans le menu "+".
         /// </summary>
         private void StartNewConsultation(string type)
@@ -1152,13 +1151,9 @@ namespace MedCompanion.ViewModels
                     // Bascule en mode "Phase d'évaluation" : sortie des autres modes,
                     // affichage du panneau EvaluationPhaseControl (3 états gérés par sa VM).
                     Suivi.Reset();
-                    IsInClinicalMode = false;
-                    IsInObservationsReviewMode = false;
-                    IsSynthesisMode = false;
-                    IsRestitutionMode = false;
-                    IsRestitutionReviewMode = false;
                     ConsultationType = ConsultationType.Normal;
                     IsEditingConsultation = false;
+                    ResetWorkspaceModes();
                     IsEvaluationPhaseMode = true;
                     // Si le panneau était sur une évaluation clôturée (lecture seule),
                     // on revient au contexte actif pour pouvoir démarrer/reprendre.
@@ -1196,11 +1191,8 @@ namespace MedCompanion.ViewModels
                     }
                     Suivi.Reset();
                     // Reset des autres modes pour éviter toute superposition
-                    IsInClinicalMode = false;
-                    IsInObservationsReviewMode = false;
-                    IsSynthesisMode = false;
-                    IsRestitutionMode = false;
-                    IsRestitutionReviewMode = false;
+                    ConsultationType = ConsultationType.Suivi;
+                    ResetWorkspaceModes();
                     ConsultationType = ConsultationType.Suivi;
                     ConsultationDate = DateTime.Now;
                     IsEditingConsultation = true;
@@ -1243,6 +1235,7 @@ namespace MedCompanion.ViewModels
                 return;
             }
 
+            ResetWorkspaceModes();
             IsEvaluationPhaseMode = true;
             EvaluationPhase.ShowPhase(phase, readOnly: !phase.IsActive);
 
@@ -1308,6 +1301,7 @@ namespace MedCompanion.ViewModels
         /// </summary>
         private void OpenPastConsultation(ConsultationCardViewModel card)
         {
+            ResetWorkspaceModes();
             // Sort du mode édition pour revenir au hub
             IsEditingConsultation = false;
             // Affiche le dossier sur l'onglet Consultations dans le panneau de droite
@@ -1985,10 +1979,7 @@ source: ""MedCompanion""
 
         private void SwitchToSynthesis()
         {
-            IsInClinicalMode = false;
-            IsInObservationsReviewMode = false;
-            IsRestitutionReviewMode = false;
-            IsRestitutionMode = false;
+            ResetWorkspaceModes();
             IsSynthesisMode = true;
         }
 
@@ -2372,6 +2363,27 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
             }
         }
 
+        private bool _isSelectingRestitutionTypeMode = false;
+        public bool IsSelectingRestitutionTypeMode
+        {
+            get => _isSelectingRestitutionTypeMode;
+            set => SetProperty(ref _isSelectingRestitutionTypeMode, value);
+        }
+
+        private bool _isDossierRestitutionCliniqueMode = false;
+        public bool IsDossierRestitutionCliniqueMode
+        {
+            get => _isDossierRestitutionCliniqueMode;
+            set => SetProperty(ref _isDossierRestitutionCliniqueMode, value);
+        }
+
+        private ViewModels.Restitutions.RestitutionEditorViewModel? _restitutionEditor;
+        public ViewModels.Restitutions.RestitutionEditorViewModel? RestitutionEditor
+        {
+            get => _restitutionEditor;
+            set => SetProperty(ref _restitutionEditor, value);
+        }
+
         private bool _isRestitutionMode = false;
         public bool IsRestitutionMode
         {
@@ -2430,15 +2442,47 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
 
         private void SwitchToRestitution()
         {
-            IsInClinicalMode = false;
-            IsInObservationsReviewMode = false;
-            IsSynthesisMode = false;
-            IsRestitutionReviewMode = false;
-            IsRestitutionMode = true;
-            // Pré-remplir nom patient si vide
-            if (string.IsNullOrWhiteSpace(_restitution.NomAccompagnant) && CurrentPatient != null)
-                _restitution.NomAccompagnant = "";
-            RestitutionStatusMessage = "";
+            ResetWorkspaceModes();
+            IsSelectingRestitutionTypeMode = true; // Affiche la grille de sélection
+        }
+
+        private void StartRestitution(string type)
+        {
+            IsSelectingRestitutionTypeMode = false;
+            if (type == "PremiereConsultation")
+            {
+                IsRestitutionMode = true;
+                if (string.IsNullOrWhiteSpace(_restitution.NomAccompagnant) && CurrentPatient != null)
+                    _restitution.NomAccompagnant = "";
+                RestitutionStatusMessage = "";
+            }
+            else if (type == "DossierClinique")
+            {
+                IsDossierRestitutionCliniqueMode = true;
+                var dossier = new DossierRestitutionInitial();
+                var pathService = new PathService();
+                var suggesterService = new RestitutionSuggesterService(
+                    _llmService!,
+                    new MedCompanion.Services.Synthesis.SyntheseGlobaleService(pathService),
+                    new MedCompanion.Services.Therapeutique.ProjetTherapeutiqueService(pathService),
+                    new MedCompanion.Services.PatientContextService(
+                        _storageService ?? new MedCompanion.StorageService(pathService),
+                        new MedCompanion.Services.PatientIndexService(pathService)
+                    )
+                );
+                
+                RestitutionEditor = new ViewModels.Restitutions.RestitutionEditorViewModel(
+                    dossier,
+                    CurrentPatient?.NomComplet ?? "Inconnu",
+                    new RestitutionService(pathService),
+                    suggesterService
+                );
+
+                RestitutionEditor.RequestClose += () => {
+                    IsDossierRestitutionCliniqueMode = false;
+                    RestitutionEditor = null;
+                };
+            }
         }
 
         // Étape 1 : LLM génère les champs → mode révision
@@ -2590,12 +2634,32 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                     .Replace("{{NOMBRE_SEANCES}}", _restitution.NombreSeances.ToString())
                     .Replace("{{MENTION_LEGALE}}", mentionBlock);
 
-                var tmpDir   = Path.Combine(Path.GetTempPath(), "MedCompanion_Restitution");
-                Directory.CreateDirectory(tmpDir);
+                if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+                {
+                    RestitutionStatusMessage = "❌ Impossible de sauvegarder : dossier patient introuvable.";
+                    return;
+                }
+
+                var restitutionsDir = Path.Combine(_currentPatient.DirectoryPath, DateTime.Now.Year.ToString(), "restitutions");
+                Directory.CreateDirectory(restitutionsDir);
+                
                 var stamp    = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                var htmlPath = Path.Combine(tmpDir, $"restitution_{stamp}.html");
-                var pdfPath  = Path.Combine(tmpDir, $"restitution_{stamp}.pdf");
+                var htmlPath = Path.Combine(restitutionsDir, $"restitution_PremierEntretien_v1_{stamp}.html");
+                var pdfPath  = Path.Combine(restitutionsDir, $"restitution_PremierEntretien_v1_{stamp}.pdf");
                 File.WriteAllText(htmlPath, html, System.Text.Encoding.UTF8);
+
+                // Sauvegarder également un manifest Markdown minimal pour la Phase P1
+                var mdPath = Path.Combine(restitutionsDir, $"restitution_PremierEntretien_v1_{stamp}.md");
+                var mdContent = $@"---
+type: PremierEntretien
+version: 1
+statut: Validee
+patient: ""{_currentPatient.NomComplet}""
+date_creation: ""{DateTime.Now:O}""
+date_validation: ""{DateTime.Now:O}""
+---
+";
+                File.WriteAllText(mdPath, mdContent, System.Text.Encoding.UTF8);
 
                 _restitution.GeneratedHtmlPath = htmlPath;
                 OnPropertyChanged(nameof(Restitution));
@@ -3003,11 +3067,7 @@ source: ""MedCompanion""
         /// </summary>
         private void ResumeSuivi()
         {
-            IsInClinicalMode = false;
-            IsInObservationsReviewMode = false;
-            IsSynthesisMode = false;
-            IsRestitutionMode = false;
-            IsRestitutionReviewMode = false;
+            ResetWorkspaceModes();
             ConsultationType = ConsultationType.Suivi;
             IsEditingConsultation = true;
             SuiviStatusMessage = "▶ Reprise de la consultation en cours.";
@@ -3093,6 +3153,7 @@ source: ""MedCompanion""
         public ICommand RemoveDocumentCommand { get; }
 
         // V0e : Commandes Restitution
+        public ICommand StartRestitutionCommand { get; }
         public ICommand SwitchToRestitutionCommand { get; }
         public ICommand GenerateRestitutionCommand { get; }
         public ICommand ConfirmRestitutionCommand { get; }
@@ -3115,6 +3176,12 @@ source: ""MedCompanion""
             _motifDetector.MotifDetected += OnMotifDetected;
             // Par défaut, ouvrir sur la couverture
             _activeDossierTab = DossierTab.Couverture;
+
+            RestitutionsHub = new RestitutionsHubViewModel(new RestitutionService(new PathService()));
+            RestitutionsHub.RequestCreateNew += () => {
+                if (SwitchToRestitutionCommand.CanExecute(null))
+                    SwitchToRestitutionCommand.Execute(null);
+            };
 
             // Commands Layout
             SwitchToFocusTravailCommand = new RelayCommand(_ => CurrentState = ConsultationViewState.FocusTravail);
@@ -3263,21 +3330,14 @@ source: ""MedCompanion""
             // V0c : Commandes Observations Cliniques
             SwitchToInterrogatoireCommand = new RelayCommand(_ =>
             {
-                IsInClinicalMode = false;
-                IsSynthesisMode = false;
-                IsInObservationsReviewMode = false;
-                IsRestitutionReviewMode = false;
-                IsRestitutionMode = false;
+                ResetWorkspaceModes();
             }, _ => IsInterrogatoireMode);
 
             SwitchToClinicalCommand = new RelayCommand(_ =>
             {
                 if (_clinicalObservations.Cards.Count == 0)
                     InitializeClinicalObservations();
-                IsSynthesisMode = false;
-                IsInObservationsReviewMode = false;
-                IsRestitutionReviewMode = false;
-                IsRestitutionMode = false;
+                ResetWorkspaceModes();
                 IsInClinicalMode = true;
             }, _ => IsInterrogatoireMode);
 
@@ -3356,7 +3416,11 @@ source: ""MedCompanion""
             // V0e : Commands Restitution
             SwitchToRestitutionCommand = new RelayCommand(
                 _ => SwitchToRestitution(),
-                _ => IsInterrogatoireMode);
+                _ => CurrentPatient != null);
+
+            StartRestitutionCommand = new RelayCommand(
+                param => StartRestitution(param as string ?? ""),
+                param => !string.IsNullOrEmpty(param as string));
 
             GenerateRestitutionCommand = new RelayCommand(
                 async _ => await GenerateRestitutionAsync(),
@@ -3421,6 +3485,8 @@ source: ""MedCompanion""
         }
 
         private DossierDataService _dossierDataService = new DossierDataService(new PathService());
+
+        public RestitutionsHubViewModel RestitutionsHub { get; private set; }
 
         public ObservableCollection<ConsultationNoteViewModel> ConsultationNotes { get; } = new();
 
@@ -3762,6 +3828,7 @@ source: ""MedCompanion""
             StashCurrentSuiviDraftFor(_currentPatient?.NomComplet);
 
             CurrentPatient = patient;
+            _ = RestitutionsHub.LoadForPatientAsync(patient);
             ConsultationDate = DateTime.Now;
 
             // Restaurer le brouillon de Suivi du NOUVEAU patient (ou créer une instance vierge)
@@ -3782,6 +3849,8 @@ source: ""MedCompanion""
 
             // Reset état Synthèse Initiale pour éviter la persistance entre patients
             IsSynthesisMode = false;
+            IsSyntheseGlobaleMode = false;
+            IsProjetTherapeutiqueMode = false;
             SynthesisContent = "";
             SynthesisStatusMessage = "";
             ObservationsStatusMessage = "";
@@ -4202,6 +4271,24 @@ source: ""MedCompanion""
                         PatientDocumentsList.Add(item);
                     }
                 }
+
+                // V0: Add Restitutions to PatientDocumentsList
+                var restitutionsDir = Path.Combine(_currentPatient.DirectoryPath, "restitutions", year.ToString());
+                if (Directory.Exists(restitutionsDir))
+                {
+                    var restFiles = Directory.GetFiles(restitutionsDir, "*.md", SearchOption.AllDirectories)
+                        .OrderByDescending(f => File.GetCreationTime(f))
+                        .ToList();
+                    foreach (var docPath in restFiles)
+                    {
+                        var pdfPath = Path.ChangeExtension(docPath, ".pdf");
+                        // Use PDF if it exists, else MD
+                        var finalPath = File.Exists(pdfPath) ? pdfPath : docPath;
+                        var item = BuildDocumentItem(finalPath, "Restitutions", synthesesDir);
+                        PatientDocumentsList.Add(item);
+                    }
+                }
+
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine($"[LoadDocuments] {ex.Message}"); }
 

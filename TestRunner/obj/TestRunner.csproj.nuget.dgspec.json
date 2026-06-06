@@ -1,30 +1,32 @@
 {
   "format": 1,
   "restore": {
-    "D:\\Users\\nair\\Bureau\\medcompagnio2\\TestRunner\\TestRunner.csproj": {}
+    "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\TestRunner.csproj": {}
   },
   "projects": {
-    "D:\\Users\\nair\\Bureau\\medcompagnio2\\MedCompanion\\MedCompanion.csproj": {
+    "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Users\\nair\\Bureau\\medcompagnio2\\MedCompanion\\MedCompanion.csproj",
+        "projectUniqueName": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj",
         "projectName": "MedCompanion",
-        "projectPath": "D:\\Users\\nair\\Bureau\\medcompagnio2\\MedCompanion\\MedCompanion.csproj",
+        "projectPath": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj",
         "packagesPath": "C:\\Users\\nair\\.nuget\\packages\\",
-        "outputPath": "D:\\Users\\nair\\Bureau\\medcompagnio2\\MedCompanion\\obj\\",
+        "outputPath": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\nair\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\nair\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
-          "net8.0-windows"
+          "net8.0-windows10.0.19041.0"
         ],
         "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "net8.0-windows7.0": {
-            "targetAlias": "net8.0-windows",
+          "net8.0-windows10.0.19041": {
+            "targetAlias": "net8.0-windows10.0.19041.0",
             "projectReferences": {}
           }
         },
@@ -37,15 +39,88 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "9.0.300"
       },
       "frameworks": {
-        "net8.0-windows7.0": {
-          "targetAlias": "net8.0-windows",
+        "net8.0-windows10.0.19041": {
+          "targetAlias": "net8.0-windows10.0.19041.0",
           "dependencies": {
+            "DocumentFormat.OpenXml": {
+              "target": "Package",
+              "version": "[3.3.0, )"
+            },
+            "Google.Cloud.Firestore": {
+              "target": "Package",
+              "version": "[3.8.0, )"
+            },
+            "Microsoft.Data.Sqlite": {
+              "target": "Package",
+              "version": "[8.0.0, )"
+            },
+            "Microsoft.Web.WebView2": {
+              "target": "Package",
+              "version": "[1.0.3595.46, )"
+            },
+            "NAudio": {
+              "target": "Package",
+              "version": "[2.2.1, )"
+            },
+            "PDFsharp": {
+              "target": "Package",
+              "version": "[6.2.2, )"
+            },
+            "PDFtoImage": {
+              "target": "Package",
+              "version": "[5.0.0, )"
+            },
+            "PdfiumViewer.Native.x86_64.v8-xfa": {
+              "target": "Package",
+              "version": "[2018.4.8.256, )"
+            },
+            "QRCoder": {
+              "target": "Package",
+              "version": "[1.6.0, )"
+            },
             "QuestPDF": {
               "target": "Package",
               "version": "[2025.7.2, )"
+            },
+            "SoundFlow.Extensions.WebRtc.Apm": {
+              "target": "Package",
+              "version": "[1.4.0, )"
+            },
+            "Syncfusion.DocIO.Net.Core": {
+              "target": "Package",
+              "version": "[32.1.19, )"
+            },
+            "Syncfusion.DocIORenderer.Net.Core": {
+              "target": "Package",
+              "version": "[32.1.19, )"
+            },
+            "System.Drawing.Common": {
+              "target": "Package",
+              "version": "[10.0.0, )"
+            },
+            "Tesseract": {
+              "target": "Package",
+              "version": "[5.2.0, )"
+            },
+            "UglyToad.PdfPig": {
+              "target": "Package",
+              "version": "[1.7.0-custom-5, )"
+            },
+            "Whisper.net": {
+              "target": "Package",
+              "version": "[1.9.0, )"
+            },
+            "Whisper.net.Runtime": {
+              "target": "Package",
+              "version": "[1.9.0, )"
+            },
+            "Whisper.net.Runtime.Cuda": {
+              "target": "Package",
+              "version": "[1.9.0, )"
             }
           },
           "imports": [
@@ -59,42 +134,53 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.Windows.SDK.NET.Ref",
+              "version": "[10.0.19041.57, 10.0.19041.57]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
+              "privateAssets": "all"
+            },
+            "Microsoft.Windows.SDK.NET.Ref.Windows": {
               "privateAssets": "all"
             },
             "Microsoft.WindowsDesktop.App.WPF": {
               "privateAssets": "none"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.414/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "c:\\program files\\dotnet\\sdk\\9.0.306/PortableRuntimeIdentifierGraph.json"
         }
       }
     },
-    "D:\\Users\\nair\\Bureau\\medcompagnio2\\TestRunner\\TestRunner.csproj": {
+    "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\TestRunner.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "D:\\Users\\nair\\Bureau\\medcompagnio2\\TestRunner\\TestRunner.csproj",
+        "projectUniqueName": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\TestRunner.csproj",
         "projectName": "TestRunner",
-        "projectPath": "D:\\Users\\nair\\Bureau\\medcompagnio2\\TestRunner\\TestRunner.csproj",
+        "projectPath": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\TestRunner.csproj",
         "packagesPath": "C:\\Users\\nair\\.nuget\\packages\\",
-        "outputPath": "D:\\Users\\nair\\Bureau\\medcompagnio2\\TestRunner\\obj\\",
+        "outputPath": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\obj\\",
         "projectStyle": "PackageReference",
         "configFilePaths": [
-          "C:\\Users\\nair\\AppData\\Roaming\\NuGet\\NuGet.Config"
+          "C:\\Users\\nair\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
         ],
         "originalTargetFrameworks": [
-          "net8.0-windows"
+          "net8.0-windows10.0.19041.0"
         ],
         "sources": {
+          "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
           "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
-          "net8.0-windows7.0": {
-            "targetAlias": "net8.0-windows",
+          "net8.0-windows10.0.19041": {
+            "targetAlias": "net8.0-windows10.0.19041.0",
             "projectReferences": {
-              "D:\\Users\\nair\\Bureau\\medcompagnio2\\MedCompanion\\MedCompanion.csproj": {
-                "projectPath": "D:\\Users\\nair\\Bureau\\medcompagnio2\\MedCompanion\\MedCompanion.csproj"
+              "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj": {
+                "projectPath": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj"
               }
             }
           }
@@ -108,11 +194,12 @@
           "enableAudit": "true",
           "auditLevel": "low",
           "auditMode": "direct"
-        }
+        },
+        "SdkAnalysisLevel": "9.0.300"
       },
       "frameworks": {
-        "net8.0-windows7.0": {
-          "targetAlias": "net8.0-windows",
+        "net8.0-windows10.0.19041": {
+          "targetAlias": "net8.0-windows10.0.19041.0",
           "imports": [
             "net461",
             "net462",
@@ -124,12 +211,21 @@
           ],
           "assetTargetFallback": true,
           "warn": true,
+          "downloadDependencies": [
+            {
+              "name": "Microsoft.Windows.SDK.NET.Ref",
+              "version": "[10.0.19041.57, 10.0.19041.57]"
+            }
+          ],
           "frameworkReferences": {
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
+            },
+            "Microsoft.Windows.SDK.NET.Ref.Windows": {
+              "privateAssets": "all"
             }
           },
-          "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\8.0.414/PortableRuntimeIdentifierGraph.json"
+          "runtimeIdentifierGraphPath": "c:\\program files\\dotnet\\sdk\\9.0.306/PortableRuntimeIdentifierGraph.json"
         }
       }
     }

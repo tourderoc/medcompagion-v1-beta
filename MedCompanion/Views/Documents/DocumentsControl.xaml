@@ -106,6 +106,7 @@
                         <ListBoxItem Content="🔬 Radiologies" Tag="radiologies"/>
                         <ListBoxItem Content="🧪 Analyses" Tag="analyses"/>
                         <ListBoxItem Content="📄 Autres" Tag="autres"/>
+                        <ListBoxItem Content="📁 Restitutions" Tag="restitutions"/>
                     </ListBox>
                 </StackPanel>
             </Border>
