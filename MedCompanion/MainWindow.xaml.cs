@@ -66,6 +66,7 @@ public partial class MainWindow : Window
     private readonly PilotageEmailService _pilotageEmailService;
     private readonly QRCodeService _qrCodeService;
     private readonly TokenPdfService _tokenPdfService;
+    private readonly PatientPhotoService _patientPhotoService; // ✅ NOUVEAU
 
     // Services LLM
     private LLMServiceFactory _llmFactory;
@@ -163,6 +164,7 @@ public partial class MainWindow : Window
 
         // Maintenant on peut initialiser les services qui dépendent de _openAIService
         _storageService = new StorageService(_pathService);
+        _patientPhotoService = new PatientPhotoService(_storageService); // ✅ NOUVEAU
         _contextLoader = new ContextLoader(_storageService);
         _parsingService = new ParsingService();
         _patientIndex = new PatientIndexService(_pathService);
@@ -809,6 +811,49 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
     {
         PatientNameLabel.Text = $"{metadata.Nom} {metadata.Prenom}";
         
+        // Mettre à jour les initiales
+        string initiales = "";
+        if (!string.IsNullOrEmpty(metadata.Prenom)) initiales += metadata.Prenom[0];
+        if (!string.IsNullOrEmpty(metadata.Nom)) initiales += metadata.Nom[0];
+        InitialsText.Text = initiales.ToUpper();
+
+        // Mettre à jour la photo
+        if (_selectedPatient != null)
+        {
+            var photoPath = _patientPhotoService.GetPhotoPath(_selectedPatient.NomComplet, "photo.jpg");
+            if (!string.IsNullOrEmpty(photoPath))
+            {
+                try
+                {
+                    var bitmap = new System.Windows.Media.Imaging.BitmapImage();
+                    bitmap.BeginInit();
+                    bitmap.UriSource = new Uri(photoPath);
+                    bitmap.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                    bitmap.CreateOptions = System.Windows.Media.Imaging.BitmapCreateOptions.IgnoreImageCache;
+                    bitmap.EndInit();
+                    AvatarPhotoBrush.ImageSource = bitmap;
+                    PhotoEllipse.Visibility = Visibility.Visible;
+                    InitialsText.Visibility = Visibility.Collapsed;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Erreur chargement photo : {ex.Message}");
+                    PhotoEllipse.Visibility = Visibility.Collapsed;
+                    InitialsText.Visibility = Visibility.Visible;
+                }
+            }
+            else
+            {
+                PhotoEllipse.Visibility = Visibility.Collapsed;
+                InitialsText.Visibility = Visibility.Visible;
+            }
+        }
+        else
+        {
+            PhotoEllipse.Visibility = Visibility.Collapsed;
+            InitialsText.Visibility = Visibility.Visible;
+        }
+
         if (metadata.Age.HasValue)
             PatientAgeLabel.Text = $"{metadata.Age} ans";
         else
@@ -890,6 +935,70 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         catch (Exception ex)
         {
             System.Diagnostics.Debug.WriteLine($"[TokenUI] Erreur: {ex.Message}");
+        }
+    }
+
+    private async void TestRestitutionPdfBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null) return;
+        
+        try
+        {
+            var metadata = _patientIndex.GetMetadata(_selectedPatient.Id);
+            if (metadata == null) return;
+
+            var existingPhotoPath = _patientPhotoService.GetPhotoPath(_selectedPatient.NomComplet, "photo.jpg");
+            var outputFolder = _storageService.GetPatientDirectory(_selectedPatient.NomComplet);
+
+            var pdfService = new Services.EdgeHeadlessPdfService();
+            var service = new Services.RestitutionPdfTestService(pdfService);
+            var pdfPath = await service.GenerateTestPdfAsync(metadata, existingPhotoPath, outputFolder);
+
+            // Open the PDF
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = pdfPath,
+                UseShellExecute = true
+            });
+            
+            StatusTextBlock.Text = "✅ PDF de test généré avec succès";
+        }
+        catch (Exception ex)
+        {
+            System.Windows.MessageBox.Show($"Erreur lors de la génération du PDF :\n{ex.Message}", "Erreur PDF", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+        }
+    }
+
+    private async void PatientAvatarBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null) return;
+
+        var existingPhotoPath = _patientPhotoService.GetPhotoPath(_selectedPatient.NomComplet, "photo.jpg");
+
+        var dialog = new Dialogs.PatientPhotoDialog(existingPhotoPath);
+        dialog.Owner = this;
+
+        if (dialog.ShowDialog() == true && !string.IsNullOrEmpty(dialog.SelectedImagePath))
+        {
+            StatusTextBlock.Text = "⏳ Importation de la photo...";
+            
+            var fileName = await _patientPhotoService.ImportPhotoAsync(dialog.SelectedImagePath, _selectedPatient.NomComplet);
+            
+            if (fileName != null)
+            {
+                StatusTextBlock.Text = "✅ Photo importée avec succès";
+                // Recharger la carte patient
+                var metadata = _patientIndex.GetMetadata(_selectedPatient.Id);
+                if (metadata != null)
+                {
+                    RenderPatientCard(metadata);
+                }
+            }
+            else
+            {
+                StatusTextBlock.Text = "❌ Erreur lors de l'import de la photo";
+                StatusTextBlock.Foreground = System.Windows.Media.Brushes.Red;
+            }
         }
     }
 

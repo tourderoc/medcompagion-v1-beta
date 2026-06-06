@@ -16,6 +16,11 @@ namespace MedCompanion.Models
         public string? Dob { get; set; }  // Format: YYYY-MM-DD
         public string? Sexe { get; set; }  // H, F, ou NB
         public string? LieuNaissance { get; set; }  // Ville de naissance
+        
+        // === Photo ===
+        public string? PhotoFileName { get; set; } // Nom du fichier de la photo dans le dossier patient (ex: photo.jpg)
+        public bool ConsentementPhoto { get; set; } // Accord du représentant légal
+
 
         // === Scolarité ===
         public string? Ecole { get; set; }  // École/Établissement

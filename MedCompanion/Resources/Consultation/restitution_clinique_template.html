@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8"/>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@400;500;600;700&family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+<style>
+@page { size: A4; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: 'Caveat', 'Nunito', 'Segoe UI', Arial, sans-serif;
+  background: white;
+  width: 210mm;
+  min-height: 297mm;
+  padding: 40px 50px;
+  color: #0F2D52;
+  position: relative;
+}
+
+/* ── Header ── */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 40px;
+}
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.header-logo-icon {
+  color: #00A896;
+}
+.header-left-text h1 {
+  font-size: 26px;
+  color: #0F2D52;
+  line-height: 1;
+  font-weight: 800;
+}
+.header-left-text .sub {
+  font-size: 9px;
+  color: #6B7A8D;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: right;
+}
+.header-right-icon {
+  color: #0F2D52;
+}
+.header-right-text .spec {
+  font-size: 14px;
+  font-weight: bold;
+  color: #0F2D52;
+}
+.header-right-text .sub-spec {
+  font-size: 10px;
+  color: #00A896;
+}
+
+/* ── Main Flex ── */
+.main-content {
+  display: flex;
+  gap: 30px;
+}
+
+.left-column {
+  flex: 5;
+  padding-top: 10px;
+}
+
+.right-column {
+  flex: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* ── Titles ── */
+.main-title {
+  font-size: 40px;
+  font-weight: 800;
+  color: #0F2D52;
+  line-height: 1.1;
+  text-transform: uppercase;
+  margin-bottom: 15px;
+}
+
+.sub-title {
+  font-size: 16px;
+  color: #00A896;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-bottom: 25px;
+  line-height: 1.3;
+}
+
+.intro-text {
+  font-size: 11px;
+  color: #4A5568;
+  line-height: 1.6;
+  margin-bottom: 30px;
+}
+
+/* ── Patient Info Box ── */
+.patient-box {
+  background: #EAF4F6;
+  border-radius: 16px;
+  padding: 20px;
+}
+.patient-box-title {
+  color: #00A896;
+  font-weight: bold;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+.patient-box-title .icon-circle {
+  background: #00A896;
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.patient-box hr {
+  border: none;
+  border-top: 1px solid #C4E4E4;
+  margin-bottom: 15px;
+}
+
+.info-row {
+  display: flex;
+  margin-bottom: 12px;
+  align-items: flex-start;
+}
+.info-row:last-child {
+  margin-bottom: 0;
+}
+.info-icon {
+  width: 30px;
+  color: #00A896;
+  padding-top: 2px;
+  text-align: center;
+}
+
+.info-content {
+  flex: 1;
+}
+.info-label {
+  font-size: 9px;
+  color: #6B7A8D;
+  margin-bottom: 2px;
+}
+.info-value {
+  font-size: 11px;
+  font-weight: bold;
+  color: #0F2D52;
+  line-height: 1.3;
+}
+
+/* ── Right Column (Tree) ── */
+.tree-image {
+  width: 125%;
+  max-width: 600px;
+  margin-right: -25%;
+  margin-top: 20px;
+  margin-bottom: -20px;
+  display: block;
+}
+
+/* ── Bottom Section ── */
+.bottom-section {
+  margin-top: 30px;
+  border: 1px solid #B0D8D8;
+  border-radius: 12px;
+  padding: 15px 10px;
+  position: relative;
+}
+.bottom-title {
+  position: absolute;
+  top: -8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: white;
+  padding: 0 10px;
+  color: #00A896;
+  font-size: 10px;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+.bottom-grid {
+  display: flex;
+  justify-content: space-between;
+  text-align: center;
+  margin-top: 10px;
+}
+.bottom-item {
+  flex: 1;
+  padding: 0 5px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.bottom-icon-circle {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+/* Couleurs des icônes de la grille (comme sur la maquette) */
+.c-comprehension { border: 1px solid #00A896; color: #00A896; }
+.c-reperes { border: 1px solid #F59E0B; color: #F59E0B; }
+.c-objectifs { border: 1px solid #EF4444; color: #EF4444; }
+.c-collaboration { border: 1px solid #F59E0B; color: #F59E0B; }
+.c-perspectives { border: 1px solid #84CC16; color: #84CC16; }
+
+.bottom-item-title {
+  font-size: 8px;
+  font-weight: bold;
+  color: #00A896;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+}
+.bottom-item-desc {
+  font-size: 7px;
+  color: #0F2D52;
+}
+
+/* ── Footer ── */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #E8EDF3;
+}
+.footer-confidential {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+}
+.footer-conf-icon {
+  color: #00A896;
+}
+.footer-conf-text {
+  display: flex;
+  flex-direction: column;
+}
+.footer-confidential-title {
+  font-size: 9px;
+  font-weight: bold;
+  color: #0F2D52;
+}
+.footer-confidential-sub {
+  font-size: 8px;
+  color: #6B7A8D;
+  margin-top: 2px;
+}
+.footer-signature {
+  text-align: right;
+  font-style: italic;
+  color: #00A896;
+  font-size: 10px;
+  font-weight: bold;
+  line-height: 1.2;
+}
+</style>
+</head>
+<body>
+
+<!-- En-tête -->
+<div class="header">
+  <div class="header-left">
+    <div class="header-logo-icon">
+      <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"></path></svg>
+    </div>
+    <div class="header-left-text">
+      <h1>MedCompanion</h1>
+      <div class="sub">L'INTELLIGENCE AU SERVICE DU SOIN</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="header-right-icon">
+      <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.5 2A2.5 2.5 0 0 1 12 4.5v15a2.5 2.5 0 0 1-4.96.44 2.5 2.5 0 0 1-2.96-3.08 3 3 0 0 1-.34-5.58 2.5 2.5 0 0 1 1.32-4.24 2.5 2.5 0 0 1 1.98-3A2.5 2.5 0 0 1 9.5 2Z"/><path d="M14.5 2A2.5 2.5 0 0 0 12 4.5v15a2.5 2.5 0 0 0 4.96.44 2.5 2.5 0 0 0 2.96-3.08 3 3 0 0 0 .34-5.58 2.5 2.5 0 0 0-1.32-4.24 2.5 2.5 0 0 0-1.98-3A2.5 2.5 0 0 0 14.5 2Z"/></svg>
+    </div>
+    <div class="header-right-text">
+      <div class="spec">PÉDOPSYCHIATRIE</div>
+      <div class="sub-spec">Évaluation • Compréhension • Accompagnement</div>
+    </div>
+  </div>
+</div>
+
+<div class="main-content">
+  <!-- Colonne Gauche -->
+  <div class="left-column">
+    <div class="main-title">DOSSIER<br>DE RESTITUTION<br>CLINIQUE</div>
+    <div class="sub-title">BILAN INITIAL ET<br>PROJET THÉRAPEUTIQUE</div>
+    <div class="intro-text">
+      Un bilan complet pour comprendre,<br>
+      accompagner et construire ensemble<br>
+      le parcours de votre enfant.
+    </div>
+
+    <!-- Encadré Patient -->
+    <div class="patient-box">
+      <div class="patient-box-title">
+        <div class="icon-circle">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+        </div>
+        INFORMATIONS PATIENT
+      </div>
+      <hr>
+      <div class="info-row">
+        <div class="info-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </div>
+        <div class="info-content">
+          <div class="info-label">Nom et prénom</div>
+          <div class="info-value">{{NOM_ENFANT}}</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+        </div>
+        <div class="info-content">
+          <div class="info-label">Date de naissance</div>
+          <div class="info-value">{{DATE_NAISSANCE}}<br>{{AGE}}</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v4M9 11h6M9 15h6M12 11v4"/></svg>
+        </div>
+        <div class="info-content">
+          <div class="info-label">Scolarité</div>
+          <div class="info-value">{{CLASSE}}<br>{{ECOLE}}<br>Année scolaire 2025-2026</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4v7a8 8 0 0 0 16 0V4M12 11v8M9 19h6M19 10a2 2 0 1 0 0-4 2 2 0 0 0 0 4z"/></svg>
+        </div>
+        <div class="info-content">
+          <div class="info-label">Motif de consultation</div>
+          <div class="info-value">{{MOTIF_CONSULTATION}}</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M9 16l2 2 4-4"/></svg>
+        </div>
+        <div class="info-content">
+          <div class="info-label">Dates d'évaluation</div>
+          <div class="info-value">{{DATES_EVALUATION}}</div>
+        </div>
+      </div>
+      <div class="info-row">
+        <div class="info-icon">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="14" x2="16" y2="14"/><line x1="8" y1="18" x2="16" y2="18"/></svg>
+        </div>
+        <div class="info-content">
+          <div class="info-label">Date de restitution</div>
+          <div class="info-value">{{DATE_RESTITUTION}}</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Colonne Droite -->
+  <div class="right-column">
+    <img src="data:image/png;base64,{{TREE_BASE64}}" class="tree-image" alt="Arbre" />
+  </div>
+</div>
+
+<!-- Section Bas -->
+<div class="bottom-section">
+  <div class="bottom-title">CE DOSSIER COMPREND</div>
+  <div class="bottom-grid">
+    <div class="bottom-item">
+      <div class="bottom-icon-circle c-comprehension">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>
+      </div>
+      <div class="bottom-item-title">COMPRÉHENSION</div>
+      <div class="bottom-item-desc">Une évaluation globale<br>et bienveillante</div>
+    </div>
+    <div class="bottom-item">
+      <div class="bottom-icon-circle c-reperes">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M16.24 7.76l-2.12 6.36-6.36 2.12 2.12-6.36 6.36-2.12z"/></svg>
+      </div>
+      <div class="bottom-item-title">REPÈRES</div>
+      <div class="bottom-item-desc">Des clés pour mieux<br>comprendre</div>
+    </div>
+    <div class="bottom-item">
+      <div class="bottom-icon-circle c-objectifs">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+      </div>
+      <div class="bottom-item-title">OBJECTIFS</div>
+      <div class="bottom-item-desc">Des objectifs adaptés<br>et progressifs</div>
+    </div>
+    <div class="bottom-item">
+      <div class="bottom-icon-circle c-collaboration">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+      </div>
+      <div class="bottom-item-title">COLLABORATION</div>
+      <div class="bottom-item-desc">Un accompagnement<br>en partenariat</div>
+    </div>
+    <div class="bottom-item">
+      <div class="bottom-icon-circle c-perspectives">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22V12M12 12c-4-4-8-4-8 0 0 4 4 4 8 0zM12 12c4-4 8-4 8 0 0 4-4 4-8 0zM12 2v10"/></svg>
+      </div>
+      <div class="bottom-item-title">PERSPECTIVES</div>
+      <div class="bottom-item-desc">Des solutions concrètes<br>pour l'avenir</div>
+    </div>
+  </div>
+</div>
+
+<!-- Pied de page -->
+<div class="footer">
+  <div class="footer-confidential">
+    <div class="footer-conf-icon">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+    </div>
+    <div class="footer-conf-text">
+      <div class="footer-confidential-title">DOCUMENT CONFIDENTIEL</div>
+      <div class="footer-confidential-sub">Ce document est destiné aux parents et aux professionnels<br>impliqués dans le suivi de l'enfant.</div>
+    </div>
+  </div>
+  <div class="footer-signature">
+    Dr Lassoued Nair<br>
+    Pédopsychiatre
+  </div>
+</div>
+
+</body>
+</html>

@@ -572,22 +572,54 @@
                 </Grid.ColumnDefinitions>
                 
                 <!-- INFOS PATIENT -->
-                <StackPanel Grid.Column="0">
-                    <StackPanel Orientation="Horizontal">
-                        <TextBlock x:Name="PatientNameLabel" Text="Nom Prénom" FontSize="20" FontWeight="Bold" Foreground="#1976D2"/>
-                        <TextBlock x:Name="DuplicateIndicator"
-                                   Text="⚠️"
-                                   FontSize="20"
-                                   Margin="10,0,0,0"
-                                   Cursor="Hand"
-                                   Visibility="Collapsed"
-                                   ToolTip="Ce patient a un doublon - cliquer pour voir"
-                                   MouseLeftButtonDown="DuplicateIndicator_MainWindow_Click"/>
-                    </StackPanel>
-                    <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                        <TextBlock x:Name="PatientAgeLabel" Text="" FontSize="13" Foreground="#424242" Margin="0,0,15,0"/>
-                        <TextBlock x:Name="PatientDobLabel" Text="" FontSize="13" Foreground="#424242" Margin="0,0,15,0"/>
-                        <TextBlock x:Name="PatientSexLabel" Text="" FontSize="13" Foreground="#424242"/>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                    <!-- Bouton Avatar / Initiales -->
+                    <Grid Width="48" Height="48" Margin="0,0,15,0">
+                        <!-- Fond initiales -->
+                        <Ellipse Fill="#1976D2" />
+                        <!-- Initiales -->
+                        <TextBlock x:Name="InitialsText" 
+                                   Text="??" 
+                                   FontSize="20" FontWeight="Bold" Foreground="White"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <!-- Photo -->
+                        <Ellipse x:Name="PhotoEllipse" Visibility="Collapsed">
+                            <Ellipse.Fill>
+                                <ImageBrush x:Name="AvatarPhotoBrush" Stretch="UniformToFill"/>
+                            </Ellipse.Fill>
+                        </Ellipse>
+                        <!-- Bouton invisible par dessus pour le clic -->
+                        <Button x:Name="PatientAvatarBtn"
+                                Background="Transparent"
+                                BorderThickness="0"
+                                Cursor="Hand"
+                                ToolTip="Modifier la photo"
+                                Click="PatientAvatarBtn_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="Transparent"/>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+
+                    <StackPanel VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock x:Name="PatientNameLabel" Text="Nom Prénom" FontSize="20" FontWeight="Bold" Foreground="#1976D2"/>
+                            <TextBlock x:Name="DuplicateIndicator"
+                                       Text="⚠️"
+                                       FontSize="20"
+                                       Margin="10,0,0,0"
+                                       Cursor="Hand"
+                                       Visibility="Collapsed"
+                                       ToolTip="Ce patient a un doublon - cliquer pour voir"
+                                       MouseLeftButtonDown="DuplicateIndicator_MainWindow_Click"/>
+                        </StackPanel>
+                        <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                            <TextBlock x:Name="PatientAgeLabel" Text="" FontSize="13" Foreground="#424242" Margin="0,0,15,0"/>
+                            <TextBlock x:Name="PatientDobLabel" Text="" FontSize="13" Foreground="#424242" Margin="0,0,15,0"/>
+                            <TextBlock x:Name="PatientSexLabel" Text="" FontSize="13" Foreground="#424242"/>
+                        </StackPanel>
                     </StackPanel>
                 </StackPanel>
 
@@ -641,35 +673,67 @@
                     </Border>
                 </StackPanel>
                 
-                <Button Grid.Column="3" 
-                        x:Name="OpenPatientFolderBtn"
-                        Content="📁 Ouvrir dossier"
-                        Height="40"
-                        Padding="15,0"
-                        FontSize="13"
-                        Background="#1976D2"
-                        Foreground="White"
-                        BorderThickness="0"
-                        Cursor="Hand">
-                    <Button.Style>
-                        <Style TargetType="Button">
-                            <Setter Property="Template">
-                                <Setter.Value>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Setter.Value>
-                            </Setter>
-                            <Style.Triggers>
-                                <Trigger Property="IsMouseOver" Value="True">
-                                    <Setter Property="Background" Value="#1565C0"/>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </Button.Style>
-                </Button>
+                <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="TestRestitutionPdfBtn"
+                            Content="📄 Test Restitution PDF"
+                            Height="40"
+                            Padding="15,0"
+                            Margin="0,0,10,0"
+                            FontSize="13"
+                            Background="#00A896"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Click="TestRestitutionPdfBtn_Click">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#008080"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    
+                    <Button x:Name="OpenPatientFolderBtn"
+                            Content="📁 Ouvrir dossier"
+                            Height="40"
+                            Padding="15,0"
+                            FontSize="13"
+                            Background="#1976D2"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#1565C0"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
         
