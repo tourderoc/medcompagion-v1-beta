@@ -1,0 +1,14 @@
+<Window x:Class="MedCompanion.Views.Restitutions.RestitutionEditorWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:MedCompanion.Views.Restitutions"
+        Title="Dossier de Restitution Clinique"
+        Width="1400" Height="900"
+        MinWidth="900" MinHeight="600"
+        WindowStartupLocation="CenterScreen"
+        WindowState="Normal"
+        Background="#F0F2F5">
+    <Grid>
+        <local:RestitutionEditorView DataContext="{Binding}"/>
+    </Grid>
+</Window>

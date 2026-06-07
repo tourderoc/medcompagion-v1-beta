@@ -490,28 +490,32 @@
                                FontSize="13" FontWeight="SemiBold" Foreground="#4A2C6A"/>
                     <TextBlock Text="{Binding StatusMessage}"
                                FontSize="11" Foreground="#7F6E91" Margin="0,2,0,8" TextWrapping="Wrap"/>
-                    <StackPanel Orientation="Horizontal">
-                        <Button Content="Étape 1 — Préparation" FontSize="11" Padding="8,4"
-                                Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
-                                Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
-                                Command="{Binding ViewStepCommand}" CommandParameter="1"/>
-                        <Button Content="Étape 2 — Évaluation ciblée" FontSize="11" Padding="8,4"
-                                Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
-                                Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
-                                Command="{Binding ViewStepCommand}" CommandParameter="2"/>
-                        <Button Content="Étape 3 — Cartographie enfant" FontSize="11" Padding="8,4"
-                                Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
-                                Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
-                                Command="{Binding ViewStepCommand}" CommandParameter="3"/>
-                        <Button Content="Étape 4 — Cartographie environnement" FontSize="11" Padding="8,4"
-                                Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
-                                Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
-                                Command="{Binding ViewStepCommand}" CommandParameter="4"/>
-                        <Button Content="Étape 5 — Bilan Final" FontSize="11" Padding="8,4"
-                                Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
-                                Foreground="#4A2C6A" Cursor="Hand"
-                                Command="{Binding ViewStepCommand}" CommandParameter="5"/>
-                    </StackPanel>
+                    <!-- Scroll horizontal si les 5 étapes ne tiennent pas. La molette scrolle horizontalement. -->
+                    <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled"
+                                  PreviewMouseWheel="EtapesNav_PreviewMouseWheel">
+                        <StackPanel Orientation="Horizontal">
+                            <Button Content="Étape 1 — Préparation" FontSize="11" Padding="8,4"
+                                    Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
+                                    Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
+                                    Command="{Binding ViewStepCommand}" CommandParameter="1"/>
+                            <Button Content="Étape 2 — Évaluation ciblée" FontSize="11" Padding="8,4"
+                                    Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
+                                    Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
+                                    Command="{Binding ViewStepCommand}" CommandParameter="2"/>
+                            <Button Content="Étape 3 — Cartographie enfant" FontSize="11" Padding="8,4"
+                                    Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
+                                    Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
+                                    Command="{Binding ViewStepCommand}" CommandParameter="3"/>
+                            <Button Content="Étape 4 — Cartographie environnement" FontSize="11" Padding="8,4"
+                                    Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
+                                    Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
+                                    Command="{Binding ViewStepCommand}" CommandParameter="4"/>
+                            <Button Content="Étape 5 — Bilan Final" FontSize="11" Padding="8,4"
+                                    Background="White" BorderBrush="#8E5BC2" BorderThickness="1"
+                                    Foreground="#4A2C6A" Cursor="Hand" Margin="0,0,6,0"
+                                    Command="{Binding ViewStepCommand}" CommandParameter="5"/>
+                        </StackPanel>
+                    </ScrollViewer>
                 </StackPanel>
 
                 <Button Grid.Column="1" Content="✕ Fermer la vue"

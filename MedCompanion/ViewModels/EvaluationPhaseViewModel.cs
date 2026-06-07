@@ -108,6 +108,13 @@ namespace MedCompanion.ViewModels
         /// </summary>
         public event Action? PhaseStateChanged;
 
+        /// <summary>
+        /// Notifié quand le médecin demande à fermer la vue lecture seule (bouton « ✕ Fermer la vue »).
+        /// L'orchestrateur (ConsultationModeViewModel) s'y abonne pour basculer IsEvaluationPhaseMode
+        /// à false, sinon on reste bloqué sur l'écran "Aucune évaluation en cours — Commencer".
+        /// </summary>
+        public event Action? ReadOnlyViewClosed;
+
         // ── Patient courant ─────────────────────────────────────────────────
 
         /// <summary>
@@ -761,9 +768,9 @@ namespace MedCompanion.ViewModels
             {
                 case "1": IsWorkingPreparation               = true; NotifyPreparationCollections(); break;
                 case "2": IsWorkingEvaluation                = true; NotifyEvaluationCollections();  break;
-                case "3": IsWorkingBilanFinal                  = true; NotifyBilanFinalCollections();    break;
-                case "4": IsWorkingCartographieEnfant        = true; NotifyCartographieCollections(); break;
-                case "5": IsWorkingCartographieEnvironnement = true; NotifyEnvironnementSynthese();   break;
+                case "3": IsWorkingCartographieEnfant        = true; NotifyCartographieCollections(); break;
+                case "4": IsWorkingCartographieEnvironnement = true; NotifyEnvironnementSynthese();   break;
+                case "5": IsWorkingBilanFinal                = true; NotifyBilanFinalCollections();   break;
             }
             NotifyAllStates();
         }
@@ -784,6 +791,9 @@ namespace MedCompanion.ViewModels
             StatusMessage = "";
             // ReloadState charge l'évaluation active s'il y en a une, sinon Phase = null
             ReloadState();
+            // Notifie l'orchestrateur pour qu'il bascule IsEvaluationPhaseMode à false et
+            // affiche à nouveau la frise des consultations / la liste des patients.
+            ReadOnlyViewClosed?.Invoke();
         }
 
         public async Task SuggestPreparationAsync()
@@ -1038,10 +1048,45 @@ namespace MedCompanion.ViewModels
         private void OnObservationChanged(object? sender, PropertyChangedEventArgs e)
         {
             if (Phase == null) return;
-            if (e.PropertyName == nameof(AxisObservationItem.IsChecked))
+            if (e.PropertyName != nameof(AxisObservationItem.IsChecked)) return;
+
+            // Quand l'utilisateur coche une observation, on l'ajoute automatiquement au
+            // champ texte libre de l'axe parent — sauf si déjà présent. Ça rend le check
+            // utile pour étoffer la narration. Décocher ne touche pas le texte (le médecin
+            // l'a peut-être intégré dans une phrase).
+            if (sender is AxisObservationItem obs && obs.IsChecked)
             {
-                try { _phaseService.Save(Phase); } catch { /* meilleur effort */ }
+                var parent = FindParentAxis(obs);
+                if (parent != null)
+                    AppendObservationLabel(parent, obs.Label);
             }
+
+            try { _phaseService.Save(Phase); } catch { /* meilleur effort */ }
+        }
+
+        private EvaluationAxis? FindParentAxis(AxisObservationItem obs)
+        {
+            if (Phase == null) return null;
+            foreach (var ax in Phase.EvaluationCiblee.AxesPrincipaux)
+                if (ax.ObservationsProposees.Contains(obs)) return ax;
+            foreach (var ax in Phase.EvaluationCiblee.AxesDifferentiels)
+                if (ax.ObservationsProposees.Contains(obs)) return ax;
+            foreach (var ax in Phase.EvaluationCiblee.AxesSystemiques)
+                if (ax.ObservationsProposees.Contains(obs)) return ax;
+            return null;
+        }
+
+        private static void AppendObservationLabel(EvaluationAxis axis, string label)
+        {
+            if (string.IsNullOrWhiteSpace(label)) return;
+            var current = axis.Observation ?? "";
+
+            // Déjà présent dans le texte (insensible casse) → on ne duplique pas.
+            if (current.IndexOf(label, StringComparison.OrdinalIgnoreCase) >= 0) return;
+
+            axis.Observation = string.IsNullOrWhiteSpace(current)
+                ? label
+                : current.TrimEnd().TrimEnd(',') + ", " + label;
         }
 
         private void OnAxisChanged(object? sender, PropertyChangedEventArgs e)

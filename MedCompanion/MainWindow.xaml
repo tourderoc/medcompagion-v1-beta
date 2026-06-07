@@ -674,37 +674,6 @@
                 </StackPanel>
                 
                 <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
-                    <Button x:Name="TestRestitutionPdfBtn"
-                            Content="📄 Test Restitution PDF"
-                            Height="40"
-                            Padding="15,0"
-                            Margin="0,0,10,0"
-                            FontSize="13"
-                            Background="#00A896"
-                            Foreground="White"
-                            BorderThickness="0"
-                            Cursor="Hand"
-                            Click="TestRestitutionPdfBtn_Click">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="Template">
-                                    <Setter.Value>
-                                        <ControlTemplate TargetType="Button">
-                                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </Border>
-                                        </ControlTemplate>
-                                    </Setter.Value>
-                                </Setter>
-                                <Style.Triggers>
-                                    <Trigger Property="IsMouseOver" Value="True">
-                                        <Setter Property="Background" Value="#008080"/>
-                                    </Trigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    
                     <Button x:Name="OpenPatientFolderBtn"
                             Content="📁 Ouvrir dossier"
                             Height="40"

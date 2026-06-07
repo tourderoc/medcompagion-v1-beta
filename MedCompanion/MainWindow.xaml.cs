@@ -938,37 +938,6 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         }
     }
 
-    private async void TestRestitutionPdfBtn_Click(object sender, RoutedEventArgs e)
-    {
-        if (_selectedPatient == null) return;
-        
-        try
-        {
-            var metadata = _patientIndex.GetMetadata(_selectedPatient.Id);
-            if (metadata == null) return;
-
-            var existingPhotoPath = _patientPhotoService.GetPhotoPath(_selectedPatient.NomComplet, "photo.jpg");
-            var outputFolder = _storageService.GetPatientDirectory(_selectedPatient.NomComplet);
-
-            var pdfService = new Services.EdgeHeadlessPdfService();
-            var service = new Services.RestitutionPdfTestService(pdfService);
-            var pdfPath = await service.GenerateTestPdfAsync(metadata, existingPhotoPath, outputFolder);
-
-            // Open the PDF
-            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = pdfPath,
-                UseShellExecute = true
-            });
-            
-            StatusTextBlock.Text = "✅ PDF de test généré avec succès";
-        }
-        catch (Exception ex)
-        {
-            System.Windows.MessageBox.Show($"Erreur lors de la génération du PDF :\n{ex.Message}", "Erreur PDF", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
-        }
-    }
-
     private async void PatientAvatarBtn_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedPatient == null) return;

@@ -390,6 +390,10 @@ namespace MedCompanion.ViewModels
                 phaseService, suggester, axesSuggester, axisExtractor, _whisperService, bilanFinalSuggester, feuilleLecture, brancheLecture);
             // À chaque création/clôture d'évaluation, rafraîchit la frise + les blocs de synthèse
             EvaluationPhase.PhaseStateChanged += LoadEvaluationCards;
+            // Quand l'utilisateur ferme la vue lecture seule (« ✕ Fermer la vue »), on sort
+            // du mode évaluation pour revenir à la frise normale — sinon on resterait sur
+            // l'écran « Aucune évaluation en cours — Commencer ».
+            EvaluationPhase.ReadOnlyViewClosed += () => IsEvaluationPhaseMode = false;
             // Si un patient est déjà chargé, on lui passe tout de suite
             if (_currentPatient != null) EvaluationPhase.SetCurrentPatient(_currentPatient);
         }
@@ -2458,30 +2462,45 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
             }
             else if (type == "DossierClinique")
             {
-                IsDossierRestitutionCliniqueMode = true;
-                var dossier = new DossierRestitutionInitial();
-                var pathService = new PathService();
+                var dossier = new DossierRestitutionInitial
+                {
+                    PatientNomComplet = CurrentPatient?.NomComplet ?? "Inconnu"
+                };
+                var pathService    = new PathService();
+                var syntheseSvc    = new MedCompanion.Services.Synthesis.SyntheseGlobaleService(pathService);
+                var projetSvc      = new MedCompanion.Services.Therapeutique.ProjetTherapeutiqueService(pathService);
+                var dossierReader  = new MedCompanion.Services.Restitutions.DossierReaderService(pathService, syntheseSvc, projetSvc);
                 var suggesterService = new RestitutionSuggesterService(
                     _llmService!,
-                    new MedCompanion.Services.Synthesis.SyntheseGlobaleService(pathService),
-                    new MedCompanion.Services.Therapeutique.ProjetTherapeutiqueService(pathService),
+                    dossierReader,
+                    syntheseSvc,
+                    projetSvc,
                     new MedCompanion.Services.PatientContextService(
                         _storageService ?? new MedCompanion.StorageService(pathService),
                         new MedCompanion.Services.PatientIndexService(pathService)
                     )
                 );
                 
-                RestitutionEditor = new ViewModels.Restitutions.RestitutionEditorViewModel(
+                var previewService = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(pathService);
+                var editorVm = new ViewModels.Restitutions.RestitutionEditorViewModel(
                     dossier,
                     CurrentPatient?.NomComplet ?? "Inconnu",
                     new RestitutionService(pathService),
-                    suggesterService
+                    suggesterService,
+                    dossierReader,
+                    previewService
                 );
 
-                RestitutionEditor.RequestClose += () => {
-                    IsDossierRestitutionCliniqueMode = false;
-                    RestitutionEditor = null;
+                // Ouverture dans une fenêtre indépendante redimensionnable. L'utilisateur peut
+                // la maximiser ou la déplacer sur un second écran sans perdre la consultation.
+                var win = new MedCompanion.Views.Restitutions.RestitutionEditorWindow(editorVm)
+                {
+                    Owner = System.Windows.Application.Current?.MainWindow
                 };
+                win.Show();
+
+                RestitutionEditor = editorVm;
+                editorVm.RequestClose += () => { RestitutionEditor = null; };
             }
         }
 

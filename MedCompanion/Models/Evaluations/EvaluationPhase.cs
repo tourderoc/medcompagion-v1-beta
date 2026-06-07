@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 
 namespace MedCompanion.Models.Evaluations
@@ -29,6 +31,26 @@ namespace MedCompanion.Models.Evaluations
         public DateTime DateDebut           { get; set; } = DateTime.Now;
         public DateTime DateDerniereModif   { get; set; } = DateTime.Now;
         public DateTime? DateCloture        { get; set; }            // null = active, sinon = clôturée immuable
+
+        /// <summary>
+        /// Liste des dates des séances pendant lesquelles le médecin a travaillé sur cette
+        /// évaluation. Auto-alimentée à chaque Save (1 entrée par jour calendaire, sans
+        /// doublon). Utilisé pour afficher "Dates d'évaluation" sur la couverture du
+        /// Dossier de Restitution.
+        /// </summary>
+        public List<DateTime> SessionDates { get; set; } = new();
+
+        /// <summary>
+        /// Ajoute la date du jour (calendaire) aux SessionDates si elle n'y est pas déjà.
+        /// Tri chronologique automatique. Appelé par EvaluationPhaseService.Save.
+        /// </summary>
+        public void RecordSessionDate(DateTime when)
+        {
+            var date = when.Date;
+            if (SessionDates.Any(d => d.Date == date)) return;
+            SessionDates.Add(date);
+            SessionDates.Sort();
+        }
 
         public EvaluationStep EtapeCourante { get; set; } = EvaluationStep.Preparation;
 

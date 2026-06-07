@@ -110,6 +110,9 @@ namespace MedCompanion.Services.Evaluations
         public void Save(EvaluationPhase phase)
         {
             phase.DateDerniereModif = DateTime.Now;
+            // Trace la date de la séance courante (1 entrée par jour, sans doublon).
+            // Utilisé pour afficher les dates d'évaluation sur la couverture du Dossier.
+            phase.RecordSessionDate(DateTime.Now);
             var content = SerializeToMarkdown(phase);
             File.WriteAllText(phase.FilePath, content, Encoding.UTF8);
         }
@@ -166,6 +169,13 @@ namespace MedCompanion.Services.Evaluations
             sb.AppendLine($"date_debut: {phase.DateDebut.ToString("o", CultureInfo.InvariantCulture)}");
             sb.AppendLine($"date_derniere_modif: {phase.DateDerniereModif.ToString("o", CultureInfo.InvariantCulture)}");
             sb.AppendLine($"date_cloture: {(phase.DateCloture.HasValue ? phase.DateCloture.Value.ToString("o", CultureInfo.InvariantCulture) : "null")}");
+            // Liste des dates des séances (1 par jour calendaire). Utilisée pour afficher
+            // les dates d'évaluation sur la couverture du Dossier de Restitution.
+            if (phase.SessionDates.Count > 0)
+            {
+                var dates = string.Join(", ", phase.SessionDates.Select(d => d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)));
+                sb.AppendLine($"session_dates: [{dates}]");
+            }
             sb.AppendLine($"etape_courante: {(int)phase.EtapeCourante}");
             sb.AppendLine($"etape_1_validee: {(phase.Preparation.IsValidated ? "true" : "false")}");
             if (phase.Preparation.ValidationDate.HasValue)
@@ -648,6 +658,14 @@ namespace MedCompanion.Services.Evaluations
                 phase.DateDebut         = GetDate(yaml,   "date_debut")         ?? DateTime.MinValue;
                 phase.DateDerniereModif = GetDate(yaml,   "date_derniere_modif") ?? DateTime.MinValue;
                 phase.DateCloture       = GetDate(yaml,   "date_cloture");
+                phase.SessionDates      = ParseDateList(yaml, "session_dates");
+                // Rétrocompat : si l'évaluation a été créée avant le tracking, on remplit
+                // au moins avec DateDebut + DateCloture pour qu'il y ait quelque chose à afficher.
+                if (phase.SessionDates.Count == 0)
+                {
+                    phase.RecordSessionDate(phase.DateDebut);
+                    if (phase.DateCloture.HasValue) phase.RecordSessionDate(phase.DateCloture.Value);
+                }
                 phase.EtapeCourante     = (EvaluationStep)(GetInt(yaml, "etape_courante") ?? 1);
 
                 if (GetBool(yaml, "etape_1_validee"))
@@ -823,6 +841,29 @@ namespace MedCompanion.Services.Evaluations
             var s = GetString(yaml, key);
             if (string.IsNullOrEmpty(s) || s == "null") return null;
             return DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var d) ? d : (DateTime?)null;
+        }
+
+        /// <summary>
+        /// Parse une ligne YAML inline du type "key: [2026-05-15, 2026-05-21, 2026-05-28]"
+        /// en liste de DateTime. Retourne une liste vide si la clé est absente ou malformée.
+        /// </summary>
+        private static List<DateTime> ParseDateList(string yaml, string key)
+        {
+            var result = new List<DateTime>();
+            var s = GetString(yaml, key);
+            if (string.IsNullOrWhiteSpace(s)) return result;
+            // Format inline : [2026-05-15, 2026-05-21]
+            if (s.StartsWith("[") && s.EndsWith("]") && s.Length >= 2)
+                s = s.Substring(1, s.Length - 2);
+            foreach (var part in s.Split(','))
+            {
+                var t = part.Trim();
+                if (string.IsNullOrEmpty(t)) continue;
+                if (DateTime.TryParse(t, CultureInfo.InvariantCulture, DateTimeStyles.AssumeLocal, out var d))
+                    result.Add(d.Date);
+            }
+            result.Sort();
+            return result;
         }
 
         private static string? ExtractSubBlock(string yaml, string sectionPrefix)

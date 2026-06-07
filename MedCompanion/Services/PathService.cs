@@ -25,8 +25,8 @@ namespace MedCompanion.Services
         /// </summary>
         private string NormalizePatientName(string nomComplet)
         {
-            var parts = nomComplet.Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            
+            var parts = (nomComplet ?? "").Trim().Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
             if (parts.Length >= 2)
             {
                 // Dernier mot = nom de famille, le reste = prénom
@@ -34,9 +34,11 @@ namespace MedCompanion.Services
                 var nom = parts.Last();
                 return $"{nom}_{prenom}";
             }
-            
-            // Si un seul mot, on l'utilise tel quel
-            return parts[0].Replace(" ", "_");
+
+            if (parts.Length == 1) return parts[0].Replace(" ", "_");
+
+            // Entrée vide/blanche : fallback explicite plutôt que IndexOutOfRange.
+            return "Inconnu";
         }
 
         /// <summary>
