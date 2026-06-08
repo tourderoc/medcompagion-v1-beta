@@ -631,37 +631,73 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Button Margin="0,0,8,0" Cursor="Hand"
-                                                            Command="{Binding DataContext.OpenCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                            CommandParameter="{Binding}">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Border x:Name="Cd" Width="130" Height="64"
-                                                                        CornerRadius="8" Padding="8,6"
-                                                                        Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1">
-                                                                    <StackPanel>
-                                                                        <StackPanel Orientation="Horizontal">
-                                                                            <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
-                                                                            <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                                                                       Foreground="#2C3E50" TextTrimming="CharacterEllipsis"/>
+                                                    <Grid x:Name="CardHost" Margin="0,0,8,0">
+                                                        <Button Cursor="Hand"
+                                                                Command="{Binding DataContext.OpenCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="Cd" Width="130" Height="64"
+                                                                            CornerRadius="8" Padding="8,6"
+                                                                            Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1">
+                                                                        <StackPanel>
+                                                                            <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
+                                                                                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
+                                                                                           Foreground="#2C3E50" TextTrimming="CharacterEllipsis"/>
+                                                                            </StackPanel>
+                                                                            <TextBlock Text="{Binding DateText}" FontSize="11"
+                                                                                       Foreground="#7F8C8D" Margin="0,6,0,0"/>
                                                                         </StackPanel>
-                                                                        <TextBlock Text="{Binding DateText}" FontSize="11"
-                                                                                   Foreground="#7F8C8D" Margin="0,6,0,0"/>
-                                                                    </StackPanel>
-                                                                </Border>
-                                                                <ControlTemplate.Triggers>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter TargetName="Cd" Property="Background" Value="#E8F1F8"/>
-                                                                        <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
-                                                                    </Trigger>
-                                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                        <Setter TargetName="Cd" Property="Background" Value="#D6EAF8"/>
-                                                                        <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
-                                                                    </DataTrigger>
-                                                                </ControlTemplate.Triggers>
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="Cd" Property="Background" Value="#E8F1F8"/>
+                                                                            <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
+                                                                        </Trigger>
+                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                            <Setter TargetName="Cd" Property="Background" Value="#D6EAF8"/>
+                                                                            <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
+                                                                        </DataTrigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+
+                                                        <!-- Bouton supprimer (haut-droit, visible au survol de la card) -->
+                                                        <Button x:Name="DeleteBtn"
+                                                                Width="20" Height="20"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                Margin="0,-4,-4,0"
+                                                                Cursor="Hand"
+                                                                Visibility="Collapsed"
+                                                                Background="Transparent" BorderThickness="0"
+                                                                ToolTip="Supprimer cette consultation/note"
+                                                                Command="{Binding DataContext.DeleteConsultationCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="DBorder" Background="#FFFFFF"
+                                                                            BorderBrush="#D6E2EC" BorderThickness="1"
+                                                                            CornerRadius="10">
+                                                                        <TextBlock Text="🗑" FontSize="11"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
+                                                                            <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                    </Grid>
+                                                    <DataTemplate.Triggers>
+                                                        <Trigger SourceName="CardHost" Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
+                                                        </Trigger>
+                                                    </DataTemplate.Triggers>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -802,7 +838,41 @@
                                                             <TextBlock Text="⚠" FontSize="10" Foreground="White"
                                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                         </Border>
+
+                                                        <!-- Bouton supprimer (haut-droit, visible au survol de la card) -->
+                                                        <Button x:Name="DeleteBtn"
+                                                                Width="20" Height="20"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                Margin="0,-4,-4,0"
+                                                                Cursor="Hand"
+                                                                Visibility="Collapsed"
+                                                                Background="Transparent" BorderThickness="0"
+                                                                ToolTip="Supprimer ce projet"
+                                                                Command="{Binding DataContext.DeleteProjetTherapeutiqueCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="DBorder" Background="#FFFFFF"
+                                                                            BorderBrush="#A5D6A7" BorderThickness="1"
+                                                                            CornerRadius="10">
+                                                                        <TextBlock Text="🗑" FontSize="11"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
+                                                                            <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
                                                     </Grid>
+                                                    <DataTemplate.Triggers>
+                                                        <Trigger SourceName="PrjHost" Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
+                                                        </Trigger>
+                                                    </DataTemplate.Triggers>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -816,39 +886,75 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Button Margin="0,0,8,0" Cursor="Hand"
-                                                            Command="{Binding DataContext.OpenSyntheseGlobaleCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                            CommandParameter="{Binding}">
-                                                        <Button.Template>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Border x:Name="Sc" Width="140" Height="64"
-                                                                        CornerRadius="8" Padding="8,6"
-                                                                        Background="#FBF6E3" BorderBrush="#E5D08F" BorderThickness="1">
-                                                                    <StackPanel>
-                                                                        <StackPanel Orientation="Horizontal">
-                                                                            <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
-                                                                            <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                                                                       Foreground="#7D6608" TextTrimming="CharacterEllipsis"/>
+                                                    <Grid x:Name="SynthHost" Margin="0,0,8,0">
+                                                        <Button Cursor="Hand"
+                                                                Command="{Binding DataContext.OpenSyntheseGlobaleCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="Sc" Width="140" Height="64"
+                                                                            CornerRadius="8" Padding="8,6"
+                                                                            Background="#FBF6E3" BorderBrush="#E5D08F" BorderThickness="1">
+                                                                        <StackPanel>
+                                                                            <StackPanel Orientation="Horizontal">
+                                                                                <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
+                                                                                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
+                                                                                           Foreground="#7D6608" TextTrimming="CharacterEllipsis"/>
+                                                                            </StackPanel>
+                                                                            <TextBlock Text="{Binding StateText}" FontSize="11"
+                                                                                       Foreground="#9C7A00" Margin="0,6,0,0"
+                                                                                       TextTrimming="CharacterEllipsis"/>
                                                                         </StackPanel>
-                                                                        <TextBlock Text="{Binding StateText}" FontSize="11"
-                                                                                   Foreground="#9C7A00" Margin="0,6,0,0"
-                                                                                   TextTrimming="CharacterEllipsis"/>
-                                                                    </StackPanel>
-                                                                </Border>
-                                                                <ControlTemplate.Triggers>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter TargetName="Sc" Property="Background" Value="#F5ECC2"/>
-                                                                        <Setter TargetName="Sc" Property="BorderBrush" Value="#D4AF37"/>
-                                                                    </Trigger>
-                                                                    <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                        <Setter TargetName="Sc" Property="Background" Value="#F0E3A8"/>
-                                                                        <Setter TargetName="Sc" Property="BorderBrush" Value="#D4AF37"/>
-                                                                        <Setter TargetName="Sc" Property="BorderThickness" Value="2"/>
-                                                                    </DataTrigger>
-                                                                </ControlTemplate.Triggers>
-                                                            </ControlTemplate>
-                                                        </Button.Template>
-                                                    </Button>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="Sc" Property="Background" Value="#F5ECC2"/>
+                                                                            <Setter TargetName="Sc" Property="BorderBrush" Value="#D4AF37"/>
+                                                                        </Trigger>
+                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                            <Setter TargetName="Sc" Property="Background" Value="#F0E3A8"/>
+                                                                            <Setter TargetName="Sc" Property="BorderBrush" Value="#D4AF37"/>
+                                                                            <Setter TargetName="Sc" Property="BorderThickness" Value="2"/>
+                                                                        </DataTrigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+
+                                                        <!-- Bouton supprimer (haut-droit, visible au survol de la card) -->
+                                                        <Button x:Name="DeleteBtn"
+                                                                Width="20" Height="20"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                Margin="0,-4,-4,0"
+                                                                Cursor="Hand"
+                                                                Visibility="Collapsed"
+                                                                Background="Transparent" BorderThickness="0"
+                                                                ToolTip="Supprimer cette synthèse"
+                                                                Command="{Binding DataContext.DeleteSyntheseGlobaleCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                CommandParameter="{Binding}">
+                                                            <Button.Template>
+                                                                <ControlTemplate TargetType="Button">
+                                                                    <Border x:Name="DBorder" Background="#FFFFFF"
+                                                                            BorderBrush="#E5D08F" BorderThickness="1"
+                                                                            CornerRadius="10">
+                                                                        <TextBlock Text="🗑" FontSize="11"
+                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                    </Border>
+                                                                    <ControlTemplate.Triggers>
+                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                            <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
+                                                                            <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
+                                                                        </Trigger>
+                                                                    </ControlTemplate.Triggers>
+                                                                </ControlTemplate>
+                                                            </Button.Template>
+                                                        </Button>
+                                                    </Grid>
+                                                    <DataTemplate.Triggers>
+                                                        <Trigger SourceName="SynthHost" Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
+                                                        </Trigger>
+                                                    </DataTemplate.Triggers>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
@@ -909,6 +1015,399 @@
                                   Background="#F5F7FA"
                                   Visibility="{Binding IsProjetTherapeutiqueMode, Converter={StaticResource BoolToVis}}">
                                 <projet:ProjetTherapeutiqueControl DataContext="{Binding ProjetTherapeutiqueVM}"/>
+                            </Grid>
+
+                            <!-- LECTURE D'UNE CONSULTATION PASSÉE -->
+                            <Grid Grid.Row="0" Grid.RowSpan="2"
+                                  Panel.ZIndex="105"
+                                  Background="#F5F7FA"
+                                  Visibility="{Binding IsReadingPastConsultationMode, Converter={StaticResource BoolToVis}}">
+                                <Border Margin="15" CornerRadius="8" Background="White" BorderBrush="#D6E2EC" BorderThickness="1">
+                                    <Grid Margin="20">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+                                        
+                                        <!-- Header -->
+                                        <Grid Grid.Row="0" Margin="0,0,0,15">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="{Binding SelectedPastConsultation.Title}" FontSize="18" FontWeight="Bold" Foreground="#2C3E50" TextWrapping="Wrap"/>
+                                                <TextBlock Text="Mode Lecture Seule" FontSize="11" Foreground="#95A5A6" Margin="0,2,0,0"/>
+                                            </StackPanel>
+                                            
+                                            <!-- Actions (Supprimer) -->
+                                            <Button Grid.Column="1" Content="🗑 Supprimer" 
+                                                    Command="{Binding DeleteSelectedPastConsultationCommand}"
+                                                    Padding="12,6" Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#C0392B"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+
+                                        <!-- Content -->
+                                        <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="4" Padding="15">
+                                            <FlowDocumentScrollViewer Document="{Binding SelectedPastConsultation.DisplayDocument}" Zoom="100" BorderThickness="0" Background="Transparent"/>
+                                        </Border>
+
+                                        <!-- Footer -->
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0">
+                                            <Button Content="✕ Fermer la vue" Command="{Binding ClosePastConsultationCommand}"
+                                                    Padding="25,9" Background="#7F8C8D" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="18" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#707B7C"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <!-- LECTURE D'UNE 1ÈRE CONSULTATION PASSÉE (ETAPES ET LECTURE SEULE) -->
+                            <Grid Grid.Row="0" Grid.RowSpan="2"
+                                  Panel.ZIndex="106"
+                                  Background="#F5F7FA"
+                                  Visibility="{Binding IsReadingPastPremiereConsultationMode, Converter={StaticResource BoolToVis}}">
+                                <Border Margin="15" CornerRadius="8" Background="White" BorderBrush="#D6E2EC" BorderThickness="1">
+                                    <Grid Margin="20">
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
+
+                                        <!-- Header & Steps Navigation -->
+                                        <Grid Grid.Row="0" Margin="0,0,0,15">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="Auto"/>
+                                            </Grid.ColumnDefinitions>
+                                            
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="{Binding SelectedPastConsultation.Title}" FontSize="18" FontWeight="Bold" Foreground="#2C3E50"/>
+                                                <TextBlock Text="Mode Lecture Seule — Étape par étape" FontSize="11" Foreground="#95A5A6" Margin="0,2,0,0"/>
+                                                
+                                                <!-- Steps bar (like evaluation) -->
+                                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                                    <!-- Button Step 1 -->
+                                                    <Button Content="Étape 1 — Interrogatoire" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                            Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="1">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Background" Value="White"/>
+                                                                <Setter Property="BorderBrush" Value="#3498DB"/>
+                                                                <Setter Property="BorderThickness" Value="1"/>
+                                                                <Setter Property="Foreground" Value="#3498DB"/>
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}"
+                                                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsPastPremiereStep1}" Value="True">
+                                                                        <Setter Property="Background" Value="#3498DB"/>
+                                                                        <Setter Property="Foreground" Value="White"/>
+                                                                    </DataTrigger>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#EBF5FB"/>
+                                                                    </Trigger>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsPastPremiereStep1}" Value="True"/>
+                                                                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Background" Value="#2980B9"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+
+                                                    <!-- Button Step 2 -->
+                                                    <Button Content="Étape 2 — Observations Cliniques" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                            Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="2">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Background" Value="White"/>
+                                                                <Setter Property="BorderBrush" Value="#27AE60"/>
+                                                                <Setter Property="BorderThickness" Value="1"/>
+                                                                <Setter Property="Foreground" Value="#27AE60"/>
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}"
+                                                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsPastPremiereStep2}" Value="True">
+                                                                        <Setter Property="Background" Value="#27AE60"/>
+                                                                        <Setter Property="Foreground" Value="White"/>
+                                                                    </DataTrigger>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#E8F8F5"/>
+                                                                    </Trigger>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsPastPremiereStep2}" Value="True"/>
+                                                                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Background" Value="#219653"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+
+                                                    <!-- Button Step 3 -->
+                                                    <Button Content="Étape 3 — Synthèse Initiale" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                            Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="3">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Background" Value="White"/>
+                                                                <Setter Property="BorderBrush" Value="#9B59B6"/>
+                                                                <Setter Property="BorderThickness" Value="1"/>
+                                                                <Setter Property="Foreground" Value="#9B59B6"/>
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}"
+                                                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsPastPremiereStep3}" Value="True">
+                                                                        <Setter Property="Background" Value="#9B59B6"/>
+                                                                        <Setter Property="Foreground" Value="White"/>
+                                                                    </DataTrigger>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#F5EEF8"/>
+                                                                    </Trigger>
+                                                                    <MultiDataTrigger>
+                                                                        <MultiDataTrigger.Conditions>
+                                                                            <Condition Binding="{Binding IsPastPremiereStep3}" Value="True"/>
+                                                                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                        </MultiDataTrigger.Conditions>
+                                                                        <Setter Property="Background" Value="#8E44AD"/>
+                                                                    </MultiDataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+                                                </StackPanel>
+                                            </StackPanel>
+
+                                            <!-- Actions (Supprimer) -->
+                                            <Button Grid.Column="1" Content="🗑 Supprimer" 
+                                                    Command="{Binding DeleteSelectedPastConsultationCommand}"
+                                                    Padding="12,6" Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Top">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#C0392B"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </Grid>
+
+                                        <!-- Content area -->
+                                        <Grid Grid.Row="1">
+                                            <!-- STEP 1: Interrogatoire -->
+                                            <Grid Visibility="{Binding IsPastPremiereStep1, Converter={StaticResource BoolToVis}}">
+                                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel Margin="0,0,10,0">
+                                                        <ItemsControl ItemsSource="{Binding PastInterrogatoireBlocks}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Border BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Background="#FAFAFA" Margin="0,0,0,10" Padding="15">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="BorderThickness" Value="3,1,1,1"/>
+                                                                                <Setter Property="BorderBrush" Value="#3498DB"/>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <StackPanel>
+                                                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,6"/>
+                                                                            <TextBlock Text="{Binding FreeText}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18"/>
+                                                                        </StackPanel>
+                                                                    </Border>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </StackPanel>
+                                                </ScrollViewer>
+                                            </Grid>
+
+                                            <!-- STEP 2: Observations Cliniques -->
+                                            <Grid Visibility="{Binding IsPastPremiereStep2, Converter={StaticResource BoolToVis}}">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="*"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+                                                
+                                                <!-- UniformGrid of read-only Cards -->
+                                                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                                                    <ItemsControl ItemsSource="{Binding PastClinicalCards}" Margin="0,0,10,0">
+                                                        <ItemsControl.ItemsPanel>
+                                                            <ItemsPanelTemplate>
+                                                                <UniformGrid Columns="2" VerticalAlignment="Top"/>
+                                                            </ItemsPanelTemplate>
+                                                        </ItemsControl.ItemsPanel>
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border CornerRadius="8" Padding="12" Margin="6" BorderThickness="1.5">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border">
+                                                                            <Setter Property="BorderBrush" Value="#E0E0E0"/>
+                                                                            <Setter Property="Background" Value="#FAFAFA"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding HasSelection}" Value="True">
+                                                                                    <Setter Property="BorderBrush" Value="#27AE60"/>
+                                                                                    <Setter Property="Background" Value="#F0FAF5"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Border.Style>
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,6"/>
+                                                                        
+                                                                        <!-- Selection Badge -->
+                                                                        <Border HorizontalAlignment="Left" CornerRadius="4" Padding="6,3" Margin="0,0,0,6" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}" Background="#27AE60">
+                                                                            <TextBlock Text="{Binding SelectedOption}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
+                                                                        </Border>
+                                                                        
+                                                                        <!-- Free text comment if exists -->
+                                                                        <TextBlock Text="{Binding FreeText}" FontSize="12" Foreground="#5D6D7E" TextWrapping="Wrap" LineHeight="16" FontStyle="Italic"/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                </ScrollViewer>
+                                                
+                                                <!-- Narratif complet -->
+                                                <Border Grid.Row="1" Background="#EAF2F8" BorderBrush="#27AE60" BorderThickness="3,1,1,1" CornerRadius="6" Padding="12" Margin="6,10,6,0">
+                                                    <StackPanel>
+                                                        <TextBlock Text="✍️ Observations rédigées cliniques :" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
+                                                        <TextBlock Text="{Binding PastObservationsNarrative}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18"/>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
+
+                                            <!-- STEP 3: Synthèse Initiale -->
+                                            <Grid Visibility="{Binding IsPastPremiereStep3, Converter={StaticResource BoolToVis}}">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+                                                
+                                                <!-- Poids de fiabilité -->
+                                                <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                                                    <StackPanel>
+                                                        <TextBlock Text="📊 Indicateurs de fiabilité" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,8"/>
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0">
+                                                                <TextBlock Text="Interrogatoire" FontSize="11" Foreground="#7F8C8D"/>
+                                                                <TextBlock Text="{Binding PastInterrogatoireWeight, StringFormat='{}{0:F1}/1.0'}" FontSize="16" FontWeight="Bold" Foreground="#3498DB"/>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1">
+                                                                <TextBlock Text="Observations" FontSize="11" Foreground="#7F8C8D"/>
+                                                                <TextBlock Text="{Binding PastObservationsWeight, StringFormat='{}{0:F1}/1.0'}" FontSize="16" FontWeight="Bold" Foreground="#27AE60"/>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="2">
+                                                                <TextBlock Text="Moyenne" FontSize="11" Foreground="#7F8C8D"/>
+                                                                <TextBlock Text="{Binding PastAverageWeight, StringFormat='{}{0:F1}/1.0'}" FontSize="16" FontWeight="Bold" Foreground="#8E44AD"/>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                        
+                                                        <TextBlock Text="{Binding PastLLMJustification}" FontSize="11" Foreground="#5D6D7E" Margin="0,8,0,0" TextWrapping="Wrap" FontStyle="Italic"/>
+                                                    </StackPanel>
+                                                </Border>
+                                                
+                                                <!-- Synthèse rédigée -->
+                                                <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Padding="15">
+                                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                        <StackPanel>
+                                                            <TextBlock Text="📄 Synthèse Clinique :" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,8"/>
+                                                            <TextBlock Text="{Binding PastSynthesisContent}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18"/>
+                                                        </StackPanel>
+                                                    </ScrollViewer>
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+
+                                        <!-- Footer -->
+                                        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,15,0,0">
+                                            <Button Content="✕ Fermer la vue" Command="{Binding ClosePastPremiereConsultationCommand}"
+                                                    Padding="25,9" Background="#7F8C8D" Foreground="White" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="18" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#707B7C"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </Grid>
 
                             <!-- MODE NORMAL : note libre classique -->
@@ -1053,38 +1552,6 @@
                                     </Button.Style>
                                 </Button>
 
-                                <!-- Bouton 4 : Restitution aux Parents -->
-                                <Button Content="📋 Restitution Parents"
-                                        Command="{Binding SwitchToRestitutionCommand}"
-                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
-                                        Margin="10,0,0,0" Height="40"
-                                        Background="#E67E22" Foreground="White"
-                                        BorderThickness="0"
-                                        VerticalAlignment="Top">
-                                    <Button.Style>
-                                        <Style TargetType="Button">
-                                            <Setter Property="Template">
-                                                <Setter.Value>
-                                                    <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}"
-                                                                CornerRadius="8"
-                                                                Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                        </Border>
-                                                    </ControlTemplate>
-                                                </Setter.Value>
-                                            </Setter>
-                                            <Style.Triggers>
-                                                <Trigger Property="IsMouseOver" Value="True">
-                                                    <Setter Property="Background" Value="#CA6F1E"/>
-                                                </Trigger>
-                                                <Trigger Property="IsEnabled" Value="False">
-                                                    <Setter Property="Background" Value="#BDC3C7"/>
-                                                </Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Button.Style>
-                                </Button>
                             </StackPanel>
 
                             <!-- MODE INTERROGATOIRE — Saisie transcription -->

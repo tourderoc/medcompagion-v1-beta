@@ -200,20 +200,43 @@ namespace MedCompanion.ViewModels.Restitutions
             blocVm.IsGenerating = true;
             try
             {
-                // Si on n'a pas encore lu le dossier (cas du bouton Suggérer isolé), on le lit ici.
                 _currentReading ??= await _dossierReader.ReadAsync(_patientName);
-
                 var ct = _generationCts?.Token ?? CancellationToken.None;
-                var result = await _suggesterService.PrefillBlocAsync(blocVm.Model, _currentReading, ct);
 
-                if (!result.Suggestion.StartsWith("(Erreur"))
+                if (blocVm.Model.Key == "restitution_1page")
                 {
-                    blocVm.Contenu = result.Suggestion;
-                    await SaveAsync();
+                    // Génération progressive : 6 sections successives, mise à jour live à chaque section.
+                    blocVm.Contenu = "";
+                    int done = 0;
+                    StatusMessage = "✍ Restitution parents — section 1/6...";
+
+                    await _suggesterService.SuggestRestitution1PageProgressiveAsync(
+                        _currentReading,
+                        accumulated =>
+                        {
+                            done++;
+                            blocVm.Contenu = accumulated;
+                            StatusMessage  = done < 6
+                                ? $"✍ Restitution parents — section {done + 1}/6..."
+                                : "✓ Restitution parents complète.";
+                        },
+                        ct);
+
+                    if (!string.IsNullOrWhiteSpace(blocVm.Contenu))
+                        await SaveAsync();
                 }
                 else
                 {
-                    StatusMessage = $"Erreur gén. {blocVm.Title} : {result.Suggestion}";
+                    var result = await _suggesterService.PrefillBlocAsync(blocVm.Model, _currentReading, ct);
+                    if (!result.Suggestion.StartsWith("(Erreur"))
+                    {
+                        blocVm.Contenu = result.Suggestion;
+                        await SaveAsync();
+                    }
+                    else
+                    {
+                        StatusMessage = $"Erreur gén. {blocVm.Title} : {result.Suggestion}";
+                    }
                 }
             }
             catch (OperationCanceledException)

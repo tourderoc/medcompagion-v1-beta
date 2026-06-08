@@ -73,6 +73,104 @@ namespace MedCompanion.Services.Restitutions
                 : ($"(Erreur lors de la génération : {result.error})", context);
         }
 
+        // ── Génération progressive page 2 (6 sections successives) ─────────
+
+        /// <summary>
+        /// Génère la Restitution 1-page parents en 6 appels LLM consécutifs, un par section.
+        /// Après chaque section, <paramref name="onSectionReady"/> reçoit le texte Markdown
+        /// accumulé jusqu'ici — le ViewModel met à jour l'UI au fil de l'eau.
+        /// </summary>
+        public async Task SuggestRestitution1PageProgressiveAsync(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context))
+            {
+                onSectionReady("(Aucun contenu source disponible.)");
+                return;
+            }
+
+            // Bloc factice pour construire le system prompt (voix livre = parents)
+            var blocp2 = new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre");
+            var systemPrompt = BuildSystemPrompt(blocp2);
+
+            // Les 6 sous-sections : (marqueur Markdown, instruction LLM)
+            var subsections = new (string Title, string Instruction)[]
+            {
+                ("**Ce que nous avons compris**",
+                 "Rédige UNIQUEMENT le contenu de la section « Ce que nous avons compris » : " +
+                 "1 paragraphe d'introduction bienveillant (2-3 phrases), puis une liste à puces " +
+                 "de 3-4 points-clés (- **Mot-clé :** description courte). " +
+                 "Commence directement par le paragraphe, sans titre ni introduction."),
+
+                ("**Ses forces et ses réussites**",
+                 "Rédige UNIQUEMENT le contenu de la section « Ses forces et ses réussites » : " +
+                 "liste de 4-5 points positifs concrets observés chez cet enfant " +
+                 "(- **Mot-clé :** description courte). " +
+                 "Commence directement par la liste, sans titre ni introduction."),
+
+                ("**Les difficultés actuellement observées**",
+                 "Rédige UNIQUEMENT le contenu de la section « Les difficultés actuellement observées » : " +
+                 "liste de 3-4 défis principaux, formulés sans culpabiliser les parents " +
+                 "(- **Mot-clé :** description courte). " +
+                 "Commence directement par la liste, sans titre ni introduction."),
+
+                ("**Ce qui peut aider**",
+                 "Rédige UNIQUEMENT le contenu de la section « Ce qui peut aider » : " +
+                 "liste de 3-4 actions concrètes pour la maison et l'école " +
+                 "(- **Mot-clé :** description courte). " +
+                 "Commence directement par la liste, sans titre ni introduction."),
+
+                ("**Notre feuille de route**",
+                 "Rédige UNIQUEMENT le contenu de la section « Notre feuille de route » : " +
+                 "liste numérotée de 3-5 prochaines étapes concrètes " +
+                 "(1. **Étape :** description courte). " +
+                 "Commence directement par la liste numérotée, sans titre ni introduction."),
+
+                ("**Son environnement : points clés**",
+                 "Rédige UNIQUEMENT le contenu de la section « Son environnement : points clés » : " +
+                 "1-2 phrases sur les ressources positives de l'entourage, puis une liste de " +
+                 "2-3 points de vigilance (- **Point :** description courte). " +
+                 "Commence directement par le texte, sans titre ni introduction.")
+            };
+
+            var accumulated = new System.Text.StringBuilder();
+
+            foreach (var (title, instruction) in subsections)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                var userPrompt = Build1PageSubsectionPrompt(context, instruction);
+                var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+                var result     = await _llmService.ChatAsync(systemPrompt, messages, 800, ct);
+
+                if (ct.IsCancellationRequested) break;
+
+                if (accumulated.Length > 0) accumulated.AppendLine();
+                accumulated.AppendLine(title);
+                accumulated.AppendLine();
+                accumulated.AppendLine(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+
+                onSectionReady(accumulated.ToString());
+            }
+        }
+
+        private static string Build1PageSubsectionPrompt(string dossierContext, string instruction)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(dossierContext);
+            sb.AppendLine();
+            sb.AppendLine("=================");
+            sb.AppendLine("INSTRUCTION STRICTE — génère UNIQUEMENT ce qui est demandé ci-dessous, " +
+                          "sans introduction, sans commentaire, sans titre supplémentaire :");
+            sb.AppendLine(instruction);
+            sb.AppendLine();
+            sb.AppendLine("Sois concis (6-10 lignes max). Réponds directement en Markdown.");
+            return sb.ToString();
+        }
+
         // ── API legacy (compat ascendante) ──────────────────────────────────
 
         /// <summary>

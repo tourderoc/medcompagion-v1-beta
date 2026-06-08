@@ -426,6 +426,101 @@ namespace MedCompanion.ViewModels
             set => SetProperty(ref _isProjetTherapeutiqueMode, value);
         }
 
+        private bool _isReadingPastConsultationMode;
+        /// <summary>True quand le médecin consulte une note passée sur le plan de travail.</summary>
+        public bool IsReadingPastConsultationMode
+        {
+            get => _isReadingPastConsultationMode;
+            set => SetProperty(ref _isReadingPastConsultationMode, value);
+        }
+
+        private bool _isReadingPastPremiereConsultationMode;
+        /// <summary>True quand le médecin consulte une 1ère consultation passée (avec étapes).</summary>
+        public bool IsReadingPastPremiereConsultationMode
+        {
+            get => _isReadingPastPremiereConsultationMode;
+            set => SetProperty(ref _isReadingPastPremiereConsultationMode, value);
+        }
+
+        private int _pastPremiereStep = 1;
+        public int PastPremiereStep
+        {
+            get => _pastPremiereStep;
+            set
+            {
+                if (SetProperty(ref _pastPremiereStep, value))
+                {
+                    OnPropertyChanged(nameof(IsPastPremiereStep1));
+                    OnPropertyChanged(nameof(IsPastPremiereStep2));
+                    OnPropertyChanged(nameof(IsPastPremiereStep3));
+                }
+            }
+        }
+
+        public bool IsPastPremiereStep1 => PastPremiereStep == 1;
+        public bool IsPastPremiereStep2 => PastPremiereStep == 2;
+        public bool IsPastPremiereStep3 => PastPremiereStep == 3;
+
+        private string _pastInterrogatoireText = "";
+        public string PastInterrogatoireText
+        {
+            get => _pastInterrogatoireText;
+            set => SetProperty(ref _pastInterrogatoireText, value);
+        }
+
+        private string _pastObservationsNarrative = "";
+        public string PastObservationsNarrative
+        {
+            get => _pastObservationsNarrative;
+            set => SetProperty(ref _pastObservationsNarrative, value);
+        }
+
+        private string _pastSynthesisContent = "";
+        public string PastSynthesisContent
+        {
+            get => _pastSynthesisContent;
+            set => SetProperty(ref _pastSynthesisContent, value);
+        }
+
+        private double _pastInterrogatoireWeight = 0.5;
+        public double PastInterrogatoireWeight
+        {
+            get => _pastInterrogatoireWeight;
+            set => SetProperty(ref _pastInterrogatoireWeight, value);
+        }
+
+        private double _pastObservationsWeight = 0.8;
+        public double PastObservationsWeight
+        {
+            get => _pastObservationsWeight;
+            set => SetProperty(ref _pastObservationsWeight, value);
+        }
+
+        private double _pastAverageWeight = 0.65;
+        public double PastAverageWeight
+        {
+            get => _pastAverageWeight;
+            set => SetProperty(ref _pastAverageWeight, value);
+        }
+
+        private string _pastLLMJustification = "";
+        public string PastLLMJustification
+        {
+            get => _pastLLMJustification;
+            set => SetProperty(ref _pastLLMJustification, value);
+        }
+
+        public ObservableCollection<PastInterrogatoireBlock> PastInterrogatoireBlocks { get; } = new();
+        public ObservableCollection<PastClinicalCard> PastClinicalCards { get; } = new();
+
+        private ConsultationNoteViewModel? _selectedPastConsultation;
+        /// <summary>La note de consultation passée actuellement affichée en lecture seule.</summary>
+        public ConsultationNoteViewModel? SelectedPastConsultation
+        {
+            get => _selectedPastConsultation;
+            set => SetProperty(ref _selectedPastConsultation, value);
+        }
+
         private ProjetTherapeutiqueViewModel? _projetTherapeutiqueVM;
         public ProjetTherapeutiqueViewModel? ProjetTherapeutiqueVM
         {
@@ -503,6 +598,84 @@ namespace MedCompanion.ViewModels
                 ? $"Lecture seule : v{full.Version} validé le {full.DateValidation:dd/MM/yyyy}."
                 : $"Brouillon v{full.Version} repris.";
             IsProjetTherapeutiqueMode = true;
+        }
+
+        private void DeleteSyntheseGlobaleCard(SyntheseGlobaleCardViewModel card)
+        {
+            if (string.IsNullOrEmpty(card.FilePath)) return;
+
+            var label = card.IsActive
+                ? $"le brouillon de synthèse (Version {card.Version})"
+                : $"la synthèse validée v{card.Version} du {card.DateValidation:dd/MM/yyyy}";
+
+            var r = System.Windows.MessageBox.Show(
+                $"Supprimer définitivement {label} ?\n\nCette action est irréversible.",
+                "Supprimer la synthèse globale",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            try
+            {
+                if (System.IO.File.Exists(card.FilePath))
+                {
+                    System.IO.File.Delete(card.FilePath);
+                }
+
+                if (IsSyntheseGlobaleMode && SyntheseGlobaleVM?.Synthese?.FilePath == card.FilePath)
+                {
+                    ResetWorkspaceModes();
+                }
+
+                LoadSyntheseGlobaleCards();
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Le fichier de synthèse n'a pas pu être supprimé : {ex.Message}",
+                    "Erreur",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
+
+        private void DeleteProjetTherapeutiqueCard(ProjetTherapeutiqueCardViewModel card)
+        {
+            if (string.IsNullOrEmpty(card.FilePath)) return;
+
+            var label = card.IsActive
+                ? $"le brouillon de projet (Version {card.Version})"
+                : $"le projet validé v{card.Version} du {card.DateValidation:dd/MM/yyyy}";
+
+            var r = System.Windows.MessageBox.Show(
+                $"Supprimer définitivement {label} ?\n\nCette action est irréversible.",
+                "Supprimer le projet thérapeutique",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            try
+            {
+                if (System.IO.File.Exists(card.FilePath))
+                {
+                    System.IO.File.Delete(card.FilePath);
+                }
+
+                if (IsProjetTherapeutiqueMode && ProjetTherapeutiqueVM?.Projet?.FilePath == card.FilePath)
+                {
+                    ResetWorkspaceModes();
+                }
+
+                LoadProjetTherapeutiqueCards();
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Le fichier de projet n'a pas pu être supprimé : {ex.Message}",
+                    "Erreur",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
         }
 
         private void LoadProjetTherapeutiqueCards()
@@ -1128,6 +1301,9 @@ namespace MedCompanion.ViewModels
             IsProjetTherapeutiqueMode = false;
             IsSelectingRestitutionTypeMode = false;
             IsDossierRestitutionCliniqueMode = false;
+            IsReadingPastConsultationMode = false;
+            IsReadingPastPremiereConsultationMode = false;
+            SelectedPastConsultation = null;
             // Ne touche pas à IsEditingConsultation qui a une sémantique légèrement différente,
             // bien qu'il soit souvent basculé en même temps.
         }
@@ -1308,8 +1484,6 @@ namespace MedCompanion.ViewModels
             ResetWorkspaceModes();
             // Sort du mode édition pour revenir au hub
             IsEditingConsultation = false;
-            // Affiche le dossier sur l'onglet Consultations dans le panneau de droite
-            ActiveDossierTab = DossierTab.Consultations;
 
             // Naviguer dans la pagination du dossier vers la note cliquée (sans passer en plein écran)
             if (!string.IsNullOrEmpty(card.FilePath))
@@ -1329,7 +1503,340 @@ namespace MedCompanion.ViewModels
                     _spreadIndex     = idx / 2;
                     NotifyPageChange();
                     NotifySpreadChange();
+
+                    SelectedPastConsultation = ConsultationNotes[idx];
+
+                    // Check if this is a first consultation
+                    try
+                    {
+                        var content = File.ReadAllText(card.FilePath, System.Text.Encoding.UTF8);
+                        var yamlHeader = ExtractYamlHeader(content) ?? "";
+                        var yamlType = ParseYamlField(yamlHeader, "type");
+                        if (string.Equals(yamlType, "consultation-premiere", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var (_, body) = SplitFrontmatter(content);
+                            IsReadingPastPremiereConsultationMode = true;
+                            PastPremiereStep = 1;
+                            LoadPastPremiereConsultationData(yamlHeader, body, card.FilePath);
+                        }
+                        else
+                        {
+                            IsReadingPastConsultationMode = true;
+                        }
+                    }
+                    catch
+                    {
+                        IsReadingPastConsultationMode = true;
+                    }
                 }
+            }
+
+            // Affiche le dossier sur l'onglet Consultations dans le panneau de droite
+            ActiveDossierTab = DossierTab.Consultations;
+        }
+
+        private static string? ExtractYamlHeader(string raw)
+        {
+            if (!raw.TrimStart().StartsWith("---")) return null;
+            var first = raw.IndexOf("---", StringComparison.Ordinal);
+            var second = raw.IndexOf("---", first + 3, StringComparison.Ordinal);
+            if (second < 0) return null;
+            return raw.Substring(first + 3, second - first - 3);
+        }
+
+        private static (string yaml, string body) SplitFrontmatter(string raw)
+        {
+            if (!raw.TrimStart().StartsWith("---")) return ("", raw);
+            var firstEnd = raw.IndexOf('\n');
+            if (firstEnd < 0) return ("", raw);
+            var secondMarker = raw.IndexOf("---", firstEnd + 1, StringComparison.Ordinal);
+            if (secondMarker < 0) return ("", raw);
+            var yaml = raw.Substring(firstEnd + 1, secondMarker - firstEnd - 1);
+            var body = raw.Substring(secondMarker + 3).TrimStart('\r', '\n');
+            return (yaml, body);
+        }
+
+        private string? ParseYamlField(string yaml, string key)
+        {
+            if (string.IsNullOrEmpty(yaml)) return null;
+            var m = System.Text.RegularExpressions.Regex.Match(yaml, $@"^\s*{System.Text.RegularExpressions.Regex.Escape(key)}\s*:\s*(.+?)\s*$", System.Text.RegularExpressions.RegexOptions.Multiline);
+            if (!m.Success) return null;
+            var val = m.Groups[1].Value.Trim();
+            if (val.StartsWith("\"") && val.EndsWith("\"") && val.Length >= 2)
+                val = val.Substring(1, val.Length - 2).Replace("\\\"", "\"");
+            return val;
+        }
+
+        private double? ParseDoubleField(string yaml, string key)
+        {
+            var val = ParseYamlField(yaml, key);
+            if (val != null && double.TryParse(val, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out var d))
+                return d;
+            return null;
+        }
+
+        private string? ExtractSubBlock(string yaml, string sectionPrefix)
+        {
+            var lines = yaml.Replace("\r\n", "\n").Split('\n').ToList();
+            int start = lines.FindIndex(l => l.TrimEnd() == sectionPrefix || l.TrimEnd().StartsWith(sectionPrefix));
+            if (start < 0) return null;
+            var sb = new StringBuilder();
+            for (int i = start + 1; i < lines.Count; i++)
+            {
+                if (lines[i].Length > 0 && !char.IsWhiteSpace(lines[i][0])) break;
+                sb.AppendLine(lines[i]);
+            }
+            return sb.ToString();
+        }
+
+        private string UnindentYamlBlock(string block)
+        {
+            var lines = block.Replace("\r\n", "\n").Split('\n');
+            var sb = new StringBuilder();
+            foreach (var line in lines)
+            {
+                var trimmed = line;
+                if (trimmed.StartsWith("  "))
+                    trimmed = trimmed.Substring(2);
+                sb.AppendLine(trimmed);
+            }
+            return sb.ToString().Trim();
+        }
+
+        private void LoadPastPremiereConsultationData(string yaml, string body, string filePath)
+        {
+            string interrogatoireText = "";
+            string observationsText = "";
+
+            var lines = body.Replace("\r\n", "\n").Split('\n');
+            string currentSection = "";
+            var sbInt = new StringBuilder();
+            var sbObs = new StringBuilder();
+
+            foreach (var line in lines)
+            {
+                if (line.Trim().StartsWith("## Interrogatoire"))
+                {
+                    currentSection = "int";
+                    continue;
+                }
+                else if (line.Trim().StartsWith("## Observations cliniques"))
+                {
+                    currentSection = "obs";
+                    continue;
+                }
+                else if (line.Trim().StartsWith("## "))
+                {
+                    currentSection = "";
+                }
+
+                if (currentSection == "int")
+                {
+                    sbInt.AppendLine(line);
+                }
+                else if (currentSection == "obs")
+                {
+                    sbObs.AppendLine(line);
+                }
+            }
+
+            interrogatoireText = sbInt.ToString().Trim();
+            observationsText = sbObs.ToString().Trim();
+
+            PastInterrogatoireText = interrogatoireText;
+            PastObservationsNarrative = observationsText;
+
+            PastInterrogatoireBlocks.Clear();
+            PastClinicalCards.Clear();
+
+            bool loadedBlocks = false;
+            var blocksBlock = ExtractSubBlock(yaml, "interrogatoire_blocks_json: |");
+            if (!string.IsNullOrEmpty(blocksBlock))
+            {
+                try
+                {
+                    var cleanJson = UnindentYamlBlock(blocksBlock);
+                    var blocksData = System.Text.Json.JsonSerializer.Deserialize<List<PastBlockData>>(cleanJson);
+                    if (blocksData != null)
+                    {
+                        foreach (var b in blocksData)
+                        {
+                            if (!string.IsNullOrWhiteSpace(b.FreeText))
+                            {
+                                PastInterrogatoireBlocks.Add(new PastInterrogatoireBlock
+                                {
+                                    Title = b.Title ?? b.Key,
+                                    FreeText = b.FreeText
+                                });
+                            }
+                        }
+                        loadedBlocks = PastInterrogatoireBlocks.Count > 0;
+                    }
+                }
+                catch { }
+            }
+
+            if (!loadedBlocks && !string.IsNullOrWhiteSpace(interrogatoireText))
+            {
+                PastInterrogatoireBlocks.Add(new PastInterrogatoireBlock
+                {
+                    Title = "Notes d'interrogatoire",
+                    FreeText = interrogatoireText
+                });
+            }
+
+            bool loadedObs = false;
+            var obsBlock = ExtractSubBlock(yaml, "clinical_observations_json: |");
+            if (!string.IsNullOrEmpty(obsBlock))
+            {
+                try
+                {
+                    var cleanJson = UnindentYamlBlock(obsBlock);
+                    var obsData = System.Text.Json.JsonSerializer.Deserialize<List<PastObsCardData>>(cleanJson);
+                    if (obsData != null)
+                    {
+                        foreach (var c in obsData)
+                        {
+                            PastClinicalCards.Add(new PastClinicalCard
+                            {
+                                Title = c.Title ?? c.Branch.ToString(),
+                                SelectedOption = c.SelectedOption ?? "",
+                                FreeText = c.FreeText ?? ""
+                            });
+                        }
+                        loadedObs = PastClinicalCards.Count > 0;
+                    }
+                }
+                catch { }
+            }
+
+            if (!loadedObs)
+            {
+                var standardBranches = new[]
+                {
+                    "Contact/Rapport", "Langage", "Compréhension", "Psychomotricité",
+                    "Mimique & Regard", "Profil Cognitif estimé", "Humeur / Anxiété",
+                    "Imaginaire / Jeu", "Rapport au cadre", "Vigilance"
+                };
+                foreach (var title in standardBranches)
+                {
+                    PastClinicalCards.Add(new PastClinicalCard
+                    {
+                        Title = title,
+                        SelectedOption = "",
+                        FreeText = ""
+                    });
+                }
+            }
+
+            if (CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
+            {
+                LoadPastSynthesisData(CurrentPatient.DirectoryPath);
+            }
+        }
+
+        private void LoadPastSynthesisData(string patientDir)
+        {
+            var synthesePath = Path.Combine(patientDir, "synthese", "synthese.md");
+            if (File.Exists(synthesePath))
+            {
+                try
+                {
+                    var content = File.ReadAllText(synthesePath, System.Text.Encoding.UTF8);
+                    var (yaml, body) = SplitFrontmatter(content);
+                    PastSynthesisContent = body.Trim();
+                    
+                    PastInterrogatoireWeight = ParseDoubleField(yaml, "interrogatoire:") ?? 0.5;
+                    PastObservationsWeight = ParseDoubleField(yaml, "observations:") ?? 0.8;
+                    PastAverageWeight = ParseDoubleField(yaml, "moyenne:") ?? 0.65;
+                    PastLLMJustification = ParseYamlField(yaml, "justification") ?? "";
+                }
+                catch
+                {
+                    PastSynthesisContent = "";
+                }
+            }
+        }
+
+        private class PastBlockData
+        {
+            public string Key { get; set; } = "";
+            public string Title { get; set; } = "";
+            public string FreeText { get; set; } = "";
+        }
+
+        private class PastObsCardData
+        {
+            public string Branch { get; set; } = "";
+            public string Title { get; set; } = "";
+            public string SelectedOption { get; set; } = "";
+            public string FreeText { get; set; } = "";
+        }
+
+        private void DeleteConsultationCard(ConsultationCardViewModel card)
+        {
+            var r = System.Windows.MessageBox.Show(
+                $"Supprimer définitivement la consultation/note \"{card.Title}\" ?\n\nCette action est irréversible.",
+                "Supprimer la consultation",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            try
+            {
+                if (File.Exists(card.FilePath))
+                {
+                    File.Delete(card.FilePath);
+                }
+                
+                // Si la note supprimée est celle qu'on était en train de lire, fermer le mode lecture
+                if (SelectedPastConsultation != null && string.Equals(SelectedPastConsultation.FilePath, card.FilePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    ResetWorkspaceModes();
+                }
+
+                // Rafraîchir les notes et les cartes
+                _ = RefreshConsultationNotesAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Erreur lors de la suppression de la note : {ex.Message}",
+                    "Erreur",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
+
+        private void DeleteSelectedPastConsultation()
+        {
+            if (SelectedPastConsultation == null) return;
+            
+            var r = System.Windows.MessageBox.Show(
+                $"Supprimer définitivement la consultation/note \"{SelectedPastConsultation.Title}\" ?\n\nCette action est irréversible.",
+                "Supprimer la consultation",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            try
+            {
+                var path = SelectedPastConsultation.FilePath;
+                if (File.Exists(path))
+                {
+                    File.Delete(path);
+                }
+                
+                ResetWorkspaceModes();
+                _ = RefreshConsultationNotesAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    $"Erreur lors de la suppression de la note : {ex.Message}",
+                    "Erreur",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
             }
         }
 
@@ -1534,11 +2041,21 @@ namespace MedCompanion.ViewModels
                     body.AppendLine(ObservationsNarrative.Trim());
                 }
 
+                var jsonBlocks = System.Text.Json.JsonSerializer.Serialize(InterrogatoireBlocks.Select(b => new { b.Key, b.FreeText, b.Title }));
+                var jsonObs = System.Text.Json.JsonSerializer.Serialize(ClinicalObservations.Cards.Select(c => new { c.Branch, c.SelectedOption, c.FreeText, c.Title }));
+                var jsonBlocksIndented = string.Join("\n  ", jsonBlocks.Split('\n'));
+                var jsonObsIndented = string.Join("\n  ", jsonObs.Split('\n'));
+
                 var content = $@"---
 patient: ""{CurrentPatient.NomComplet}""
 date: ""{ConsultationDate:yyyy-MM-ddTHH:mm}""
 type: ""consultation-premiere""
 source: ""MedCompanion""
+title: ""1ère consultation""
+interrogatoire_blocks_json: |
+  {jsonBlocksIndented}
+clinical_observations_json: |
+  {jsonObsIndented}
 ---
 
 {body.ToString().TrimEnd()}
@@ -2126,9 +2643,20 @@ justification: {SynthesisWeights.LLMJustification ?? ""}
                     await System.Threading.Tasks.Task.Delay(900);
                     System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
                     {
+                        ConsultationType = ConsultationType.Normal;
                         IsSynthesisMode = false;
                         IsEditingConsultation = false;
+                        ResetWorkspaceModes();
                         SynthesisStatusMessage = "";
+
+                        // Nettoyer les données temporaires de la consultation
+                        NoteContent = "";
+                        ObservationsNarrative = "";
+                        TranscriptionInput = "";
+                        InterrogatoireBlocks.Clear();
+                        _premiereConsultationFilePath = null;
+                        _noteSaved = false;
+                        _observationsNoteSaved = false;
                     });
                 });
             }
@@ -2446,6 +2974,18 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
 
         private void SwitchToRestitution()
         {
+            if (IsEditingConsultation && HasUnsavedConsultation())
+            {
+                var r = System.Windows.MessageBox.Show(
+                    "Une consultation est en cours et n'a pas été sauvegardée.\n\nAbandonner la consultation en cours pour créer la restitution ?",
+                    "Consultation en cours",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning);
+                if (r != System.Windows.MessageBoxResult.Yes) return;
+            }
+
+            ConsultationType = ConsultationType.Normal;
+            IsEditingConsultation = false;
             ResetWorkspaceModes();
             IsSelectingRestitutionTypeMode = true; // Affiche la grille de sélection
         }
@@ -3138,10 +3678,17 @@ source: ""MedCompanion""
         // Hub de consultations (frise + bouton +)
         public ICommand NewConsultationCommand { get; }       // param : "premiere" | "suivi"
         public ICommand OpenCardCommand { get; }              // param : ConsultationCardViewModel
+        public ICommand DeleteConsultationCardCommand { get; } // param : ConsultationCardViewModel
+        public ICommand ClosePastConsultationCommand { get; }
+        public ICommand DeleteSelectedPastConsultationCommand { get; }
+        public ICommand ViewPastPremiereStepCommand { get; }
+        public ICommand ClosePastPremiereConsultationCommand { get; }
         public ICommand OpenEvaluationCardCommand { get; }    // param : EvaluationCardViewModel
         public ICommand DeleteEvaluationCardCommand { get; }  // param : EvaluationCardViewModel
         public ICommand OpenSyntheseGlobaleCardCommand { get; private set; } = null!;  // param : SyntheseGlobaleCardViewModel
         public ICommand OpenProjetTherapeutiqueCardCommand { get; private set; } = null!;  // param : ProjetTherapeutiqueCardViewModel
+        public ICommand DeleteSyntheseGlobaleCardCommand { get; } // param : SyntheseGlobaleCardViewModel
+        public ICommand DeleteProjetTherapeutiqueCardCommand { get; } // param : ProjetTherapeutiqueCardViewModel
 
         // V0b : Commande pour confirmer l'âge manuellement
         public ICommand ConfirmAgeCommand { get; }
@@ -3291,6 +3838,40 @@ source: ""MedCompanion""
                     OpenPastConsultation(card);
             });
 
+            DeleteConsultationCardCommand = new RelayCommand(param =>
+            {
+                if (param is ConsultationCardViewModel card)
+                    DeleteConsultationCard(card);
+            });
+
+            ClosePastConsultationCommand = new RelayCommand(_ =>
+            {
+                ResetWorkspaceModes();
+            });
+
+            DeleteSelectedPastConsultationCommand = new RelayCommand(_ =>
+            {
+                DeleteSelectedPastConsultation();
+            });
+
+            ViewPastPremiereStepCommand = new RelayCommand(param =>
+            {
+                if (param is string s && int.TryParse(s, out var step))
+                {
+                    PastPremiereStep = step;
+                }
+                else if (param is int stepInt)
+                {
+                    PastPremiereStep = stepInt;
+                }
+            });
+
+            ClosePastPremiereConsultationCommand = new RelayCommand(_ =>
+            {
+                IsReadingPastPremiereConsultationMode = false;
+                ResetWorkspaceModes();
+            });
+
             // Hub : ouvrir une card évaluation (active → Resume, clôturée → ReadOnly + tab SYNTHESE)
             // Implémentation complète à l'étape 2.
             OpenEvaluationCardCommand = new RelayCommand(param =>
@@ -3318,6 +3899,20 @@ source: ""MedCompanion""
             {
                 if (param is ProjetTherapeutiqueCardViewModel pc)
                     OpenProjetTherapeutiqueCard(pc);
+            });
+
+            // Hub : supprimer une carte de Synthèse Globale
+            DeleteSyntheseGlobaleCardCommand = new RelayCommand(param =>
+            {
+                if (param is SyntheseGlobaleCardViewModel sc)
+                    DeleteSyntheseGlobaleCard(sc);
+            });
+
+            // Hub : supprimer une carte de Projet Thérapeutique
+            DeleteProjetTherapeutiqueCardCommand = new RelayCommand(param =>
+            {
+                if (param is ProjetTherapeutiqueCardViewModel pc)
+                    DeleteProjetTherapeutiqueCard(pc);
             });
 
             // V0b : Commande confirmation âge
@@ -4456,5 +5051,19 @@ source: ""MedCompanion""
 
             DismissCommand = new RelayCommand(_ => _parent.DismissQualityIssue(this));
         }
+    }
+
+    public class PastInterrogatoireBlock
+    {
+        public string Title { get; set; } = "";
+        public string FreeText { get; set; } = "";
+    }
+
+    public class PastClinicalCard
+    {
+        public string Title { get; set; } = "";
+        public string SelectedOption { get; set; } = "";
+        public string FreeText { get; set; } = "";
+        public bool HasSelection => !string.IsNullOrEmpty(SelectedOption);
     }
 }

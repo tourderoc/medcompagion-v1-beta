@@ -185,9 +185,24 @@ namespace MedCompanion.Services
                     var date = ExtractDateFromNoteFileName(fileName) ?? File.GetLastWriteTime(file);
 
                     var yamlTitle = ExtractYamlField(content, "title");
+                    var yamlType = ExtractYamlField(content, "type");
+                    
+                    var title = yamlTitle;
+                    if (string.IsNullOrEmpty(title))
+                    {
+                        if (string.Equals(yamlType, "consultation-premiere", StringComparison.OrdinalIgnoreCase))
+                        {
+                            title = "1ère consultation";
+                        }
+                        else
+                        {
+                            title = $"Note du {date:dd/MM/yyyy}";
+                        }
+                    }
+
                     pages.Add(new DossierPageItem
                     {
-                        Title = yamlTitle ?? $"Note du {date:dd/MM/yyyy}",
+                        Title = title,
                         Date = date,
                         FilePath = file,
                         Content = RemoveYamlHeader(content),

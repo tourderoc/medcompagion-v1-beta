@@ -61,7 +61,7 @@ namespace MedCompanion.ViewModels
         private static string ParseType(string title)
         {
             var t = title.ToLowerInvariant();
-            if (t.Contains("interrogatoire") || t.Contains("1ère") || t.Contains("1re") || t.Contains("première"))
+            if (t.Contains("interrogatoire") || t.Contains("1ère") || t.Contains("1re") || t.Contains("première") || t.Contains("1er"))
                 return "1ère consultation";
             if (t.Contains("suivi"))
                 return "Suivi";

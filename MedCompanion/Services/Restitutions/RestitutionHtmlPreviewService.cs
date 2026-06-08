@@ -47,6 +47,11 @@ namespace MedCompanion.Services.Restitutions
         private string? _iconConfidentielBase64;
         private string? _iconPedopsychiatrieBase64;
 
+        // Détecte les titres de sections Markdown gras : **Titre** ou **Titre :**
+        private static readonly Regex _sectionTitleRx = new Regex(
+            @"^\s*\*\*([^*\n]{3,120})\*\*\s*$",
+            RegexOptions.Multiline | RegexOptions.Compiled);
+
         public RestitutionHtmlPreviewService(PathService pathService)
         {
             _pathService = pathService;
@@ -66,7 +71,8 @@ namespace MedCompanion.Services.Restitutions
             var coverFields    = ParseCoverFieldsFromBloc(blocCouverture?.ContenuValide ?? "", patientInfo);
 
             var coverHtml = BuildCoverPage(coverFields);
-            var blocsHtml = BuildBlocsPages(dossier);
+            var photoBase64 = LoadPatientPhotoBase64(patientNomComplet);
+            var blocsHtml = BuildBlocsPages(dossier, coverFields, photoBase64);
 
             var sb = new StringBuilder();
             sb.AppendLine("<!DOCTYPE html><html lang='fr'><head><meta charset='UTF-8'/>");
@@ -119,6 +125,17 @@ namespace MedCompanion.Services.Restitutions
             catch { return ""; }
         }
 
+        private string LoadPatientPhotoBase64(string patientNomComplet)
+        {
+            try
+            {
+                var patientRoot = _pathService.GetPatientRootDirectory(patientNomComplet);
+                var photoPath   = Path.Combine(patientRoot, "photo.jpg");
+                return File.Exists(photoPath) ? LoadBase64(photoPath) : "";
+            }
+            catch { return ""; }
+        }
+
         // ── Informations patient (depuis patient.json) ──────────────────────
 
         private class PatientInfoLite
@@ -138,6 +155,7 @@ namespace MedCompanion.Services.Restitutions
         private class CoverFields
         {
             public string NomEnfant         = "";
+            public string Prenom            = ""; // prénom brut depuis patient.json (jamais écrasé par le LLM)
             public string DateNaissance     = "";
             public string Age               = "";
             public string Classe            = "";
@@ -159,6 +177,7 @@ namespace MedCompanion.Services.Restitutions
             {
                 // Défauts depuis patient.json — seront éventuellement surchargés par le bloc 1.
                 NomEnfant       = $"{p.Prenom} {p.Nom}".Trim(),
+                Prenom          = p.Prenom, // source fiable, jamais écrasée par le LLM
                 DateNaissance   = FormatDob(p.Dob),
                 Age             = ComputeAge(p.Dob),
                 Ecole           = p.Ecole,
@@ -325,30 +344,204 @@ namespace MedCompanion.Services.Restitutions
             return css;
         }
 
-        // ── Pages 2-9 : un bloc par page (brouillon) ────────────────────────
+        // ── Pages 2-9 ────────────────────────────────────────────────────────
 
-        private string BuildBlocsPages(DossierRestitutionInitial dossier)
+        private string BuildBlocsPages(DossierRestitutionInitial dossier, CoverFields coverFields, string photoBase64)
         {
             var sb = new StringBuilder();
             int pageNumber = 2;
             foreach (var bloc in dossier.Blocs)
             {
-                // Couverture déjà rendue en page 1 — on saute le bloc « couverture ».
                 if (bloc.Key == "couverture") continue;
 
-                var content = string.IsNullOrWhiteSpace(bloc.ContenuValide)
-                    ? "<p class='placeholder'><em>(Section à compléter — utilisez le bouton ✨ Suggérer)</em></p>"
-                    : MarkdownToHtmlLite(bloc.ContenuValide);
+                if (bloc.Key == "restitution_1page")
+                {
+                    sb.Append(BuildRestitution1PagePage(bloc, coverFields, photoBase64, pageNumber));
+                }
+                else
+                {
+                    var content = string.IsNullOrWhiteSpace(bloc.ContenuValide)
+                        ? "<p class='placeholder'><em>(Section à compléter — utilisez le bouton ✨ Suggérer)</em></p>"
+                        : MarkdownToHtmlLite(bloc.ContenuValide);
 
-                sb.AppendLine("<div class='page draft-page'>");
-                sb.AppendLine($"  <div class='page-num'>Page {pageNumber}/9</div>");
-                sb.AppendLine($"  <h1 class='draft-title'>{WebUtility.HtmlEncode(bloc.Titre)}</h1>");
-                sb.AppendLine($"  <div class='draft-meta'>Voix cible : <strong>{WebUtility.HtmlEncode(bloc.VoixCible)}</strong></div>");
-                sb.AppendLine($"  <div class='draft-content'>{content}</div>");
-                sb.AppendLine("</div>");
+                    sb.AppendLine("<div class='page draft-page'>");
+                    sb.AppendLine($"  <div class='page-num'>Page {pageNumber}/9</div>");
+                    sb.AppendLine($"  <h1 class='draft-title'>{WebUtility.HtmlEncode(bloc.Titre)}</h1>");
+                    sb.AppendLine($"  <div class='draft-meta'>Voix cible : <strong>{WebUtility.HtmlEncode(bloc.VoixCible)}</strong></div>");
+                    sb.AppendLine($"  <div class='draft-content'>{content}</div>");
+                    sb.AppendLine("</div>");
+                }
                 pageNumber++;
             }
             return sb.ToString();
+        }
+
+        // ── Page 2 : Restitution 1-page parents ─────────────────────────────
+
+        private string BuildRestitution1PagePage(RestitutionBloc bloc, CoverFields f, string photoBase64, int pageNumber)
+        {
+            var sections = ParseRestitution1PageSections(bloc.ContenuValide ?? "");
+
+            // Prénom depuis patient.json (fiable) — fallback sur premier mot de NomEnfant
+            var parts  = (f.NomEnfant ?? "").Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+            var prenom = (!string.IsNullOrWhiteSpace(f.Prenom) ? f.Prenom
+                          : parts.Length > 0 ? parts[0] : "l'enfant").ToUpperInvariant();
+
+            // Photo patient ou icône placeholder
+            string photoHtml;
+            if (!string.IsNullOrEmpty(photoBase64))
+                photoHtml = $"<img src='data:image/jpeg;base64,{photoBase64}' class='rp-photo-img' />";
+            else if (!string.IsNullOrEmpty(_iconPatientBase64))
+                photoHtml = $"<div class='rp-photo-placeholder'><img src='data:image/png;base64,{_iconPatientBase64}' class='rp-photo-icon-img' /></div>";
+            else
+                photoHtml = "<div class='rp-photo-placeholder rp-photo-empty'><span>👤</span></div>";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='page rp-page'>");
+            sb.AppendLine($"  <div class='page-num'>Page {pageNumber}/9</div>");
+
+            // ── Bandeau supérieur ────────────────────────────────────────────
+            sb.AppendLine("  <div class='rp-header'>");
+            sb.AppendLine("    <div class='rp-logo'>");
+            if (!string.IsNullOrEmpty(_medcompanionHeartBase64))
+                sb.AppendLine($"      <img src='data:image/png;base64,{_medcompanionHeartBase64}' class='rp-logo-img' />");
+            sb.AppendLine("      <div class='rp-logo-text'><strong>MedCompanion</strong><br/><span>L'intelligence au service du soin</span></div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='rp-badge'>");
+            if (!string.IsNullOrEmpty(_iconPedopsychiatrieBase64))
+                sb.AppendLine($"      <img src='data:image/png;base64,{_iconPedopsychiatrieBase64}' class='rp-badge-icon' />");
+            sb.AppendLine("      <div><strong>PÉDOPSYCHIATRIE</strong><br/><span>Évaluation · Compréhension · Accompagnement</span></div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            // ── Titre principal ──────────────────────────────────────────────
+            sb.AppendLine("  <div class='rp-title-block'>");
+            sb.AppendLine("    <h1 class='rp-main-title'>RESTITUTION AUX PARENTS</h1>");
+            sb.AppendLine("    <p class='rp-subtitle'>Comprendre pour mieux accompagner votre enfant</p>");
+            sb.AppendLine("  </div>");
+
+            // ── Carte identité patient ───────────────────────────────────────
+            sb.AppendLine("  <div class='rp-identity'>");
+            sb.AppendLine($"    <div class='rp-photo-wrap'>{photoHtml}</div>");
+            sb.AppendLine("    <div class='rp-identity-details'>");
+            sb.AppendLine($"      <div class='rp-patient-name'>{WebUtility.HtmlEncode(f.NomEnfant)}</div>");
+            if (!string.IsNullOrEmpty(f.DateNaissance))
+            {
+                var ageStr = string.IsNullOrEmpty(f.Age) ? "" : $" — <strong>{WebUtility.HtmlEncode(f.Age)}</strong>";
+                sb.AppendLine($"      <div class='rp-identity-row'>Né(e) le <strong>{WebUtility.HtmlEncode(f.DateNaissance)}</strong>{ageStr}</div>");
+            }
+            if (!string.IsNullOrEmpty(f.Ecole))
+            {
+                var classeStr = string.IsNullOrEmpty(f.Classe) ? "" : $", {WebUtility.HtmlEncode(f.Classe)}";
+                sb.AppendLine($"      <div class='rp-identity-row'>{WebUtility.HtmlEncode(f.Ecole)}{classeStr}</div>");
+            }
+            if (!string.IsNullOrEmpty(f.AnneeScolaire))
+                sb.AppendLine($"      <div class='rp-identity-row'>Année scolaire {WebUtility.HtmlEncode(f.AnneeScolaire)}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            // ── Section 1 pleine largeur ─────────────────────────────────────
+            sb.Append(RenderRpSection("1", "CE QUE NOUS AVONS COMPRIS", sections.Comprehension, "rp-s1"));
+
+            // ── Sections 2+3 côte-à-côte ─────────────────────────────────────
+            sb.AppendLine("  <div class='rp-two-col'>");
+            sb.Append(RenderRpSection("2", $"LES FORCES DE {prenom}", sections.Forces, "rp-s2"));
+            sb.Append(RenderRpSection("3", "LES DIFFICULTÉS ACTUELLEMENT OBSERVÉES", sections.Difficultes, "rp-s3"));
+            sb.AppendLine("  </div>");
+
+            // ── Section 4 pleine largeur ─────────────────────────────────────
+            sb.Append(RenderRpSection("4", $"CE QUI PEUT AIDER {prenom}", sections.Aide, "rp-s4"));
+
+            // ── Sections 5+6 côte-à-côte ─────────────────────────────────────
+            sb.AppendLine("  <div class='rp-two-col'>");
+            sb.Append(RenderRpSection("5", "NOTRE FEUILLE DE ROUTE", sections.FeuilleDeRoute, "rp-s5"));
+            sb.Append(RenderRpSection("6", "SON ENVIRONNEMENT : POINTS CLÉS", sections.Environnement, "rp-s6"));
+            sb.AppendLine("  </div>");
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        private static string RenderRpSection(string num, string title, string mdContent, string cssClass)
+        {
+            var body = string.IsNullOrWhiteSpace(mdContent)
+                ? "<p class='rp-placeholder'><em>Section à compléter — cliquez sur ✨ Suggérer</em></p>"
+                : MarkdownToHtmlLite(mdContent);
+            return
+                $"<div class='rp-section {cssClass}'>" +
+                $"<div class='rp-section-hdr'><span class='rp-num'>{WebUtility.HtmlEncode(num)}</span>" +
+                $"<h2>{WebUtility.HtmlEncode(title)}</h2></div>" +
+                $"<div class='rp-section-body'>{body}</div>" +
+                $"</div>\n";
+        }
+
+        // Modèle interne pour les 6 sections de la page parents
+        private class Restitution1PageSections
+        {
+            public string Comprehension  = "";
+            public string Forces         = "";
+            public string Difficultes    = "";
+            public string Aide           = "";
+            public string FeuilleDeRoute = "";
+            public string Environnement  = "";
+        }
+
+        private static Restitution1PageSections ParseRestitution1PageSections(string md)
+        {
+            var result = new Restitution1PageSections();
+            if (string.IsNullOrWhiteSpace(md)) return result;
+
+            var matches = _sectionTitleRx.Matches(md);
+            if (matches.Count == 0) { result.Comprehension = md; return result; }
+
+            // Construit les segments (titre, contenu)
+            var segments = new List<(string title, string content)>();
+
+            // Texte d'introduction avant le premier titre gras
+            if (matches[0].Index > 0)
+            {
+                var intro = md.Substring(0, matches[0].Index).Trim();
+                if (!string.IsNullOrEmpty(intro)) segments.Add(("__intro__", intro));
+            }
+
+            for (int i = 0; i < matches.Count; i++)
+            {
+                var m = matches[i];
+                var titleText = m.Groups[1].Value.Trim().TrimEnd(':', ' ');
+                var start     = m.Index + m.Length;
+                var end       = (i + 1 < matches.Count) ? matches[i + 1].Index : md.Length;
+                segments.Add((titleText, md.Substring(start, end - start).Trim()));
+            }
+
+            // Classifie chaque segment dans l'une des 6 cases
+            static void Append(ref string field, string title, string content, bool includeTitle)
+            {
+                var prefix = (includeTitle && title != "__intro__") ? $"**{title}**\n\n" : "";
+                field += (field.Length > 0 ? "\n\n" : "") + prefix + content;
+            }
+
+            foreach (var (title, content) in segments)
+            {
+                var t = title.ToLowerInvariant();
+
+                if (t == "__intro__" || t.Contains("compris") || t.Contains("compréhension") || t.Contains("portrait"))
+                    Append(ref result.Comprehension, title, content, t != "__intro__");
+                else if (t.Contains("forces") || t.Contains("réussites") || t.Contains("fonctionne bien") || t.Contains("atouts"))
+                    Append(ref result.Forces, title, content, false);
+                else if (t.Contains("défis") || t.Contains("difficultés") || t.Contains("vigilance") || t.Contains("surveiller"))
+                    Append(ref result.Difficultes, title, content, false);
+                else if (t.Contains("aider") || t.Contains("outils") || t.Contains("concrètement") || t.Contains("aide concr"))
+                    Append(ref result.Aide, title, content, false);
+                else if (t.Contains("feuille de route") || t.Contains("prochaines étapes") || t.Contains("prochaine"))
+                    Append(ref result.FeuilleDeRoute, title, content, false);
+                else if (t.Contains("environnement") || t.Contains("entourage") || t.Contains("points clés") || t.Contains("contexte"))
+                    Append(ref result.Environnement, title, content, false);
+                else
+                    // Non classifié → annexé à la compréhension en fallback
+                    Append(ref result.Comprehension, title, content, true);
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -443,6 +636,79 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .draft-content li { margin-bottom: 4px; }
 .draft-content p { margin-bottom: 8px; }
 .placeholder { color: #95A5A6; }
+
+/* ── Rendu PDF (Edge headless --print-to-pdf = contexte print) ── */
+@media print {
+  html, body { background: white !important; padding: 0 !important; margin: 0 !important; }
+  .page {
+    box-shadow: none !important;
+    margin: 0 !important;
+    page-break-after: always;
+    break-after: page;
+    height: 297mm;
+    overflow: hidden;
+  }
+  .page:last-child { page-break-after: avoid; break-after: avoid; }
+}
+
+/* ── Page 2 : Restitution parents ────────────────────────── */
+.rp-page { padding: 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #2C3E50; }
+
+/* Bandeau haut */
+.rp-header { display:flex; justify-content:space-between; align-items:center;
+  background: linear-gradient(135deg,#1A3A6A 0%,#2D5FA6 100%);
+  color:white; padding:8px 18px; }
+.rp-logo { display:flex; align-items:center; gap:8px; }
+.rp-logo-img { width:30px; height:30px; }
+.rp-logo-text { font-size:12px; line-height:1.3; }
+.rp-logo-text strong { font-size:13px; }
+.rp-logo-text span { font-size:9px; opacity:0.8; }
+.rp-badge { display:flex; align-items:center; gap:8px; text-align:right; }
+.rp-badge-icon { width:26px; height:26px; }
+.rp-badge strong { font-size:10px; letter-spacing:0.5px; display:block; }
+.rp-badge span { font-size:8px; opacity:0.8; }
+
+/* Titre principal */
+.rp-title-block { padding:7px 18px 5px 18px; border-bottom:2.5px solid #2DC5A2; background:white; }
+.rp-main-title { font-size:17px; font-weight:900; color:#1A3A6A; margin:0; letter-spacing:1px; }
+.rp-subtitle { font-size:9px; color:#7F8C8D; margin:2px 0 0 0; font-style:italic; }
+
+/* Carte identité */
+.rp-identity { display:flex; align-items:center; gap:12px;
+  background:#F7F9FC; border:1px solid #DDE8F5;
+  margin:7px 14px 4px 14px; padding:9px 12px; border-radius:7px; }
+.rp-photo-wrap { flex-shrink:0; }
+.rp-photo-img { width:58px; height:58px; border-radius:50%; object-fit:cover; border:2.5px solid #2DC5A2; }
+.rp-photo-placeholder { width:58px; height:58px; border-radius:50%; background:#DDE8F5;
+  display:flex; align-items:center; justify-content:center; border:2px solid #B0C8E8; }
+.rp-photo-icon-img { width:34px; height:34px; opacity:0.65; }
+.rp-photo-empty { font-size:26px; }
+.rp-patient-name { font-size:15px; font-weight:800; color:#1A3A6A; margin-bottom:3px; }
+.rp-identity-row { font-size:10px; color:#5D6D7E; margin-bottom:2px; }
+
+/* Sections */
+.rp-section { margin:3px 10px; border-radius:6px; overflow:hidden; border:1px solid rgba(0,0,0,0.07); }
+.rp-two-col { display:flex; }
+.rp-two-col .rp-section { flex:1; margin:3px 6px; }
+.rp-two-col .rp-section:first-child { margin-left:10px; }
+.rp-two-col .rp-section:last-child  { margin-right:10px; }
+.rp-section-hdr { display:flex; align-items:center; gap:7px; padding:5px 11px; color:white; }
+.rp-section-hdr h2 { margin:0; font-size:9.5px; font-weight:800; letter-spacing:0.4px; text-transform:uppercase; }
+.rp-num { font-size:16px; font-weight:900; opacity:0.9; line-height:1; flex-shrink:0; }
+.rp-section-body { padding:7px 11px; font-size:10px; line-height:1.5; }
+.rp-section-body h1,.rp-section-body h2,.rp-section-body h3 { font-size:10px; margin:5px 0 3px 0; }
+.rp-section-body ul { margin:3px 0; padding-left:14px; }
+.rp-section-body li { margin-bottom:3px; }
+.rp-section-body p  { margin-bottom:5px; }
+.rp-placeholder { color:#95A5A6; font-style:italic; }
+
+/* Couleurs par section */
+.rp-s1 .rp-section-hdr { background:#2E6DA4; }  .rp-s1 .rp-section-body { background:#EEF5FB; }
+.rp-s2 .rp-section-hdr { background:#C87800; }  .rp-s2 .rp-section-body { background:#FEF9EE; }
+.rp-s3 .rp-section-hdr { background:#B03020; }  .rp-s3 .rp-section-body { background:#FDEDEC; }
+.rp-s4 .rp-section-hdr { background:#6E2F8A; }  .rp-s4 .rp-section-body { background:#F5EEF8; }
+.rp-s5 .rp-section-hdr { background:#1A7840; }  .rp-s5 .rp-section-body { background:#EAFAF1; }
+.rp-s6 .rp-section-hdr { background:#0E7060; }  .rp-s6 .rp-section-body { background:#E8F8F5; }
 ";
     }
 }
