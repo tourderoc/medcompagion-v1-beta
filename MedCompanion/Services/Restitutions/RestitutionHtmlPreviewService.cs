@@ -241,11 +241,18 @@ namespace MedCompanion.Services.Restitutions
                 using var doc = JsonDocument.Parse(raw);
                 var root = doc.RootElement;
 
-                if (root.TryGetProperty("nom", out var nom))       result.Nom    = nom.GetString() ?? "";
-                if (root.TryGetProperty("prenom", out var prenom)) result.Prenom = prenom.GetString() ?? "";
-                if (root.TryGetProperty("dob", out var dob))       result.Dob    = dob.GetString() ?? "";
-                if (root.TryGetProperty("ecole", out var ecole))   result.Ecole  = ecole.GetString() ?? "";
-                if (root.TryGetProperty("classe", out var classe)) result.Classe = classe.GetString() ?? "";
+                // patient.json existe en deux variantes : camelCase (nouveaux) et PascalCase (anciens)
+                static string PickStr(JsonElement r, string camel, string pascal)
+                {
+                    if (r.TryGetProperty(camel,  out var a) && a.ValueKind == JsonValueKind.String) return a.GetString() ?? "";
+                    if (r.TryGetProperty(pascal, out var b) && b.ValueKind == JsonValueKind.String) return b.GetString() ?? "";
+                    return "";
+                }
+                result.Nom    = PickStr(root, "nom",   "Nom");
+                result.Prenom = PickStr(root, "prenom","Prenom");
+                result.Dob    = PickStr(root, "dob",   "Dob");
+                result.Ecole  = PickStr(root, "ecole", "Ecole");
+                result.Classe = PickStr(root, "classe","Classe");
             }
             catch { /* ignore parse errors */ }
             return result;

@@ -618,10 +618,12 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
                 using var doc = JsonDocument.Parse(reading.PatientJson);
                 var r = doc.RootElement;
 
+                // Deux variantes coexistent : camelCase (nouveaux patients) et PascalCase (anciens)
                 string? Str(string key)
                 {
-                    if (r.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String)
-                        return el.GetString()?.Trim();
+                    var pascal = char.ToUpper(key[0]) + key[1..];
+                    if (r.TryGetProperty(key,   out var a) && a.ValueKind == JsonValueKind.String) return a.GetString()?.Trim();
+                    if (r.TryGetProperty(pascal, out var b) && b.ValueKind == JsonValueKind.String) return b.GetString()?.Trim();
                     return null;
                 }
 
@@ -630,7 +632,9 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
                 nomComplet   = Str("nomComplet") ?? $"{prenom} {nom}".Trim();
                 dobFormatted = Str("dobFormatted") ?? CovFormatDob(Str("dob") ?? "");
 
-                if (r.TryGetProperty("age", out var ageProp) && ageProp.ValueKind == JsonValueKind.Number)
+                // "age" ou "Age"
+                if ((r.TryGetProperty("age", out var ageProp) || r.TryGetProperty("Age", out ageProp))
+                    && ageProp.ValueKind == JsonValueKind.Number)
                     age = $"{ageProp.GetInt32()} ans";
                 else if (Str("dob") is string dob2 && !string.IsNullOrEmpty(dob2))
                     age = CovComputeAge(dob2);
