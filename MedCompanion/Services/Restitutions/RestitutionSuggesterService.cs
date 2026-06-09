@@ -101,43 +101,53 @@ namespace MedCompanion.Services.Restitutions
             var systemPrompt = BuildSystemPrompt(blocp2);
 
             // Les 6 sous-sections : (marqueur Markdown, instruction LLM)
+            // TON OBLIGATOIRE pour toutes les sections : chaleureux, accessible aux parents,
+            // sans jargon médical. Parler directement aux parents ("Votre enfant", "Nous avons…").
             var subsections = new (string Title, string Instruction)[]
             {
                 ("**Ce que nous avons compris**",
-                 "Rédige UNIQUEMENT le contenu de la section « Ce que nous avons compris » : " +
-                 "1 paragraphe d'introduction bienveillant (2-3 phrases), puis une liste à puces " +
-                 "de 3-4 points-clés (- **Mot-clé :** description courte). " +
-                 "Commence directement par le paragraphe, sans titre ni introduction."),
+                 "Rédige UNIQUEMENT le contenu de la section « Ce que nous avons compris » en t'adressant directement aux parents, " +
+                 "avec un ton chaleureux et rassurant — comme un médecin qui explique avec bienveillance, pas un rapport clinique. " +
+                 "Structure : 1 paragraphe d'introduction accessible (2-3 phrases commençant par « Nous avons… » ou « Votre enfant… »), " +
+                 "puis une liste de 3-4 points-clés reformulés sans jargon médical (- **Mot simple :** explication courte). " +
+                 "Interdiction d'utiliser des expressions comme « tableau clinique », « comorbidité », « nosologique ». " +
+                 "Commence directement par le paragraphe, sans titre."),
 
                 ("**Ses forces et ses réussites**",
                  "Rédige UNIQUEMENT le contenu de la section « Ses forces et ses réussites » : " +
-                 "liste de 4-5 points positifs concrets observés chez cet enfant " +
-                 "(- **Mot-clé :** description courte). " +
-                 "Commence directement par la liste, sans titre ni introduction."),
+                 "liste de 4-5 points positifs CONCRETS observés chez cet enfant, en valorisant ses atouts avec chaleur " +
+                 "(- **Qualité :** description courte en 1 ligne). " +
+                 "Parle de l'enfant à la 3e personne (« Il/Elle… »). Pas de jargon. " +
+                 "Commence directement par la liste, sans titre."),
 
                 ("**Les difficultés actuellement observées**",
                  "Rédige UNIQUEMENT le contenu de la section « Les difficultés actuellement observées » : " +
-                 "liste de 3-4 défis principaux, formulés sans culpabiliser les parents " +
-                 "(- **Mot-clé :** description courte). " +
-                 "Commence directement par la liste, sans titre ni introduction."),
+                 "liste de 3-4 défis principaux formulés simplement, sans culpabiliser les parents et sans termes cliniques " +
+                 "(- **Difficulté en mots simples :** impact concret au quotidien en 1 ligne). " +
+                 "Ex. : '**Fatigue le matin :** Il a du mal à se lever et à aller en classe.' " +
+                 "Commence directement par la liste, sans titre."),
 
                 ("**Ce qui peut aider**",
                  "Rédige UNIQUEMENT le contenu de la section « Ce qui peut aider » : " +
-                 "liste de 3-4 actions concrètes pour la maison et l'école " +
-                 "(- **Mot-clé :** description courte). " +
-                 "Commence directement par la liste, sans titre ni introduction."),
+                 "liste de 3-4 actions pratiques et concrètes que les parents peuvent faire à la maison " +
+                 "(- **Action :** description courte et actionnable en 1-2 lignes). " +
+                 "Ton encourageant, positif. Pas de jargon. " +
+                 "Commence directement par la liste, sans titre."),
 
                 ("**Notre feuille de route**",
                  "Rédige UNIQUEMENT le contenu de la section « Notre feuille de route » : " +
-                 "liste numérotée de 3-5 prochaines étapes concrètes " +
-                 "(1. **Étape :** description courte). " +
-                 "Commence directement par la liste numérotée, sans titre ni introduction."),
+                 "liste numérotée de 3-5 prochaines étapes concrètes du suivi " +
+                 "(1. **Étape :** description courte en 1-2 lignes). " +
+                 "Ton collaboratif (« Nous allons… », « Ensemble nous… »). Sans jargon. " +
+                 "Commence directement par la liste numérotée, sans titre."),
 
                 ("**Son environnement : points clés**",
                  "Rédige UNIQUEMENT le contenu de la section « Son environnement : points clés » : " +
-                 "1-2 phrases sur les ressources positives de l'entourage, puis une liste de " +
-                 "2-3 points de vigilance (- **Point :** description courte). " +
-                 "Commence directement par le texte, sans titre ni introduction.")
+                 "1-2 phrases sur les soutiens positifs de l'entourage (famille, école…), " +
+                 "puis une liste de 2-3 points d'attention à garder en tête " +
+                 "(- **Point :** description courte). " +
+                 "Ton bienveillant, sans alarmisme. " +
+                 "Commence directement par le texte, sans titre.")
             };
 
             var accumulated = new System.Text.StringBuilder();
@@ -171,7 +181,9 @@ namespace MedCompanion.Services.Restitutions
                           "sans introduction, sans commentaire, sans titre supplémentaire :");
             sb.AppendLine(instruction);
             sb.AppendLine();
-            sb.AppendLine("Sois concis (6-10 lignes max). Réponds directement en Markdown.");
+            sb.AppendLine("RAPPEL TON OBLIGATOIRE : tu t'adresses à des parents, pas à des médecins. " +
+                          "Langage simple, chaleureux, empathique. Pas de jargon clinique ni de termes DSM. " +
+                          "Concis (6-10 lignes max). Réponds directement en Markdown.");
             return sb.ToString();
         }
 
