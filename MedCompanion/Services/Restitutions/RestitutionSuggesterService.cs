@@ -640,13 +640,19 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
             }
             catch { /* si JSON invalide, on continue avec les valeurs vides */ }
 
-            // 2. École / classe / motif / année depuis la 1ère consultation
-            var note = reading.PremiereConsultation ?? "";
-            if (string.IsNullOrEmpty(ecole))  ecole  = CovExtractField(note, "école", "ecole", "établissement", "etablissement") ?? "";
-            if (string.IsNullOrEmpty(classe)) classe = CovExtractField(note, "classe", "niveau scolaire", "niveau") ?? "";
+            // 2. École / classe / motif / année — corpus = PremiereConsultation + toutes les notes
+            // (Certains patients n'ont pas de note type "consultation-premiere" : on cherche dans tout le dossier.)
+            var corpusSb = new StringBuilder();
+            corpusSb.AppendLine(reading.PremiereConsultation);
+            foreach (var n in reading.NotesConsultation)
+                corpusSb.AppendLine(n.Content);
+            var corpus = corpusSb.ToString();
 
-            var motif    = CovExtractField(note, "motif de consultation", "motif") ?? "";
-            var anneeSco = CovExtractAnneeScolaire(note);
+            if (string.IsNullOrEmpty(ecole))  ecole  = CovExtractField(corpus, "école", "ecole", "établissement", "etablissement") ?? "";
+            if (string.IsNullOrEmpty(classe)) classe = CovExtractField(corpus, "classe", "niveau scolaire", "niveau") ?? CovExtractClasse(corpus) ?? "";
+
+            var motif    = CovExtractField(corpus, "motif de consultation", "motif") ?? CovExtractMotif(corpus) ?? "";
+            var anneeSco = CovExtractAnneeScolaire(corpus);
 
             // 3. Dates d'évaluation
             var dates = CovBuildDatesEvaluation(reading.Evaluations);
@@ -675,6 +681,53 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
                 if (m.Success)
                 {
                     var v = m.Groups[1].Value.Trim();
+                    if (!string.IsNullOrWhiteSpace(v)) return v;
+                }
+            }
+            return null;
+        }
+
+        private static string? CovExtractClasse(string corpus)
+        {
+            // "élève de 3e (année de collège)" → "3e"
+            var patterns = new[]
+            {
+                @"\bélève\s+de\s+(\d[eème]+(?:\s+(?:année|semestre))?)",
+                @"\ben\s+(\d[eème]+)\b",
+                @"\b(CE[12]|CM[12]|CP|GS|MS|PS|TPS)\b",
+                @"\b(Seconde|Première|Terminale)\b",
+                @"\b(\d[eème]+)\s+(?:année|semestre|au\s+collège|au\s+lycée|de\s+collège|de\s+lycée)",
+                @"\bclasse\s+de\s+(\w+)",
+            };
+            foreach (var pat in patterns)
+            {
+                var m = Regex.Match(corpus, pat, RegexOptions.IgnoreCase);
+                if (m.Success)
+                {
+                    var v = m.Groups[1].Value.Trim();
+                    if (!string.IsNullOrWhiteSpace(v)) return v;
+                }
+            }
+            return null;
+        }
+
+        private static string? CovExtractMotif(string corpus)
+        {
+            // Cherche la section "Historique médical" ou "HPI" et en extrait la première ligne utile
+            var sections = new[] { "Historique médical", "HPI", "Motif principal", "Présentation" };
+            foreach (var sec in sections)
+            {
+                var m = Regex.Match(corpus,
+                    $@"{Regex.Escape(sec)}[^\n]*\n(.+?)(?:\n\n|\n[A-Z{{**}}]|$)",
+                    RegexOptions.IgnoreCase | RegexOptions.Singleline);
+                if (m.Success)
+                {
+                    var lines = m.Groups[1].Value
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Where(l => l.Length > 5)
+                        .Take(2)
+                        .Select(l => l.TrimStart('-', '*', '•', ' ').Trim().TrimEnd('.'));
+                    var v = string.Join(", ", lines);
                     if (!string.IsNullOrWhiteSpace(v)) return v;
                 }
             }
