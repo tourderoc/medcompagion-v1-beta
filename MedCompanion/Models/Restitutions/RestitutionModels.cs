@@ -112,15 +112,21 @@ namespace MedCompanion.Models.Restitutions
 
         public DossierRestitutionInitial()
         {
-            // Initialisation des 8 sections principales
-            Blocs.Add(new RestitutionBloc("couverture", "Identité & couverture", 1, "mixte"));
-            Blocs.Add(new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre"));
-            Blocs.Add(new RestitutionBloc("patient_contexte", "Patient & Contexte", 3, "clinique"));
-            Blocs.Add(new RestitutionBloc("synthese_diag", "Synthèse diagnostique", 4, "clinique"));
-            Blocs.Add(new RestitutionBloc("bilan_final", "Bilan final détaillé", 5, "clinique"));
-            Blocs.Add(new RestitutionBloc("synthese_globale", "Synthèse globale", 6, "clinique"));
-            Blocs.Add(new RestitutionBloc("projet_therapeutique", "Projet Thérapeutique Global", 7, "clinique"));
-            Blocs.Add(new RestitutionBloc("conclusion", "Conclusion et perspectives", 8, "mixte"));
+            // Initialisation des 12 sections principales. Les blocs 3 à 7 forment ensemble la
+            // page « Patient & Contexte » (2 pages physiques A+B dans le rendu HTML) — ils sont
+            // séparés pour permettre une génération/édition/régénération ciblée par sous-section.
+            Blocs.Add(new RestitutionBloc("couverture",                 "Identité & couverture",        1, "mixte"));
+            Blocs.Add(new RestitutionBloc("restitution_1page",          "Restitution 1-page parents",   2, "livre"));
+            Blocs.Add(new RestitutionBloc("patient_identification",     "Identification",               3, "clinique"));
+            Blocs.Add(new RestitutionBloc("patient_motif",              "Motif de consultation",        4, "clinique"));
+            Blocs.Add(new RestitutionBloc("patient_contexte_familial",  "Contexte familial",            5, "clinique"));
+            Blocs.Add(new RestitutionBloc("patient_antecedents",        "Antécédents",                  6, "clinique"));
+            Blocs.Add(new RestitutionBloc("patient_situation_actuelle", "Situation actuelle",           7, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_diag",              "Synthèse diagnostique",        8, "clinique"));
+            Blocs.Add(new RestitutionBloc("bilan_final",                "Bilan final détaillé",         9, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_globale",           "Synthèse globale",            10, "clinique"));
+            Blocs.Add(new RestitutionBloc("projet_therapeutique",       "Projet Thérapeutique Global", 11, "clinique"));
+            Blocs.Add(new RestitutionBloc("conclusion",                 "Conclusion et perspectives",  12, "mixte"));
         }
     }
 }

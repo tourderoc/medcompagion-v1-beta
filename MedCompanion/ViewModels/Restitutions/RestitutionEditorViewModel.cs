@@ -203,39 +203,44 @@ namespace MedCompanion.ViewModels.Restitutions
                 _currentReading ??= await _dossierReader.ReadAsync(_patientName);
                 var ct = _generationCts?.Token ?? CancellationToken.None;
 
-                if (blocVm.Model.Key == "restitution_1page")
+                // Certains blocs sont composites : ils sont produits en plusieurs appels LLM
+                // séquentiels (un par sous-section) pour fiabiliser le rendu et respecter les
+                // limites de tokens. On les achemine vers la méthode progressive idoine.
+                switch (blocVm.Model.Key)
                 {
-                    // Génération progressive : 6 sections successives, mise à jour live à chaque section.
-                    blocVm.Contenu = "";
-                    int done = 0;
-                    StatusMessage = "✍ Restitution parents — section 1/6...";
+                    case "restitution_1page":
+                        await RunProgressiveAsync(blocVm, "Restitution parents", 6,
+                            (cb, c) => _suggesterService.SuggestRestitution1PageProgressiveAsync(_currentReading!, cb, c), ct);
+                        break;
 
-                    await _suggesterService.SuggestRestitution1PageProgressiveAsync(
-                        _currentReading,
-                        accumulated =>
+                    case "patient_contexte_familial":
+                        await RunProgressiveAsync(blocVm, "Contexte familial", 5,
+                            (cb, c) => _suggesterService.SuggestContexteFamilialProgressiveAsync(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "patient_antecedents":
+                        await RunProgressiveAsync(blocVm, "Antécédents", 4,
+                            (cb, c) => _suggesterService.SuggestAntecedentsProgressiveAsync(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "patient_situation_actuelle":
+                        await RunProgressiveAsync(blocVm, "Situation actuelle", 5,
+                            (cb, c) => _suggesterService.SuggestSituationActuelleProgressiveAsync(_currentReading!, cb, c), ct);
+                        break;
+
+                    default:
+                    {
+                        var result = await _suggesterService.PrefillBlocAsync(blocVm.Model, _currentReading, ct);
+                        if (!result.Suggestion.StartsWith("(Erreur"))
                         {
-                            done++;
-                            blocVm.Contenu = accumulated;
-                            StatusMessage  = done < 6
-                                ? $"✍ Restitution parents — section {done + 1}/6..."
-                                : "✓ Restitution parents complète.";
-                        },
-                        ct);
-
-                    if (!string.IsNullOrWhiteSpace(blocVm.Contenu))
-                        await SaveAsync();
-                }
-                else
-                {
-                    var result = await _suggesterService.PrefillBlocAsync(blocVm.Model, _currentReading, ct);
-                    if (!result.Suggestion.StartsWith("(Erreur"))
-                    {
-                        blocVm.Contenu = result.Suggestion;
-                        await SaveAsync();
-                    }
-                    else
-                    {
-                        StatusMessage = $"Erreur gén. {blocVm.Title} : {result.Suggestion}";
+                            blocVm.Contenu = result.Suggestion;
+                            await SaveAsync();
+                        }
+                        else
+                        {
+                            StatusMessage = $"Erreur gén. {blocVm.Title} : {result.Suggestion}";
+                        }
+                        break;
                     }
                 }
             }
@@ -249,7 +254,36 @@ namespace MedCompanion.ViewModels.Restitutions
             }
         }
 
-        // ── Génération séquentielle des 8 blocs ─────────────────────────────
+        /// <summary>
+        /// Exécute une génération progressive (multi-LLM séquentielles) sur un bloc,
+        /// en remettant à zéro le contenu puis en rafraîchissant l'UI à chaque section
+        /// produite. Met aussi à jour le statut "section N/total".
+        /// </summary>
+        private async Task RunProgressiveAsync(
+            RestitutionBlocViewModel blocVm,
+            string label,
+            int totalSections,
+            Func<Action<string>, CancellationToken, Task> runner,
+            CancellationToken ct)
+        {
+            blocVm.Contenu = "";
+            int done = 0;
+            StatusMessage = $"✍ {label} — section 1/{totalSections}...";
+
+            await runner(accumulated =>
+            {
+                done++;
+                blocVm.Contenu = accumulated;
+                StatusMessage = done < totalSections
+                    ? $"✍ {label} — section {done + 1}/{totalSections}..."
+                    : $"✓ {label} complète.";
+            }, ct);
+
+            if (!string.IsNullOrWhiteSpace(blocVm.Contenu))
+                await SaveAsync();
+        }
+
+        // ── Génération séquentielle de tous les blocs ───────────────────────
 
         private async Task GenerateAllAsync()
         {
@@ -282,17 +316,47 @@ namespace MedCompanion.ViewModels.Restitutions
 
                     try
                     {
-                        var result = await _suggesterService.PrefillBlocAsync(blocVm.Model, _currentReading, ct);
-                        if (ct.IsCancellationRequested) break;
+                        // Blocs composites : on délègue à la méthode progressive qui en interne
+                        // fait N appels LLM séquentiels. Garantit que les sous-sections sont
+                        // toutes présentes et fiables (chacune dans sa propre fenêtre de tokens).
+                        switch (blocVm.Model.Key)
+                        {
+                            case "restitution_1page":
+                                await RunProgressiveAsync(blocVm, "Restitution parents", 6,
+                                    (cb, c) => _suggesterService.SuggestRestitution1PageProgressiveAsync(_currentReading, cb, c), ct);
+                                break;
 
-                        if (!result.Suggestion.StartsWith("(Erreur"))
-                        {
-                            blocVm.Contenu = result.Suggestion;
-                            await SaveAsync();  // auto-save après chaque bloc → reprise possible
-                        }
-                        else
-                        {
-                            StatusMessage = $"⚠ Bloc {i} échoué : {result.Suggestion}. Passage au suivant.";
+                            case "patient_contexte_familial":
+                                await RunProgressiveAsync(blocVm, "Contexte familial", 5,
+                                    (cb, c) => _suggesterService.SuggestContexteFamilialProgressiveAsync(_currentReading, cb, c), ct);
+                                break;
+
+                            case "patient_antecedents":
+                                await RunProgressiveAsync(blocVm, "Antécédents", 4,
+                                    (cb, c) => _suggesterService.SuggestAntecedentsProgressiveAsync(_currentReading, cb, c), ct);
+                                break;
+
+                            case "patient_situation_actuelle":
+                                await RunProgressiveAsync(blocVm, "Situation actuelle", 5,
+                                    (cb, c) => _suggesterService.SuggestSituationActuelleProgressiveAsync(_currentReading, cb, c), ct);
+                                break;
+
+                            default:
+                            {
+                                var result = await _suggesterService.PrefillBlocAsync(blocVm.Model, _currentReading, ct);
+                                if (ct.IsCancellationRequested) break;
+
+                                if (!result.Suggestion.StartsWith("(Erreur"))
+                                {
+                                    blocVm.Contenu = result.Suggestion;
+                                    await SaveAsync();  // auto-save après chaque bloc → reprise possible
+                                }
+                                else
+                                {
+                                    StatusMessage = $"⚠ Bloc {i} échoué : {result.Suggestion}. Passage au suivant.";
+                                }
+                                break;
+                            }
                         }
                     }
                     finally

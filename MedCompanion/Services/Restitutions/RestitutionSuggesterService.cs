@@ -171,6 +171,196 @@ namespace MedCompanion.Services.Restitutions
             return sb.ToString();
         }
 
+        // ── Génération progressive Contexte familial (1 narrative + 4 cards) ─
+
+        /// <summary>
+        /// Génère le bloc « Contexte familial » en 5 appels LLM séquentiels (récit narratif +
+        /// 4 cartes Père / Mère / Fratrie / Points à retenir). Chaque appel reçoit le dossier
+        /// complet, les marqueurs `**Titre**` sont concaténés au fil de l'eau pour permettre
+        /// au rendu HTML de découper les sections.
+        /// </summary>
+        public async Task SuggestContexteFamilialProgressiveAsync(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var blocCf = new RestitutionBloc("patient_contexte_familial", "Contexte familial", 5, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocCf);
+
+            var subsections = new (string Title, string Instruction)[]
+            {
+                ("**Récit familial**",
+                 "Rédige UNIQUEMENT le récit familial (3-5 lignes) décrivant : composition du foyer " +
+                 "(parents séparés ou en couple, garde alternée…), climat actuel, événements de vie " +
+                 "majeurs (déménagement, séparation, deuil, recomposition…). Style clinique narratif, " +
+                 "PAS de listes. Commence directement par le récit, sans titre."),
+
+                ("**Père**",
+                 "Rédige UNIQUEMENT la fiche signalétique du père sous forme de liste à puces : " +
+                 "prénom et âge si renseignés, activité professionnelle, lieu de vie, statut conjugal/familial " +
+                 "(célibataire, en couple avec X, recomposition…). Format : `- Item : valeur.` " +
+                 "Si une donnée manque écrire « Non renseigné ». Commence directement par la liste."),
+
+                ("**Mère**",
+                 "Rédige UNIQUEMENT la fiche signalétique de la mère sous forme de liste à puces : " +
+                 "prénom et âge si renseignés, activité professionnelle, lieu de vie, statut conjugal/familial. " +
+                 "Format : `- Item : valeur.` Si une donnée manque écrire « Non renseigné ». " +
+                 "Commence directement par la liste."),
+
+                ("**Fratrie**",
+                 "Rédige UNIQUEMENT la liste de la fratrie sous forme de puces, une par enfant : " +
+                 "prénom, âge, lien (même père et mère / côté mère / côté père). " +
+                 "Format : `- Prénom, N ans (lien).` Si pas de fratrie, écrire `- Enfant unique.` " +
+                 "Commence directement par la liste."),
+
+                ("**Points à retenir**",
+                 "Rédige UNIQUEMENT 2-4 lignes pointant les éléments du contexte familial susceptibles " +
+                 "d'éclairer le tableau clinique (insécurité affective, conflit de loyauté, parent absent, " +
+                 "parentification…). Style bienveillant, sans jugement. Pas de listes — un paragraphe court. " +
+                 "Commence directement par le paragraphe.")
+            };
+
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, subsections, onSectionReady, 500, ct);
+        }
+
+        // ── Génération progressive Antécédents (4 sous-sections) ────────────
+
+        /// <summary>
+        /// Génère le bloc « Antécédents » en 4 appels LLM séquentiels (médicaux,
+        /// développementaux, familiaux, parcours de soins). Le résultat est concaténé
+        /// avec marqueurs `**Titre**` pour parsing HTML ultérieur.
+        /// </summary>
+        public async Task SuggestAntecedentsProgressiveAsync(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var blocAt = new RestitutionBloc("patient_antecedents", "Antécédents", 6, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocAt);
+
+            var subsections = new (string Title, string Instruction)[]
+            {
+                ("**Antécédents médicaux**",
+                 "Rédige UNIQUEMENT la liste à puces des antécédents médicaux : grossesse, " +
+                 "accouchement, période néonatale, maladies chroniques, hospitalisations, traitements " +
+                 "en cours. Format : `- **Item :** valeur.` Si une donnée manque, écrire " +
+                 "« sans particularité déclarée » ou « aucun connu ». Pas de titre, pas de commentaire."),
+
+                ("**Antécédents développementaux**",
+                 "Rédige UNIQUEMENT la liste à puces des acquisitions développementales : " +
+                 "acquisition de la marche (âge en mois), acquisition du langage (âge / délais), " +
+                 "propreté diurne (âge), propreté nocturne (âge ou statut), latéralisation si pertinent. " +
+                 "Format : `- **Item :** valeur.` Si une acquisition est dans la norme, écrire « dans les délais »."),
+
+                ("**Antécédents familiaux**",
+                 "Rédige UNIQUEMENT la liste à puces des antécédents familiaux : troubles de l'attention (TDAH), " +
+                 "troubles anxieux, troubles de l'humeur, troubles du neurodéveloppement, addictions, suicide. " +
+                 "Format : `- **Item :** valeur.` Si non connu, écrire « non connu »."),
+
+                ("**Parcours de soins et interventions**",
+                 "Rédige UNIQUEMENT 2 sous-sections imbriquées :\n" +
+                 "`**Déjà réalisés**` puis liste à puces des suivis antérieurs " +
+                 "(psy, ortho, psychomot, neuropsy…) ou « Aucun suivi spécialisé régulier à ce jour. »\n" +
+                 "`**Bilans déjà réalisés**` puis liste à puces des bilans diagnostiques antérieurs " +
+                 "(QI, langage, attention…) ou « Aucun bilan formel réalisé à ce jour. »")
+            };
+
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, subsections, onSectionReady, 500, ct);
+        }
+
+        // ── Génération progressive Situation actuelle (5 sous-sections) ─────
+
+        /// <summary>
+        /// Génère le bloc « Situation actuelle » en 5 appels LLM séquentiels (école, maison,
+        /// avec les autres, forces, activités et intérêts). Sources principales : cartographies
+        /// d'évaluation + notes de consultation récentes.
+        /// </summary>
+        public async Task SuggestSituationActuelleProgressiveAsync(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var blocSa = new RestitutionBloc("patient_situation_actuelle", "Situation actuelle", 7, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocSa);
+
+            var subsections = new (string Title, string Instruction)[]
+            {
+                ("**À l'école**",
+                 "Rédige UNIQUEMENT une liste à puces de 3-5 items sur le fonctionnement scolaire : " +
+                 "intégration au groupe classe, agressivité envers maîtresse/camarades, difficultés " +
+                 "d'apprentissage, besoin de cadre et de repères renforcés. Format : `- Phrase courte.`"),
+
+                ("**À la maison**",
+                 "Rédige UNIQUEMENT une liste à puces de 3-5 items sur le fonctionnement au domicile : " +
+                 "crises de colère, oppositions, hyperactivité, surconsommation d'écrans, troubles du " +
+                 "sommeil… Format : `- Phrase courte.`"),
+
+                ("**Avec les autres**",
+                 "Rédige UNIQUEMENT une liste à puces de 2-4 items sur la sphère relationnelle " +
+                 "au-delà de l'école : difficultés relationnelles, tolérance à la frustration, " +
+                 "réactions impulsives en cas de conflit. Format : `- Phrase courte.`"),
+
+                ("**Forces observées**",
+                 "Rédige UNIQUEMENT une liste à puces de 4-6 items sur les ressources et compétences " +
+                 "positives de l'enfant : curiosité, attachement à ses proches, bonne capacité " +
+                 "d'apprentissage, imagination, créativité, envie de bien faire et de réussir. " +
+                 "Format : `- Phrase courte.`"),
+
+                ("**Activités et intérêts**",
+                 "Rédige UNIQUEMENT une liste à puces de 1-3 items sur les activités extra-scolaires, " +
+                 "hobbies, sports, centres d'intérêt particuliers. Format : `- Activité : description courte.` " +
+                 "Si aucune activité documentée, écrire `- Aucune activité extra-scolaire documentée à ce jour.`")
+            };
+
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, subsections, onSectionReady, 400, ct);
+        }
+
+        // ── Helper commun pour les générations progressives ─────────────────
+
+        /// <summary>
+        /// Exécute une série de sous-prompts en séquence, accumule les résultats avec leurs
+        /// marqueurs Markdown `**Titre**` et notifie le ViewModel après chaque section.
+        /// Factorise la mécanique commune aux générations Contexte familial / Antécédents /
+        /// Situation actuelle pour éviter la duplication.
+        /// </summary>
+        private async Task RunProgressiveSubsectionsAsync(
+            string systemPrompt,
+            string context,
+            (string Title, string Instruction)[] subsections,
+            Action<string> onSectionReady,
+            int maxTokensPerSection,
+            CancellationToken ct)
+        {
+            var accumulated = new System.Text.StringBuilder();
+
+            foreach (var (title, instruction) in subsections)
+            {
+                if (ct.IsCancellationRequested) break;
+
+                var userPrompt = Build1PageSubsectionPrompt(context, instruction);
+                var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+                var result     = await _llmService.ChatAsync(systemPrompt, messages, maxTokensPerSection, ct);
+
+                if (ct.IsCancellationRequested) break;
+
+                if (accumulated.Length > 0) accumulated.AppendLine();
+                accumulated.AppendLine(title);
+                accumulated.AppendLine();
+                accumulated.AppendLine(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+
+                onSectionReady(accumulated.ToString());
+            }
+        }
+
         // ── API legacy (compat ascendante) ──────────────────────────────────
 
         /// <summary>
@@ -255,8 +445,106 @@ Source principale : la 1ère consultation (école, classe, motif). L'identité a
             "restitution_1page"
                 => "Synthèse Globale Med + Synthèse Globale V0.5 + Projet Thérapeutique : produire UNE page accessible aux parents avec : ce qu'on a compris, les forces de l'enfant, les difficultés, ce qui peut aider, la feuille de route, l'environnement.",
 
-            "patient_contexte"
-                => "1ère consultation et notes de consultation suivantes : identité, scolarité, motif, contexte familial, antécédents médicaux et développementaux, situation actuelle (école / maison / pairs), forces et activités.",
+            // ── Bloc 3 : Identification ─────────────────────────────────────
+            // Texte narratif court qui pose le décor clinique. Source : patient.json + 1ère
+            // consultation. Le rendu HTML extrait aussi les méta-données structurées
+            // (période d'évaluation, date de restitution, évaluateur, lieu) via Pick() sur
+            // labels en gras — d'où le format strict imposé.
+            "patient_identification"
+                => @"1ère consultation + patient.json. Produis un texte clinique court qui présente l'enfant, suivi des méta-données d'évaluation.
+
+FORMAT STRICT :
+
+**Présentation** : 1 phrase de 2-3 lignes commençant par « Il s'agit de l'enfant... », mentionnant : prénom NOM, âge en années + entre parenthèses la date de naissance, scolarité (niveau + nom et ville de l'école + année scolaire), date du 1er entretien, accompagnants présents lors de ce 1er entretien (parents, mère seule, etc.).
+**Période d'évaluation** : dates de l'évaluation clôturée (1 date ou « du JJ/MM/AAAA au JJ/MM/AAAA » si plusieurs séances). Non renseigné si pas d'évaluation clôturée.
+**Date de restitution** : JJ/MM/AAAA (date du jour si non précisée).
+**Évaluateur** : Dr Lassoued Nair, Pédopsychiatre.
+**Lieu** : ville du cabinet si déduite, sinon « Cabinet de pédopsychiatrie ».
+
+Si une donnée manque dans le dossier, écris « Non renseigné(e) » à sa place. N'invente rien.",
+
+            // ── Bloc 4 : Motif de consultation ──────────────────────────────
+            // Texte narratif tiré de l'interrogatoire initial et étoffé par la synthèse
+            // globale Med (qui repère les motifs sous-jacents). Pas de listes — un récit court
+            // qui aide le confrère à comprendre POURQUOI l'enfant a été amené.
+            "patient_motif"
+                => "1ère consultation (champ « motif » de l'interrogatoire) + Synthèse Globale Med + Synthèse Globale V0.5. " +
+                   "Rédige UN paragraphe narratif (3-6 lignes) qui explicite le motif de consultation tel qu'il a été formulé par les parents " +
+                   "lors du 1er entretien, en intégrant le contexte d'apparition des troubles (déclencheur, ancienneté, retentissement). " +
+                   "Style clinique précis, sans listes, sans titres. Si le motif initial diffère de l'analyse synthétique de Med, mentionne brièvement les deux. " +
+                   "Commence directement par le récit, pas de phrase d'introduction du type « Voici le motif... ».",
+
+            // ── Bloc 5 : Contexte familial ──────────────────────────────────
+            // Narratif court (composition foyer, climat, événements de vie) + 4 colonnes
+            // structurées (Père / Mère / Fratrie / Points à retenir) rendues en HTML via parseur.
+            // Le LLM est appelé en mode progressif : 1 narrative + 4 cards (cf. SuggestContexteFamilialProgressiveAsync).
+            "patient_contexte_familial"
+                => @"1ère consultation + Synthèse Globale Med. Produis un récit narratif court SUIVI de 4 cartes structurées.
+
+FORMAT STRICT (les marqueurs `**Titre**` permettent au rendu HTML de découper la section) :
+
+**Récit familial** : 3-5 lignes décrivant la composition du foyer (parents séparés/en couple, fratrie, garde alternée…), le climat actuel, les événements de vie majeurs (déménagement, séparation, deuil, recomposition…). Style clinique narratif.
+
+**Père** :
+- Prénom, âge (si renseigné).
+- Activité professionnelle.
+- Lieu de vie.
+- Statut conjugal / familial pertinent.
+
+**Mère** :
+- Prénom, âge (si renseigné).
+- Activité professionnelle.
+- Lieu de vie.
+- Statut conjugal / familial pertinent.
+
+**Fratrie** :
+- Pour chaque frère/sœur (ou demi) : Prénom, âge, lien (même père et mère, côté mère, côté père).
+
+**Points à retenir** : 2-4 lignes pointant les éléments du contexte familial susceptibles d'éclairer le tableau clinique (insécurité affective, conflit de loyauté, parent absent, parentification…). Bienveillant, sans jugement.
+
+Pour chaque carte, si une info manque, écris « Non renseigné » au lieu d'inventer. N'écris RIEN d'autre que ces 5 sections labellisées.",
+
+            // ── Bloc 6 : Antécédents ────────────────────────────────────────
+            // Bloc composite : 4 sous-blocs cliniques (médicaux, développementaux, familiaux,
+            // parcours de soins). Génération progressive 4×LLM via SuggestAntecedentsProgressiveAsync.
+            "patient_antecedents"
+                => @"1ère consultation (anamnèse) + Notes de consultation. Produis 4 sous-sections distinctes d'antécédents.
+
+FORMAT STRICT (les marqueurs `**Titre**` sont obligatoires) :
+
+**Antécédents médicaux** : liste à puces de 5-6 items concernant grossesse, accouchement, période néonatale, maladies chroniques, hospitalisations, traitements en cours. Format : `- **Item :** valeur.` Exemples : `- **Grossesse :** sans particularité déclarée.`
+
+**Antécédents développementaux** : liste à puces de 3-5 items sur les acquisitions clés (marche, langage, propreté diurne, propreté nocturne, latéralisation…). Format identique. Si une acquisition est dans les normes, écrire « dans les délais ».
+
+**Antécédents familiaux** : liste à puces de 3-5 items sur les troubles connus dans la famille (TDAH, troubles anxieux, troubles de l'humeur, troubles du neurodéveloppement, addictions, suicide). Format identique. Si non connu, écrire « non connu ».
+
+**Parcours de soins et interventions** : 1-2 sous-titres en gras + liste à puces sous chacun.
+  - `**Déjà réalisés**` : suivis spécialisés antérieurs (psy, ortho, psychomot, neuropsy…).
+  - `**Bilans déjà réalisés**` : bilans diagnostiques antérieurs (QI, langage, attention…).
+  Si aucun, écrire « Aucun suivi spécialisé régulier à ce jour. » / « Aucun bilan formel réalisé à ce jour. ».
+
+N'invente RIEN. Si une donnée manque, écris « non connu » ou « sans particularité déclarée ».",
+
+            // ── Bloc 7 : Situation actuelle ─────────────────────────────────
+            // Bloc composite : 5 sous-blocs (école, maison, autres, forces, activités).
+            // Génération progressive 5×LLM via SuggestSituationActuelleProgressiveAsync.
+            // Sources : évaluations (Étape 3 cartographie enfant + Étape 5 environnement) + notes récentes.
+            "patient_situation_actuelle"
+                => @"Évaluations clôturées (Étape 3 cartographie enfant + Étape 5 cartographie environnement) + Notes de consultation récentes + Synthèse Globale Med. Produis 5 sous-sections.
+
+FORMAT STRICT (marqueurs `**Titre**` obligatoires) :
+
+**À l'école** : 3-5 puces, comportements et fonctionnement observés en milieu scolaire (intégration au groupe, agressivité envers maîtresse/camarades, difficultés d'apprentissage, besoin de cadre…).
+
+**À la maison** : 3-5 puces, comportements observés au domicile (crises de colère, oppositions, hyperactivité, surconsommation d'écrans, troubles du sommeil…).
+
+**Avec les autres** : 2-4 puces, sphère relationnelle au-delà de l'école (difficultés relationnelles, tolérance à la frustration, réactions impulsives en cas de conflit…).
+
+**Forces observées** : 4-6 puces, ressources et compétences positives de l'enfant (curiosité, attachement, capacité d'apprentissage, imagination, créativité, envie de réussir…).
+
+**Activités et intérêts** : 1-3 puces, activités extra-scolaires, hobbies, sports, centres d'intérêt particuliers.
+
+Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère n'a aucun élément renseigné, écris une seule puce « Aucun élément documenté à ce jour. ».",
 
             "synthese_diag"
                 => "Évaluations clôturées (Bilan Final) + Synthèse Globale V0.5 : compréhension globale, diagnostics retenus avec niveau de confiance, diagnostics différentiels écartés et POURQUOI, intégration des cartographies enfant + environnement.",

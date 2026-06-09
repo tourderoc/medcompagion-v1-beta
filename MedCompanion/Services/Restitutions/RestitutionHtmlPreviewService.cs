@@ -129,9 +129,19 @@ namespace MedCompanion.Services.Restitutions
         {
             try
             {
+                // 1. Chercher dans le dossier de l'année en cours (là où PatientPhotoService l'enregistre)
+                var yearDir   = _pathService.GetPatientYearDirectory(patientNomComplet);
+                var photoPath = Path.Combine(yearDir, "photo.jpg");
+                if (File.Exists(photoPath))
+                    return LoadBase64(photoPath);
+
+                // 2. Fallback sur la racine du patient au cas où
                 var patientRoot = _pathService.GetPatientRootDirectory(patientNomComplet);
-                var photoPath   = Path.Combine(patientRoot, "photo.jpg");
-                return File.Exists(photoPath) ? LoadBase64(photoPath) : "";
+                photoPath = Path.Combine(patientRoot, "photo.jpg");
+                if (File.Exists(photoPath))
+                    return LoadBase64(photoPath);
+
+                return "";
             }
             catch { return ""; }
         }
@@ -350,6 +360,24 @@ namespace MedCompanion.Services.Restitutions
         {
             var sb = new StringBuilder();
             int pageNumber = 2;
+
+            // Total de pages logiques pour les en-têtes "Page N/total".
+            // 1 (couverture) + 1 (restitution 1-page) + 2 (patient & contexte A+B) + 5 autres blocs (synthese_diag,
+            // bilan_final, synthese_globale, projet_therapeutique, conclusion) = 9. À mettre à jour quand on ajoute des pages dédiées.
+            int totalPages = 9;
+
+            // Les 5 blocs patient_* sont rendus ensemble sur 2 pages dédiées (A : identification +
+            // motif + contexte familial / B : antécédents + situation actuelle). On les capture
+            // au passage de la boucle puis on consomme l'ensemble en une seule fois, en sautant
+            // les 4 occurrences suivantes pour ne pas générer de pages brouillon parasites.
+            var patientBlocs = new Dictionary<string, RestitutionBloc>();
+            foreach (var b in dossier.Blocs)
+            {
+                if (b.Key.StartsWith("patient_", StringComparison.Ordinal))
+                    patientBlocs[b.Key] = b;
+            }
+            bool patientPagesRendered = false;
+
             foreach (var bloc in dossier.Blocs)
             {
                 if (bloc.Key == "couverture") continue;
@@ -357,23 +385,424 @@ namespace MedCompanion.Services.Restitutions
                 if (bloc.Key == "restitution_1page")
                 {
                     sb.Append(BuildRestitution1PagePage(bloc, coverFields, photoBase64, pageNumber));
+                    pageNumber++;
+                    continue;
                 }
-                else
-                {
-                    var content = string.IsNullOrWhiteSpace(bloc.ContenuValide)
-                        ? "<p class='placeholder'><em>(Section à compléter — utilisez le bouton ✨ Suggérer)</em></p>"
-                        : MarkdownToHtmlLite(bloc.ContenuValide);
 
-                    sb.AppendLine("<div class='page draft-page'>");
-                    sb.AppendLine($"  <div class='page-num'>Page {pageNumber}/9</div>");
-                    sb.AppendLine($"  <h1 class='draft-title'>{WebUtility.HtmlEncode(bloc.Titre)}</h1>");
-                    sb.AppendLine($"  <div class='draft-meta'>Voix cible : <strong>{WebUtility.HtmlEncode(bloc.VoixCible)}</strong></div>");
-                    sb.AppendLine($"  <div class='draft-content'>{content}</div>");
-                    sb.AppendLine("</div>");
+                if (bloc.Key.StartsWith("patient_", StringComparison.Ordinal))
+                {
+                    // On rend les 2 pages Patient & Contexte la première fois qu'on rencontre
+                    // un bloc patient_*. Les 4 autres sont absorbés silencieusement.
+                    if (!patientPagesRendered)
+                    {
+                        sb.Append(BuildPatientContextePageA(patientBlocs, coverFields, pageNumber, totalPages));
+                        sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages));
+                        pageNumber += 2;
+                        patientPagesRendered = true;
+                    }
+                    continue;
                 }
+
+                // Fallback brouillon pour tous les autres blocs (synthese_*, projet_*, conclusion).
+                var content = string.IsNullOrWhiteSpace(bloc.ContenuValide)
+                    ? "<p class='placeholder'><em>(Section à compléter — utilisez le bouton ✨ Suggérer)</em></p>"
+                    : MarkdownToHtmlLite(bloc.ContenuValide);
+
+                sb.AppendLine("<div class='page draft-page'>");
+                sb.AppendLine($"  <div class='page-num'>Page {pageNumber}/{totalPages}</div>");
+                sb.AppendLine($"  <h1 class='draft-title'>{WebUtility.HtmlEncode(bloc.Titre)}</h1>");
+                sb.AppendLine($"  <div class='draft-meta'>Voix cible : <strong>{WebUtility.HtmlEncode(bloc.VoixCible)}</strong></div>");
+                sb.AppendLine($"  <div class='draft-content'>{content}</div>");
+                sb.AppendLine("</div>");
                 pageNumber++;
             }
             return sb.ToString();
+        }
+
+        // ── Pages Patient & Contexte (A + B) ────────────────────────────────
+
+        /// <summary>
+        /// Rend la page A : Identification + Motif + Contexte familial. Header sobre (titre +
+        /// filet teal + logo Med + numéro de page) comme demandé — pas de cartouche dégradé
+        /// comme la page Restitution Parents, on garde un style clinique sans agression visuelle.
+        /// </summary>
+        private string BuildPatientContextePageA(
+            Dictionary<string, RestitutionBloc> blocs,
+            CoverFields f,
+            int pageNumber,
+            int totalPages)
+        {
+            blocs.TryGetValue("patient_identification",    out var blocIdent);
+            blocs.TryGetValue("patient_motif",             out var blocMotif);
+            blocs.TryGetValue("patient_contexte_familial", out var blocCf);
+
+            var identFields = ParseIdentificationFields(blocIdent?.ContenuValide ?? "", f);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='page pc-page'>");
+            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Informations cliniques initiales", "1/2", pageNumber, totalPages));
+
+            // ── Section 1 : Identification (cartouche teal) ─────────────────
+            sb.AppendLine("  <div class='pc-card pc-c-ident'>");
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+            sb.AppendLine("      <span class='pc-card-num'>1</span>");
+            sb.AppendLine("      <h2>IDENTIFICATION</h2>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='pc-card-body'>");
+
+            // Récit narratif (1 phrase « Il s'agit de... »)
+            if (!string.IsNullOrWhiteSpace(identFields.Presentation))
+                sb.AppendLine($"      <p class='pc-ident-narrative'>{WebUtility.HtmlEncode(identFields.Presentation)}</p>");
+            else
+                sb.AppendLine("      <p class='pc-placeholder'><em>Présentation à compléter — cliquez sur ✨ Suggérer.</em></p>");
+
+            // Méta-données structurées (4 lignes)
+            sb.AppendLine("      <div class='pc-ident-meta'>");
+            sb.Append(BuildPcMetaRow("Période d'évaluation", identFields.PeriodeEvaluation));
+            sb.Append(BuildPcMetaRow("Date de restitution", identFields.DateRestitution));
+            sb.Append(BuildPcMetaRow("Évaluateur",          identFields.Evaluateur));
+            sb.Append(BuildPcMetaRow("Lieu",                identFields.Lieu));
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            // ── Section 2 : Motif de consultation (cartouche violet) ────────
+            sb.AppendLine("  <div class='pc-card pc-c-motif'>");
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+            sb.AppendLine("      <span class='pc-card-num'>2</span>");
+            sb.AppendLine("      <h2>MOTIF DE CONSULTATION</h2>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='pc-card-body pc-narrative'>");
+            sb.AppendLine(string.IsNullOrWhiteSpace(blocMotif?.ContenuValide)
+                ? "      <p class='pc-placeholder'><em>Section à compléter — cliquez sur ✨ Suggérer.</em></p>"
+                : MarkdownToHtmlLite(blocMotif!.ContenuValide));
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            // ── Section 3 : Contexte familial (cartouche vert) ──────────────
+            sb.AppendLine("  <div class='pc-card pc-c-famille'>");
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+            sb.AppendLine("      <span class='pc-card-num'>3</span>");
+            sb.AppendLine("      <h2>CONTEXTE FAMILIAL</h2>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='pc-card-body'>");
+
+            var cf = ParseContexteFamilial(blocCf?.ContenuValide ?? "");
+            if (!string.IsNullOrWhiteSpace(cf.Recit))
+                sb.AppendLine($"      <div class='pc-narrative'>{MarkdownToHtmlLite(cf.Recit)}</div>");
+            else
+                sb.AppendLine("      <p class='pc-placeholder'><em>Récit familial à compléter — cliquez sur ✨ Suggérer.</em></p>");
+
+            // 4 colonnes Père / Mère / Fratrie / Points à retenir
+            sb.AppendLine("      <div class='pc-four-col'>");
+            sb.Append(BuildPcMiniCard("PÈRE",              cf.Pere,           "pc-mc-pere"));
+            sb.Append(BuildPcMiniCard("MÈRE",              cf.Mere,           "pc-mc-mere"));
+            sb.Append(BuildPcMiniCard("FRATRIE",           cf.Fratrie,        "pc-mc-fratrie"));
+            sb.Append(BuildPcMiniCard("POINTS À RETENIR",  cf.PointsARetenir, "pc-mc-points"));
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            sb.Append(BuildPcFooter(
+                "Ces informations constituent le point de départ de la compréhension globale.<br>" +
+                "Elles seront précisées et enrichies par l'évaluation clinique, les observations et les bilans réalisés.",
+                pageNumber, totalPages));
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Rend la page B : Antécédents (4 sous-blocs) + Situation actuelle (5 sous-blocs).
+        /// </summary>
+        private string BuildPatientContextePageB(
+            Dictionary<string, RestitutionBloc> blocs,
+            int pageNumber,
+            int totalPages)
+        {
+            blocs.TryGetValue("patient_antecedents",        out var blocAt);
+            blocs.TryGetValue("patient_situation_actuelle", out var blocSa);
+
+            var at = ParseAntecedents(blocAt?.ContenuValide ?? "");
+            var sa = ParseSituationActuelle(blocSa?.ContenuValide ?? "");
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='page pc-page'>");
+            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Informations cliniques complémentaires", "2/2", pageNumber, totalPages));
+
+            // ── Section 4 : Antécédents (cartouche bleu) ────────────────────
+            sb.AppendLine("  <div class='pc-card pc-c-atcd'>");
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+            sb.AppendLine("      <span class='pc-card-num'>4</span>");
+            sb.AppendLine("      <h2>ANTÉCÉDENTS</h2>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='pc-card-body'>");
+            sb.AppendLine("      <div class='pc-two-col'>");
+            sb.Append(BuildPcSubBlock("ANTÉCÉDENTS MÉDICAUX",   at.Medicaux,      "pc-sb-med"));
+            sb.Append(BuildPcSubBlock("DÉVELOPPEMENTAUX",       at.Developpement, "pc-sb-dev"));
+            sb.AppendLine("      </div>");
+            sb.AppendLine("      <div class='pc-two-col'>");
+            sb.Append(BuildPcSubBlock("FAMILIAUX",                       at.Familiaux,      "pc-sb-fam"));
+            sb.Append(BuildPcSubBlock("PARCOURS DE SOINS ET INTERVENTIONS", at.ParcoursSoins, "pc-sb-parcours"));
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            // ── Section 5 : Situation actuelle (cartouche orange) ───────────
+            sb.AppendLine("  <div class='pc-card pc-c-situation'>");
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+            sb.AppendLine("      <span class='pc-card-num'>5</span>");
+            sb.AppendLine("      <h2>SITUATION ACTUELLE</h2>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='pc-card-body'>");
+            sb.AppendLine("      <div class='pc-three-col'>");
+            sb.Append(BuildPcSubBlock("À L'ÉCOLE",        sa.Ecole,   "pc-sb-ecole"));
+            sb.Append(BuildPcSubBlock("À LA MAISON",      sa.Maison,  "pc-sb-maison"));
+            sb.Append(BuildPcSubBlock("AVEC LES AUTRES",  sa.Autres,  "pc-sb-autres"));
+            sb.AppendLine("      </div>");
+            sb.AppendLine("      <div class='pc-two-col'>");
+            sb.Append(BuildPcSubBlock("FORCES OBSERVÉES",    sa.Forces,    "pc-sb-forces"));
+            sb.Append(BuildPcSubBlock("ACTIVITÉS / INTÉRÊTS", sa.Activites, "pc-sb-activites"));
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            sb.Append(BuildPcFooter(
+                "Ces éléments seront réévalués régulièrement afin d'ajuster le projet d'accompagnement.<br>" +
+                "Ils constituent la base du suivi clinique et du travail en collaboration avec la famille et les partenaires.",
+                pageNumber, totalPages));
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // ── Header / footer / helpers de rendu ──────────────────────────────
+
+        /// <summary>
+        /// Header sobre (style identique aux brouillons actuels) : grand titre bleu, sous-titre
+        /// italique, filet teal, logo MedCompanion à droite + numéro de page. Pas de cartouche
+        /// dégradé comme la page Restitution Parents (voix clinique = registre plus sobre).
+        /// </summary>
+        private string BuildPcHeader(string title, string subtitle, string subPageBadge, int pageNumber, int totalPages)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("  <div class='pc-header'>");
+            sb.AppendLine("    <div class='pc-header-left'>");
+            sb.AppendLine($"      <span class='pc-section-tag'>{WebUtility.HtmlEncode(subPageBadge)}</span>");
+            sb.AppendLine($"      <h1>{WebUtility.HtmlEncode(title)}</h1>");
+            sb.AppendLine($"      <p class='pc-subtitle'>{WebUtility.HtmlEncode(subtitle)}</p>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='pc-header-right'>");
+            if (!string.IsNullOrEmpty(_medcompanionHeartBase64))
+                sb.AppendLine($"      <img src='data:image/png;base64,{_medcompanionHeartBase64}' class='pc-logo-img' alt='MedCompanion'/>");
+            sb.AppendLine("      <div class='pc-brand'>");
+            sb.AppendLine("        <strong>MedCompanion</strong>");
+            sb.AppendLine("        <span>L'INTELLIGENCE AU SERVICE DU SOIN</span>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine($"      <div class='pc-page-num'>PAGE {pageNumber}/{totalPages}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+            sb.AppendLine("  <hr class='pc-header-rule'/>");
+            return sb.ToString();
+        }
+
+        private static string BuildPcFooter(string textHtml, int pageNumber, int totalPages)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("  <div class='pc-footer'>");
+            sb.AppendLine("    <div class='pc-footer-info'>");
+            sb.AppendLine($"      <span class='pc-info-icon'>i</span> {textHtml}");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+            return sb.ToString();
+        }
+
+        private static string BuildPcMetaRow(string label, string value)
+        {
+            var v = string.IsNullOrWhiteSpace(value) ? "Non renseigné" : value;
+            return $"        <div class='pc-meta-row'><span class='pc-meta-label'>{WebUtility.HtmlEncode(label)}</span><span class='pc-meta-value'>{WebUtility.HtmlEncode(v)}</span></div>\n";
+        }
+
+        private static string BuildPcMiniCard(string title, string content, string cssClass)
+        {
+            var body = string.IsNullOrWhiteSpace(content)
+                ? "<p class='pc-placeholder'><em>—</em></p>"
+                : MarkdownToHtmlLite(content);
+            return
+                $"        <div class='pc-mini-card {cssClass}'>" +
+                $"<h3>{WebUtility.HtmlEncode(title)}</h3>" +
+                $"<div class='pc-mini-body'>{body}</div>" +
+                $"</div>\n";
+        }
+
+        private static string BuildPcSubBlock(string title, string content, string cssClass)
+        {
+            var body = string.IsNullOrWhiteSpace(content)
+                ? "<p class='pc-placeholder'><em>—</em></p>"
+                : MarkdownToHtmlLite(content);
+            return
+                $"        <div class='pc-subblock {cssClass}'>" +
+                $"<h3>{WebUtility.HtmlEncode(title)}</h3>" +
+                $"<div class='pc-subblock-body'>{body}</div>" +
+                $"</div>\n";
+        }
+
+        // ── Parsers des 5 blocs patient_* ───────────────────────────────────
+
+        private class IdentificationFields
+        {
+            public string Presentation       = "";
+            public string PeriodeEvaluation  = "";
+            public string DateRestitution    = "";
+            public string Evaluateur         = "";
+            public string Lieu               = "";
+        }
+
+        /// <summary>
+        /// Parse les champs labellisés (`**Label** : valeur`) du bloc patient_identification.
+        /// Fallback sur les valeurs déjà connues via CoverFields pour DateRestitution.
+        /// </summary>
+        private IdentificationFields ParseIdentificationFields(string md, CoverFields f)
+        {
+            var result = new IdentificationFields
+            {
+                DateRestitution = f.DateRestitution,
+                Evaluateur      = "Dr Lassoued Nair, Pédopsychiatre",
+            };
+
+            if (string.IsNullOrWhiteSpace(md)) return result;
+
+            string? Pick(params string[] labels)
+            {
+                foreach (var lbl in labels)
+                {
+                    var m = Regex.Match(md,
+                        $@"\*\*\s*{Regex.Escape(lbl)}\s*\*\*\s*:\s*(.+?)(?:\r?\n|$)",
+                        RegexOptions.IgnoreCase);
+                    if (m.Success)
+                    {
+                        var v = m.Groups[1].Value.Trim();
+                        if (!string.IsNullOrWhiteSpace(v) &&
+                            !v.Equals("Non renseigné", StringComparison.OrdinalIgnoreCase) &&
+                            !v.Equals("Non renseignée", StringComparison.OrdinalIgnoreCase))
+                            return v;
+                    }
+                }
+                return null;
+            }
+
+            result.Presentation      = Pick("Présentation", "Presentation")                                  ?? result.Presentation;
+            result.PeriodeEvaluation = Pick("Période d'évaluation", "Periode d'evaluation", "Période")        ?? result.PeriodeEvaluation;
+            result.DateRestitution   = Pick("Date de restitution")                                            ?? result.DateRestitution;
+            result.Evaluateur        = Pick("Évaluateur", "Evaluateur")                                       ?? result.Evaluateur;
+            result.Lieu              = Pick("Lieu")                                                           ?? result.Lieu;
+
+            return result;
+        }
+
+        private class ContexteFamilial
+        {
+            public string Recit          = "";
+            public string Pere           = "";
+            public string Mere           = "";
+            public string Fratrie        = "";
+            public string PointsARetenir = "";
+        }
+
+        private static ContexteFamilial ParseContexteFamilial(string md)
+        {
+            var result = new ContexteFamilial();
+            if (string.IsNullOrWhiteSpace(md)) return result;
+
+            var sections = SplitByBoldTitles(md);
+            foreach (var (title, content) in sections)
+            {
+                var t = title.ToLowerInvariant();
+                if (t.Contains("récit") || t.Contains("recit") || t == "__intro__") result.Recit = content;
+                else if (t == "père" || t == "pere")                                 result.Pere = content;
+                else if (t == "mère" || t == "mere")                                 result.Mere = content;
+                else if (t.Contains("fratrie"))                                       result.Fratrie = content;
+                else if (t.Contains("retenir") || t.Contains("points"))               result.PointsARetenir = content;
+            }
+            return result;
+        }
+
+        private class Antecedents
+        {
+            public string Medicaux        = "";
+            public string Developpement   = "";
+            public string Familiaux       = "";
+            public string ParcoursSoins   = "";
+        }
+
+        private static Antecedents ParseAntecedents(string md)
+        {
+            var result = new Antecedents();
+            if (string.IsNullOrWhiteSpace(md)) return result;
+
+            var sections = SplitByBoldTitles(md);
+            foreach (var (title, content) in sections)
+            {
+                var t = title.ToLowerInvariant();
+                if (t.Contains("médicaux") || t.Contains("medicaux"))                        result.Medicaux = content;
+                else if (t.Contains("développ") || t.Contains("developp"))                   result.Developpement = content;
+                else if (t.Contains("familiaux"))                                            result.Familiaux = content;
+                else if (t.Contains("parcours") || t.Contains("soins") || t.Contains("intervention")) result.ParcoursSoins = content;
+            }
+            return result;
+        }
+
+        private class SituationActuelle
+        {
+            public string Ecole     = "";
+            public string Maison    = "";
+            public string Autres    = "";
+            public string Forces    = "";
+            public string Activites = "";
+        }
+
+        private static SituationActuelle ParseSituationActuelle(string md)
+        {
+            var result = new SituationActuelle();
+            if (string.IsNullOrWhiteSpace(md)) return result;
+
+            var sections = SplitByBoldTitles(md);
+            foreach (var (title, content) in sections)
+            {
+                var t = title.ToLowerInvariant();
+                if (t.Contains("école") || t.Contains("ecole"))                               result.Ecole = content;
+                else if (t.Contains("maison") || t.Contains("domicile"))                       result.Maison = content;
+                else if (t.Contains("autres") || t.Contains("relationnel") || t.Contains("pair")) result.Autres = content;
+                else if (t.Contains("forces") || t.Contains("ressources"))                     result.Forces = content;
+                else if (t.Contains("activités") || t.Contains("activites") || t.Contains("intérêts") || t.Contains("interets") || t.Contains("loisir")) result.Activites = content;
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Découpe un texte Markdown par titres en gras `**Titre**` sur leur propre ligne, et
+        /// renvoie les segments (titre, contenu). Le texte avant le 1er titre est étiqueté
+        /// "__intro__" — pratique pour récupérer un récit narratif qui précède une grille.
+        /// </summary>
+        private static List<(string title, string content)> SplitByBoldTitles(string md)
+        {
+            var segments = new List<(string, string)>();
+            var matches = _sectionTitleRx.Matches(md);
+            if (matches.Count == 0) { segments.Add(("__intro__", md.Trim())); return segments; }
+
+            if (matches[0].Index > 0)
+            {
+                var intro = md.Substring(0, matches[0].Index).Trim();
+                if (!string.IsNullOrEmpty(intro)) segments.Add(("__intro__", intro));
+            }
+
+            for (int i = 0; i < matches.Count; i++)
+            {
+                var m         = matches[i];
+                var titleText = m.Groups[1].Value.Trim().TrimEnd(':', ' ');
+                var start     = m.Index + m.Length;
+                var end       = (i + 1 < matches.Count) ? matches[i + 1].Index : md.Length;
+                segments.Add((titleText, md.Substring(start, end - start).Trim()));
+            }
+            return segments;
         }
 
         // ── Page 2 : Restitution 1-page parents ─────────────────────────────
@@ -398,26 +827,22 @@ namespace MedCompanion.Services.Restitutions
 
             var sb = new StringBuilder();
             sb.AppendLine("<div class='page rp-page'>");
-            sb.AppendLine($"  <div class='page-num'>Page {pageNumber}/9</div>");
 
-            // ── Bandeau supérieur ────────────────────────────────────────────
+            // ── Bandeau supérieur (Cartouche) ────────────────────────────────
             sb.AppendLine("  <div class='rp-header'>");
             sb.AppendLine("    <div class='rp-logo'>");
             if (!string.IsNullOrEmpty(_medcompanionHeartBase64))
                 sb.AppendLine($"      <img src='data:image/png;base64,{_medcompanionHeartBase64}' class='rp-logo-img' />");
-            sb.AppendLine("      <div class='rp-logo-text'><strong>MedCompanion</strong><br/><span>L'intelligence au service du soin</span></div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='rp-header-title-block'>");
+            sb.AppendLine("      <h1 class='rp-main-title'>RESTITUTION AUX PARENTS</h1>");
+            sb.AppendLine("      <p class='rp-subtitle'>Comprendre pour mieux accompagner votre enfant</p>");
             sb.AppendLine("    </div>");
             sb.AppendLine("    <div class='rp-badge'>");
             if (!string.IsNullOrEmpty(_iconPedopsychiatrieBase64))
                 sb.AppendLine($"      <img src='data:image/png;base64,{_iconPedopsychiatrieBase64}' class='rp-badge-icon' />");
-            sb.AppendLine("      <div><strong>PÉDOPSYCHIATRIE</strong><br/><span>Évaluation · Compréhension · Accompagnement</span></div>");
+            sb.AppendLine("      <div class='rp-badge-text'><strong>PÉDOPSYCHIATRIE</strong><br/><span>Évaluation · Compréhension · Accompagnement</span></div>");
             sb.AppendLine("    </div>");
-            sb.AppendLine("  </div>");
-
-            // ── Titre principal ──────────────────────────────────────────────
-            sb.AppendLine("  <div class='rp-title-block'>");
-            sb.AppendLine("    <h1 class='rp-main-title'>RESTITUTION AUX PARENTS</h1>");
-            sb.AppendLine("    <p class='rp-subtitle'>Comprendre pour mieux accompagner votre enfant</p>");
             sb.AppendLine("  </div>");
 
             // ── Carte identité patient ───────────────────────────────────────
@@ -456,6 +881,15 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("  <div class='rp-two-col'>");
             sb.Append(RenderRpSection("5", "NOTRE FEUILLE DE ROUTE", sections.FeuilleDeRoute, "rp-s5"));
             sb.Append(RenderRpSection("6", "SON ENVIRONNEMENT : POINTS CLÉS", sections.Environnement, "rp-s6"));
+            sb.AppendLine("  </div>");
+
+            // ── Pied de page ─────────────────────────────────────────────────
+            sb.AppendLine("  <div class='rp-footer'>");
+            sb.AppendLine("    <div class='rp-footer-line'></div>");
+            sb.AppendLine("    <div class='rp-footer-content'>");
+            sb.AppendLine("      <span>MedCompanion · Document Confidentiel</span>");
+            sb.AppendLine($"      <span>Page {pageNumber}/9</span>");
+            sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
 
             sb.AppendLine("</div>");
@@ -652,55 +1086,152 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 }
 
 /* ── Page 2 : Restitution parents ────────────────────────── */
-.rp-page { padding: 0; font-family: 'Segoe UI', Arial, sans-serif; font-size: 11px; color: #2C3E50; }
+.rp-page {
+  display: flex;
+  flex-direction: column;
+  height: 297mm;
+  min-height: 297mm;
+  max-height: 297mm;
+  padding: 0 0 55px 0;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 11px;
+  color: #2C3E50;
+  position: relative;
+}
 
-/* Bandeau haut */
-.rp-header { display:flex; justify-content:space-between; align-items:center;
-  background: linear-gradient(135deg,#1A3A6A 0%,#2D5FA6 100%);
-  color:white; padding:8px 18px; }
-.rp-logo { display:flex; align-items:center; gap:8px; }
-.rp-logo-img { width:30px; height:30px; }
-.rp-logo-text { font-size:12px; line-height:1.3; }
-.rp-logo-text strong { font-size:13px; }
-.rp-logo-text span { font-size:9px; opacity:0.8; }
-.rp-badge { display:flex; align-items:center; gap:8px; text-align:right; }
-.rp-badge-icon { width:26px; height:26px; }
-.rp-badge strong { font-size:10px; letter-spacing:0.5px; display:block; }
-.rp-badge span { font-size:8px; opacity:0.8; }
+/* Bandeau haut (Cartouche) */
+.rp-header {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(135deg, #3A86C8 0%, #2563EB 100%);
+  color: white;
+  padding: 10px 30px;
+  border-bottom: 3.5px solid #2DC5A2;
+  min-height: 60px;
+}
+.rp-logo { display: flex; align-items: center; }
+.rp-logo-img { width: 34px; height: 34px; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1)); }
 
-/* Titre principal */
-.rp-title-block { padding:7px 18px 5px 18px; border-bottom:2.5px solid #2DC5A2; background:white; }
-.rp-main-title { font-size:17px; font-weight:900; color:#1A3A6A; margin:0; letter-spacing:1px; }
-.rp-subtitle { font-size:9px; color:#7F8C8D; margin:2px 0 0 0; font-style:italic; }
+.rp-header-title-block {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  width: auto;
+  max-width: 50%;
+}
+.rp-main-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: white;
+  margin: 0;
+  letter-spacing: 1.5px;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.1);
+}
+.rp-subtitle {
+  font-size: 10px;
+  color: #E2E8F0;
+  margin: 2px 0 0 0;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+.rp-badge { display: flex; align-items: center; gap: 8px; text-align: right; }
+.rp-badge-icon { width: 26px; height: 26px; }
+.rp-badge-text { text-align: right; line-height: 1.3; }
+.rp-badge-text strong { font-size: 10px; letter-spacing: 0.5px; display: block; font-weight: 700; }
+.rp-badge-text span { font-size: 8px; opacity: 0.85; }
 
 /* Carte identité */
-.rp-identity { display:flex; align-items:center; gap:12px;
-  background:#F7F9FC; border:1px solid #DDE8F5;
-  margin:7px 14px 4px 14px; padding:9px 12px; border-radius:7px; }
-.rp-photo-wrap { flex-shrink:0; }
-.rp-photo-img { width:58px; height:58px; border-radius:50%; object-fit:cover; border:2.5px solid #2DC5A2; }
-.rp-photo-placeholder { width:58px; height:58px; border-radius:50%; background:#DDE8F5;
-  display:flex; align-items:center; justify-content:center; border:2px solid #B0C8E8; }
-.rp-photo-icon-img { width:34px; height:34px; opacity:0.65; }
-.rp-photo-empty { font-size:26px; }
-.rp-patient-name { font-size:15px; font-weight:800; color:#1A3A6A; margin-bottom:3px; }
-.rp-identity-row { font-size:10px; color:#5D6D7E; margin-bottom:2px; }
+.rp-identity {
+  display: flex;
+  align-items: center;
+  gap: 30px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  margin: 0 30px;
+  padding: 8px 24px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+  height: 76px;
+}
+.rp-photo-wrap {
+  flex-shrink: 0;
+  width: 60px;
+  height: 60px;
+}
+.rp-photo-img {
+  width: 60px;
+  height: 60px;
+  object-fit: cover;
+  border: 2px solid #2DC5A2;
+  border-radius: 8px;
+}
+.rp-photo-placeholder {
+  width: 60px;
+  height: 60px;
+  background: #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #CBD5E1;
+  border-radius: 8px;
+}
+.rp-photo-icon-img { width: 30px; height: 30px; opacity: 0.6; }
+.rp-photo-empty { font-size: 26px; }
+.rp-identity-details {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  flex-grow: 1;
+}
+.rp-patient-name { font-size: 14px; font-weight: 800; color: #1A3A6A; margin-bottom: 2px; }
+.rp-identity-row { font-size: 9.5px; color: #5D6D7E; margin-bottom: 1px; }
 
 /* Sections */
-.rp-section { margin:3px 10px; border-radius:6px; overflow:hidden; border:1px solid rgba(0,0,0,0.07); }
-.rp-two-col { display:flex; }
-.rp-two-col .rp-section { flex:1; margin:3px 6px; }
-.rp-two-col .rp-section:first-child { margin-left:10px; }
-.rp-two-col .rp-section:last-child  { margin-right:10px; }
-.rp-section-hdr { display:flex; align-items:center; gap:7px; padding:5px 11px; color:white; }
-.rp-section-hdr h2 { margin:0; font-size:9.5px; font-weight:800; letter-spacing:0.4px; text-transform:uppercase; }
-.rp-num { font-size:16px; font-weight:900; opacity:0.9; line-height:1; flex-shrink:0; }
-.rp-section-body { padding:7px 11px; font-size:10px; line-height:1.5; }
-.rp-section-body h1,.rp-section-body h2,.rp-section-body h3 { font-size:10px; margin:5px 0 3px 0; }
-.rp-section-body ul { margin:3px 0; padding-left:14px; }
-.rp-section-body li { margin-bottom:3px; }
-.rp-section-body p  { margin-bottom:5px; }
-.rp-placeholder { color:#95A5A6; font-style:italic; }
+.rp-section {
+  margin: 0 30px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(0,0,0,0.05);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+}
+.rp-two-col { display: flex; gap: 12px; margin: 0 30px; }
+.rp-two-col .rp-section { flex: 1; margin: 0; }
+.rp-section-hdr { display: flex; align-items: center; gap: 8px; padding: 4px 12px; color: white; }
+.rp-section-hdr h2 { margin: 0; font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+.rp-num { font-size: 13px; font-weight: 800; opacity: 0.85; line-height: 1; flex-shrink: 0; }
+.rp-section-body { padding: 8px 12px; font-size: 10px; line-height: 1.45; }
+.rp-section-body h1, .rp-section-body h2, .rp-section-body h3 { font-size: 10px; margin: 4px 0 2px 0; }
+.rp-section-body ul { margin: 2px 0; padding-left: 14px; }
+.rp-section-body li { margin-bottom: 2px; }
+.rp-section-body p { margin-bottom: 3px; }
+.rp-placeholder { color: #95A5A6; font-style: italic; }
+
+/* Pied de page */
+.rp-footer {
+  position: absolute;
+  bottom: 20px;
+  left: 30px;
+  right: 30px;
+}
+.rp-footer-line {
+  border-top: 1px solid #E2E8F0;
+  margin-bottom: 8px;
+}
+.rp-footer-content {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9px;
+  color: #94A3B8;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
 
 /* Couleurs par section */
 .rp-s1 .rp-section-hdr { background:#2E6DA4; }  .rp-s1 .rp-section-body { background:#EEF5FB; }
@@ -709,6 +1240,236 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .rp-s4 .rp-section-hdr { background:#6E2F8A; }  .rp-s4 .rp-section-body { background:#F5EEF8; }
 .rp-s5 .rp-section-hdr { background:#1A7840; }  .rp-s5 .rp-section-body { background:#EAFAF1; }
 .rp-s6 .rp-section-hdr { background:#0E7060; }  .rp-s6 .rp-section-body { background:#E8F8F5; }
+
+/* ── Page 3+4 : Patient & Contexte (voix clinique) ─────────── */
+/* Header sobre (pas de cartouche dégradé), texte noir, cartouches pastel. */
+.pc-page {
+  padding: 28px 40px 60px 40px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 11px;
+  color: #1A1A1A;
+  position: relative;
+  min-height: 297mm;
+}
+.pc-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 8px;
+}
+.pc-header-left { flex: 1; }
+.pc-header-left h1 {
+  font-size: 26px;
+  font-weight: 800;
+  color: #1A3A6A;
+  letter-spacing: 0.5px;
+  margin: 4px 0 2px 0;
+}
+.pc-section-tag {
+  display: inline-block;
+  background: #1A3A6A;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  letter-spacing: 0.5px;
+  margin-bottom: 4px;
+}
+.pc-subtitle {
+  font-size: 11px;
+  color: #555;
+  margin: 2px 0 0 0;
+  font-weight: 500;
+}
+.pc-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  text-align: right;
+}
+.pc-logo-img { width: 32px; height: 32px; }
+.pc-brand { display: flex; flex-direction: column; line-height: 1.1; }
+.pc-brand strong { font-size: 13px; color: #1A3A6A; font-weight: 800; }
+.pc-brand span    { font-size: 7.5px; color: #00A896; letter-spacing: 0.6px; text-transform: uppercase; }
+.pc-page-num {
+  font-size: 9.5px;
+  color: #94A3B8;
+  letter-spacing: 0.8px;
+  margin-left: 16px;
+  font-weight: 600;
+}
+.pc-header-rule {
+  border: none;
+  border-top: 2px solid #00A896;
+  margin: 0 0 16px 0;
+}
+
+/* Carte de section principale (pastel) */
+.pc-card {
+  border-radius: 10px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(0,0,0,0.05);
+  overflow: hidden;
+}
+.pc-card-hdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  color: white;
+}
+.pc-card-hdr h2 {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  margin: 0;
+  text-transform: uppercase;
+}
+.pc-card-num {
+  background: rgba(255,255,255,0.25);
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+.pc-card-body {
+  padding: 10px 14px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: #1A1A1A;
+}
+.pc-card-body p { margin-bottom: 4px; }
+.pc-card-body ul { margin: 4px 0; padding-left: 18px; }
+.pc-card-body li { margin-bottom: 2px; }
+.pc-narrative p { font-size: 11px; line-height: 1.55; }
+
+/* Cartouche Identification : grille méta-données */
+.pc-ident-narrative {
+  font-size: 11px;
+  line-height: 1.55;
+  margin-bottom: 10px;
+}
+.pc-ident-meta {
+  border-top: 1px dashed rgba(0,0,0,0.08);
+  padding-top: 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 24px;
+}
+.pc-meta-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.pc-meta-label {
+  font-weight: 700;
+  color: #555;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  min-width: 140px;
+}
+.pc-meta-value {
+  font-size: 10.5px;
+  color: #1A1A1A;
+}
+
+/* Grilles colonnes pour Contexte familial / Antécédents / Situation */
+.pc-four-col, .pc-three-col, .pc-two-col {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+.pc-four-col  > * { flex: 1; min-width: 0; }
+.pc-three-col > * { flex: 1; min-width: 0; }
+.pc-two-col   > * { flex: 1; min-width: 0; }
+
+/* Mini-cartes (4 colonnes du Contexte familial) */
+.pc-mini-card {
+  background: white;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 9.5px;
+}
+.pc-mini-card h3 {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #1A3A6A;
+  margin: 0 0 4px 0;
+  letter-spacing: 0.4px;
+}
+.pc-mini-body ul { margin: 2px 0; padding-left: 14px; }
+.pc-mini-body li { margin-bottom: 1px; }
+.pc-mini-body p { margin-bottom: 2px; }
+
+/* Sous-blocs (Antécédents / Situation) */
+.pc-subblock {
+  background: white;
+  border: 1px solid rgba(0,0,0,0.06);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 9.5px;
+}
+.pc-subblock h3 {
+  font-size: 9.5px;
+  font-weight: 800;
+  color: #1A3A6A;
+  margin: 0 0 5px 0;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.pc-subblock-body ul { margin: 2px 0; padding-left: 14px; }
+.pc-subblock-body li { margin-bottom: 2px; }
+.pc-subblock-body p { margin-bottom: 3px; }
+.pc-subblock-body strong { color: #1A3A6A; }
+
+/* Footer info */
+.pc-footer {
+  margin-top: 14px;
+  border-top: 1px solid #E2E8F0;
+  padding-top: 8px;
+  font-size: 9.5px;
+  color: #555;
+}
+.pc-footer-info {
+  text-align: center;
+  line-height: 1.5;
+  font-style: italic;
+}
+.pc-info-icon {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #00A896;
+  color: white;
+  font-style: normal;
+  font-weight: 800;
+  font-size: 9px;
+  line-height: 14px;
+  text-align: center;
+  margin-right: 6px;
+}
+.pc-placeholder { color: #95A5A6; font-style: italic; }
+
+/* Palette pastel par cartouche principale (header en teinte pleine, body en pastel) */
+.pc-c-ident     .pc-card-hdr { background: #00A896; }  .pc-c-ident     .pc-card-body { background: #EAF4F6; }
+.pc-c-motif     .pc-card-hdr { background: #6E2F8A; }  .pc-c-motif     .pc-card-body { background: #F5EEF8; }
+.pc-c-famille   .pc-card-hdr { background: #1A7840; }  .pc-c-famille   .pc-card-body { background: #EAFAF1; }
+.pc-c-atcd      .pc-card-hdr { background: #2E6DA4; }  .pc-c-atcd      .pc-card-body { background: #EEF5FB; }
+.pc-c-situation .pc-card-hdr { background: #C87800; }  .pc-c-situation .pc-card-body { background: #FEF3E7; }
+
+/* Petits accents teal sur les titres des mini-cartes pour rappeler le filet du header */
+.pc-mc-pere    h3,
+.pc-mc-mere    h3,
+.pc-mc-fratrie h3 { color: #1A7840; }
+.pc-mc-points  h3 { color: #00A896; }
 ";
     }
 }
