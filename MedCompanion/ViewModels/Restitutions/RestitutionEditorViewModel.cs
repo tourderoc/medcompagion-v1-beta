@@ -214,7 +214,7 @@ namespace MedCompanion.ViewModels.Restitutions
                         break;
 
                     case "patient_contexte_familial":
-                        await RunProgressiveAsync(blocVm, "Contexte familial", 5,
+                        await RunProgressiveAsync(blocVm, "Contexte familial", 6,
                             (cb, c) => _suggesterService.SuggestContexteFamilialProgressiveAsync(_currentReading!, cb, c), ct);
                         break;
 

@@ -493,13 +493,19 @@ namespace MedCompanion.Services.Restitutions
             else
                 sb.AppendLine("      <p class='pc-placeholder'><em>Récit familial à compléter — cliquez sur ✨ Suggérer.</em></p>");
 
-            // 4 colonnes Père / Mère / Fratrie / Points à retenir
+            // 4 colonnes Père / Mère / Fratrie / Autres figures
             sb.AppendLine("      <div class='pc-four-col'>");
             sb.Append(BuildPcMiniCard("PÈRE",              cf.Pere,           "pc-mc-pere"));
             sb.Append(BuildPcMiniCard("MÈRE",              cf.Mere,           "pc-mc-mere"));
             sb.Append(BuildPcMiniCard("FRATRIE",           cf.Fratrie,        "pc-mc-fratrie"));
-            sb.Append(BuildPcMiniCard("POINTS À RETENIR",  cf.PointsARetenir, "pc-mc-points"));
+            sb.Append(BuildPcMiniCard("AUTRES FIGURES",    cf.AutresFigures,  "pc-mc-autres"));
             sb.AppendLine("      </div>");
+
+            // Bandeau pleine largeur : Points à retenir
+            var pointsBody = string.IsNullOrWhiteSpace(cf.PointsARetenir)
+                ? "<em>—</em>"
+                : MarkdownToHtmlLite(cf.PointsARetenir);
+            sb.AppendLine($"      <div class='pc-points-banner'><h3>POINTS À RETENIR</h3><div class='pc-points-body'>{pointsBody}</div></div>");
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
 
@@ -704,6 +710,7 @@ namespace MedCompanion.Services.Restitutions
             public string Pere           = "";
             public string Mere           = "";
             public string Fratrie        = "";
+            public string AutresFigures  = "";
             public string PointsARetenir = "";
         }
 
@@ -720,6 +727,7 @@ namespace MedCompanion.Services.Restitutions
                 else if (t == "père" || t == "pere")                                 result.Pere = content;
                 else if (t == "mère" || t == "mere")                                 result.Mere = content;
                 else if (t.Contains("fratrie"))                                       result.Fratrie = content;
+                else if (t.Contains("autres") || t.Contains("figure") || t.Contains("attachement")) result.AutresFigures = content;
                 else if (t.Contains("retenir") || t.Contains("points"))               result.PointsARetenir = content;
             }
             return result;
@@ -1469,7 +1477,25 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .pc-mc-pere    h3,
 .pc-mc-mere    h3,
 .pc-mc-fratrie h3 { color: #1A7840; }
-.pc-mc-points  h3 { color: #00A896; }
+.pc-mc-autres  h3 { color: #00A896; }
+
+/* Bandeau Points à retenir — pleine largeur sous les 4 colonnes */
+.pc-points-banner {
+  margin-top: 10px;
+  background: #EAF7F2;
+  border-left: 4px solid #00A896;
+  border-radius: 4px;
+  padding: 8px 12px;
+}
+.pc-points-banner h3 {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  color: #00A896;
+  margin: 0 0 4px 0;
+}
+.pc-points-body { font-size: 11px; line-height: 1.5; }
 ";
     }
 }

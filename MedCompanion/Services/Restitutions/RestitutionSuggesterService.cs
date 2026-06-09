@@ -174,10 +174,10 @@ namespace MedCompanion.Services.Restitutions
         // ── Génération progressive Contexte familial (1 narrative + 4 cards) ─
 
         /// <summary>
-        /// Génère le bloc « Contexte familial » en 5 appels LLM séquentiels (récit narratif +
-        /// 4 cartes Père / Mère / Fratrie / Points à retenir). Chaque appel reçoit le dossier
-        /// complet, les marqueurs `**Titre**` sont concaténés au fil de l'eau pour permettre
-        /// au rendu HTML de découper les sections.
+        /// Génère le bloc « Contexte familial » en 6 appels LLM séquentiels (récit narratif +
+        /// 5 cartes : Père / Mère / Fratrie / Autres figures / Points à retenir). Chaque appel
+        /// reçoit le dossier complet, les marqueurs `**Titre**` sont concaténés au fil de l'eau
+        /// pour permettre au rendu HTML de découper les sections.
         /// </summary>
         public async Task SuggestContexteFamilialProgressiveAsync(
             DossierReading reading,
@@ -187,7 +187,7 @@ namespace MedCompanion.Services.Restitutions
             var context = reading.RenderForLlm();
             if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
 
-            var blocCf = new RestitutionBloc("patient_contexte_familial", "Contexte familial", 5, "clinique");
+            var blocCf = new RestitutionBloc("patient_contexte_familial", "Contexte familial", 6, "clinique");
             var systemPrompt = BuildSystemPrompt(blocCf);
 
             var subsections = new (string Title, string Instruction)[]
@@ -214,6 +214,13 @@ namespace MedCompanion.Services.Restitutions
                  "Rédige UNIQUEMENT la liste de la fratrie sous forme de puces, une par enfant : " +
                  "prénom, âge, lien (même père et mère / côté mère / côté père). " +
                  "Format : `- Prénom, N ans (lien).` Si pas de fratrie, écrire `- Enfant unique.` " +
+                 "Commence directement par la liste."),
+
+                ("**Autres figures**",
+                 "Rédige UNIQUEMENT la liste des autres figures d'attachement significatives " +
+                 "(grands-parents, oncle/tante, éducateur référent, assistante maternelle, famille d'accueil, tuteur légal…). " +
+                 "Format : `- Figure (prénom si connu) : rôle dans la vie de l'enfant.` " +
+                 "Si aucune figure particulière n'est mentionnée, écrire `- Aucune figure tierce identifiée.` " +
                  "Commence directement par la liste."),
 
                 ("**Points à retenir**",
@@ -476,10 +483,10 @@ Si une donnée manque dans le dossier, écris « Non renseigné(e) » à sa plac
 
             // ── Bloc 5 : Contexte familial ──────────────────────────────────
             // Narratif court (composition foyer, climat, événements de vie) + 4 colonnes
-            // structurées (Père / Mère / Fratrie / Points à retenir) rendues en HTML via parseur.
-            // Le LLM est appelé en mode progressif : 1 narrative + 4 cards (cf. SuggestContexteFamilialProgressiveAsync).
+            // (Père / Mère / Fratrie / Autres figures) + bandeau Points à retenir.
+            // Le LLM est appelé en mode progressif : 1 narrative + 5 cards (cf. SuggestContexteFamilialProgressiveAsync).
             "patient_contexte_familial"
-                => @"1ère consultation + Synthèse Globale Med. Produis un récit narratif court SUIVI de 4 cartes structurées.
+                => @"1ère consultation + Synthèse Globale Med. Produis un récit narratif court SUIVI de 5 cartes structurées.
 
 FORMAT STRICT (les marqueurs `**Titre**` permettent au rendu HTML de découper la section) :
 
@@ -500,9 +507,12 @@ FORMAT STRICT (les marqueurs `**Titre**` permettent au rendu HTML de découper l
 **Fratrie** :
 - Pour chaque frère/sœur (ou demi) : Prénom, âge, lien (même père et mère, côté mère, côté père).
 
-**Points à retenir** : 2-4 lignes pointant les éléments du contexte familial susceptibles d'éclairer le tableau clinique (insécurité affective, conflit de loyauté, parent absent, parentification…). Bienveillant, sans jugement.
+**Autres figures** :
+- Grands-parents, oncle/tante, éducateur référent, assistante maternelle, famille d'accueil, tuteur légal… tout adulte significatif autre que les parents. Format : `- Figure (prénom si connu) : rôle bref.`
 
-Pour chaque carte, si une info manque, écris « Non renseigné » au lieu d'inventer. N'écris RIEN d'autre que ces 5 sections labellisées.",
+**Points à retenir** : 2-4 lignes pointant les éléments du contexte familial susceptibles d'éclairer le tableau clinique (insécurité affective, conflit de loyauté, parent absent, parentification…). Bienveillant, sans jugement. Pas de listes.
+
+Pour chaque carte, si une info manque, écris « Non renseigné » au lieu d'inventer. N'écris RIEN d'autre que ces 6 sections labellisées.",
 
             // ── Bloc 6 : Antécédents ────────────────────────────────────────
             // Bloc composite : 4 sous-blocs cliniques (médicaux, développementaux, familiaux,
