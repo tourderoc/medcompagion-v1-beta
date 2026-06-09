@@ -208,6 +208,20 @@ namespace MedCompanion.ViewModels.Restitutions
                 // limites de tokens. On les achemine vers la méthode progressive idoine.
                 switch (blocVm.Model.Key)
                 {
+                    case "couverture":
+                    {
+                        var content = RestitutionSuggesterService.BuildCouvertureFromData(_currentReading!);
+                        if (!string.IsNullOrWhiteSpace(content))
+                        {
+                            blocVm.Contenu = content;
+                            await SaveAsync();
+                            StatusMessage = "✓ Couverture renseignée depuis le dossier.";
+                        }
+                        else
+                            StatusMessage = "⚠ Couverture : données insuffisantes — remplissez manuellement.";
+                        break;
+                    }
+
                     case "restitution_1page":
                         await RunProgressiveAsync(blocVm, "Restitution parents", 6,
                             (cb, c) => _suggesterService.SuggestRestitution1PageProgressiveAsync(_currentReading!, cb, c), ct);
@@ -321,18 +335,31 @@ namespace MedCompanion.ViewModels.Restitutions
                         // toutes présentes et fiables (chacune dans sa propre fenêtre de tokens).
                         switch (blocVm.Model.Key)
                         {
+                            case "couverture":
+                            {
+                                var content = RestitutionSuggesterService.BuildCouvertureFromData(_currentReading!);
+                                if (!string.IsNullOrWhiteSpace(content))
+                                {
+                                    blocVm.Contenu = content;
+                                    await SaveAsync();
+                                }
+                                else
+                                    StatusMessage = "⚠ Couverture : données insuffisantes — remplissez manuellement.";
+                                break;
+                            }
+
                             case "restitution_1page":
                                 await RunProgressiveAsync(blocVm, "Restitution parents", 6,
                                     (cb, c) => _suggesterService.SuggestRestitution1PageProgressiveAsync(_currentReading, cb, c), ct);
                                 break;
 
                             case "patient_contexte_familial":
-                                await RunProgressiveAsync(blocVm, "Contexte familial", 5,
+                                await RunProgressiveAsync(blocVm, "Contexte familial", 6,
                                     (cb, c) => _suggesterService.SuggestContexteFamilialProgressiveAsync(_currentReading, cb, c), ct);
                                 break;
 
                             case "patient_antecedents":
-                                await RunProgressiveAsync(blocVm, "Antécédents", 4,
+                                await RunProgressiveAsync(blocVm, "Antécédents", 6,
                                     (cb, c) => _suggesterService.SuggestAntecedentsProgressiveAsync(_currentReading, cb, c), ct);
                                 break;
 

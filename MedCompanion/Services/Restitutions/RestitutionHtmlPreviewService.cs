@@ -241,11 +241,11 @@ namespace MedCompanion.Services.Restitutions
                 using var doc = JsonDocument.Parse(raw);
                 var root = doc.RootElement;
 
-                if (root.TryGetProperty("Nom", out var nom))       result.Nom    = nom.GetString() ?? "";
-                if (root.TryGetProperty("Prenom", out var prenom)) result.Prenom = prenom.GetString() ?? "";
-                if (root.TryGetProperty("Dob", out var dob))       result.Dob    = dob.GetString() ?? "";
-                if (root.TryGetProperty("Ecole", out var ecole))   result.Ecole  = ecole.GetString() ?? "";
-                if (root.TryGetProperty("Classe", out var classe)) result.Classe = classe.GetString() ?? "";
+                if (root.TryGetProperty("nom", out var nom))       result.Nom    = nom.GetString() ?? "";
+                if (root.TryGetProperty("prenom", out var prenom)) result.Prenom = prenom.GetString() ?? "";
+                if (root.TryGetProperty("dob", out var dob))       result.Dob    = dob.GetString() ?? "";
+                if (root.TryGetProperty("ecole", out var ecole))   result.Ecole  = ecole.GetString() ?? "";
+                if (root.TryGetProperty("classe", out var classe)) result.Classe = classe.GetString() ?? "";
             }
             catch { /* ignore parse errors */ }
             return result;

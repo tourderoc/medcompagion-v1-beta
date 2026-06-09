@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using MedCompanion.Models.Restitutions;
@@ -598,5 +602,133 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
 
             _   => "Pioche dans toutes les sources du dossier les éléments les plus pertinents pour ce bloc."
         };
+
+        // ── Bloc couverture : construction déterministe sans LLM ─────────────
+
+        /// <summary>
+        /// Construit le bloc "couverture" directement depuis les données structurées
+        /// du DossierReading. Déterministe — jamais de placeholders [xxx].
+        /// </summary>
+        public static string BuildCouvertureFromData(DossierReading reading)
+        {
+            // 1. Identité depuis patient.json
+            string nomComplet = "", dobFormatted = "", age = "", ecole = "", classe = "";
+            try
+            {
+                using var doc = JsonDocument.Parse(reading.PatientJson);
+                var r = doc.RootElement;
+
+                string? Str(string key)
+                {
+                    if (r.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String)
+                        return el.GetString()?.Trim();
+                    return null;
+                }
+
+                var prenom = Str("prenom") ?? "";
+                var nom    = Str("nom")    ?? "";
+                nomComplet   = Str("nomComplet") ?? $"{prenom} {nom}".Trim();
+                dobFormatted = Str("dobFormatted") ?? CovFormatDob(Str("dob") ?? "");
+
+                if (r.TryGetProperty("age", out var ageProp) && ageProp.ValueKind == JsonValueKind.Number)
+                    age = $"{ageProp.GetInt32()} ans";
+                else if (Str("dob") is string dob2 && !string.IsNullOrEmpty(dob2))
+                    age = CovComputeAge(dob2);
+
+                ecole  = Str("ecole")  ?? "";
+                classe = Str("classe") ?? "";
+            }
+            catch { /* si JSON invalide, on continue avec les valeurs vides */ }
+
+            // 2. École / classe / motif / année depuis la 1ère consultation
+            var note = reading.PremiereConsultation ?? "";
+            if (string.IsNullOrEmpty(ecole))  ecole  = CovExtractField(note, "école", "ecole", "établissement", "etablissement") ?? "";
+            if (string.IsNullOrEmpty(classe)) classe = CovExtractField(note, "classe", "niveau scolaire", "niveau") ?? "";
+
+            var motif    = CovExtractField(note, "motif de consultation", "motif") ?? "";
+            var anneeSco = CovExtractAnneeScolaire(note);
+
+            // 3. Dates d'évaluation
+            var dates = CovBuildDatesEvaluation(reading.Evaluations);
+
+            // 4. Assemblage markdown (même format qu'attendu par ParseCoverFieldsFromBloc)
+            var sb = new StringBuilder();
+            sb.AppendLine($"**Nom et prénom** : {CovOr(nomComplet, "Non renseigné")}");
+            sb.AppendLine($"**Date de naissance** : {CovOr(dobFormatted, "Non renseignée")}");
+            sb.AppendLine($"**Âge** : {CovOr(age, "Non renseigné")}");
+            sb.AppendLine($"**Établissement** : {CovOr(ecole, "Non renseigné")}");
+            sb.AppendLine($"**Classe** : {CovOr(classe, "Non renseignée")}");
+            sb.AppendLine($"**Année scolaire** : {CovOr(anneeSco, "2025-2026")}");
+            sb.AppendLine($"**Motif de consultation** : {CovOr(motif, "Non renseigné")}");
+            sb.AppendLine($"**Dates d'évaluation** : {CovOr(dates, "Non renseignées")}");
+            return sb.ToString().Trim();
+        }
+
+        private static string? CovExtractField(string note, params string[] labels)
+        {
+            foreach (var lbl in labels)
+            {
+                // Match "**Label** : value" ou "Label : value" (insensible à la casse)
+                var m = Regex.Match(note,
+                    $@"\*{{0,2}}{Regex.Escape(lbl)}\*{{0,2}}\s*:\s*(.+?)(?:\r?\n|$)",
+                    RegexOptions.IgnoreCase | RegexOptions.Multiline);
+                if (m.Success)
+                {
+                    var v = m.Groups[1].Value.Trim();
+                    if (!string.IsNullOrWhiteSpace(v)) return v;
+                }
+            }
+            return null;
+        }
+
+        private static string CovExtractAnneeScolaire(string note)
+        {
+            var m = Regex.Match(note, @"\b(20\d\d)[/\-](20\d\d)\b");
+            return m.Success ? $"{m.Groups[1].Value}-{m.Groups[2].Value}" : "";
+        }
+
+        private static string CovBuildDatesEvaluation(List<EvaluationEntry> evaluations)
+        {
+            if (evaluations.Count == 0) return "";
+            var eval = evaluations[0]; // plus récente en premier
+
+            // Chercher session_dates: [2026-05-15, 2026-05-21] dans le YAML
+            var sdMatch = Regex.Match(eval.Content ?? "", @"session_dates\s*:\s*\[([^\]]+)\]");
+            if (sdMatch.Success)
+            {
+                var parsed = sdMatch.Groups[1].Value
+                    .Split(',')
+                    .Select(p => p.Trim().Trim('"', '\'', ' '))
+                    .Where(p => DateTime.TryParse(p, System.Globalization.CultureInfo.InvariantCulture,
+                                                  System.Globalization.DateTimeStyles.RoundtripKind, out _))
+                    .Select(p => DateTime.Parse(p, System.Globalization.CultureInfo.InvariantCulture,
+                                                System.Globalization.DateTimeStyles.RoundtripKind))
+                    .OrderBy(d => d)
+                    .ToList();
+                if (parsed.Count == 1) return parsed[0].ToString("dd/MM/yyyy");
+                if (parsed.Count <= 5) return string.Join(" – ", parsed.Select(d => d.ToString("dd/MM/yyyy")));
+                return $"du {parsed.First():dd/MM/yyyy} au {parsed.Last():dd/MM/yyyy} ({parsed.Count} séances)";
+            }
+
+            return eval.DateCloture.HasValue ? eval.DateCloture.Value.ToString("dd/MM/yyyy") : "";
+        }
+
+        private static string CovFormatDob(string dob)
+        {
+            if (DateTime.TryParse(dob, out var d)) return d.ToString("dd/MM/yyyy");
+            return dob;
+        }
+
+        private static string CovComputeAge(string dob)
+        {
+            if (!DateTime.TryParse(dob, out var d)) return "";
+            var today = DateTime.Today;
+            var age = today.Year - d.Year;
+            if (today < d.AddYears(age)) age--;
+            return age >= 0 ? $"{age} ans" : "";
+        }
+
+        private static string CovOr(string? val, string fallback)
+            => string.IsNullOrWhiteSpace(val) ? fallback : val!;
     }
 }
