@@ -3063,68 +3063,46 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                     return;
                 }
 
-                // Extraction robuste : strip markdown fences + comptage de profondeur sur les
-                // accolades en ignorant ce qui est dans les chaînes. Tolère les LLM bavards qui
-                // mettent du texte autour du JSON, ou des `}` parasites dans les explications.
-                static string ExtractBalancedJson(string raw)
+                // Extraction par balises ===SECTION=== : insensible aux caractères spéciaux
+                // dans le texte généré (pas de JSON à parser → plus d'erreurs de guillemets).
+                static string ExtractSection(string text, string startTag, string endTag)
                 {
-                    raw = System.Text.RegularExpressions.Regex.Replace(
-                              raw, @"```(?:json)?\s*",
-                              "", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
-                          .Replace("```", "");
-                    int start = raw.IndexOf('{');
-                    if (start < 0) return "";
-                    int depth = 0; bool inStr = false; bool esc = false;
-                    for (int i = start; i < raw.Length; i++)
-                    {
-                        var c = raw[i];
-                        if (esc) { esc = false; continue; }
-                        if (c == '\\') { esc = true; continue; }
-                        if (c == '"') { inStr = !inStr; continue; }
-                        if (inStr) continue;
-                        if (c == '{') depth++;
-                        else if (c == '}') { depth--; if (depth == 0) return raw.Substring(start, i - start + 1); }
-                    }
-                    return "";
+                    var s = text.IndexOf(startTag, StringComparison.Ordinal);
+                    if (s < 0) return "";
+                    s += startTag.Length;
+                    var e = text.IndexOf(endTag, s, StringComparison.Ordinal);
+                    if (e < 0) e = text.Length;
+                    return text.Substring(s, e - s).Trim();
                 }
 
-                var jsonExtracted = ExtractBalancedJson(jsonRaw);
-                if (string.IsNullOrEmpty(jsonExtracted))
+                static string ExtractBullets(string section)
                 {
-                    RestitutionStatusMessage = "❌ Le LLM n'a pas produit de JSON exploitable. Réessaie.";
-                    return;
-                }
-
-                System.Text.Json.JsonDocument doc;
-                try { doc = System.Text.Json.JsonDocument.Parse(jsonExtracted); }
-                catch
-                {
-                    RestitutionStatusMessage = "❌ JSON LLM mal formé. Réessaie.";
-                    return;
-                }
-
-                string GetStr(string key) =>
-                    doc.RootElement.TryGetProperty(key, out var v) ? v.GetString() ?? "" : "";
-
-                string GetArray(string key)
-                {
-                    if (!doc.RootElement.TryGetProperty(key, out var arr) ||
-                        arr.ValueKind != System.Text.Json.JsonValueKind.Array)
+                    if (string.IsNullOrWhiteSpace(section))
                         return "Aucun élément identifié lors de cette première rencontre.";
-                    var items = arr.EnumerateArray()
-                                   .Select(x => x.GetString()?.Trim())
-                                   .Where(s => !string.IsNullOrWhiteSpace(s))
-                                   .ToList();
+                    var items = section
+                        .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                        .Select(l => l.TrimStart('-', '*', '•', ' ').Trim())
+                        .Where(l => !string.IsNullOrWhiteSpace(l))
+                        .ToList();
                     return items.Count == 0
                         ? "Aucun élément identifié lors de cette première rencontre."
                         : string.Join("\n", items);
                 }
 
+                var raw = jsonRaw;
+
                 // Remplir les champs éditables
-                ReviewIntro   = GetStr("intro");
-                ReviewMotif   = GetStr("motif");
-                ReviewForces  = GetArray("forces");
-                ReviewDefis   = GetArray("defis");
+                ReviewIntro   = ExtractSection(raw, "===INTRO===",   "===MOTIF===");
+                ReviewMotif   = ExtractSection(raw, "===MOTIF===",   "===FORCES===");
+                ReviewForces  = ExtractBullets(ExtractSection(raw, "===FORCES===", "===DEFIS==="));
+                ReviewDefis   = ExtractBullets(ExtractSection(raw, "===DEFIS===",  "===FIN==="));
+
+                // Fallback si le LLM n'a pas respecté les balises
+                if (string.IsNullOrWhiteSpace(ReviewIntro) && string.IsNullOrWhiteSpace(ReviewMotif))
+                {
+                    RestitutionStatusMessage = "❌ Le LLM n'a pas respecté le format attendu. Réessaie.";
+                    return;
+                }
 
                 // Basculer en mode révision
                 IsRestitutionReviewMode = true;
@@ -3320,7 +3298,7 @@ date_validation: ""{DateTime.Now:O}""
 
             var hasDonnees = donnees.Length > 0;
 
-            return $@"Tu es un pédopsychiatre. Génère UNIQUEMENT un objet JSON pour le document de restitution concernant {patientName} (consultation du {dateStr}).
+            return $@"Tu es un pédopsychiatre. Rédige le document de restitution pour {patientName} (consultation du {dateStr}).
 
 TON ET SALUTATION : {tonInstruction}
 
@@ -3329,16 +3307,21 @@ TON ET SALUTATION : {tonInstruction}
 RÈGLES ABSOLUES :
 - Aucun diagnostic, étiquette pathologique ou terme médical incompréhensible.
 - Si les données sont insuffisantes : écris exactement ""Aucun élément identifié lors de cette première rencontre."" — ne jamais inventer.
-- ""forces"" et ""defis"" : 2 à 3 éléments maximum, phrases courtes.
+- FORCES et DEFIS : 2 à 3 éléments maximum, phrases courtes (débuter chaque élément par un tiret -).
 - L'intro cite la date {dateStr} et respecte strictement le ton indiqué.
 
-RETOURNE UNIQUEMENT ce JSON (sans markdown, sans commentaire) :
-{{
-  ""intro"": ""[Salutation adaptée + 2 phrases — contexte du {dateStr} et objectif bienveillant]"",
-  ""motif"": ""[Résumé du motif en 2-3 lignes accessibles]"",
-  ""forces"": [""[Point fort 1]"", ""[Point fort 2]"", ""[Point fort 3 si données suffisantes]""],
-  ""defis"": [""[Défi 1]"", ""[Défi 2]"", ""[Défi 3 si données suffisantes]""]
-}}";
+RETOURNE UNIQUEMENT ce texte structuré (copie exactement les balises ===) :
+===INTRO===
+[Salutation adaptée + 2 phrases — contexte du {dateStr} et objectif bienveillant]
+===MOTIF===
+[Résumé du motif en 2-3 lignes accessibles]
+===FORCES===
+- [Point fort 1]
+- [Point fort 2]
+===DEFIS===
+- [Défi 1]
+- [Défi 2]
+===FIN===";
         }
 
         private void OpenRestitutionFile()
