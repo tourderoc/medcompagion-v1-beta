@@ -14,6 +14,7 @@ using MedCompanion.Services.LLM;
 public class MockLLM : ILLMService
 {
     public string LastPrompt { get; set; }
+    public string ResultToReturn { get; set; } = "Texte généré par le LLM.";
     
     public bool IsConfigured() => true;
     public string GetModelName() => "MockLLM";
@@ -27,7 +28,7 @@ public class MockLLM : ILLMService
     public Task<(bool success, string result, string? error)> ChatAsync(string systemPrompt, List<(string role, string content)> messages, int maxTokens = 1500, CancellationToken cancellationToken = default, string? forceModel = null)
     {
         LastPrompt = $"=== System Prompt ===\n{systemPrompt}\n\n=== User Prompt ===\n{messages[0].content}";
-        return Task.FromResult((true, "Texte généré par le LLM.", (string?)null));
+        return Task.FromResult((true, ResultToReturn, (string?)null));
     }
 
     public Task<(bool success, string fullResponse, string? error)> ChatStreamAsync(string systemPrompt, List<(string role, string content)> messages, Action<string> onChunkReceived, int maxTokens = 1500, CancellationToken cancellationToken = default) => Task.FromResult((true, "Streamed", (string?)null));
@@ -57,18 +58,73 @@ class Program
         // Instantiate Suggester Service
         var mockLLM = new MockLLM();
         var syntheseService = new SyntheseGlobaleService(pathService);
-        var suggester = new RestitutionSuggesterService(mockLLM, syntheseService, ptService, null!);
+        var readerService = new DossierReaderService(pathService, syntheseService, ptService);
+        var suggester = new RestitutionSuggesterService(mockLLM, readerService, syntheseService, ptService);
         
         var bloc = new RestitutionBloc("projet_therapeutique", "Projet Thérapeutique Global", 7, "clinique");
         
-        Console.WriteLine("Generating suggestion for bloc Projet Thérapeutique...");
-        var result = await suggester.PrefillBlocAsync(patientName, bloc);
-        
-        Console.WriteLine("\n[Last Prompt Sent to LLM]\n");
+        var reading = await readerService.ReadAsync(patientName);
+        Console.WriteLine("\nGenerating progressive suggestion for Contexte Familial...");
+        await suggester.SuggestContexteFamilialProgressiveAsync(reading, _ => {});
+        Console.WriteLine("\n[Last Progressive Prompt Sent to LLM]\n");
         Console.WriteLine(mockLLM.LastPrompt);
-        
-        Console.WriteLine("\n[Result returned]\n");
-        Console.WriteLine(result.Suggestion);
+
+        // Test PatientContextAuditService
+        Console.WriteLine("\nTesting PatientContextAuditService...");
+        var auditService = new PatientContextAuditService();
+        mockLLM.ResultToReturn = @"{
+            ""ecole"": ""Ecole Primaire Centre"",
+            ""classe"": ""CE2"",
+            ""mereNom"": ""Alice"",
+            ""mereAge"": ""39 ans"",
+            ""mereJob"": ""Infirmière"",
+            ""pereNom"": ""Bob"",
+            ""pereAge"": ""41 ans"",
+            ""pereJob"": ""Ingénieur"",
+            ""fratrie"": ""un grand frère de 10 ans"",
+            ""marcheAge"": ""12 mois"",
+            ""langageAcq"": ""normal"",
+            ""propreteAcq"": ""acquise""
+        }";
+        var details = await auditService.ExtractContextAsync(mockLLM, "Le patient va à l'école primaire centre en CE2. Sa mère Alice, 39 ans, est infirmière et son père Bob, 41 ans, est ingénieur. Marche acquise à 12 mois.");
+        if (details.Ecole == "Ecole Primaire Centre" && 
+            details.Classe == "CE2" &&
+            details.MereNom == "Alice" &&
+            details.MereAge == "39 ans" &&
+            details.MereJob == "Infirmière" &&
+            details.PereNom == "Bob" &&
+            details.PereAge == "41 ans" &&
+            details.PereJob == "Ingénieur" &&
+            details.Fratrie == "un grand frère de 10 ans" &&
+            details.MarcheAge == "12 mois" &&
+            details.LangageAcq == "normal" &&
+            details.PropreteAcq == "acquise")
+        {
+            Console.WriteLine("PatientContextAuditService Test Passed.");
+        }
+        else
+        {
+            Console.Error.WriteLine("PatientContextAuditService Test Failed: extracted details do not match expectation!");
+            Environment.Exit(1);
+        }
+
+        // Test with Markdown blocks around JSON
+        mockLLM.ResultToReturn = @"```json
+{
+    ""ecole"": ""Ecole Primaire Centre"",
+    ""classe"": ""CE2""
+}
+```";
+        var detailsMd = await auditService.ExtractContextAsync(mockLLM, "...");
+        if (detailsMd.Ecole == "Ecole Primaire Centre" && detailsMd.Classe == "CE2")
+        {
+            Console.WriteLine("PatientContextAuditService Markdown JSON Test Passed.");
+        }
+        else
+        {
+            Console.Error.WriteLine("PatientContextAuditService Markdown JSON Test Failed!");
+            Environment.Exit(1);
+        }
 
         // Cleanup
         if (Directory.Exists(dir)) Directory.Delete(dir, true);

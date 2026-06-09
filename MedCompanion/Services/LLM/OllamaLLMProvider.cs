@@ -200,6 +200,7 @@ namespace MedCompanion.Services.LLM
                         think = thinkMode,
                         options = new
                         {
+                            num_ctx = 16384,
                             temperature = 0.3,
                             num_gpu = 99  // Forcer le maximum de layers sur GPU
                         }
@@ -217,6 +218,7 @@ namespace MedCompanion.Services.LLM
                         options = new
                         {
                             num_predict = maxTokens,
+                            num_ctx = 16384,
                             temperature = 0.3,
                             num_gpu = 99  // Forcer le maximum de layers sur GPU
                         }
@@ -293,6 +295,7 @@ namespace MedCompanion.Services.LLM
                     options = new
                     {
                         num_predict = maxTokens,
+                        num_ctx = 16384,
                         temperature = 0.3,
                         num_gpu = 99  // Forcer le maximum de layers sur GPU
                     }
@@ -420,6 +423,7 @@ namespace MedCompanion.Services.LLM
                     options = new
                     {
                         num_predict = maxTokens,
+                        num_ctx = 16384,
                         temperature = 0.3,
                         num_gpu = 99  // Forcer le maximum de layers sur GPU
                     }

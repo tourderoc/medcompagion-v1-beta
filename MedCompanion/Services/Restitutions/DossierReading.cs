@@ -82,7 +82,7 @@ namespace MedCompanion.Services.Restitutions
                 foreach (var e in Evaluations)
                 {
                     sb.AppendLine($"--- Évaluation clôturée {(e.DateCloture.HasValue ? $"le {e.DateCloture.Value:dd/MM/yyyy}" : "")} ---");
-                    sb.AppendLine(e.Content.Trim());
+                    sb.AppendLine(GetEvaluationBodyWithoutFrontmatter(e.Content).Trim());
                     sb.AppendLine();
                 }
             }
@@ -106,6 +106,21 @@ namespace MedCompanion.Services.Restitutions
 
             sb.AppendLine("== FIN DOSSIER ==");
             return sb.ToString();
+        }
+
+        private static string GetEvaluationBodyWithoutFrontmatter(string content)
+        {
+            if (string.IsNullOrWhiteSpace(content)) return "";
+            var trimmed = content.TrimStart();
+            if (!trimmed.StartsWith("---")) return content;
+
+            var firstLineEnd = trimmed.IndexOf('\n');
+            if (firstLineEnd < 0) return content;
+
+            var secondMarker = trimmed.IndexOf("---", firstLineEnd + 1, StringComparison.Ordinal);
+            if (secondMarker < 0) return content;
+
+            return trimmed.Substring(secondMarker + 3).TrimStart('\r', '\n');
         }
 
         private static void AppendSection(StringBuilder sb, string title, string content)

@@ -240,6 +240,7 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(HasPatient));
                     OnPropertyChanged(nameof(PatientDisplayName));
                     OnPropertyChanged(nameof(PatientAge));
+                    _contextCompletionChecked = false;
                 }
             }
         }
@@ -289,6 +290,7 @@ namespace MedCompanion.ViewModels
 
         #region Interrogatoire V0b (Blocs Adaptatifs)
 
+        private bool _contextCompletionChecked = false;
         private ILLMService? _llmService;
         private StorageService? _storageService;
         private readonly InterrogatoireExtractorService  _extractor            = new();
@@ -1256,6 +1258,7 @@ namespace MedCompanion.ViewModels
 
         private void InitInterrogatoireBlocks()
         {
+            _contextCompletionChecked = false;
             InterrogatoireBlocks.Clear();
             BlockSuggestions.Clear();
             OnPropertyChanged(nameof(HasBlockSuggestions));
@@ -2124,10 +2127,13 @@ clinical_observations_json: |
             }).ToList();
 
             NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocks, ConsultationDate);
-            ExtractionStatus = "Extraction terminée — vérifiez et complétez.";
+            ExtractionStatus = "Extraction terminée.";
             InterrogatoireState = InterrogatoireState.FinalNote;
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                 System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+
+            // Déclencher automatiquement l'assistant de complétude du contexte à la fin de l'extraction
+            await TriggerContextCompletionAssistantAsync();
 
             // Passe qualité en arrière-plan (non bloquante)
             _ = RunQualityCheckAsync(NoteContent);
@@ -2175,10 +2181,141 @@ clinical_observations_json: |
             OnPropertyChanged(nameof(HasQualityIssues));
         }
 
+        // Helper commun pour l'assistant de complétude
+        private async Task TriggerContextCompletionAssistantAsync()
+        {
+            if (_contextCompletionChecked)
+                return;
+
+            var age = _confirmedAge ?? CurrentPatient?.Age;
+            if (age.HasValue && age.Value >= 3 && age.Value <= 11)
+            {
+                try
+                {
+                    var oldStatus = ExtractionStatus;
+                    ExtractionStatus = "Vérification de la complétude du contexte patient...";
+                    var auditor = new MedCompanion.Services.Restitutions.PatientContextAuditService();
+                    var prefilled = await auditor.ExtractContextAsync(_llmService, NoteContent);
+
+                    // Fusionner avec les données existantes de patient.json s'il y en a
+                    if (_patientIndex != null && CurrentPatient != null)
+                    {
+                        var adminMeta = _patientIndex.GetMetadata(CurrentPatient.Id);
+                        if (adminMeta != null)
+                        {
+                            if (string.IsNullOrEmpty(prefilled.Ecole) && !string.IsNullOrEmpty(adminMeta.Ecole))
+                                prefilled.Ecole = adminMeta.Ecole;
+                            if (string.IsNullOrEmpty(prefilled.Classe) && !string.IsNullOrEmpty(adminMeta.Classe))
+                                prefilled.Classe = adminMeta.Classe;
+                        }
+                    }
+
+                    // Ouvrir la boîte de dialogue WPF modale sur le thread UI principal
+                    var dialogResult = false;
+                    MedCompanion.Views.Consultation.ContextCompletionWindow? completionDialog = null;
+
+                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                    {
+                        var activeWindow = System.Windows.Application.Current.MainWindow;
+                        completionDialog = new MedCompanion.Views.Consultation.ContextCompletionWindow(prefilled)
+                        {
+                            Owner = activeWindow
+                        };
+                        dialogResult = completionDialog.ShowDialog() == true;
+                    });
+
+                    // Indiquer qu'on a fait la vérification (sauvegardé ou ignoré)
+                    _contextCompletionChecked = true;
+
+                    // Si validé et enregistré, appliquer les modifications
+                    if (dialogResult && completionDialog != null && completionDialog.IsSaved)
+                    {
+                        var result = completionDialog.CompletedDetails;
+
+                        // 1. Enregistrer école et classe dans patient.json
+                        if (_patientIndex != null && CurrentPatient != null)
+                        {
+                            var adminMeta = _patientIndex.GetMetadata(CurrentPatient.Id);
+                            if (adminMeta != null)
+                            {
+                                adminMeta.Ecole = result.Ecole;
+                                adminMeta.Classe = result.Classe;
+                                _patientIndex.Upsert(adminMeta);
+                            }
+                        }
+
+                        // 2. Injecter les compléments dans les blocs d'interrogatoire correspondants
+                        // Famille
+                        var familleBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "famille");
+                        if (familleBlock != null)
+                        {
+                            var mereText = "";
+                            if (!string.IsNullOrEmpty(result.MereNom)) mereText += result.MereNom;
+                            if (!string.IsNullOrEmpty(result.MereAge)) mereText += $" ({result.MereAge})";
+                            if (!string.IsNullOrEmpty(result.MereJob)) mereText += $", {result.MereJob}";
+
+                            var pereText = "";
+                            if (!string.IsNullOrEmpty(result.PereNom)) pereText += result.PereNom;
+                            if (!string.IsNullOrEmpty(result.PereAge)) pereText += $" ({result.PereAge})";
+                            if (!string.IsNullOrEmpty(result.PereJob)) pereText += $", {result.PereJob}";
+
+                            var familyLines = new System.Collections.Generic.List<string>();
+                            if (!string.IsNullOrEmpty(mereText)) familyLines.Add($"- Mère : {mereText}");
+                            if (!string.IsNullOrEmpty(pereText)) familyLines.Add($"- Père : {pereText}");
+                            if (!string.IsNullOrEmpty(result.Fratrie)) familyLines.Add($"- Fratrie : {result.Fratrie}");
+
+                            if (familyLines.Count > 0)
+                            {
+                                var currentText = familleBlock.FreeText ?? "";
+                                familleBlock.FreeText = (currentText.Trim() + "\n\n[Complément Contexte Familial] :\n" + string.Join("\n", familyLines)).Trim();
+                            }
+                        }
+
+                        // Antécédents
+                        var atcdBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "antecedents");
+                        if (atcdBlock != null)
+                        {
+                            var atcdLines = new System.Collections.Generic.List<string>();
+                            if (!string.IsNullOrEmpty(result.MarcheAge)) atcdLines.Add($"- Âge de la marche : {result.MarcheAge}");
+                            if (!string.IsNullOrEmpty(result.LangageAcq)) atcdLines.Add($"- Acquisition du langage : {result.LangageAcq}");
+                            if (!string.IsNullOrEmpty(result.PropreteAcq)) atcdLines.Add($"- Statut propreté : {result.PropreteAcq}");
+
+                            if (atcdLines.Count > 0)
+                            {
+                                var currentText = atcdBlock.FreeText ?? "";
+                                atcdBlock.FreeText = (currentText.Trim() + "\n\n[Complément Développement/ATCD] :\n" + string.Join("\n", atcdLines)).Trim();
+                            }
+                        }
+
+                        // 3. Reconstruire la note finale unifiée
+                        var blocksList = InterrogatoireBlocks.Select(vm => new ConsultationBlock
+                        {
+                            Key = vm.Key,
+                            Title = vm.Title,
+                            FreeText = vm.FreeText,
+                            ExpectedThemes = vm.ExpectedThemes,
+                            CoveredThemes = vm.CoveredThemes
+                        }).ToList();
+
+                        NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocksList, ConsultationDate);
+                        UpdateBlockCollections();
+                    }
+                    ExtractionStatus = oldStatus;
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[PatientContextAssistant] Erreur assistant complétude : {ex.Message}");
+                }
+            }
+        }
+
         private async Task SaveInterrogatoireNoteAsync()
         {
             if (CurrentPatient == null || string.IsNullOrWhiteSpace(NoteContent))
                 return;
+
+            // Déclencher l'assistant de complétude si pas encore fait
+            await TriggerContextCompletionAssistantAsync();
 
             var (ok, err) = await WritePremiereConsultationFileAsync();
             if (ok)

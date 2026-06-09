@@ -156,7 +156,7 @@ namespace MedCompanion.Services.Restitutions
             {
                 if (ct.IsCancellationRequested) break;
 
-                var userPrompt = Build1PageSubsectionPrompt(context, instruction);
+                var userPrompt = BuildSubsectionPrompt(context, instruction, blocp2.VoixCible);
                 var messages   = new List<(string role, string content)> { ("user", userPrompt) };
                 var result     = await _llmService.ChatAsync(systemPrompt, messages, 800, ct);
 
@@ -171,7 +171,7 @@ namespace MedCompanion.Services.Restitutions
             }
         }
 
-        private static string Build1PageSubsectionPrompt(string dossierContext, string instruction)
+        private static string BuildSubsectionPrompt(string dossierContext, string instruction, string voixCible)
         {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine(dossierContext);
@@ -181,9 +181,24 @@ namespace MedCompanion.Services.Restitutions
                           "sans introduction, sans commentaire, sans titre supplémentaire :");
             sb.AppendLine(instruction);
             sb.AppendLine();
-            sb.AppendLine("RAPPEL TON OBLIGATOIRE : tu t'adresses à des parents, pas à des médecins. " +
-                          "Langage simple, chaleureux, empathique. Pas de jargon clinique ni de termes DSM. " +
-                          "Concis (6-10 lignes max). Réponds directement en Markdown.");
+
+            if (voixCible == "livre")
+            {
+                sb.AppendLine("RAPPEL TON OBLIGATOIRE : tu t'adresses à des parents, pas à des médecins. " +
+                              "Langage simple, chaleureux, empathique. Pas de jargon clinique ni de termes DSM. " +
+                              "Concis (6-10 lignes max). Réponds directement en Markdown.");
+            }
+            else if (voixCible == "clinique")
+            {
+                sb.AppendLine("RAPPEL TON OBLIGATOIRE : Voix clinique. Utilise la terminologie pédopsychiatrique précise (DSM, troubles, axes). " +
+                              "Rigueur et concision clinique. Réponds directement en Markdown.");
+            }
+            else
+            {
+                sb.AppendLine("RAPPEL TON OBLIGATOIRE : Voix mixte. Précis sans jargon excessif. " +
+                              "Lisible par les parents ET utile aux professionnels. Réponds directement en Markdown.");
+            }
+
             return sb.ToString();
         }
 
@@ -249,7 +264,7 @@ namespace MedCompanion.Services.Restitutions
                  "Commence directement par le paragraphe.")
             };
 
-            await RunProgressiveSubsectionsAsync(systemPrompt, context, subsections, onSectionReady, 500, ct);
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocCf.VoixCible, subsections, onSectionReady, 500, ct);
         }
 
         // ── Génération progressive Antécédents (6 sous-sections) ────────────
@@ -314,7 +329,7 @@ namespace MedCompanion.Services.Restitutions
                  "`Aucun antécédent de suivi ou de bilan identifié dans le dossier.`")
             };
 
-            await RunProgressiveSubsectionsAsync(systemPrompt, context, subsections, onSectionReady, 500, ct);
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocAt.VoixCible, subsections, onSectionReady, 500, ct);
         }
 
         // ── Génération progressive Situation actuelle (5 sous-sections) ─────
@@ -364,7 +379,7 @@ namespace MedCompanion.Services.Restitutions
                  "Si aucune activité documentée, écrire `- Aucune activité extra-scolaire documentée à ce jour.`")
             };
 
-            await RunProgressiveSubsectionsAsync(systemPrompt, context, subsections, onSectionReady, 400, ct);
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocSa.VoixCible, subsections, onSectionReady, 400, ct);
         }
 
         // ── Helper commun pour les générations progressives ─────────────────
@@ -378,6 +393,7 @@ namespace MedCompanion.Services.Restitutions
         private async Task RunProgressiveSubsectionsAsync(
             string systemPrompt,
             string context,
+            string voixCible,
             (string Title, string Instruction)[] subsections,
             Action<string> onSectionReady,
             int maxTokensPerSection,
@@ -389,7 +405,7 @@ namespace MedCompanion.Services.Restitutions
             {
                 if (ct.IsCancellationRequested) break;
 
-                var userPrompt = Build1PageSubsectionPrompt(context, instruction);
+                var userPrompt = BuildSubsectionPrompt(context, instruction, voixCible);
                 var messages   = new List<(string role, string content)> { ("user", userPrompt) };
                 var result     = await _llmService.ChatAsync(systemPrompt, messages, maxTokensPerSection, ct);
 
