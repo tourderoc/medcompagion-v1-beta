@@ -217,10 +217,13 @@ namespace MedCompanion.Services.Restitutions
                  "Commence directement par la liste."),
 
                 ("**Autres figures**",
-                 "Rédige UNIQUEMENT la liste des autres figures d'attachement significatives " +
-                 "(grands-parents, oncle/tante, éducateur référent, assistante maternelle, famille d'accueil, tuteur légal…). " +
+                 "Rédige UNIQUEMENT la liste des figures d'attachement TIERCES — c'est-à-dire HORS parents et fratrie " +
+                 "(déjà traités dans leurs propres sections). Exemples : grands-parents, oncle/tante, grand-mère paternelle, " +
+                 "cousin proche, éducateur référent, assistante maternelle, famille d'accueil, tuteur légal, " +
+                 "voisin ou adulte de confiance mentionné. " +
                  "Format : `- Figure (prénom si connu) : rôle dans la vie de l'enfant.` " +
-                 "Si aucune figure particulière n'est mentionnée, écrire `- Aucune figure tierce identifiée.` " +
+                 "NE PAS répéter le père, la mère ou les frères/sœurs déjà listés. " +
+                 "Si aucune figure tierce n'est mentionnée dans le dossier, écrire UNIQUEMENT : `- Aucune figure tierce identifiée.` " +
                  "Commence directement par la liste."),
 
                 ("**Points à retenir**",
@@ -507,8 +510,8 @@ FORMAT STRICT (les marqueurs `**Titre**` permettent au rendu HTML de découper l
 **Fratrie** :
 - Pour chaque frère/sœur (ou demi) : Prénom, âge, lien (même père et mère, côté mère, côté père).
 
-**Autres figures** :
-- Grands-parents, oncle/tante, éducateur référent, assistante maternelle, famille d'accueil, tuteur légal… tout adulte significatif autre que les parents. Format : `- Figure (prénom si connu) : rôle bref.`
+**Autres figures** (HORS parents et fratrie déjà traités ci-dessus) :
+- Uniquement les figures tierces : grands-parents, oncle/tante, cousin proche, éducateur référent, assistante maternelle, famille d'accueil, tuteur légal, voisin de confiance… Format : `- Figure (prénom si connu) : rôle bref.` Si aucune figure tierce n'est mentionnée dans le dossier, écrire `- Aucune figure tierce identifiée.`
 
 **Points à retenir** : 2-4 lignes pointant les éléments du contexte familial susceptibles d'éclairer le tableau clinique (insécurité affective, conflit de loyauté, parent absent, parentification…). Bienveillant, sans jugement. Pas de listes.
 
