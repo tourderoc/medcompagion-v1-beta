@@ -670,18 +670,30 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
             return sb.ToString().Trim();
         }
 
-        private static string? CovExtractField(string note, params string[] labels)
+        private static string? CovExtractField(string corpus, params string[] labels)
         {
             foreach (var lbl in labels)
             {
-                // Match "**Label** : value" ou "Label : value" (insensible à la casse)
-                var m = Regex.Match(note,
-                    $@"\*{{0,2}}{Regex.Escape(lbl)}\*{{0,2}}\s*:\s*(.+?)(?:\r?\n|$)",
+                var escaped = Regex.Escape(lbl);
+
+                // Format 1 : "**Label** : value" ou "Label : value" (même ligne)
+                var m1 = Regex.Match(corpus,
+                    $@"\*{{0,2}}{escaped}\*{{0,2}}\s*:\s*(.+?)(?:\r?\n|$)",
                     RegexOptions.IgnoreCase | RegexOptions.Multiline);
-                if (m.Success)
+                if (m1.Success)
                 {
-                    var v = m.Groups[1].Value.Trim();
+                    var v = m1.Groups[1].Value.Trim();
                     if (!string.IsNullOrWhiteSpace(v)) return v;
+                }
+
+                // Format 2 : "## Label\nvalue" (titre markdown, valeur sur la ligne suivante)
+                var m2 = Regex.Match(corpus,
+                    $@"#+\s+{escaped}\s*\r?\n\s*(.+?)(?:\r?\n|$)",
+                    RegexOptions.IgnoreCase | RegexOptions.Multiline);
+                if (m2.Success)
+                {
+                    var v = m2.Groups[1].Value.Trim();
+                    if (!string.IsNullOrWhiteSpace(v) && !v.StartsWith("#")) return v;
                 }
             }
             return null;
