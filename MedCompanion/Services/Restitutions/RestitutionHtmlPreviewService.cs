@@ -376,6 +376,13 @@ namespace MedCompanion.Services.Restitutions
                 if (b.Key.StartsWith("patient_", StringComparison.Ordinal))
                     patientBlocs[b.Key] = b;
             }
+
+            // Détecter si la page C (détail parcours de soins) doit être générée
+            patientBlocs.TryGetValue("patient_antecedents", out var _atBlocPre);
+            var _atPre = ParseAntecedents(_atBlocPre?.ContenuValide ?? "");
+            bool hasParcoursDetailPage = HasParcoursDetail(_atPre.ParcoursDetail);
+            if (hasParcoursDetailPage) totalPages++;   // page C s'ajoute au total
+
             bool patientPagesRendered = false;
 
             foreach (var bloc in dossier.Blocs)
@@ -391,13 +398,19 @@ namespace MedCompanion.Services.Restitutions
 
                 if (bloc.Key.StartsWith("patient_", StringComparison.Ordinal))
                 {
-                    // On rend les 2 pages Patient & Contexte la première fois qu'on rencontre
-                    // un bloc patient_*. Les 4 autres sont absorbés silencieusement.
+                    // On rend les pages Patient & Contexte la première fois qu'on rencontre
+                    // un bloc patient_*. Les autres sont absorbés silencieusement.
                     if (!patientPagesRendered)
                     {
+                        int pageCNumber = pageNumber + 2;
                         sb.Append(BuildPatientContextePageA(patientBlocs, coverFields, pageNumber, totalPages));
-                        sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages));
+                        sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages, hasParcoursDetailPage, pageCNumber));
                         pageNumber += 2;
+                        if (hasParcoursDetailPage)
+                        {
+                            sb.Append(BuildPatientContextePageC(patientBlocs, pageNumber, totalPages));
+                            pageNumber++;
+                        }
                         patientPagesRendered = true;
                     }
                     continue;
@@ -523,7 +536,9 @@ namespace MedCompanion.Services.Restitutions
         private string BuildPatientContextePageB(
             Dictionary<string, RestitutionBloc> blocs,
             int pageNumber,
-            int totalPages)
+            int totalPages,
+            bool hasDetailPage = false,
+            int detailPageNumber = 0)
         {
             blocs.TryGetValue("patient_antecedents",        out var blocAt);
             blocs.TryGetValue("patient_situation_actuelle", out var blocSa);
@@ -547,8 +562,23 @@ namespace MedCompanion.Services.Restitutions
             sb.Append(BuildPcSubBlock("DÉVELOPPEMENTAUX",       at.Developpement, "pc-sb-dev"));
             sb.AppendLine("      </div>");
             sb.AppendLine("      <div class='pc-two-col'>");
-            sb.Append(BuildPcSubBlock("FAMILIAUX",                       at.Familiaux,      "pc-sb-fam"));
-            sb.Append(BuildPcSubBlock("PARCOURS DE SOINS ET INTERVENTIONS", at.ParcoursSoins, "pc-sb-parcours"));
+            sb.Append(BuildPcSubBlock("FAMILIAUX", at.Familiaux, "pc-sb-fam"));
+
+            // Parcours compact : 2 sous-sections + lien vers page de détail si applicable
+            var suiviBody  = string.IsNullOrWhiteSpace(at.SuiviResume)  ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(at.SuiviResume);
+            var bilansBody = string.IsNullOrWhiteSpace(at.BilansResume) ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(at.BilansResume);
+            var detailLink = hasDetailPage
+                ? $"<div class='pc-parcours-detail-link'>📄 Détail complet → p.{detailPageNumber}</div>"
+                : "";
+            sb.AppendLine(
+                "        <div class='pc-subblock pc-sb-parcours'>" +
+                "<h3>PARCOURS DE SOINS</h3>" +
+                "<div class='pc-subblock-body'>" +
+                  "<div class='pc-parcours-sub'><h4>SUIVI</h4>" + suiviBody + "</div>" +
+                  "<div class='pc-parcours-sub'><h4>BILANS</h4>" + bilansBody + "</div>" +
+                  detailLink +
+                "</div></div>");
+
             sb.AppendLine("      </div>");
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
@@ -575,6 +605,72 @@ namespace MedCompanion.Services.Restitutions
             sb.Append(BuildPcFooter(
                 "Ces éléments seront réévalués régulièrement afin d'ajuster le projet d'accompagnement.<br>" +
                 "Ils constituent la base du suivi clinique et du travail en collaboration avec la famille et les partenaires.",
+                pageNumber, totalPages));
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Rend la page C (conditionnelle) : détail du parcours de soins.
+        /// Générée seulement si patient_antecedents contient un contenu substantiel
+        /// dans la section "Parcours — détail".
+        /// </summary>
+        private string BuildPatientContextePageC(
+            Dictionary<string, RestitutionBloc> blocs,
+            int pageNumber,
+            int totalPages)
+        {
+            blocs.TryGetValue("patient_antecedents", out var blocAt);
+            var at = ParseAntecedents(blocAt?.ContenuValide ?? "");
+
+            // Séparer le détail en 2 sections (suivi / bilans) via les marqueurs en gras
+            var detailSections = SplitByBoldTitles(at.ParcoursDetail);
+            string suiviDetail  = "";
+            string bilansDetail = "";
+            foreach (var (title, content) in detailSections)
+            {
+                var t = title.ToLowerInvariant();
+                if      (t.Contains("suivi") || t.Contains("antérieur") || t.Contains("anterieur")) suiviDetail  = content;
+                else if (t.Contains("bilan") || t.Contains("réalisé")   || t.Contains("realise"))   bilansDetail = content;
+            }
+            // Si pas de sections séparées, on met tout dans suivi
+            if (string.IsNullOrWhiteSpace(suiviDetail) && string.IsNullOrWhiteSpace(bilansDetail))
+                suiviDetail = at.ParcoursDetail;
+
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='page pc-page'>");
+            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Parcours de soins — détail", "annexe", pageNumber, totalPages));
+
+            // Section Suivi antérieur
+            sb.AppendLine("  <div class='pc-card pc-c-atcd'>");
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+            sb.AppendLine("      <span class='pc-card-num'>+</span>");
+            sb.AppendLine("      <h2>SUIVI ANTÉRIEUR</h2>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='pc-card-body'>");
+            if (string.IsNullOrWhiteSpace(suiviDetail))
+                sb.AppendLine("      <p class='pc-placeholder'><em>Aucun suivi antérieur identifié.</em></p>");
+            else
+                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(suiviDetail)}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            // Section Bilans réalisés
+            sb.AppendLine("  <div class='pc-card pc-c-atcd' style='margin-top:12px'>");
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+            sb.AppendLine("      <span class='pc-card-num'>+</span>");
+            sb.AppendLine("      <h2>BILANS RÉALISÉS</h2>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='pc-card-body'>");
+            if (string.IsNullOrWhiteSpace(bilansDetail))
+                sb.AppendLine("      <p class='pc-placeholder'><em>Aucun bilan formel identifié.</em></p>");
+            else
+                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(bilansDetail)}</div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            sb.Append(BuildPcFooter(
+                "Ces informations sont issues de l'anamnèse et des documents fournis.",
                 pageNumber, totalPages));
             sb.AppendLine("</div>");
             return sb.ToString();
@@ -735,10 +831,12 @@ namespace MedCompanion.Services.Restitutions
 
         private class Antecedents
         {
-            public string Medicaux        = "";
-            public string Developpement   = "";
-            public string Familiaux       = "";
-            public string ParcoursSoins   = "";
+            public string Medicaux       = "";
+            public string Developpement  = "";
+            public string Familiaux      = "";
+            public string SuiviResume    = "";
+            public string BilansResume   = "";
+            public string ParcoursDetail = "";
         }
 
         private static Antecedents ParseAntecedents(string md)
@@ -750,12 +848,22 @@ namespace MedCompanion.Services.Restitutions
             foreach (var (title, content) in sections)
             {
                 var t = title.ToLowerInvariant();
-                if (t.Contains("médicaux") || t.Contains("medicaux"))                        result.Medicaux = content;
-                else if (t.Contains("développ") || t.Contains("developp"))                   result.Developpement = content;
-                else if (t.Contains("familiaux"))                                            result.Familiaux = content;
-                else if (t.Contains("parcours") || t.Contains("soins") || t.Contains("intervention")) result.ParcoursSoins = content;
+                if      (t.Contains("médicaux")   || t.Contains("medicaux"))                 result.Medicaux = content;
+                else if (t.Contains("développ")   || t.Contains("developp"))                 result.Developpement = content;
+                else if (t.Contains("familiaux"))                                             result.Familiaux = content;
+                else if (t.Contains("suivi"))                                                 result.SuiviResume = content;
+                else if (t.Contains("bilan"))                                                 result.BilansResume = content;
+                else if (t.Contains("parcours") || t.Contains("détail") || t.Contains("detail") || t.Contains("soins")) result.ParcoursDetail = content;
             }
             return result;
+        }
+
+        /// <summary>Retourne true si le contenu de détail est substantiel (pas juste "Aucun…").</summary>
+        private static bool HasParcoursDetail(string detail)
+        {
+            if (string.IsNullOrWhiteSpace(detail)) return false;
+            var d = detail.Trim().ToLowerInvariant();
+            return !d.StartsWith("aucun") && d.Length > 20;
         }
 
         private class SituationActuelle
@@ -1478,6 +1586,25 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .pc-mc-mere    h3,
 .pc-mc-fratrie h3 { color: #1A7840; }
 .pc-mc-autres  h3 { color: #00A896; }
+
+/* Parcours compact — 2 sous-sections SUIVI / BILANS dans la mini-carte */
+.pc-parcours-sub { margin-bottom: 6px; }
+.pc-parcours-sub h4 {
+  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .4px; color: #1A5276; margin: 0 0 3px 0;
+  border-bottom: 1px solid #D6EAF8; padding-bottom: 2px;
+}
+.pc-parcours-detail-link {
+  margin-top: 6px; font-size: 9px; color: #1A5276;
+  font-style: italic; opacity: .8;
+}
+
+/* Page C : contenu détaillé suivi / bilans */
+.pc-detail-content { font-size: 11px; line-height: 1.55; }
+.pc-detail-content p { margin-bottom: 6px; }
+.pc-detail-content ul { margin: 4px 0; padding-left: 18px; }
+.pc-detail-content li { margin-bottom: 4px; }
+.pc-detail-content strong { color: #1A5276; }
 
 /* Bandeau Points à retenir — pleine largeur sous les 4 colonnes */
 .pc-points-banner {

@@ -219,7 +219,7 @@ namespace MedCompanion.ViewModels.Restitutions
                         break;
 
                     case "patient_antecedents":
-                        await RunProgressiveAsync(blocVm, "Antécédents", 4,
+                        await RunProgressiveAsync(blocVm, "Antécédents", 6,
                             (cb, c) => _suggesterService.SuggestAntecedentsProgressiveAsync(_currentReading!, cb, c), ct);
                         break;
 

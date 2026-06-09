@@ -236,12 +236,12 @@ namespace MedCompanion.Services.Restitutions
             await RunProgressiveSubsectionsAsync(systemPrompt, context, subsections, onSectionReady, 500, ct);
         }
 
-        // ── Génération progressive Antécédents (4 sous-sections) ────────────
+        // ── Génération progressive Antécédents (6 sous-sections) ────────────
 
         /// <summary>
-        /// Génère le bloc « Antécédents » en 4 appels LLM séquentiels (médicaux,
-        /// développementaux, familiaux, parcours de soins). Le résultat est concaténé
-        /// avec marqueurs `**Titre**` pour parsing HTML ultérieur.
+        /// Génère le bloc « Antécédents » en 6 appels LLM séquentiels :
+        /// médicaux, développementaux, familiaux, suivi résumé (compact),
+        /// bilans résumé (compact), détail complet suivi+bilans (page C conditionnelle).
         /// </summary>
         public async Task SuggestAntecedentsProgressiveAsync(
             DossierReading reading,
@@ -273,12 +273,29 @@ namespace MedCompanion.Services.Restitutions
                  "troubles anxieux, troubles de l'humeur, troubles du neurodéveloppement, addictions, suicide. " +
                  "Format : `- **Item :** valeur.` Si non connu, écrire « non connu »."),
 
-                ("**Parcours de soins et interventions**",
-                 "Rédige UNIQUEMENT 2 sous-sections imbriquées :\n" +
-                 "`**Déjà réalisés**` puis liste à puces des suivis antérieurs " +
-                 "(psy, ortho, psychomot, neuropsy…) ou « Aucun suivi spécialisé régulier à ce jour. »\n" +
-                 "`**Bilans déjà réalisés**` puis liste à puces des bilans diagnostiques antérieurs " +
-                 "(QI, langage, attention…) ou « Aucun bilan formel réalisé à ce jour. »")
+                ("**Suivi résumé**",
+                 "Rédige UNIQUEMENT une liste à puces courte des suivis spécialisés antérieurs ou en cours " +
+                 "(CMP, CAMPS, pédopsychiatre libéral, psychologue, orthophoniste, psychomotricien, neuropsy…). " +
+                 "Format ultra-compact : `- Structure (dates ou statut).` Une ligne par suivi. " +
+                 "Si aucun suivi, écrire UNIQUEMENT : `- Aucun suivi spécialisé.` Pas de titre, pas de détail."),
+
+                ("**Bilans résumé**",
+                 "Rédige UNIQUEMENT une liste à puces courte des bilans diagnostiques déjà réalisés " +
+                 "(bilan psychologique QI, bilan orthophonique, bilan psychomoteur, bilan neuropsychologique, " +
+                 "bilan pédiatrique, EEG, IRM…). " +
+                 "Format ultra-compact : `- Type de bilan (date si connue).` Une ligne par bilan. " +
+                 "Si aucun bilan, écrire UNIQUEMENT : `- Aucun bilan formel.` Pas de titre, pas de détail."),
+
+                ("**Parcours — détail**",
+                 "Rédige le détail complet du parcours de soins en 2 sections bien séparées.\n" +
+                 "SECTION 1 — `**Suivi antérieur**` : pour chaque structure de suivi, indique : " +
+                 "nom de la structure, période (dates début–fin ou 'en cours'), fréquence, " +
+                 "motif de prise en charge, évolution observée. Une entrée par structure.\n" +
+                 "SECTION 2 — `**Bilans réalisés**` : pour chaque bilan, indique : " +
+                 "type de bilan, date de réalisation, praticien/structure si connu, " +
+                 "résultats clés ou conclusions principales.\n" +
+                 "Si aucun suivi ET aucun bilan dans le dossier, écrire UNIQUEMENT : " +
+                 "`Aucun antécédent de suivi ou de bilan identifié dans le dossier.`")
             };
 
             await RunProgressiveSubsectionsAsync(systemPrompt, context, subsections, onSectionReady, 500, ct);
@@ -518,23 +535,28 @@ FORMAT STRICT (les marqueurs `**Titre**` permettent au rendu HTML de découper l
 Pour chaque carte, si une info manque, écris « Non renseigné » au lieu d'inventer. N'écris RIEN d'autre que ces 6 sections labellisées.",
 
             // ── Bloc 6 : Antécédents ────────────────────────────────────────
-            // Bloc composite : 4 sous-blocs cliniques (médicaux, développementaux, familiaux,
-            // parcours de soins). Génération progressive 4×LLM via SuggestAntecedentsProgressiveAsync.
+            // Bloc composite : 6 sous-sections (médicaux, développementaux, familiaux,
+            // suivi résumé, bilans résumé, détail complet). Génération progressive 6×LLM
+            // via SuggestAntecedentsProgressiveAsync.
             "patient_antecedents"
-                => @"1ère consultation (anamnèse) + Notes de consultation. Produis 4 sous-sections distinctes d'antécédents.
+                => @"1ère consultation (anamnèse) + Notes de consultation. Produis 6 sous-sections distinctes.
 
 FORMAT STRICT (les marqueurs `**Titre**` sont obligatoires) :
 
-**Antécédents médicaux** : liste à puces de 5-6 items concernant grossesse, accouchement, période néonatale, maladies chroniques, hospitalisations, traitements en cours. Format : `- **Item :** valeur.` Exemples : `- **Grossesse :** sans particularité déclarée.`
+**Antécédents médicaux** : liste à puces de 5-6 items (grossesse, accouchement, néonatal, maladies chroniques, hospitalisations, traitements). Format : `- **Item :** valeur.`
 
-**Antécédents développementaux** : liste à puces de 3-5 items sur les acquisitions clés (marche, langage, propreté diurne, propreté nocturne, latéralisation…). Format identique. Si une acquisition est dans les normes, écrire « dans les délais ».
+**Antécédents développementaux** : liste à puces de 3-5 items (marche, langage, propreté diurne, propreté nocturne, latéralisation). Format identique.
 
-**Antécédents familiaux** : liste à puces de 3-5 items sur les troubles connus dans la famille (TDAH, troubles anxieux, troubles de l'humeur, troubles du neurodéveloppement, addictions, suicide). Format identique. Si non connu, écrire « non connu ».
+**Antécédents familiaux** : liste à puces de 3-5 items (TDAH, troubles anxieux, humeur, neurodéveloppement, addictions, suicide). Format identique. Si non connu : « non connu ».
 
-**Parcours de soins et interventions** : 1-2 sous-titres en gras + liste à puces sous chacun.
-  - `**Déjà réalisés**` : suivis spécialisés antérieurs (psy, ortho, psychomot, neuropsy…).
-  - `**Bilans déjà réalisés**` : bilans diagnostiques antérieurs (QI, langage, attention…).
-  Si aucun, écrire « Aucun suivi spécialisé régulier à ce jour. » / « Aucun bilan formel réalisé à ce jour. ».
+**Suivi résumé** : liste à puces ULTRA-COURTE — une ligne par suivi (CMP, CAMPS, pédopsy libéral, psy, ortho…). Format : `- Structure (dates).` Si aucun : `- Aucun suivi spécialisé.`
+
+**Bilans résumé** : liste à puces ULTRA-COURTE — une ligne par bilan réalisé. Format : `- Type bilan (date si connue).` Si aucun : `- Aucun bilan formel.`
+
+**Parcours — détail** : détail complet en 2 sous-sections.
+  `**Suivi antérieur**` : pour chaque suivi, structure + période + fréquence + motif + évolution.
+  `**Bilans réalisés**` : pour chaque bilan, type + date + praticien + résultats clés.
+  Si aucun suivi ET aucun bilan : écrire UNIQUEMENT `Aucun antécédent de suivi ou de bilan identifié dans le dossier.`
 
 N'invente RIEN. Si une donnée manque, écris « non connu » ou « sans particularité déclarée ».",
 
