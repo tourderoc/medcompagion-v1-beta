@@ -267,12 +267,13 @@ namespace MedCompanion.Services.Evaluations
                     sb.AppendLine($"_Âge à la saisie : {phase.CartographieEnfant.AgeAuMomentDeLaSaisie} ans_");
                 sb.AppendLine();
                 AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Attachement,     phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
-                AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Psychomotricite, phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
+                AppendPsychomotriciteProfileMd(sb, phase.CartographieEnfant.Psychomotricite);
                 AppendTemperamentMd(sb, phase.CartographieEnfant.Temperament);
                 AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Langage,         phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
                 AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Emotions,        phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
                 AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Imaginaire,      phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
                 AppendChenilleSegmentMd(sb, phase.CartographieEnfant.Pensee,          phase.CartographieEnfant.AgeAuMomentDeLaSaisie);
+                AppendAttentionProfileMd(sb, phase.CartographieEnfant.Attention);
             }
 
             // Étape 4 lisible — Cartographie de l'environnement
@@ -446,10 +447,10 @@ namespace MedCompanion.Services.Evaluations
         // ── Cartographie de l'enfant (étape 4) ───────────────────────────────
 
         private static bool HasAnyCartographieContent(CartographieEnfant carto)
-            => carto.Attachement.Score > 0 || carto.Psychomotricite.Score > 0
+            => carto.Attachement.Score > 0 || carto.Psychomotricite.IsRenseigne
             || carto.Langage.Score > 0      || carto.Emotions.Score > 0
             || carto.Imaginaire.Score > 0   || carto.Pensee.Score > 0
-            || carto.Temperament.IsRenseigne;
+            || carto.Temperament.IsRenseigne || carto.Attention.IsRenseigne;
 
         private static void AppendCartographieEnfant(StringBuilder sb, CartographieEnfant carto)
         {
@@ -457,7 +458,13 @@ namespace MedCompanion.Services.Evaluations
             if (carto.AgeAuMomentDeLaSaisie.HasValue)
                 sb.AppendLine($"  age_au_moment: {carto.AgeAuMomentDeLaSaisie.Value}");
             AppendChenilleSegmentYaml(sb, "  attachement",     carto.Attachement);
-            AppendChenilleSegmentYaml(sb, "  psychomotricite", carto.Psychomotricite);
+            sb.AppendLine("  psychomotricite:");
+            sb.AppendLine($"    motricite_globale: {carto.Psychomotricite.MotriciteGlobale}");
+            sb.AppendLine($"    motricite_fine: {carto.Psychomotricite.MotriciteFine}");
+            sb.AppendLine($"    tonus: {carto.Psychomotricite.Tonus}");
+            sb.AppendLine($"    dexterite: {carto.Psychomotricite.Dexterite}");
+            sb.AppendLine($"    coordination: {carto.Psychomotricite.Coordination}");
+            sb.AppendLine($"    impulsivite_motrice: {carto.Psychomotricite.ImpulsiviteMotrice}");
             sb.AppendLine("  temperament:");
             sb.AppendLine($"    activite: {carto.Temperament.NiveauActivite}");
             sb.AppendLine($"    regularite: {carto.Temperament.Regularite}");
@@ -469,6 +476,13 @@ namespace MedCompanion.Services.Evaluations
             AppendChenilleSegmentYaml(sb, "  emotions",   carto.Emotions);
             AppendChenilleSegmentYaml(sb, "  imaginaire", carto.Imaginaire);
             AppendChenilleSegmentYaml(sb, "  pensee",     carto.Pensee);
+            sb.AppendLine("  attention:");
+            sb.AppendLine($"    attention_soutenue: {carto.Attention.AttentionSoutenue}");
+            sb.AppendLine($"    attention_selective: {carto.Attention.AttentionSelective}");
+            sb.AppendLine($"    attention_divisee: {carto.Attention.AttentionDivisee}");
+            sb.AppendLine($"    inhibition: {carto.Attention.Inhibition}");
+            sb.AppendLine($"    planification: {carto.Attention.Planification}");
+            sb.AppendLine($"    flexibilite_attentionnelle: {carto.Attention.FlexibiliteAttentionnelle}");
         }
 
         private static void AppendChenilleSegmentYaml(StringBuilder sb, string key, ChenilleSegment segment)
@@ -511,6 +525,34 @@ namespace MedCompanion.Services.Evaluations
             sb.AppendLine($"- Intensité émotionnelle : **{t.IntensiteEmotionnelle}/5**");
             sb.AppendLine($"- Adaptabilité : **{t.Adaptabilite}/5**");
             sb.AppendLine($"- Temps de réaction : **{t.TempsDeReaction}/5**");
+            sb.AppendLine();
+        }
+
+        private static void AppendAttentionProfileMd(StringBuilder sb, AttentionProfile a)
+        {
+            if (!a.IsRenseigne) return;
+            sb.AppendLine("### Attention & Fonctions exécutives (profil)");
+            sb.AppendLine();
+            sb.AppendLine($"- Attention soutenue : **{a.AttentionSoutenue}/5**");
+            sb.AppendLine($"- Attention sélective : **{a.AttentionSelective}/5**");
+            sb.AppendLine($"- Attention divisée : **{a.AttentionDivisee}/5**");
+            sb.AppendLine($"- Inhibition : **{a.Inhibition}/5**");
+            sb.AppendLine($"- Planification : **{a.Planification}/5**");
+            sb.AppendLine($"- Flexibilité attentionnelle : **{a.FlexibiliteAttentionnelle}/5**");
+            sb.AppendLine();
+        }
+
+        private static void AppendPsychomotriciteProfileMd(StringBuilder sb, PsychomotriciteProfile p)
+        {
+            if (!p.IsRenseigne) return;
+            sb.AppendLine("### Psychomotricité (profil)");
+            sb.AppendLine();
+            sb.AppendLine($"- Motricité globale : **{p.MotriciteGlobale}/5**");
+            sb.AppendLine($"- Motricité fine : **{p.MotriciteFine}/5**");
+            sb.AppendLine($"- Tonus : **{p.Tonus}/5**");
+            sb.AppendLine($"- Dextérité : **{p.Dexterite}/5**");
+            sb.AppendLine($"- Coordination : **{p.Coordination}/5**");
+            sb.AppendLine($"- Impulsivité motrice : **{p.ImpulsiviteMotrice}/5**");
             sb.AppendLine();
         }
 
@@ -725,11 +767,30 @@ namespace MedCompanion.Services.Evaluations
                     phase.CartographieEnfant.AgeAuMomentDeLaSaisie = GetIntInBlock(carto, "age_au_moment");
 
                     ApplyChenilleItemsFromYaml(carto, "attachement",     phase.CartographieEnfant.Attachement);
-                    ApplyChenilleItemsFromYaml(carto, "psychomotricite", phase.CartographieEnfant.Psychomotricite);
+                    var psycho = ExtractNamedSubBlock(carto, "psychomotricite:");
+                    if (psycho != null)
+                    {
+                        phase.CartographieEnfant.Psychomotricite.MotriciteGlobale    = GetIntInBlock(psycho, "motricite_globale")   ?? 0;
+                        phase.CartographieEnfant.Psychomotricite.MotriciteFine       = GetIntInBlock(psycho, "motricite_fine")      ?? 0;
+                        phase.CartographieEnfant.Psychomotricite.Tonus               = GetIntInBlock(psycho, "tonus")               ?? 0;
+                        phase.CartographieEnfant.Psychomotricite.Dexterite           = GetIntInBlock(psycho, "dexterite")           ?? 0;
+                        phase.CartographieEnfant.Psychomotricite.Coordination        = GetIntInBlock(psycho, "coordination")        ?? 0;
+                        phase.CartographieEnfant.Psychomotricite.ImpulsiviteMotrice  = GetIntInBlock(psycho, "impulsivite_motrice") ?? 0;
+                    }
                     ApplyChenilleItemsFromYaml(carto, "langage",         phase.CartographieEnfant.Langage);
                     ApplyChenilleItemsFromYaml(carto, "emotions",        phase.CartographieEnfant.Emotions);
                     ApplyChenilleItemsFromYaml(carto, "imaginaire",      phase.CartographieEnfant.Imaginaire);
                     ApplyChenilleItemsFromYaml(carto, "pensee",          phase.CartographieEnfant.Pensee);
+                    var attention = ExtractNamedSubBlock(carto, "attention:");
+                    if (attention != null)
+                    {
+                        phase.CartographieEnfant.Attention.AttentionSoutenue          = GetIntInBlock(attention, "attention_soutenue")           ?? 0;
+                        phase.CartographieEnfant.Attention.AttentionSelective         = GetIntInBlock(attention, "attention_selective")          ?? 0;
+                        phase.CartographieEnfant.Attention.AttentionDivisee           = GetIntInBlock(attention, "attention_divisee")            ?? 0;
+                        phase.CartographieEnfant.Attention.Inhibition                 = GetIntInBlock(attention, "inhibition")                   ?? 0;
+                        phase.CartographieEnfant.Attention.Planification              = GetIntInBlock(attention, "planification")                ?? 0;
+                        phase.CartographieEnfant.Attention.FlexibiliteAttentionnelle  = GetIntInBlock(attention, "flexibilite_attentionnelle")   ?? 0;
+                    }
 
                     var temperament = ExtractNamedSubBlock(carto, "temperament:");
                     if (temperament != null)

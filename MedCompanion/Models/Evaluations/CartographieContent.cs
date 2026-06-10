@@ -18,18 +18,7 @@ namespace MedCompanion.Models.Evaluations
             "Il a au moins un copain à l'école, et m'en parle.",
             "Il demande à voir ou inviter ses copains en dehors de l'école.");
 
-        public static ChenilleSegment NewPsychomotricite() => new(
-            "psychomotricite",
-            "Psychomotricité & exploration",
-            "Son corps est son premier terrain de jeu… et de découverte.",
-            "Mon enfant aime grimper, courir, sauter ou ramper.",
-            "Il manipule des objets sans tout casser ni les lâcher sans cesse.",
-            "Il peut rester concentré sur une activité physique pendant quelques minutes.",
-            "Il supporte la majorité des textures (pâte, sable, herbe, habits…).",
-            "Il se repère facilement dans l'espace (dedans/dehors, gauche/droite).",
-            "Il alterne naturellement mouvement et pause sans qu'on le force.");
-
-        public static ChenilleSegment NewLangage() => new(
+public static ChenilleSegment NewLangage() => new(
             "langage",
             "Langage & communication",
             "Parler, ce n'est pas juste dire des mots. C'est entrer en relation.",

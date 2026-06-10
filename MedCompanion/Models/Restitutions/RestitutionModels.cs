@@ -112,22 +112,38 @@ namespace MedCompanion.Models.Restitutions
 
         public DossierRestitutionInitial()
         {
-            // Initialisation des 12 sections principales. Les blocs 3 à 7 forment ensemble la
-            // page « Patient & Contexte » (2 pages physiques A+B dans le rendu HTML) — ils sont
-            // séparés pour permettre une génération/édition/régénération ciblée par sous-section.
-            Blocs.Add(new RestitutionBloc("couverture",                 "Identité & couverture",        1, "mixte"));
-            Blocs.Add(new RestitutionBloc("restitution_1page",          "Restitution 1-page parents",   2, "livre"));
-            Blocs.Add(new RestitutionBloc("patient_identification",     "Identification",               3, "clinique"));
-            Blocs.Add(new RestitutionBloc("patient_motif",              "Motif de consultation",        4, "clinique"));
-            Blocs.Add(new RestitutionBloc("patient_contexte_familial",  "Contexte familial",            5, "clinique"));
-            Blocs.Add(new RestitutionBloc("patient_antecedents",        "Antécédents",                  6, "clinique"));
-            Blocs.Add(new RestitutionBloc("patient_situation_actuelle", "Situation actuelle",                 7, "clinique"));
-            Blocs.Add(new RestitutionBloc("carto_enfant",               "Cartographie de l'enfant",           8, "clinique"));
-            Blocs.Add(new RestitutionBloc("synthese_diag",              "Synthèse diagnostique",              9, "clinique"));
-            Blocs.Add(new RestitutionBloc("bilan_final",                "Bilan final détaillé",              10, "clinique"));
-            Blocs.Add(new RestitutionBloc("synthese_globale",           "Synthèse globale",                  11, "clinique"));
-            Blocs.Add(new RestitutionBloc("projet_therapeutique",       "Projet Thérapeutique Global",       12, "clinique"));
-            Blocs.Add(new RestitutionBloc("conclusion",                 "Conclusion et perspectives",        13, "mixte"));
+            // Initialisation des 20 sections. Blocs 3-7 = page Patient & Contexte.
+            // Blocs carto_s1..s8 = 1 bloc par sphère (génération/régénération indépendante).
+            Blocs.Add(new RestitutionBloc("couverture",                 "Identité & couverture",         1, "mixte"));
+            Blocs.Add(new RestitutionBloc("restitution_1page",          "Restitution 1-page parents",    2, "livre"));
+            Blocs.Add(new RestitutionBloc("patient_identification",     "Identification",                3, "clinique"));
+            Blocs.Add(new RestitutionBloc("patient_motif",              "Motif de consultation",         4, "clinique"));
+            Blocs.Add(new RestitutionBloc("patient_contexte_familial",  "Contexte familial",             5, "clinique"));
+            Blocs.Add(new RestitutionBloc("patient_antecedents",        "Antécédents",                   6, "clinique"));
+            Blocs.Add(new RestitutionBloc("patient_situation_actuelle", "Situation actuelle",            7, "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_s1", "🐛 Sphère 1 — Attachement",               8,  "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_s2", "🐛 Sphère 2 — Régulation émotionnelle",   9,  "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_s3", "🐛 Sphère 3 — Langage",                  10,  "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_s4", "🐛 Sphère 4 — Tempérament",              11,  "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_s5", "🐛 Sphère 5 — Psychomotricité",          12,  "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_s6", "🐛 Sphère 6 — Imagination & Jeu",        13,  "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_s7", "🐛 Sphère 7 — Pensée & Apprentissages",  14,  "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_s8", "🐛 Sphère 8 — Attention & FE",           15,  "clinique"));
+            Blocs.Add(new RestitutionBloc("env_edu_f1", "🍃 Environnement — Famille",            16, "clinique"));
+            Blocs.Add(new RestitutionBloc("env_edu_f2", "🍃 Environnement — École & Pairs",      17, "clinique"));
+            Blocs.Add(new RestitutionBloc("env_edu_f3", "🍃 Environnement — Écrans & Médias",    18, "clinique"));
+            Blocs.Add(new RestitutionBloc("env_edu_f4", "🍃 Environnement — Valeurs Sociétales", 19, "clinique"));
+            Blocs.Add(new RestitutionBloc("env_edu_f5", "🍃 Environnement — Cadre Éducatif",     20, "clinique"));
+            Blocs.Add(new RestitutionBloc("env_edu_global", "🍃 Lecture globale Branche Éducative", 21, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_diag_s1", "🔬 Synthèse — Compréhension globale",    22, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_diag_s2", "🔬 Synthèse — Diagnostics retenus",       23, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_diag_s3", "🔬 Synthèse — Différentiels écartés",     24, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_diag_s4", "🔬 Synthèse — Intégration cartographies", 25, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_diag_s5", "🔬 Synthèse — Conclusion intégrative",    26, "clinique"));
+            Blocs.Add(new RestitutionBloc("bilan_final",              "Bilan final détaillé",            27, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_globale",         "Synthèse globale",                28, "clinique"));
+            Blocs.Add(new RestitutionBloc("projet_therapeutique",     "Projet Thérapeutique Global",     29, "clinique"));
+            Blocs.Add(new RestitutionBloc("conclusion",               "Conclusion et perspectives",      30, "mixte"));
         }
     }
 }

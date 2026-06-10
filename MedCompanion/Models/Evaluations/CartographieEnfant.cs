@@ -22,9 +22,10 @@ namespace MedCompanion.Models.Evaluations
         /// </summary>
         public int? AgeAuMomentDeLaSaisie { get; set; }
 
-        public ChenilleSegment Attachement     { get; }
-        public ChenilleSegment Psychomotricite { get; }
-        public TemperamentProfile Temperament  { get; } = new();
+        public ChenilleSegment Attachement            { get; }
+        public PsychomotriciteProfile Psychomotricite { get; } = new();
+        public TemperamentProfile Temperament         { get; } = new();
+        public AttentionProfile Attention             { get; } = new();
         public ChenilleSegment Langage         { get; }
         public ChenilleSegment Emotions        { get; }
         public ChenilleSegment Imaginaire      { get; }
@@ -51,9 +52,8 @@ namespace MedCompanion.Models.Evaluations
             // Les affirmations et phrases-boussoles canoniques viennent de CartographieContent
             // (créé à la sous-étape 3). Pour l'instant, segments instanciés avec contenu placeholder
             // — sera remplacé par les valeurs canoniques quand CartographieContent existera.
-            Attachement     = CartographieContent.NewAttachement();
-            Psychomotricite = CartographieContent.NewPsychomotricite();
-            Langage         = CartographieContent.NewLangage();
+            Attachement = CartographieContent.NewAttachement();
+            Langage     = CartographieContent.NewLangage();
             Emotions        = CartographieContent.NewEmotions();
             Imaginaire      = CartographieContent.NewImaginaire();
             Pensee          = CartographieContent.NewPensee();

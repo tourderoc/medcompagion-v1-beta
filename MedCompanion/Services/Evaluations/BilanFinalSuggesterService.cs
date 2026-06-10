@@ -130,9 +130,10 @@ namespace MedCompanion.Services.Evaluations
         }
 
         private static bool HasAnyChenilleScore(CartographieEnfant c)
-            => c.Attachement.Score > 0     || c.Psychomotricite.Score > 0
+            => c.Attachement.Score > 0     || c.Psychomotricite.IsRenseigne
             || c.Langage.Score > 0         || c.Emotions.Score > 0
-            || c.Imaginaire.Score > 0      || c.Pensee.Score > 0;
+            || c.Imaginaire.Score > 0      || c.Pensee.Score > 0
+            || c.Attention.IsRenseigne;
 
         private static bool HasAnyEnvScore(CartographieEnvironnement c)
             => EnvFeuilleHasScore(c.Famille)        || EnvFeuilleHasScore(c.EcolePairs)
@@ -169,7 +170,9 @@ namespace MedCompanion.Services.Evaluations
             if (cartoEnfant != null && HasAnyChenilleScore(cartoEnfant))
             {
                 AppendChenilleSegment(sbEnfant, "Attachement",      cartoEnfant.Attachement);
-                AppendChenilleSegment(sbEnfant, "Psychomotricité",  cartoEnfant.Psychomotricite);
+                var psycho = cartoEnfant.Psychomotricite;
+                if (psycho.IsRenseigne)
+                    sbEnfant.AppendLine($"- Psychomotricité : globale={psycho.MotriciteGlobale}/5, fine={psycho.MotriciteFine}/5, tonus={psycho.Tonus}/5, dextérité={psycho.Dexterite}/5, coordination={psycho.Coordination}/5, impulsivité motrice={psycho.ImpulsiviteMotrice}/5");
                 AppendChenilleSegment(sbEnfant, "Langage",          cartoEnfant.Langage);
                 AppendChenilleSegment(sbEnfant, "Émotions",         cartoEnfant.Emotions);
                 AppendChenilleSegment(sbEnfant, "Imaginaire",       cartoEnfant.Imaginaire);
@@ -177,6 +180,9 @@ namespace MedCompanion.Services.Evaluations
                 var temp = cartoEnfant.Temperament;
                 if (temp != null && temp.IsRenseigne)
                     sbEnfant.AppendLine($"- Tempérament : activité={temp.NiveauActivite}/5, régularité={temp.Regularite}/5, réactivité={temp.ReactiviteSensorielle}/5, intensité={temp.IntensiteEmotionnelle}/5, adaptabilité={temp.Adaptabilite}/5, temps réaction={temp.TempsDeReaction}/5");
+                var att = cartoEnfant.Attention;
+                if (att.IsRenseigne)
+                    sbEnfant.AppendLine($"- Attention & FE : soutenue={att.AttentionSoutenue}/5, sélective={att.AttentionSelective}/5, divisée={att.AttentionDivisee}/5, inhibition={att.Inhibition}/5, planification={att.Planification}/5, flexibilité={att.FlexibiliteAttentionnelle}/5");
             }
             else
             {

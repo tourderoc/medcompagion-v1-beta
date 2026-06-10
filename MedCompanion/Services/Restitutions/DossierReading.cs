@@ -59,6 +59,19 @@ namespace MedCompanion.Services.Restitutions
         public CartographieEnfant? LatestCartographieEnfant { get; init; }
 
         /// <summary>
+        /// Dernière Étape 4 « Cartographie de l'environnement » de la dernière évaluation clôturée.
+        /// Utilisée pour le rendu SVG des feuilles dans le Dossier de Restitution.
+        /// </summary>
+        public CartographieEnvironnement? LatestCartographieEnvironnement { get; init; }
+
+        /// <summary>
+        /// Bilan Final (Étape 5) de la dernière évaluation clôturée : diagnostics retenus,
+        /// éléments en faveur, différentiels écartés, niveau de certitude, synthèse intégrative.
+        /// null si aucune évaluation clôturée ou si le BilanFinal est vide.
+        /// </summary>
+        public BilanFinal? LatestBilanFinal { get; init; }
+
+        /// <summary>
         /// Rendu textuel structuré du dossier pour injection dans un prompt LLM.
         /// Ordre clinique : qui est l'enfant → ce qu'on a appris au 1er entretien → suite →
         /// évaluations → synthèses → projet → sources externes.
@@ -92,6 +105,40 @@ namespace MedCompanion.Services.Restitutions
                 {
                     sb.AppendLine($"--- Évaluation clôturée {(e.DateCloture.HasValue ? $"le {e.DateCloture.Value:dd/MM/yyyy}" : "")} ---");
                     sb.AppendLine(GetEvaluationBodyWithoutFrontmatter(e.Content).Trim());
+                    sb.AppendLine();
+                }
+            }
+
+            if (LatestBilanFinal != null)
+            {
+                sb.AppendLine("[BILAN FINAL — Étape 5 (diagnostics, certitude, éléments en faveur, différentiels)]");
+                sb.AppendLine();
+                if (LatestBilanFinal.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine("Diagnostics retenus :");
+                    foreach (var d in LatestBilanFinal.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                    sb.AppendLine($"  Niveau de certitude : {LatestBilanFinal.Certitude}");
+                    sb.AppendLine();
+                }
+                if (LatestBilanFinal.ElementsEnFaveur.Count > 0)
+                {
+                    sb.AppendLine("Éléments cliniques en faveur :");
+                    foreach (var e in LatestBilanFinal.ElementsEnFaveur)
+                        sb.AppendLine($"  • {e.Value}");
+                    sb.AppendLine();
+                }
+                if (LatestBilanFinal.DiagnosticsEcartes.Count > 0)
+                {
+                    sb.AppendLine("Diagnostics différentiels écartés :");
+                    foreach (var ec in LatestBilanFinal.DiagnosticsEcartes)
+                        sb.AppendLine($"  • {ec.Label} — {ec.Motif}");
+                    sb.AppendLine();
+                }
+                if (!string.IsNullOrWhiteSpace(LatestBilanFinal.SyntheseIntegrative))
+                {
+                    sb.AppendLine("Synthèse intégrative (rédigée par le médecin) :");
+                    sb.AppendLine(LatestBilanFinal.SyntheseIntegrative.Trim());
                     sb.AppendLine();
                 }
             }

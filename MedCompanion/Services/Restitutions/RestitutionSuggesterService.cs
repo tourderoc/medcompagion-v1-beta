@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using MedCompanion.Models.Evaluations;
 using MedCompanion.Models.Restitutions;
 using MedCompanion.Services.LLM;
 using MedCompanion.Services.Synthesis;
@@ -419,25 +420,32 @@ namespace MedCompanion.Services.Restitutions
                     var lecture     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau);
                     var ageTxt      = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
 
+                    var itemLines = string.Join("\n", seg.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+
                     subsections.Add((
                         "## Sphère 1 — Attachement",
-                        $"Contexte numérique (à utiliser, jamais réécrire) : score {seg.Score}/6 à {ageTxt} ans → niveau « {niveauLabel} ». " +
-                        $"Lecture canonique : {lecture}\n\n" +
-                        "Rédige UNIQUEMENT cette sphère dans le format strict suivant, sans titre supplémentaire :\n\n" +
+                        $"=== DONNÉES D'ÉVALUATION — ATTACHEMENT (source principale) ===\n" +
+                        $"Score : {seg.Score}/6 à {ageTxt} ans → niveau « {niveauLabel} »\n" +
+                        $"Items cochés ✓ = comportement présent | ✗ = comportement absent ou insuffisant :\n{itemLines}\n" +
+                        $"Lecture canonique du niveau : {lecture}\n\n" +
+                        "Croise ces résultats avec le dossier bleu (1ère consultation, notes, synthèse Med) pour rédiger les observations.\n\n" +
+                        "Rédige UNIQUEMENT la sphère Attachement dans le format strict suivant :\n\n" +
                         "**Observations**\n" +
-                        "- 2 ou 3 puces COURTES (1 ligne chacune), style clinique pédopsychiatrique précis, basées sur le dossier patient (1ère consultation, notes, synthèse globale Med).\n" +
-                        "- Mentionner les éléments concrets observés en lien avec l'attachement et la sécurité intérieure (anxiété de séparation, besoin de réassurance, qualité du lien, capacité d'apaisement…).\n" +
+                        "- 2 ou 3 puces COURTES (1 ligne chacune), style clinique pédopsychiatrique précis.\n" +
+                        "- Appuie-toi D'ABORD sur les items ✓/✗ ci-dessus (ce que le parent a rapporté), en croisant avec le dossier.\n" +
+                        "- Reste STRICTEMENT dans le domaine Attachement & sécurité intérieure : anxiété de séparation, besoin de réassurance, qualité du lien, capacité d'apaisement.\n" +
+                        "- NE MENTIONNE PAS la régulation émotionnelle, le langage, le comportement ou toute autre sphère — celles-ci feront l'objet de leurs propres sections.\n" +
                         "- N'INVENTE RIEN : si le dossier est silencieux sur l'attachement, écris une seule puce : `- Données limitées concernant la sphère d'attachement dans le dossier.`\n\n" +
-                        "**Niveau clinique** : 1 SEULE phrase courte qui traduit cliniquement ce niveau pour cet enfant. " +
-                        "Format obligatoire : `Mot-clé (qualifier court).`\n" +
-                        "Exemples du bon format selon le niveau :\n" +
+                        "**Niveau clinique** : 1 SEULE phrase courte ancrée DANS la sphère Attachement. " +
+                        "Format obligatoire : `Mot-clé (qualifier court sur l'attachement uniquement).`\n" +
+                        "Exemples selon le niveau :\n" +
                         "- Vert foncé → `Ressource solide (Sécurité intérieure intégrée).`\n" +
                         "- Vert clair → `Satisfaisant (Base sécurisante présente).`\n" +
-                        "- Jaune clair → `À surveiller (Équilibre encore fragile).`\n" +
-                        "- Jaune foncé → `Fragilisé (Besoin d'étayage).`\n" +
+                        "- Jaune clair → `À surveiller (Équilibre du lien encore fragile).`\n" +
+                        "- Jaune foncé → `Fragilisé (Besoin d'étayage dans le lien).`\n" +
                         "- Rouge clair → `Alerte (Anxiété d'attachement marquée).`\n" +
                         "- Rouge foncé → `Très fragilisé (Insécurité affective profonde).`\n" +
-                        "Adapte le mot-clé et le qualifier au cas du patient si le dossier suggère une nuance, mais reste dans ce format compact.\n\n" +
+                        "IMPORTANT : Le qualifier doit rester dans le champ de l'attachement — n'inclus PAS d'autres sphères.\n\n" +
                         "Commence directement par `**Observations**`, n'ajoute pas de titre de sphère ni de commentaire."));
                 }
                 else
@@ -447,17 +455,324 @@ namespace MedCompanion.Services.Restitutions
                         "L'étape 3 de cartographie de l'enfant n'a pas été clôturée ou l'âge est hors fourchette 3-11 ans. " +
                         "Écris : `**Observations** : non disponibles (étape 3 d'évaluation non clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
                 }
+
+                // === SPHÈRE 2 — RÉGULATION ÉMOTIONNELLE ===
+                var seg2    = carto.Emotions;
+                var niveau2 = Services.Evaluations.CartographieScoringService.Calculer(seg2.Score, carto.AgeAuMomentDeLaSaisie);
+                if (niveau2.HasValue)
+                {
+                    var niveauLabel2 = Models.Evaluations.CartographieContent.NiveauLabel(niveau2);
+                    var lecture2     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau2);
+                    var ageTxt2      = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+                    var itemLines2   = string.Join("\n", seg2.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+
+                    subsections.Add((
+                        "## Sphère 2 — Régulation émotionnelle",
+                        $"=== DONNÉES D'ÉVALUATION — RÉGULATION ÉMOTIONNELLE (source principale) ===\n" +
+                        $"Score : {seg2.Score}/6 à {ageTxt2} ans → niveau « {niveauLabel2} »\n" +
+                        $"Items cochés ✓ = comportement présent | ✗ = comportement absent ou insuffisant :\n{itemLines2}\n" +
+                        $"Lecture canonique du niveau : {lecture2}\n\n" +
+                        "Croise ces résultats avec le dossier bleu (1ère consultation, notes, synthèse Med) pour rédiger les observations.\n\n" +
+                        "Rédige UNIQUEMENT la sphère Régulation émotionnelle dans le format strict suivant :\n\n" +
+                        "**Observations**\n" +
+                        "- 2 ou 3 puces COURTES (1 ligne chacune), style clinique pédopsychiatrique précis.\n" +
+                        "- Appuie-toi D'ABORD sur les items ✓/✗ ci-dessus (ce que le parent a rapporté), en croisant avec le dossier.\n" +
+                        "- Reste STRICTEMENT dans le domaine de la régulation émotionnelle : capacité à nommer les émotions, tolérance à la frustration, retour au calme, débordements émotionnels.\n" +
+                        "- NE MENTIONNE PAS l'attachement, le langage, le comportement ou toute autre sphère — celles-ci font l'objet de leurs propres sections.\n" +
+                        "- N'INVENTE RIEN : si le dossier est silencieux sur la régulation émotionnelle, écris une seule puce : `- Données limitées concernant la sphère de régulation émotionnelle dans le dossier.`\n\n" +
+                        "**Niveau clinique** : 1 SEULE phrase courte ancrée DANS la sphère Régulation émotionnelle. " +
+                        "Format obligatoire : `Mot-clé (qualifier court sur la régulation émotionnelle uniquement).`\n" +
+                        "Exemples selon le niveau :\n" +
+                        "- Vert foncé → `Régulation intégrée (Gestion émotionnelle fluide et autonome).`\n" +
+                        "- Vert clair → `Satisfaisant (Régulation émotionnelle fonctionnelle).`\n" +
+                        "- Jaune clair → `À surveiller (Régulation encore fragile selon le contexte).`\n" +
+                        "- Jaune foncé → `Fragilisé (Débordements fréquents, retour au calme difficile).`\n" +
+                        "- Rouge clair → `Alerte (Dysrégulation marquée).`\n" +
+                        "- Rouge foncé → `Très fragilisé (Tempêtes émotionnelles, régulation non acquise).`\n" +
+                        "IMPORTANT : Le qualifier doit rester dans le champ de la régulation émotionnelle — n'inclus PAS d'autres sphères.\n\n" +
+                        "Commence directement par `**Observations**`, n'ajoute pas de titre de sphère ni de commentaire."));
+                }
+                else
+                {
+                    subsections.Add((
+                        "## Sphère 2 — Régulation émotionnelle",
+                        "L'étape 3 de cartographie de l'enfant n'a pas été clôturée ou l'âge est hors fourchette 3-11 ans. " +
+                        "Écris : `**Observations** : non disponibles (étape 3 d'évaluation non clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+                }
+
+                // === SPHÈRE 3 — LANGAGE ===
+                var seg3    = carto.Langage;
+                var niveau3 = Services.Evaluations.CartographieScoringService.Calculer(seg3.Score, carto.AgeAuMomentDeLaSaisie);
+                if (niveau3.HasValue)
+                {
+                    var niveauLabel3 = Models.Evaluations.CartographieContent.NiveauLabel(niveau3);
+                    var lecture3     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau3);
+                    var ageTxt3      = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+                    var itemLines3   = string.Join("\n", seg3.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+
+                    subsections.Add((
+                        "## Sphère 3 — Langage",
+                        $"=== DONNÉES D'ÉVALUATION — LANGAGE & COMMUNICATION (source principale) ===\n" +
+                        $"Score : {seg3.Score}/6 à {ageTxt3} ans → niveau « {niveauLabel3} »\n" +
+                        $"Items cochés ✓ = comportement présent | ✗ = comportement absent ou insuffisant :\n{itemLines3}\n" +
+                        $"Lecture canonique du niveau : {lecture3}\n\n" +
+                        "Croise ces résultats avec le dossier bleu (1ère consultation, notes, synthèse Med) pour rédiger les observations.\n\n" +
+                        "Rédige UNIQUEMENT la sphère Langage dans le format strict suivant :\n\n" +
+                        "**Observations**\n" +
+                        "- 2 ou 3 puces COURTES (1 ligne chacune), style clinique pédopsychiatrique précis.\n" +
+                        "- Appuie-toi D'ABORD sur les items ✓/✗ ci-dessus (ce que le parent a rapporté), en croisant avec le dossier.\n" +
+                        "- Reste STRICTEMENT dans le domaine du langage et de la communication : expression verbale, compréhension, vocabulaire, capacité à raconter, écoute.\n" +
+                        "- NE MENTIONNE PAS l'attachement, la régulation émotionnelle, le comportement ou toute autre sphère — celles-ci font l'objet de leurs propres sections.\n" +
+                        "- N'INVENTE RIEN : si le dossier est silencieux sur le langage, écris une seule puce : `- Données limitées concernant la sphère langage dans le dossier.`\n\n" +
+                        "**Niveau clinique** : 1 SEULE phrase courte ancrée DANS la sphère Langage. " +
+                        "Format obligatoire : `Mot-clé (qualifier court sur le langage uniquement).`\n" +
+                        "Exemples selon le niveau :\n" +
+                        "- Vert foncé → `Langage intégré (Expression et compréhension fluides).`\n" +
+                        "- Vert clair → `Satisfaisant (Communication fonctionnelle bien installée).`\n" +
+                        "- Jaune clair → `À surveiller (Fluctuant selon le contexte émotionnel).`\n" +
+                        "- Jaune foncé → `Fragilisé (Langage limité en situation de stress).`\n" +
+                        "- Rouge clair → `Alerte (Difficultés d'expression ou de compréhension marquées).`\n" +
+                        "- Rouge foncé → `Très fragilisé (Communication très altérée).`\n" +
+                        "IMPORTANT : Le qualifier doit rester dans le champ du langage — n'inclus PAS d'autres sphères.\n\n" +
+                        "Commence directement par `**Observations**`, n'ajoute pas de titre de sphère ni de commentaire."));
+                }
+                else
+                {
+                    subsections.Add((
+                        "## Sphère 3 — Langage",
+                        "L'étape 3 de cartographie de l'enfant n'a pas été clôturée ou l'âge est hors fourchette 3-11 ans. " +
+                        "Écris : `**Observations** : non disponibles (étape 3 d'évaluation non clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+                }
+
+                // === SPHÈRE 4 — TEMPÉRAMENT ===
+                var temp = carto.Temperament;
+                if (temp.IsRenseigne)
+                {
+                    var ageTxt4 = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+                    subsections.Add((
+                        "## Sphère 4 — Tempérament",
+                        $"=== DONNÉES D'ÉVALUATION — TEMPÉRAMENT (source principale) ===\n" +
+                        $"Âge : {ageTxt4} ans\n" +
+                        $"Scores par axe (1 = très bas / 5 = très élevé) :\n" +
+                        $"- Niveau d'activité      : {temp.NiveauActivite}/5\n" +
+                        $"- Régularité / Rythme    : {temp.Regularite}/5\n" +
+                        $"- Réactivité sensorielle : {temp.ReactiviteSensorielle}/5\n" +
+                        $"- Intensité émotionnelle : {temp.IntensiteEmotionnelle}/5\n" +
+                        $"- Adaptabilité           : {temp.Adaptabilite}/5\n" +
+                        $"- Temps de réaction      : {temp.TempsDeReaction}/5\n\n" +
+                        "Croise ces scores avec le dossier bleu (notes, 1ère consultation, synthèse Med).\n\n" +
+                        "IMPORTANT : Le tempérament n'est PAS pathologique — c'est le câblage naturel de l'enfant.\n" +
+                        "Ton rôle est de décrire la forme intérieure de cet enfant pour aider parents et intervenants à adapter l'environnement.\n\n" +
+                        "Rédige UNIQUEMENT la sphère Tempérament dans le format strict suivant :\n\n" +
+                        "**Observations**\n\n" +
+                        "**Profil global**\n" +
+                        "2 à 3 phrases décrivant la forme tempéramentielle globale de cet enfant (ex : enfant à haute intensité, lent à s'adapter, bon rythme régulier…).\n" +
+                        "Appuie-toi sur les axes saillants (scores extrêmes 1-2 ou 4-5) ET sur le dossier.\n\n" +
+                        "**Points d'appui**\n" +
+                        "- 1 ou 2 puces : traits tempéramentaux qui jouent EN FAVEUR de l'enfant (ressources, leviers thérapeutiques ou éducatifs).\n\n" +
+                        "**Points d'attention**\n" +
+                        "- 1 ou 2 puces : axes extrêmes qui créent des frictions dans l'environnement, avec une piste d'adaptation concrète par puce.\n\n" +
+                        "NE MENTIONNE PAS les autres sphères (attachement, langage, régulation).\n" +
+                        "Commence directement par `**Observations**` sans titre de sphère ni commentaire."));
+                }
+                else
+                {
+                    subsections.Add((
+                        "## Sphère 4 — Tempérament",
+                        "Le profil de tempérament n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil tempérament non renseigné).`"));
+                }
+
+                // === SPHÈRE 5 — PSYCHOMOTRICITÉ ===
+                var psycho = carto.Psychomotricite;
+                if (psycho.IsRenseigne)
+                {
+                    var ageTxt5 = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+                    subsections.Add((
+                        "## Sphère 5 — Psychomotricité",
+                        $"=== DONNÉES D'ÉVALUATION — PSYCHOMOTRICITÉ (source principale) ===\n" +
+                        $"Âge : {ageTxt5} ans\n" +
+                        $"Scores par axe (1 = très bas / 5 = très élevé) :\n" +
+                        $"- Motricité globale    : {psycho.MotriciteGlobale}/5\n" +
+                        $"- Motricité fine       : {psycho.MotriciteFine}/5\n" +
+                        $"- Tonus                : {psycho.Tonus}/5\n" +
+                        $"- Dextérité            : {psycho.Dexterite}/5\n" +
+                        $"- Coordination         : {psycho.Coordination}/5\n" +
+                        $"- Impulsivité motrice  : {psycho.ImpulsiviteMotrice}/5\n\n" +
+                        "Croise ces scores avec le dossier bleu (notes, 1ère consultation, synthèse Med).\n\n" +
+                        "IMPORTANT : Le profil psychomoteur n'est PAS pathologique en lui-même — c'est une cartographie du corps de l'enfant.\n" +
+                        "Ton rôle est de décrire le profil moteur pour aider parents et intervenants à comprendre les besoins corporels de cet enfant.\n\n" +
+                        "Rédige UNIQUEMENT la sphère Psychomotricité dans le format strict suivant :\n\n" +
+                        "**Observations**\n\n" +
+                        "**Profil global**\n" +
+                        "2 à 3 phrases décrivant le profil moteur de cet enfant (ex : enfant au tonus bas, motricité fine fragile, bonne coordination générale…).\n" +
+                        "Appuie-toi sur les axes saillants (scores extrêmes 1-2 ou 4-5) ET sur le dossier.\n\n" +
+                        "**Points d'appui**\n" +
+                        "- 1 ou 2 puces : axes moteurs qui jouent EN FAVEUR de l'enfant (ressources corporelles, leviers thérapeutiques ou éducatifs).\n\n" +
+                        "**Points d'attention**\n" +
+                        "- 1 ou 2 puces : axes en difficulté avec une piste d'adaptation concrète par puce (aménagement scolaire, thérapie recommandée, adaptation des activités).\n\n" +
+                        "NE MENTIONNE PAS les autres sphères (attachement, langage, tempérament, régulation).\n" +
+                        "Commence directement par `**Observations**` sans titre de sphère ni commentaire."));
+                }
+                else
+                {
+                    subsections.Add((
+                        "## Sphère 5 — Psychomotricité",
+                        "Le profil psychomoteur n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil psychomoteur non renseigné).`"));
+                }
+
+                // === SPHÈRE 6 — IMAGINATION & JEU ===
+                var seg6    = carto.Imaginaire;
+                var niveau6 = Services.Evaluations.CartographieScoringService.Calculer(seg6.Score, carto.AgeAuMomentDeLaSaisie);
+                if (niveau6.HasValue)
+                {
+                    var niveauLabel6 = Models.Evaluations.CartographieContent.NiveauLabel(niveau6);
+                    var lecture6     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau6);
+                    var ageTxt6      = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+                    var itemLines6   = string.Join("\n", seg6.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+
+                    subsections.Add((
+                        "## Sphère 6 — Imagination & Jeu",
+                        $"=== DONNÉES D'ÉVALUATION — IMAGINATION & JEU (source principale) ===\n" +
+                        $"Score : {seg6.Score}/6 à {ageTxt6} ans → niveau « {niveauLabel6} »\n" +
+                        $"Items cochés ✓ = comportement présent | ✗ = comportement absent ou insuffisant :\n{itemLines6}\n" +
+                        $"Lecture canonique du niveau : {lecture6}\n\n" +
+                        "Croise ces résultats avec le dossier bleu (1ère consultation, notes, synthèse Med).\n\n" +
+                        "Rédige UNIQUEMENT la sphère Imagination & Jeu dans le format strict suivant :\n\n" +
+                        "**Observations**\n" +
+                        "- 2 ou 3 puces COURTES (1 ligne chacune), style clinique pédopsychiatrique précis.\n" +
+                        "- Appuie-toi D'ABORD sur les items ✓/✗, en croisant avec le dossier.\n" +
+                        "- Reste STRICTEMENT dans le domaine de l'imaginaire et du jeu symbolique : capacité à inventer, jouer « comme si », raconter, se réconforter via l'imaginaire.\n" +
+                        "- NE MENTIONNE PAS les autres sphères.\n" +
+                        "- N'INVENTE RIEN : si le dossier est silencieux, écris : `- Données limitées concernant la sphère imagination & jeu dans le dossier.`\n\n" +
+                        "**Niveau clinique** : 1 SEULE phrase courte ancrée dans la sphère Imagination & Jeu.\n" +
+                        "Format : `Mot-clé (qualifier court).`\n" +
+                        "Exemples :\n" +
+                        "- Vert foncé → `Ressource créative (Imaginaire riche et intégré).`\n" +
+                        "- Vert clair → `Satisfaisant (Jeu symbolique fluide et présent).`\n" +
+                        "- Jaune clair → `À surveiller (Jeu symbolique irrégulier).`\n" +
+                        "- Jaune foncé → `Fragilisé (Imaginaire peu investi ou rigide).`\n" +
+                        "- Rouge clair → `Alerte (Accès à l'imaginaire difficile).`\n" +
+                        "- Rouge foncé → `Très fragilisé (Jeu symbolique absent ou très limité).`\n\n" +
+                        "Commence directement par `**Observations**`, n'ajoute pas de titre de sphère ni de commentaire."));
+                }
+                else
+                {
+                    subsections.Add((
+                        "## Sphère 6 — Imagination & Jeu",
+                        "L'étape 3 de cartographie n'a pas été clôturée ou l'âge est hors fourchette 3-11 ans. " +
+                        "Écris : `**Observations** : non disponibles (étape 3 d'évaluation non clôturée).` puis `**Niveau clinique** : Non évalué.`"));
+                }
+
+                // === SPHÈRE 7 — PENSÉE & APPRENTISSAGES ===
+                var seg7    = carto.Pensee;
+                var niveau7 = Services.Evaluations.CartographieScoringService.Calculer(seg7.Score, carto.AgeAuMomentDeLaSaisie);
+                if (niveau7.HasValue)
+                {
+                    var niveauLabel7 = Models.Evaluations.CartographieContent.NiveauLabel(niveau7);
+                    var lecture7     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau7);
+                    var ageTxt7      = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+                    var itemLines7   = string.Join("\n", seg7.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+
+                    subsections.Add((
+                        "## Sphère 7 — Pensée & Apprentissages",
+                        $"=== DONNÉES D'ÉVALUATION — PENSÉE & APPRENTISSAGES (source principale) ===\n" +
+                        $"Score : {seg7.Score}/6 à {ageTxt7} ans → niveau « {niveauLabel7} »\n" +
+                        $"Items cochés ✓ = comportement présent | ✗ = comportement absent ou insuffisant :\n{itemLines7}\n" +
+                        $"Lecture canonique du niveau : {lecture7}\n\n" +
+                        "Croise ces résultats avec le dossier bleu (1ère consultation, notes, synthèse Med).\n\n" +
+                        "Rédige UNIQUEMENT la sphère Pensée & Apprentissages dans le format strict suivant :\n\n" +
+                        "**Observations**\n" +
+                        "- 2 ou 3 puces COURTES (1 ligne chacune), style clinique pédopsychiatrique précis.\n" +
+                        "- Appuie-toi D'ABORD sur les items ✓/✗, en croisant avec le dossier.\n" +
+                        "- Reste STRICTEMENT dans le domaine de la pensée et des apprentissages : curiosité, compréhension des consignes, concentration, résolution de problèmes, flexibilité cognitive.\n" +
+                        "- NE MENTIONNE PAS les autres sphères.\n" +
+                        "- N'INVENTE RIEN : si le dossier est silencieux, écris : `- Données limitées concernant la sphère pensée & apprentissages dans le dossier.`\n\n" +
+                        "**Niveau clinique** : 1 SEULE phrase courte ancrée dans la sphère Pensée & Apprentissages.\n" +
+                        "Format : `Mot-clé (qualifier court).`\n" +
+                        "Exemples :\n" +
+                        "- Vert foncé → `Pensée intégrée (Organisation cognitive solide et flexible).`\n" +
+                        "- Vert clair → `Satisfaisant (Compréhension et adaptation fonctionnelles).`\n" +
+                        "- Jaune clair → `À surveiller (Concentration ou flexibilité fragiles).`\n" +
+                        "- Jaune foncé → `Fragilisé (Difficultés d'organisation cognitive marquées).`\n" +
+                        "- Rouge clair → `Alerte (Pensée rigide ou fragmentée).`\n" +
+                        "- Rouge foncé → `Très fragilisé (Organisation cognitive très altérée).`\n\n" +
+                        "Commence directement par `**Observations**`, n'ajoute pas de titre de sphère ni de commentaire."));
+                }
+                else
+                {
+                    subsections.Add((
+                        "## Sphère 7 — Pensée & Apprentissages",
+                        "L'étape 3 de cartographie n'a pas été clôturée ou l'âge est hors fourchette 3-11 ans. " +
+                        "Écris : `**Observations** : non disponibles (étape 3 d'évaluation non clôturée).` puis `**Niveau clinique** : Non évalué.`"));
+                }
+
+                // === SPHÈRE 8 — ATTENTION & FONCTIONS EXÉCUTIVES ===
+                var att = carto.Attention;
+                if (att.IsRenseigne)
+                {
+                    var ageTxt8 = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+                    subsections.Add((
+                        "## Sphère 8 — Attention & Fonctions exécutives",
+                        $"=== DONNÉES D'ÉVALUATION — ATTENTION & FONCTIONS EXÉCUTIVES (source principale) ===\n" +
+                        $"Âge : {ageTxt8} ans\n" +
+                        $"Scores par axe (1 = très bas / 5 = très élevé) :\n" +
+                        $"- Attention soutenue          : {att.AttentionSoutenue}/5\n" +
+                        $"- Attention sélective         : {att.AttentionSelective}/5\n" +
+                        $"- Attention divisée           : {att.AttentionDivisee}/5\n" +
+                        $"- Inhibition (contrôle)       : {att.Inhibition}/5\n" +
+                        $"- Planification               : {att.Planification}/5\n" +
+                        $"- Flexibilité attentionnelle  : {att.FlexibiliteAttentionnelle}/5\n\n" +
+                        "Croise ces scores avec le dossier bleu (notes, 1ère consultation, synthèse Med).\n\n" +
+                        "IMPORTANT : Ce profil attentionnel n'est PAS nécessairement un trouble — il décrit le fonctionnement exécutif de cet enfant.\n" +
+                        "Ton rôle est de décrire comment cet enfant gère son attention pour aider parents et intervenants à adapter l'environnement.\n\n" +
+                        "Rédige UNIQUEMENT la sphère Attention & Fonctions exécutives dans le format strict suivant :\n\n" +
+                        "**Observations**\n\n" +
+                        "**Profil global**\n" +
+                        "2 à 3 phrases décrivant le profil attentionnel de cet enfant (ex : enfant avec bonne attention soutenue, inhibition fragilisée, planification en développement…).\n" +
+                        "Appuie-toi sur les axes saillants (scores extrêmes 1-2 ou 4-5) ET sur le dossier.\n\n" +
+                        "**Points d'appui**\n" +
+                        "- 1 ou 2 puces : axes attentionnels qui jouent EN FAVEUR de l'enfant (ressources, leviers thérapeutiques ou éducatifs).\n\n" +
+                        "**Points d'attention**\n" +
+                        "- 1 ou 2 puces : axes fragilisés avec une piste d'adaptation concrète (aménagement scolaire, stratégie compensatoire, suivi recommandé).\n\n" +
+                        "NE MENTIONNE PAS les autres sphères (attachement, langage, tempérament, psychomotricité).\n" +
+                        "Commence directement par `**Observations**` sans titre de sphère ni commentaire."));
+                }
+                else
+                {
+                    subsections.Add((
+                        "## Sphère 8 — Attention & Fonctions exécutives",
+                        "Le profil attentionnel n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil attentionnel non renseigné).`"));
+                }
             }
             else
             {
                 subsections.Add((
                     "## Sphère 1 — Attachement",
                     "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+                subsections.Add((
+                    "## Sphère 2 — Régulation émotionnelle",
+                    "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+                subsections.Add((
+                    "## Sphère 3 — Langage",
+                    "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+                subsections.Add((
+                    "## Sphère 4 — Tempérament",
+                    "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).`"));
+                subsections.Add((
+                    "## Sphère 5 — Psychomotricité",
+                    "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).`"));
+                subsections.Add((
+                    "## Sphère 6 — Imagination & Jeu",
+                    "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+                subsections.Add((
+                    "## Sphère 7 — Pensée & Apprentissages",
+                    "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+                subsections.Add((
+                    "## Sphère 8 — Attention & Fonctions exécutives",
+                    "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).`"));
             }
 
-            // Sphères 2-8 : à ajouter dans les prochaines itérations selon le même pattern.
-            // Les cartouches restent en placeholder dans le rendu HTML tant qu'aucun contenu
-            // n'est généré pour elles.
+            // Sphère 8 câblée en V0.8.
 
             await RunProgressiveSubsectionsAsync(systemPrompt, context, blocCe.VoixCible,
                 subsections.ToArray(), onSectionReady, 400, ct);
@@ -499,6 +814,570 @@ namespace MedCompanion.Services.Restitutions
 
                 onSectionReady(accumulated.ToString());
             }
+        }
+
+        // ── Génération par sphère individuelle (V0.9 — 1 bloc = 1 sphère) ────
+
+        /// <summary>
+        /// Génère le contenu LLM pour une seule sphère de la Cartographie de l'enfant.
+        /// Le résultat (contenu pur, sans header ## Sphère N) est renvoyé via onSectionReady.
+        /// </summary>
+        public async Task SuggestCartoSphereAsync(
+            int sphereNum,
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var blocCe = new RestitutionBloc("carto_enfant", "Cartographie de l'enfant", 8, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocCe);
+            var carto = reading.LatestCartographieEnfant;
+
+            var instruction = BuildCartoSphereInstruction(sphereNum, carto);
+            var userPrompt  = BuildSubsectionPrompt(context, instruction, blocCe.VoixCible);
+            var messages    = new List<(string role, string content)> { ("user", userPrompt) };
+            var result      = await _llmService.ChatAsync(systemPrompt, messages, 450, ct);
+
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildCartoSphereInstruction(int sphereNum, CartographieEnfant? carto)
+        {
+            var ageTxt = carto?.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+
+            return sphereNum switch
+            {
+                1 when carto != null => BuildSphere1Instruction(carto, ageTxt),
+                2 when carto != null => BuildSphere2Instruction(carto, ageTxt),
+                3 when carto != null => BuildSphere3Instruction(carto, ageTxt),
+                4 when carto != null => BuildSphere4Instruction(carto, ageTxt),
+                5 when carto != null => BuildSphere5Instruction(carto, ageTxt),
+                6 when carto != null => BuildSphere6Instruction(carto, ageTxt),
+                7 when carto != null => BuildSphere7Instruction(carto, ageTxt),
+                8 when carto != null => BuildSphere8Instruction(carto, ageTxt),
+                4 => "Le profil de tempérament n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil tempérament non renseigné).`",
+                5 => "Le profil psychomoteur n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil psychomoteur non renseigné).`",
+                8 => "Le profil attentionnel n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil attentionnel non renseigné).`",
+                _ => "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).` puis `**Niveau clinique** : Non évalué.`",
+            };
+        }
+
+        private static string BuildSphere1Instruction(CartographieEnfant carto, string ageTxt)
+        {
+            var seg = carto.Attachement;
+            var niveau = Services.Evaluations.CartographieScoringService.Calculer(seg.Score, carto.AgeAuMomentDeLaSaisie);
+            if (!niveau.HasValue)
+                return "L'étape 3 de cartographie n'a pas été clôturée ou l'âge est hors fourchette 3-11 ans. Écris : `**Observations** : non disponibles.` puis `**Niveau clinique** : Non évalué.`";
+            var niveauLabel = Models.Evaluations.CartographieContent.NiveauLabel(niveau);
+            var lecture     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau);
+            var itemLines   = string.Join("\n", seg.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+            return $"=== DONNÉES D'ÉVALUATION — ATTACHEMENT ===\nScore : {seg.Score}/6 à {ageTxt} ans → niveau « {niveauLabel} »\n{itemLines}\nLecture canonique : {lecture}\n\n" +
+                "Rédige UNIQUEMENT la sphère Attachement :\n\n**Observations**\n- 2 ou 3 puces COURTES. Appuie-toi D'ABORD sur les items ✓/✗, en croisant avec le dossier.\n- Reste STRICTEMENT dans le domaine Attachement & sécurité intérieure.\n- NE MENTIONNE PAS les autres sphères.\n- N'INVENTE RIEN.\n\n" +
+                "**Niveau clinique** : 1 SEULE phrase. Format : `Mot-clé (qualifier court sur l'attachement).`\n" +
+                $"Exemples : Vert foncé → `Ressource solide (Sécurité intérieure intégrée).` | Jaune clair → `À surveiller (Équilibre du lien encore fragile).` | Rouge clair → `Alerte (Anxiété d'attachement marquée).`\n\nCommence directement par `**Observations**`.";
+        }
+
+        private static string BuildSphere2Instruction(CartographieEnfant carto, string ageTxt)
+        {
+            var seg = carto.Emotions;
+            var niveau = Services.Evaluations.CartographieScoringService.Calculer(seg.Score, carto.AgeAuMomentDeLaSaisie);
+            if (!niveau.HasValue)
+                return "L'étape 3 non clôturée ou âge hors fourchette. Écris : `**Observations** : non disponibles.` puis `**Niveau clinique** : Non évalué.`";
+            var niveauLabel = Models.Evaluations.CartographieContent.NiveauLabel(niveau);
+            var lecture     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau);
+            var itemLines   = string.Join("\n", seg.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+            return $"=== DONNÉES D'ÉVALUATION — RÉGULATION ÉMOTIONNELLE ===\nScore : {seg.Score}/6 à {ageTxt} ans → niveau « {niveauLabel} »\n{itemLines}\nLecture canonique : {lecture}\n\n" +
+                "Rédige UNIQUEMENT la sphère Régulation émotionnelle :\n\n**Observations**\n- 2 ou 3 puces COURTES. Appuie-toi D'ABORD sur les items ✓/✗.\n- Reste STRICTEMENT dans la régulation émotionnelle : nommer les émotions, tolérance à la frustration, retour au calme.\n- NE MENTIONNE PAS les autres sphères.\n\n" +
+                "**Niveau clinique** : 1 SEULE phrase. Format : `Mot-clé (qualifier court sur la régulation).`\n\nCommence directement par `**Observations**`.";
+        }
+
+        private static string BuildSphere3Instruction(CartographieEnfant carto, string ageTxt)
+        {
+            var seg = carto.Langage;
+            var niveau = Services.Evaluations.CartographieScoringService.Calculer(seg.Score, carto.AgeAuMomentDeLaSaisie);
+            if (!niveau.HasValue)
+                return "L'étape 3 non clôturée ou âge hors fourchette. Écris : `**Observations** : non disponibles.` puis `**Niveau clinique** : Non évalué.`";
+            var niveauLabel = Models.Evaluations.CartographieContent.NiveauLabel(niveau);
+            var lecture     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau);
+            var itemLines   = string.Join("\n", seg.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+            return $"=== DONNÉES D'ÉVALUATION — LANGAGE & COMMUNICATION ===\nScore : {seg.Score}/6 à {ageTxt} ans → niveau « {niveauLabel} »\n{itemLines}\nLecture canonique : {lecture}\n\n" +
+                "Rédige UNIQUEMENT la sphère Langage :\n\n**Observations**\n- 2 ou 3 puces COURTES. Appuie-toi D'ABORD sur les items ✓/✗.\n- Reste STRICTEMENT dans le langage : expression verbale, compréhension, vocabulaire, écoute.\n- NE MENTIONNE PAS les autres sphères.\n\n" +
+                "**Niveau clinique** : 1 SEULE phrase. Format : `Mot-clé (qualifier court sur le langage).`\n\nCommence directement par `**Observations**`.";
+        }
+
+        private static string BuildSphere4Instruction(CartographieEnfant carto, string ageTxt)
+        {
+            var temp = carto.Temperament;
+            if (!temp.IsRenseigne)
+                return "Le profil de tempérament n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil tempérament non renseigné).`";
+            return $"=== DONNÉES D'ÉVALUATION — TEMPÉRAMENT ===\nÂge : {ageTxt} ans\n" +
+                $"- Niveau d'activité : {temp.NiveauActivite}/5\n- Régularité : {temp.Regularite}/5\n- Réactivité sensorielle : {temp.ReactiviteSensorielle}/5\n" +
+                $"- Intensité émotionnelle : {temp.IntensiteEmotionnelle}/5\n- Adaptabilité : {temp.Adaptabilite}/5\n- Temps de réaction : {temp.TempsDeReaction}/5\n\n" +
+                "IMPORTANT : Le tempérament n'est PAS pathologique. Rédige UNIQUEMENT la sphère Tempérament :\n\n**Observations**\n\n**Profil global**\n2 à 3 phrases sur la forme tempéramentielle globale.\n\n" +
+                "**Points d'appui**\n- 1 ou 2 puces : traits favorables.\n\n**Points d'attention**\n- 1 ou 2 puces : axes extrêmes avec piste d'adaptation.\n\nNE MENTIONNE PAS les autres sphères.\nCommence par `**Observations**`.";
+        }
+
+        private static string BuildSphere5Instruction(CartographieEnfant carto, string ageTxt)
+        {
+            var p = carto.Psychomotricite;
+            if (!p.IsRenseigne)
+                return "Le profil psychomoteur n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil psychomoteur non renseigné).`";
+            return $"=== DONNÉES D'ÉVALUATION — PSYCHOMOTRICITÉ ===\nÂge : {ageTxt} ans\n" +
+                $"- Motricité globale : {p.MotriciteGlobale}/5\n- Motricité fine : {p.MotriciteFine}/5\n- Tonus : {p.Tonus}/5\n" +
+                $"- Dextérité : {p.Dexterite}/5\n- Coordination : {p.Coordination}/5\n- Impulsivité motrice : {p.ImpulsiviteMotrice}/5\n\n" +
+                "Rédige UNIQUEMENT la sphère Psychomotricité :\n\n**Observations**\n\n**Profil global**\n2 à 3 phrases sur le profil moteur.\n\n" +
+                "**Points d'appui**\n- 1 ou 2 puces : axes moteurs favorables.\n\n**Points d'attention**\n- 1 ou 2 puces : axes en difficulté avec piste concrète.\n\nNE MENTIONNE PAS les autres sphères.\nCommence par `**Observations**`.";
+        }
+
+        private static string BuildSphere6Instruction(CartographieEnfant carto, string ageTxt)
+        {
+            var seg = carto.Imaginaire;
+            var niveau = Services.Evaluations.CartographieScoringService.Calculer(seg.Score, carto.AgeAuMomentDeLaSaisie);
+            if (!niveau.HasValue)
+                return "L'étape 3 non clôturée ou âge hors fourchette. Écris : `**Observations** : non disponibles.` puis `**Niveau clinique** : Non évalué.`";
+            var niveauLabel = Models.Evaluations.CartographieContent.NiveauLabel(niveau);
+            var lecture     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau);
+            var itemLines   = string.Join("\n", seg.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+            return $"=== DONNÉES D'ÉVALUATION — IMAGINATION & JEU ===\nScore : {seg.Score}/6 à {ageTxt} ans → niveau « {niveauLabel} »\n{itemLines}\nLecture canonique : {lecture}\n\n" +
+                "Rédige UNIQUEMENT la sphère Imagination & Jeu :\n\n**Observations**\n- 2 ou 3 puces COURTES. Appuie-toi D'ABORD sur les items ✓/✗.\n- Reste STRICTEMENT dans l'imaginaire : inventer, jouer « comme si », se réconforter via l'imaginaire.\n- NE MENTIONNE PAS les autres sphères.\n\n" +
+                "**Niveau clinique** : 1 SEULE phrase. Format : `Mot-clé (qualifier court).`\n\nCommence directement par `**Observations**`.";
+        }
+
+        private static string BuildSphere7Instruction(CartographieEnfant carto, string ageTxt)
+        {
+            var seg = carto.Pensee;
+            var niveau = Services.Evaluations.CartographieScoringService.Calculer(seg.Score, carto.AgeAuMomentDeLaSaisie);
+            if (!niveau.HasValue)
+                return "L'étape 3 non clôturée ou âge hors fourchette. Écris : `**Observations** : non disponibles.` puis `**Niveau clinique** : Non évalué.`";
+            var niveauLabel = Models.Evaluations.CartographieContent.NiveauLabel(niveau);
+            var lecture     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau);
+            var itemLines   = string.Join("\n", seg.Items.Select(i => $"{(i.IsChecked ? "✓" : "✗")} {i.Affirmation}"));
+            return $"=== DONNÉES D'ÉVALUATION — PENSÉE & APPRENTISSAGES ===\nScore : {seg.Score}/6 à {ageTxt} ans → niveau « {niveauLabel} »\n{itemLines}\nLecture canonique : {lecture}\n\n" +
+                "Rédige UNIQUEMENT la sphère Pensée & Apprentissages :\n\n**Observations**\n- 2 ou 3 puces COURTES. Appuie-toi D'ABORD sur les items ✓/✗.\n- Reste STRICTEMENT dans la pensée : curiosité, consignes, concentration, résolution de problèmes, flexibilité cognitive.\n- NE MENTIONNE PAS les autres sphères.\n\n" +
+                "**Niveau clinique** : 1 SEULE phrase. Format : `Mot-clé (qualifier court).`\n\nCommence directement par `**Observations**`.";
+        }
+
+        private static string BuildSphere8Instruction(CartographieEnfant carto, string ageTxt)
+        {
+            var a = carto.Attention;
+            if (!a.IsRenseigne)
+                return "Le profil attentionnel n'a pas été renseigné. Écris : `**Observations** : non disponibles (profil attentionnel non renseigné).`";
+            return $"=== DONNÉES D'ÉVALUATION — ATTENTION & FONCTIONS EXÉCUTIVES ===\nÂge : {ageTxt} ans\n" +
+                $"- Attention soutenue : {a.AttentionSoutenue}/5\n- Attention sélective : {a.AttentionSelective}/5\n- Attention divisée : {a.AttentionDivisee}/5\n" +
+                $"- Inhibition : {a.Inhibition}/5\n- Planification : {a.Planification}/5\n- Flexibilité attentionnelle : {a.FlexibiliteAttentionnelle}/5\n\n" +
+                "Rédige UNIQUEMENT la sphère Attention & Fonctions exécutives :\n\n**Observations**\n\n**Profil global**\n2 à 3 phrases sur le profil attentionnel.\n\n" +
+                "**Points d'appui**\n- 1 ou 2 puces : axes attentionnels favorables.\n\n**Points d'attention**\n- 1 ou 2 puces : axes fragilisés avec piste d'adaptation.\n\nNE MENTIONNE PAS les autres sphères.\nCommence par `**Observations**`.";
+        }
+
+        // ── Branche Éducative — génération par feuille ──────────────────────
+
+        /// <summary>
+        /// Génère les observations LLM pour une feuille de la Cartographie de l'environnement.
+        /// feuilleIdx : 1=Famille, 2=École & Pairs, 3=Écrans & Médias, 4=Valeurs, 5=Cadre Éducatif.
+        /// </summary>
+        public async Task SuggestEnvEduFeuilleAsync(
+            int feuilleIdx,
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var blocRef   = new RestitutionBloc("env_edu_f1", "Branche Éducative", 16, "clinique");
+            var sysPrompt = BuildSystemPrompt(blocRef);
+            var carto     = reading.LatestCartographieEnvironnement;
+            var instr     = BuildEnvFeuilleInstruction(feuilleIdx, carto);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages  = new List<(string role, string content)> { ("user", userPrompt) };
+            var result    = await _llmService.ChatAsync(sysPrompt, messages, 500, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        /// <summary>
+        /// Génère la lecture globale (synthèse) qui croise les 5 feuilles de la Branche Éducative.
+        /// </summary>
+        public async Task SuggestEnvEduGlobalAsync(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var carto = reading.LatestCartographieEnvironnement;
+            var instr = BuildEnvGlobalInstruction(carto);
+            var blocRef   = new RestitutionBloc("env_edu_global", "Branche Éducative", 21, "clinique");
+            var sysPrompt = BuildSystemPrompt(blocRef);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages  = new List<(string role, string content)> { ("user", userPrompt) };
+            var result    = await _llmService.ChatAsync(sysPrompt, messages, 600, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        // ── Synthèse Globale et Diagnostique ────────────────────────────────
+
+        /// <summary>
+        /// Section 1 — Compréhension globale : 4-5 phrases en prose synthétisant l'état
+        /// global de l'enfant, le moteur des difficultés et la dynamique évolutive.
+        /// Source prioritaire : BilanFinal.SyntheseIntegrative + cartos enfant + environnement.
+        /// </summary>
+        public async Task SuggestSyntheseDiagS1Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var blocRef    = new RestitutionBloc("synthese_diag_s1", "Compréhension globale", 22, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildSyntheseDiagS1Instruction(reading.LatestBilanFinal);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 500, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildSyntheseDiagS1Instruction(Models.Evaluations.BilanFinal? bilan)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Rédige la SECTION 1 — COMPRÉHENSION GLOBALE DE LA SITUATION.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT : 4 à 5 phrases en prose continue (pas de liste, pas de titre, pas de sous-titre).");
+            sb.AppendLine("TON : clinique sobre, troisième personne (« L'état de [prénom] révèle... », « Son fonctionnement... »).");
+            sb.AppendLine();
+            sb.AppendLine("COUVRIR DANS L'ORDRE :");
+            sb.AppendLine("  1. L'état global de l'enfant — fonctionnement interne, ressources et fragilités principales.");
+            sb.AppendLine("  2. Le moteur principal des difficultés — lien entre vécu interne et contexte environnemental.");
+            sb.AppendLine("  3. La dynamique évolutive — pronostic bienveillant mais réaliste, leviers disponibles.");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • Ne pas nommer explicitement les diagnostics ici (réservé Section 2).");
+            sb.AppendLine("  • Ne pas commencer par « L'enfant » — varier les amorces.");
+            sb.AppendLine("  • Pas de formule vague (« globalement », « de manière générale »).");
+
+            if (bilan != null)
+            {
+                if (!string.IsNullOrWhiteSpace(bilan.SyntheseIntegrative))
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("SYNTHÈSE INTÉGRATIVE déjà rédigée par le médecin (à reformuler pour la restitution) :");
+                    sb.AppendLine(bilan.SyntheseIntegrative.Trim());
+                }
+                if (bilan.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("DIAGNOSTICS RETENUS (contexte, ne pas nommer dans la section) :");
+                    foreach (var d in bilan.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Section 2+3 — Diagnostics retenus + Éléments en faveur.
+        /// Génère du JSON structuré : [{label, certitude, elements[]}] — 1 objet par diagnostic.
+        /// Le renderer parse ce JSON pour construire les colonnes de la page.
+        /// </summary>
+        public async Task SuggestSyntheseDiagS2Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("[]"); return; }
+
+            var blocRef    = new RestitutionBloc("synthese_diag_s2", "Diagnostics retenus", 23, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildSyntheseDiagS2Instruction(reading.LatestBilanFinal);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 800, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildSyntheseDiagS2Instruction(Models.Evaluations.BilanFinal? bilan)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère les SECTIONS 2+3 — DIAGNOSTICS RETENUS ET ÉLÉMENTS CLINIQUES EN FAVEUR.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("[");
+            sb.AppendLine("  {");
+            sb.AppendLine("    \"label\": \"Nom exact du diagnostic\",");
+            sb.AppendLine("    \"certitude\": \"Élevée\",");
+            sb.AppendLine("    \"elements\": [\"Élément clinique court 1\", \"Élément 2\", \"Élément 3\"]");
+            sb.AppendLine("  }");
+            sb.AppendLine("]");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • certitude : valeur parmi « Hypothèse », « Modérée », « Élevée », « Très élevée »");
+            sb.AppendLine("  • elements : 4 à 6 items max, chacun < 10 mots, concis et clinique");
+            sb.AppendLine("  • Entre 1 et 4 diagnostics maximum");
+            sb.AppendLine("  • Ne pas inventer de diagnostic absent du dossier");
+
+            if (bilan != null)
+            {
+                if (bilan.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("DIAGNOSTICS RETENUS PAR LE MÉDECIN (à utiliser en priorité) :");
+                    foreach (var d in bilan.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                    sb.AppendLine($"  Certitude globale notée : {bilan.Certitude}");
+                }
+                if (bilan.ElementsEnFaveur.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("ÉLÉMENTS EN FAVEUR NOTÉS (à répartir par diagnostic dans elements[]) :");
+                    foreach (var e in bilan.ElementsEnFaveur)
+                        sb.AppendLine($"  • {e.Value}");
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Section 4 — Diagnostics différentiels écartés.
+        /// Génère du JSON structuré : [{label, conclusion, arguments[]}] — 1 à 3 items max.
+        /// </summary>
+        public async Task SuggestSyntheseDiagS3Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("[]"); return; }
+
+            var blocRef    = new RestitutionBloc("synthese_diag_s3", "Diagnostics différentiels écartés", 24, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildSyntheseDiagS3Instruction(reading.LatestBilanFinal);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 700, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildSyntheseDiagS3Instruction(Models.Evaluations.BilanFinal? bilan)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère la SECTION 4 — DIAGNOSTICS DIFFÉRENTIELS ÉCARTÉS.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("[");
+            sb.AppendLine("  {");
+            sb.AppendLine("    \"label\": \"Nom du diagnostic écarté\",");
+            sb.AppendLine("    \"conclusion\": \"Une phrase courte (< 20 mots) expliquant pourquoi il est écarté.\",");
+            sb.AppendLine("    \"arguments\": [\"Argument clinique 1\", \"Argument 2\", \"Argument 3\"]");
+            sb.AppendLine("  }");
+            sb.AppendLine("]");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • Entre 1 et 3 diagnostics maximum (ne jamais dépasser 3)");
+            sb.AppendLine("  • conclusion : 1 phrase < 20 mots, ton clinique sobre");
+            sb.AppendLine("  • arguments : 3 à 5 items, chacun < 12 mots");
+            sb.AppendLine("  • Ne pas inventer de diagnostic absent du dossier");
+
+            if (bilan != null && bilan.DiagnosticsEcartes.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("DIAGNOSTICS ÉCARTÉS PAR LE MÉDECIN (à utiliser en priorité) :");
+                foreach (var d in bilan.DiagnosticsEcartes)
+                {
+                    sb.Append($"  • {d.Label}");
+                    if (!string.IsNullOrWhiteSpace(d.Motif))
+                        sb.Append($" — {d.Motif}");
+                    sb.AppendLine();
+                }
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Section 5 — Intégration des cartographies.
+        /// Génère du JSON {enfant:{forces,fragilites}, environnement:{protecteurs,aggravants}}.
+        /// </summary>
+        public async Task SuggestSyntheseDiagS4Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+
+            var blocRef    = new RestitutionBloc("synthese_diag_s4", "Intégration cartographies", 25, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildSyntheseDiagS4Instruction(reading);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 700, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildSyntheseDiagS4Instruction(DossierReading reading)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère la SECTION 5 — INTÉGRATION DES CARTOGRAPHIES.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("{");
+            sb.AppendLine("  \"enfant\": {");
+            sb.AppendLine("    \"forces\": [\"Force ou ressource 1\", \"Force 2\"],");
+            sb.AppendLine("    \"fragilites\": [\"Fragilité principale 1\", \"Fragilité 2\"]");
+            sb.AppendLine("  },");
+            sb.AppendLine("  \"environnement\": {");
+            sb.AppendLine("    \"protecteurs\": [\"Facteur protecteur 1\", \"Facteur 2\"],");
+            sb.AppendLine("    \"aggravants\": [\"Facteur aggravant 1\", \"Facteur 2\"]");
+            sb.AppendLine("  }");
+            sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • Chaque liste : 3 à 6 items, chacun < 12 mots");
+            sb.AppendLine("  • Basé strictement sur les cartographies disponibles dans le dossier");
+            sb.AppendLine("  • forces/fragilites = ce que révèle la cartographie de l'enfant (sphères 1-8)");
+            sb.AppendLine("  • protecteurs/aggravants = ce que révèle la cartographie de l'environnement");
+            sb.AppendLine("  • Ton sobre et clinique, pas de jugement sur les parents");
+
+            bool hasCarto = reading.LatestCartographieEnfant != null || reading.LatestCartographieEnvironnement != null;
+            if (!hasCarto)
+                sb.AppendLine("  • Aucune cartographie disponible — infère depuis les notes et évaluations.");
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Section 6 — Conclusion intégrative. Prose clinique, 4-6 phrases.
+        /// </summary>
+        public async Task SuggestSyntheseDiagS5Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var blocRef    = new RestitutionBloc("synthese_diag_s5", "Conclusion intégrative", 26, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildSyntheseDiagS5Instruction(reading.LatestBilanFinal);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 500, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildSyntheseDiagS5Instruction(Models.Evaluations.BilanFinal? bilan)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Rédige la SECTION 6 — CONCLUSION INTÉGRATIVE.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT : 3 à 5 phrases en prose continue (pas de liste, pas de titre).");
+            sb.AppendLine("TON : clinique sobre, purement synthétique et descriptif.");
+            sb.AppendLine();
+            sb.AppendLine("COUVRIR UNIQUEMENT :");
+            sb.AppendLine("  1. Synthèse du tableau clinique global — ce qui a été observé et retenu.");
+            sb.AppendLine("  2. Cohérence entre les sources (cartographies, bilan, notes) qui valide le diagnostic.");
+            sb.AppendLine("  3. Degré de certitude clinique global et ce qui pourrait encore évoluer ou rester à préciser.");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES STRICTES :");
+            sb.AppendLine("  • AUCUN axe de travail, AUCUNE piste thérapeutique, AUCUN projet de soin — il y a des sections dédiées pour cela.");
+            sb.AppendLine("  • AUCUNE recommandation (TCC, suivi, rééducation, etc.).");
+            sb.AppendLine("  • Rester sur le plan diagnostique et intégratif uniquement.");
+            sb.AppendLine("  • Ne pas ouvrir de nouvelles hypothèses diagnostiques.");
+            sb.AppendLine("  • Pas de formule vague (« globalement », « de manière générale »).");
+            sb.AppendLine("  • Ne pas commencer par « En conclusion ».");
+
+            if (bilan != null && !string.IsNullOrWhiteSpace(bilan.SyntheseIntegrative))
+            {
+                sb.AppendLine();
+                sb.AppendLine("SYNTHÈSE INTÉGRATIVE du médecin (base principale — à reformuler) :");
+                sb.AppendLine(bilan.SyntheseIntegrative.Trim());
+            }
+
+            return sb.ToString();
+        }
+
+        private static string BuildEnvFeuilleInstruction(int idx, Models.Evaluations.CartographieEnvironnement? carto)
+        {
+            if (carto == null)
+                return "Aucune cartographie de l'environnement n'est disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).`";
+
+            var (feuille, nom) = idx switch
+            {
+                1 => (carto.Famille,           "Famille"),
+                2 => (carto.EcolePairs,        "École & Pairs"),
+                3 => (carto.EcransMedias,      "Écrans & Médias"),
+                4 => (carto.ValeursSocietales, "Valeurs sociétales"),
+                5 => (carto.CadreEducatif,     "Cadre éducatif"),
+                _ => (carto.Famille,           "Famille")
+            };
+
+            bool feuilleHasScore = feuille.NervureCentrale.Score > 0
+                                || feuille.NervuresSecondaires.Any(n => n.Score > 0);
+            if (!feuilleHasScore)
+                return $"La feuille « {nom} » n'a pas encore été renseignée. Écris : `**Observations** : non disponibles (feuille non complétée).`";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== DONNÉES D'ÉVALUATION — {nom.ToUpperInvariant()} ===");
+            sb.AppendLine($"Nervure centrale : {feuille.NervureCentrale.Label}");
+            sb.AppendLine($"  Score : {feuille.NervureCentrale.Score}/{feuille.NervureCentrale.MaxScore}");
+            foreach (var item in feuille.NervureCentrale.Items)
+                sb.AppendLine($"  {(item.IsChecked ? "✓" : "✗")} {item.Affirmation}");
+            foreach (var n in feuille.NervuresSecondaires)
+            {
+                sb.AppendLine($"Nervure : {n.Label}  Score : {n.Score}/{n.MaxScore}");
+                foreach (var item in n.Items)
+                    sb.AppendLine($"  {(item.IsChecked ? "✓" : "✗")} {item.Affirmation}");
+            }
+            sb.AppendLine();
+            sb.AppendLine($"Rédige UNIQUEMENT les observations pour la feuille « {nom} » :");
+            sb.AppendLine();
+            sb.AppendLine("**Observations**");
+            sb.AppendLine("- 3 à 5 puces COURTES. Appuie-toi D'ABORD sur les items ✓/✗ de chaque nervure.");
+            sb.AppendLine("- Reste STRICTEMENT dans le domaine de cette feuille.");
+            sb.AppendLine("- NE MENTIONNE PAS les autres feuilles.");
+            sb.AppendLine("- N'INVENTE RIEN : toute observation doit être ancrée dans les items cochés.");
+            sb.AppendLine();
+            sb.AppendLine("**Niveau clinique**");
+            sb.AppendLine("1 SEULE phrase courte. Format : `Mot-clé (qualifier court).`");
+            sb.AppendLine("Exemples : `Fluide (Contexte porteur et cohérent).` | `Mitigé (Tensions repérées sur plusieurs nervures).` | `Fragile (Cadre insuffisant — étayage prioritaire).`");
+            sb.AppendLine();
+            sb.AppendLine("Commence directement par `**Observations**`.");
+            return sb.ToString();
+        }
+
+        private static string BuildEnvGlobalInstruction(Models.Evaluations.CartographieEnvironnement? carto)
+        {
+            if (carto == null)
+                return "Aucune cartographie de l'environnement disponible. Écris : `L'environnement de l'enfant n'a pas encore été évalué.`";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("=== SYNTHÈSE — BRANCHE ÉDUCATIVE ===");
+            sb.AppendLine("Niveaux des 5 feuilles :");
+            void AppendNiveau(string nom, Models.Evaluations.FeuilleEnvironnement f)
+            {
+                var n = Services.Evaluations.EnvironnementScoringService.CalculerFeuille(f);
+                sb.AppendLine($"  {nom} : {Models.Evaluations.CartographieEnvironnementContent.NiveauLabel(n)}");
+            }
+            AppendNiveau("Famille", carto.Famille);
+            AppendNiveau("École & Pairs", carto.EcolePairs);
+            AppendNiveau("Écrans & Médias", carto.EcransMedias);
+            AppendNiveau("Valeurs sociétales", carto.ValeursSocietales);
+            AppendNiveau("Cadre éducatif", carto.CadreEducatif);
+            sb.AppendLine();
+            sb.AppendLine("Rédige la LECTURE GLOBALE de la Branche Éducative pour les parents :");
+            sb.AppendLine("- 1 paragraphe d'introduction (2-3 phrases) sur l'environnement global.");
+            sb.AppendLine("- 1 paragraphe **Axes de soutien prioritaires** avec 2-3 puces ✓ : ce qui est porteur.");
+            sb.AppendLine("- 1 paragraphe **Points d'attention** avec 2-3 puces sur ce qui nécessite un étayage.");
+            sb.AppendLine("- Ton chaleureux et constructif — voix livre (Tome 2/3), pas clinique.");
+            sb.AppendLine("- Ne répète pas les observations de chaque feuille : synthétise et croise.");
+            return sb.ToString();
         }
 
         // ── API legacy (compat ascendante) ──────────────────────────────────

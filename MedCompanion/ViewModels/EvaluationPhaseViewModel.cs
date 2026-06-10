@@ -308,14 +308,15 @@ namespace MedCompanion.ViewModels
 
         // ── Étape 4 — Cartographie de l'enfant ──────────────────────────────
 
-        public CartographieSegmentViewModel? AttachementVM     { get; private set; }
-        public CartographieSegmentViewModel? PsychomotriciteVM { get; private set; }
-        public CartographieSegmentViewModel? LangageVM         { get; private set; }
-        public CartographieSegmentViewModel? EmotionsVM        { get; private set; }
-        public CartographieSegmentViewModel? ImaginaireVM      { get; private set; }
-        public CartographieSegmentViewModel? PenseeVM          { get; private set; }
+        public CartographieSegmentViewModel? AttachementVM { get; private set; }
+        public CartographieSegmentViewModel? LangageVM    { get; private set; }
+        public CartographieSegmentViewModel? EmotionsVM   { get; private set; }
+        public CartographieSegmentViewModel? ImaginaireVM { get; private set; }
+        public CartographieSegmentViewModel? PenseeVM     { get; private set; }
 
-        public TemperamentProfile? Temperament => Phase?.CartographieEnfant.Temperament;
+        public TemperamentProfile?       Temperament     => Phase?.CartographieEnfant.Temperament;
+        public PsychomotriciteProfile?   Psychomotricite => Phase?.CartographieEnfant.Psychomotricite;
+        public AttentionProfile?         Attention       => Phase?.CartographieEnfant.Attention;
 
         // ── Étape 5 — Cartographie de l'environnement ───────────────────────
 
@@ -357,18 +358,17 @@ namespace MedCompanion.ViewModels
         {
             if (Phase == null)
             {
-                AttachementVM = PsychomotriciteVM = LangageVM = EmotionsVM = ImaginaireVM = PenseeVM = null;
+                AttachementVM = LangageVM = EmotionsVM = ImaginaireVM = PenseeVM = null;
                 FamilleVM = EcolePairsVM = EcransMediasVM = ValeursSocietalesVM = CadreEducatifVM = null;
             }
             else
             {
                 Func<int?> ageProvider = () => Phase?.CartographieEnfant.AgeAuMomentDeLaSaisie ?? _patient?.Age;
-                AttachementVM     = new CartographieSegmentViewModel(Phase.CartographieEnfant.Attachement,     ageProvider);
-                PsychomotriciteVM = new CartographieSegmentViewModel(Phase.CartographieEnfant.Psychomotricite, ageProvider);
-                LangageVM         = new CartographieSegmentViewModel(Phase.CartographieEnfant.Langage,         ageProvider);
-                EmotionsVM        = new CartographieSegmentViewModel(Phase.CartographieEnfant.Emotions,        ageProvider);
-                ImaginaireVM      = new CartographieSegmentViewModel(Phase.CartographieEnfant.Imaginaire,      ageProvider);
-                PenseeVM          = new CartographieSegmentViewModel(Phase.CartographieEnfant.Pensee,          ageProvider);
+                AttachementVM = new CartographieSegmentViewModel(Phase.CartographieEnfant.Attachement, ageProvider);
+                LangageVM     = new CartographieSegmentViewModel(Phase.CartographieEnfant.Langage,     ageProvider);
+                EmotionsVM    = new CartographieSegmentViewModel(Phase.CartographieEnfant.Emotions,    ageProvider);
+                ImaginaireVM  = new CartographieSegmentViewModel(Phase.CartographieEnfant.Imaginaire,  ageProvider);
+                PenseeVM      = new CartographieSegmentViewModel(Phase.CartographieEnfant.Pensee,      ageProvider);
 
                 FamilleVM           = BuildFeuilleVM(Phase.CartographieEnvironnement.Famille);
                 EcolePairsVM        = BuildFeuilleVM(Phase.CartographieEnvironnement.EcolePairs);
@@ -377,12 +377,13 @@ namespace MedCompanion.ViewModels
                 CadreEducatifVM     = BuildFeuilleVM(Phase.CartographieEnvironnement.CadreEducatif);
             }
             OnPropertyChanged(nameof(AttachementVM));
-            OnPropertyChanged(nameof(PsychomotriciteVM));
             OnPropertyChanged(nameof(LangageVM));
             OnPropertyChanged(nameof(EmotionsVM));
             OnPropertyChanged(nameof(ImaginaireVM));
             OnPropertyChanged(nameof(PenseeVM));
             OnPropertyChanged(nameof(Temperament));
+            OnPropertyChanged(nameof(Psychomotricite));
+            OnPropertyChanged(nameof(Attention));
 
             OnPropertyChanged(nameof(FamilleVM));
             OnPropertyChanged(nameof(EcolePairsVM));
@@ -1812,7 +1813,6 @@ namespace MedCompanion.ViewModels
         {
             // Notifie les wrappers que l'âge peut avoir changé (rare, mais possible si _patient change)
             AttachementVM?.NotifyAgeChanged();
-            PsychomotriciteVM?.NotifyAgeChanged();
             LangageVM?.NotifyAgeChanged();
             EmotionsVM?.NotifyAgeChanged();
             ImaginaireVM?.NotifyAgeChanged();

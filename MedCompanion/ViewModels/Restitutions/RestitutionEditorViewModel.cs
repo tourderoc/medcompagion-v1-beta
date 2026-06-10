@@ -246,11 +246,54 @@ namespace MedCompanion.ViewModels.Restitutions
                             (cb, c) => _suggesterService.SuggestSituationActuelleProgressiveAsync(_currentReading!, cb, c), ct);
                         break;
 
-                    case "carto_enfant":
-                        // V0.2 : génération sphère 1 (Attachement) uniquement. Le total
-                        // de sections croît au fur et à mesure qu'on câble les sphères 2-8.
-                        await RunProgressiveAsync(blocVm, "Cartographie de l'enfant", 1,
-                            (cb, c) => _suggesterService.SuggestCartoEnfantProgressiveAsync(_currentReading!, cb, c), ct);
+                    case "carto_s1": case "carto_s2": case "carto_s3": case "carto_s4":
+                    case "carto_s5": case "carto_s6": case "carto_s7": case "carto_s8":
+                    {
+                        // V0.9 : 1 bloc = 1 sphère, appel LLM indépendant.
+                        var sphereNum = int.Parse(blocVm.Model.Key.Substring("carto_s".Length));
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestCartoSphereAsync(sphereNum, _currentReading!, cb, c), ct);
+                        break;
+                    }
+
+                    case "env_edu_f1": case "env_edu_f2": case "env_edu_f3":
+                    case "env_edu_f4": case "env_edu_f5":
+                    {
+                        // V0.10 : 1 bloc = 1 feuille environnement, appel LLM indépendant.
+                        var feuilleIdx = int.Parse(blocVm.Model.Key.Substring("env_edu_f".Length));
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestEnvEduFeuilleAsync(feuilleIdx, _currentReading!, cb, c), ct);
+                        break;
+                    }
+
+                    case "env_edu_global":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestEnvEduGlobalAsync(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "synthese_diag_s1":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS1Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "synthese_diag_s2":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS2Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "synthese_diag_s3":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS3Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "synthese_diag_s4":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS4Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "synthese_diag_s5":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS5Async(_currentReading!, cb, c), ct);
                         break;
 
                     default:
@@ -380,9 +423,52 @@ namespace MedCompanion.ViewModels.Restitutions
                                     (cb, c) => _suggesterService.SuggestSituationActuelleProgressiveAsync(_currentReading, cb, c), ct);
                                 break;
 
-                            case "carto_enfant":
-                                await RunProgressiveAsync(blocVm, "Cartographie de l'enfant", 1,
-                                    (cb, c) => _suggesterService.SuggestCartoEnfantProgressiveAsync(_currentReading, cb, c), ct);
+                            case "carto_s1": case "carto_s2": case "carto_s3": case "carto_s4":
+                            case "carto_s5": case "carto_s6": case "carto_s7": case "carto_s8":
+                            {
+                                var sphereNum = int.Parse(blocVm.Model.Key.Substring("carto_s".Length));
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestCartoSphereAsync(sphereNum, _currentReading!, cb, c), ct);
+                                break;
+                            }
+
+                            case "env_edu_f1": case "env_edu_f2": case "env_edu_f3":
+                            case "env_edu_f4": case "env_edu_f5":
+                            {
+                                var feuilleIdx = int.Parse(blocVm.Model.Key.Substring("env_edu_f".Length));
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestEnvEduFeuilleAsync(feuilleIdx, _currentReading!, cb, c), ct);
+                                break;
+                            }
+
+                            case "env_edu_global":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestEnvEduGlobalAsync(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "synthese_diag_s1":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS1Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "synthese_diag_s2":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS2Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "synthese_diag_s3":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS3Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "synthese_diag_s4":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS4Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "synthese_diag_s5":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS5Async(_currentReading!, cb, c), ct);
                                 break;
 
                             default:

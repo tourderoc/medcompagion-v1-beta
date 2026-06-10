@@ -19,9 +19,13 @@ namespace MedCompanion.ViewModels
         public string   TitreCard    { get; }   // "🐛 Cartographie — 30/05/2026 (7 ans)"
 
         public List<CartographieBilanSegmentLine> Segments { get; }
-        public List<CartographieBilanTemperamentLine> TemperamentLignes { get; }
+        public List<CartographieBilanTemperamentLine> TemperamentLignes      { get; }
+        public List<CartographieBilanTemperamentLine> PsychomotriciteLignes  { get; }
+        public List<CartographieBilanTemperamentLine> AttentionLignes        { get; }
 
-        public bool HasTemperament { get; }
+        public bool HasTemperament     { get; }
+        public bool HasPsychomotricite { get; }
+        public bool HasAttention       { get; }
 
         public CartographieBilanCardViewModel(EvaluationPhase phase)
         {
@@ -34,12 +38,11 @@ namespace MedCompanion.ViewModels
 
             Segments = new List<CartographieBilanSegmentLine>
             {
-                BuildLine(phase.CartographieEnfant.Attachement,     AgeASaisie),
-                BuildLine(phase.CartographieEnfant.Psychomotricite, AgeASaisie),
-                BuildLine(phase.CartographieEnfant.Langage,         AgeASaisie),
-                BuildLine(phase.CartographieEnfant.Emotions,        AgeASaisie),
-                BuildLine(phase.CartographieEnfant.Imaginaire,      AgeASaisie),
-                BuildLine(phase.CartographieEnfant.Pensee,          AgeASaisie),
+                BuildLine(phase.CartographieEnfant.Attachement, AgeASaisie),
+                BuildLine(phase.CartographieEnfant.Langage,     AgeASaisie),
+                BuildLine(phase.CartographieEnfant.Emotions,    AgeASaisie),
+                BuildLine(phase.CartographieEnfant.Imaginaire,  AgeASaisie),
+                BuildLine(phase.CartographieEnfant.Pensee,      AgeASaisie),
             };
 
             var t = phase.CartographieEnfant.Temperament;
@@ -52,6 +55,30 @@ namespace MedCompanion.ViewModels
                 new("Intensité émotionnelle",  t.IntensiteEmotionnelle),
                 new("Adaptabilité",            t.Adaptabilite),
                 new("Temps de réaction",       t.TempsDeReaction),
+            };
+
+            var p = phase.CartographieEnfant.Psychomotricite;
+            HasPsychomotricite = p.IsRenseigne;
+            PsychomotriciteLignes = new List<CartographieBilanTemperamentLine>
+            {
+                new("Motricité globale",    p.MotriciteGlobale),
+                new("Motricité fine",       p.MotriciteFine),
+                new("Tonus",                p.Tonus),
+                new("Dextérité",            p.Dexterite),
+                new("Coordination",         p.Coordination),
+                new("Impulsivité motrice",  p.ImpulsiviteMotrice),
+            };
+
+            var a = phase.CartographieEnfant.Attention;
+            HasAttention = a.IsRenseigne;
+            AttentionLignes = new List<CartographieBilanTemperamentLine>
+            {
+                new("Attention soutenue",          a.AttentionSoutenue),
+                new("Attention sélective",         a.AttentionSelective),
+                new("Attention divisée",           a.AttentionDivisee),
+                new("Inhibition",                  a.Inhibition),
+                new("Planification",               a.Planification),
+                new("Flexibilité attentionnelle",  a.FlexibiliteAttentionnelle),
             };
         }
 

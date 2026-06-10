@@ -66,7 +66,9 @@ namespace MedCompanion.Services.Restitutions
                 ProjetTherapeutique      = ReadProjetTherapeutique(patientNomComplet),
                 SynthesesDocuments       = ReadAllSynthesesDocuments(patientNomComplet),
                 SyntheseGlobaleDocuments = ReadSyntheseGlobaleDocuments(patientNomComplet),
-                LatestCartographieEnfant = ReadLatestCartographieEnfant(patientNomComplet),
+                LatestCartographieEnfant        = ReadLatestCartographieEnfant(patientNomComplet),
+                LatestCartographieEnvironnement = ReadLatestCartographieEnvironnement(patientNomComplet),
+                LatestBilanFinal                = ReadLatestBilanFinal(patientNomComplet),
             };
         }
 
@@ -90,6 +92,53 @@ namespace MedCompanion.Services.Restitutions
                                   .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
                                   .FirstOrDefault();
                 return phase?.CartographieEnfant;
+            }
+            catch { return null; }
+        }
+
+        // ── Étape 5 — Bilan Final (dernier clôturé avec contenu) ────────────
+
+        private BilanFinal? ReadLatestBilanFinal(string patient)
+        {
+            if (_evaluationPhaseService == null) return null;
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patient);
+                if (string.IsNullOrEmpty(dir)) return null;
+                var phases = _evaluationPhaseService.LoadAll(dir);
+                var phase = phases.Where(p => !p.IsActive && p.BilanFinal.IsValidated)
+                                  .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                                  .FirstOrDefault()
+                          ?? phases.Where(p => !p.IsActive)
+                                  .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                                  .FirstOrDefault();
+                var bilan = phase?.BilanFinal;
+                if (bilan == null) return null;
+                if (bilan.DiagnosticsRetenus.Count == 0 && bilan.ElementsEnFaveur.Count == 0
+                    && bilan.DiagnosticsEcartes.Count == 0 && string.IsNullOrWhiteSpace(bilan.SyntheseIntegrative))
+                    return null;
+                return bilan;
+            }
+            catch { return null; }
+        }
+
+        // ── Étape 4 — Cartographie de l'environnement (dernière clôturée) ──
+
+        private CartographieEnvironnement? ReadLatestCartographieEnvironnement(string patient)
+        {
+            if (_evaluationPhaseService == null) return null;
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patient);
+                if (string.IsNullOrEmpty(dir)) return null;
+                var phases = _evaluationPhaseService.LoadAll(dir);
+                var phase = phases.Where(p => !p.IsActive && p.CartographieEnvironnement.IsValidated)
+                                  .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                                  .FirstOrDefault()
+                          ?? phases.Where(p => !p.IsActive)
+                                  .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                                  .FirstOrDefault();
+                return phase?.CartographieEnvironnement;
             }
             catch { return null; }
         }

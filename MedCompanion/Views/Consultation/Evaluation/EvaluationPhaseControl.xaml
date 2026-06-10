@@ -1010,7 +1010,61 @@
 
                 <!-- 6 segments questionnaires, structure identique répétée -->
                 <ContentControl Content="{Binding AttachementVM}"     ContentTemplate="{StaticResource ChenilleSegmentTemplate}"/>
-                <ContentControl Content="{Binding PsychomotriciteVM}" ContentTemplate="{StaticResource ChenilleSegmentTemplate}"/>
+                <!-- Psychomotricité : profil 6 axes 1-5 (même pattern que Tempérament) -->
+                <Border Background="#FBFCFD" BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="🏃 Psychomotricité &amp; exploration" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <TextBlock Text="« Son corps est son premier terrain de jeu… et de découverte. »" FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,8"/>
+                        <Grid>
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsReadOnly}" Value="True">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="30"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Motricité globale" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Psychomotricite.MotriciteGlobale, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding Psychomotricite.MotriciteGlobale}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Motricité fine" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Psychomotricite.MotriciteFine, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding Psychomotricite.MotriciteFine}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Tonus" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Psychomotricite.Tonus, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding Psychomotricite.Tonus}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Dextérité" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Psychomotricite.Dexterite, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding Psychomotricite.Dexterite}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Coordination" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Psychomotricite.Coordination, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding Psychomotricite.Coordination}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Impulsivité motrice" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Psychomotricite.ImpulsiviteMotrice, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="5" Grid.Column="2" Text="{Binding Psychomotricite.ImpulsiviteMotrice}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
                 <!-- Tempérament : profil 6 axes (pas de couleur) -->
                 <Border Background="#FBFCFD" BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
@@ -1072,6 +1126,62 @@
                 <ContentControl Content="{Binding EmotionsVM}"   ContentTemplate="{StaticResource ChenilleSegmentTemplate}"/>
                 <ContentControl Content="{Binding ImaginaireVM}" ContentTemplate="{StaticResource ChenilleSegmentTemplate}"/>
                 <ContentControl Content="{Binding PenseeVM}"     ContentTemplate="{StaticResource ChenilleSegmentTemplate}"/>
+
+                <!-- Attention & Fonctions exécutives : profil 6 axes 1-5 -->
+                <Border Background="#FBFCFD" BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,8">
+                    <StackPanel>
+                        <TextBlock Text="🎯 Attention &amp; Fonctions exécutives" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <TextBlock Text="« Son attention n'est pas un défaut de volonté. C'est une fenêtre sur son monde intérieur. »" FontSize="11" FontStyle="Italic" Foreground="#7F8C8D" Margin="0,2,0,8"/>
+                        <Grid>
+                            <Grid.Style>
+                                <Style TargetType="Grid">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsReadOnly}" Value="True">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Grid.Style>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="180"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="30"/>
+                            </Grid.ColumnDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Attention soutenue" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="0" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Attention.AttentionSoutenue, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="0" Grid.Column="2" Text="{Binding Attention.AttentionSoutenue}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Attention sélective" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="1" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Attention.AttentionSelective, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding Attention.AttentionSelective}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="Attention divisée" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="2" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Attention.AttentionDivisee, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="2" Grid.Column="2" Text="{Binding Attention.AttentionDivisee}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="Inhibition (contrôle)" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="3" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Attention.Inhibition, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="3" Grid.Column="2" Text="{Binding Attention.Inhibition}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="Planification" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="4" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Attention.Planification, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="4" Grid.Column="2" Text="{Binding Attention.Planification}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="Flexibilité attentionnelle" FontSize="11" VerticalAlignment="Center"/>
+                            <Slider Grid.Row="5" Grid.Column="1" Minimum="0" Maximum="5" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" Value="{Binding Attention.FlexibiliteAttentionnelle, UpdateSourceTrigger=PropertyChanged}" Margin="6,2"/>
+                            <TextBlock Grid.Row="5" Grid.Column="2" Text="{Binding Attention.FlexibiliteAttentionnelle}" FontSize="11" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                        </Grid>
+                    </StackPanel>
+                </Border>
 
                 <!-- STATUS + ACTIONS -->
                 <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="#27AE60" Margin="0,8,0,10" TextWrapping="Wrap"/>

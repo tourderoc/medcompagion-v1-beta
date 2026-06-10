@@ -1429,12 +1429,13 @@ namespace MedCompanion.ViewModels
             {
                 var hasCartographie = phase.CartographieEnfant.IsValidated
                     || phase.CartographieEnfant.Attachement.Score > 0
-                    || phase.CartographieEnfant.Psychomotricite.Score > 0
+                    || phase.CartographieEnfant.Psychomotricite.IsRenseigne
                     || phase.CartographieEnfant.Langage.Score > 0
                     || phase.CartographieEnfant.Emotions.Score > 0
                     || phase.CartographieEnfant.Imaginaire.Score > 0
                     || phase.CartographieEnfant.Pensee.Score > 0
-                    || phase.CartographieEnfant.Temperament.IsRenseigne;
+                    || phase.CartographieEnfant.Temperament.IsRenseigne
+                    || phase.CartographieEnfant.Attention.IsRenseigne;
                 ActiveDossierTab = hasCartographie ? DossierTab.Bilans : DossierTab.Synthese;
             }
         }
@@ -4376,12 +4377,13 @@ source: ""MedCompanion""
                 .Where(p => !p.IsActive)
                 .Where(p => p.CartographieEnfant.IsValidated
                          || p.CartographieEnfant.Attachement.Score > 0
-                         || p.CartographieEnfant.Psychomotricite.Score > 0
+                         || p.CartographieEnfant.Psychomotricite.IsRenseigne
                          || p.CartographieEnfant.Langage.Score > 0
                          || p.CartographieEnfant.Emotions.Score > 0
                          || p.CartographieEnfant.Imaginaire.Score > 0
                          || p.CartographieEnfant.Pensee.Score > 0
-                         || p.CartographieEnfant.Temperament.IsRenseigne)
+                         || p.CartographieEnfant.Temperament.IsRenseigne
+                         || p.CartographieEnfant.Attention.IsRenseigne)
                 .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
                 .Select(p => new CartographieBilanCardViewModel(p))
                 .ToList();

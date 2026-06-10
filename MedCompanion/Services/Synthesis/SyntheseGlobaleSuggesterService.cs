@@ -330,13 +330,16 @@ RÉPONDS UNIQUEMENT par un JSON valide, en respectant l'ordre des clés :
                     {
                         sbEval.AppendLine("Cartographie de l'enfant (chenille) :");
                         sbEval.AppendLine($"- Attachement : {c.Attachement.Score}/6");
-                        sbEval.AppendLine($"- Psychomotricité : {c.Psychomotricite.Score}/6");
+                        if (c.Psychomotricite.IsRenseigne)
+                            sbEval.AppendLine($"- Psychomotricité : globale={c.Psychomotricite.MotriciteGlobale}/5, fine={c.Psychomotricite.MotriciteFine}/5, tonus={c.Psychomotricite.Tonus}/5, dextérité={c.Psychomotricite.Dexterite}/5, coordination={c.Psychomotricite.Coordination}/5, impulsivité={c.Psychomotricite.ImpulsiviteMotrice}/5");
                         sbEval.AppendLine($"- Langage : {c.Langage.Score}/6");
                         sbEval.AppendLine($"- Émotions : {c.Emotions.Score}/6");
                         sbEval.AppendLine($"- Imaginaire : {c.Imaginaire.Score}/6");
                         sbEval.AppendLine($"- Pensée : {c.Pensee.Score}/6");
                         if (c.Temperament.IsRenseigne)
                             sbEval.AppendLine($"- Tempérament : activité={c.Temperament.NiveauActivite}/5, régularité={c.Temperament.Regularite}/5, réactivité={c.Temperament.ReactiviteSensorielle}/5, intensité={c.Temperament.IntensiteEmotionnelle}/5, adaptabilité={c.Temperament.Adaptabilite}/5");
+                        if (c.Attention.IsRenseigne)
+                            sbEval.AppendLine($"- Attention & FE : soutenue={c.Attention.AttentionSoutenue}/5, sélective={c.Attention.AttentionSelective}/5, divisée={c.Attention.AttentionDivisee}/5, inhibition={c.Attention.Inhibition}/5, planification={c.Attention.Planification}/5, flexibilité={c.Attention.FlexibiliteAttentionnelle}/5");
                     }
                     // Cartographie environnement (feuilles)
                     var e2 = ev.CartographieEnvironnement;
