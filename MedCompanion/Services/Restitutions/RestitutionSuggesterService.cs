@@ -634,6 +634,88 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
         // ── Bloc couverture : construction déterministe sans LLM ─────────────
 
         /// <summary>
+        /// Variante async qui construit la couverture déterministe, puis remplit le seul
+        /// champ « Motif de consultation » via un appel LLM ciblé si l'extraction déterministe
+        /// n'a rien trouvé. Tous les autres champs (identité, scolarité, dates) restent
+        /// 100 % déterministes — on garde la robustesse anti-hallucination du PR initial.
+        /// Le LLM n'a droit qu'à 3-6 mots-clés en sortie (format imposé).
+        /// </summary>
+        public async Task<string> BuildCouvertureFromDataAsync(
+            DossierReading reading,
+            CancellationToken ct = default)
+        {
+            var md = BuildCouvertureFromData(reading);
+
+            // Si le motif est vide / « Non renseigné », on demande au LLM 3-6 mots-clés.
+            // L'extraction déterministe (CovExtractField + CovExtractMotif) ne couvre que les
+            // notes structurées par section labellisée — pour les autres, le LLM prend le relais.
+            var motifRx = new Regex(@"^\*\*Motif de consultation\*\*\s*:\s*(.+?)$", RegexOptions.Multiline);
+            var mMotif  = motifRx.Match(md);
+            var motifVal = mMotif.Success ? mMotif.Groups[1].Value.Trim() : "";
+            bool motifEmpty = string.IsNullOrWhiteSpace(motifVal)
+                              || motifVal.Equals("Non renseigné",  StringComparison.OrdinalIgnoreCase)
+                              || motifVal.Equals("Non renseignée", StringComparison.OrdinalIgnoreCase);
+
+            if (motifEmpty)
+            {
+                var keywords = await SuggestMotifKeywordsAsync(reading, ct);
+                if (!string.IsNullOrWhiteSpace(keywords))
+                {
+                    md = motifRx.Replace(md, $"**Motif de consultation** : {keywords}", 1);
+                }
+            }
+
+            return md;
+        }
+
+        /// <summary>
+        /// Petit appel LLM qui produit 3 à 6 mots-clés du motif de consultation à partir
+        /// du dossier complet. Format strict : mots-clés en minuscules séparés par virgules,
+        /// pas de phrases. Utilisé uniquement en fallback quand l'extraction déterministe échoue.
+        /// </summary>
+        private async Task<string> SuggestMotifKeywordsAsync(DossierReading reading, CancellationToken ct)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) return "";
+
+            var systemPrompt =
+                "Tu es un assistant médical en pédopsychiatrie. Tu produis UNIQUEMENT une liste " +
+                "de 3 à 6 mots-clés résumant le motif de consultation. " +
+                "RÈGLES STRICTES :\n" +
+                "- Mots-clés en minuscules, séparés par des virgules.\n" +
+                "- PAS de phrase complète, PAS de verbe conjugué, PAS de titre.\n" +
+                "- N'invente JAMAIS : si rien n'est trouvé, réponds exactement « Non renseigné ».\n" +
+                "Exemples du bon format : « refus scolaire, crises de colère, stress » ou " +
+                "« hyperactivité, difficultés d'apprentissage, opposition » ou " +
+                "« anxiété de séparation, troubles du sommeil ».";
+
+            var userPrompt = new StringBuilder()
+                .AppendLine(context)
+                .AppendLine()
+                .AppendLine("=================")
+                .AppendLine("Donne UNIQUEMENT 3 à 6 mots-clés du motif de consultation, séparés par des virgules. Rien d'autre.")
+                .ToString();
+
+            var messages = new List<(string role, string content)> { ("user", userPrompt) };
+            var result   = await _llmService.ChatAsync(systemPrompt, messages, 80, ct);
+            if (!result.success) return "";
+
+            // Nettoyage : on garde la 1ère ligne non vide, on retire les guillemets et points finaux.
+            var clean = (result.result ?? "")
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => l.Trim().Trim('"', '«', '»').TrimEnd('.'))
+                .FirstOrDefault(l => l.Length > 2) ?? "";
+
+            // Sécurité : si le LLM a renvoyé « Non renseigné » ou variante, on laisse vide
+            // pour que CovOr() applique son fallback standard.
+            if (clean.Equals("Non renseigné",  StringComparison.OrdinalIgnoreCase) ||
+                clean.Equals("Non renseignée", StringComparison.OrdinalIgnoreCase))
+                return "";
+
+            return clean;
+        }
+
+        /// <summary>
         /// Construit le bloc "couverture" directement depuis les données structurées
         /// du DossierReading. Déterministe — jamais de placeholders [xxx].
         /// </summary>

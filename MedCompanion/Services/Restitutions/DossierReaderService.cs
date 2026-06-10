@@ -109,12 +109,17 @@ namespace MedCompanion.Services.Restitutions
 
         private static (string premiere, List<NoteEntry> autres) SplitPremiereConsultation(List<NoteEntry> notes)
         {
-            // La 1ère consultation est identifiée par YAML type == "consultation-premiere".
+            if (notes.Count == 0) return ("", notes);
+
+            // 1er choix : la note explicitement typée "consultation-premiere" (patients récents).
             var premiere = notes.FirstOrDefault(n =>
                 n.Type.Equals("consultation-premiere", StringComparison.OrdinalIgnoreCase));
 
-            if (premiere == null)
-                return ("", notes);
+            // 2e choix (fallback patients anciens) : la note CHRONOLOGIQUEMENT la plus ancienne.
+            // Avant l'introduction du type "consultation-premiere", toutes les notes étaient
+            // typées "note" — la 1ère consultation est alors implicitement la plus ancienne.
+            // notes est trié décroissant par date → la plus ancienne est en fin de liste.
+            premiere ??= notes.Last();
 
             var autres = notes.Where(n => n != premiere).ToList();
             return (premiere.Content, autres);

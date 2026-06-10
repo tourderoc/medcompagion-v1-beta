@@ -210,7 +210,11 @@ namespace MedCompanion.ViewModels.Restitutions
                 {
                     case "couverture":
                     {
-                        var content = RestitutionSuggesterService.BuildCouvertureFromData(_currentReading!);
+                        // Couverture déterministe (identité, scolarité, dates) + petit appel LLM
+                        // en fallback uniquement pour le champ « Motif de consultation » quand
+                        // les notes ne sont pas structurées par sections labellisées.
+                        StatusMessage = "✍ Couverture — extraction des informations...";
+                        var content = await _suggesterService.BuildCouvertureFromDataAsync(_currentReading!, ct);
                         if (!string.IsNullOrWhiteSpace(content))
                         {
                             blocVm.Contenu = content;
@@ -337,7 +341,8 @@ namespace MedCompanion.ViewModels.Restitutions
                         {
                             case "couverture":
                             {
-                                var content = RestitutionSuggesterService.BuildCouvertureFromData(_currentReading!);
+                                // Voir GenerateBlocAsync : déterministe + LLM-fallback motif uniquement.
+                                var content = await _suggesterService.BuildCouvertureFromDataAsync(_currentReading!, ct);
                                 if (!string.IsNullOrWhiteSpace(content))
                                 {
                                     blocVm.Contenu = content;
