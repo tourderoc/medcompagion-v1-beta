@@ -121,12 +121,13 @@ namespace MedCompanion.Models.Restitutions
             Blocs.Add(new RestitutionBloc("patient_motif",              "Motif de consultation",        4, "clinique"));
             Blocs.Add(new RestitutionBloc("patient_contexte_familial",  "Contexte familial",            5, "clinique"));
             Blocs.Add(new RestitutionBloc("patient_antecedents",        "Antécédents",                  6, "clinique"));
-            Blocs.Add(new RestitutionBloc("patient_situation_actuelle", "Situation actuelle",           7, "clinique"));
-            Blocs.Add(new RestitutionBloc("synthese_diag",              "Synthèse diagnostique",        8, "clinique"));
-            Blocs.Add(new RestitutionBloc("bilan_final",                "Bilan final détaillé",         9, "clinique"));
-            Blocs.Add(new RestitutionBloc("synthese_globale",           "Synthèse globale",            10, "clinique"));
-            Blocs.Add(new RestitutionBloc("projet_therapeutique",       "Projet Thérapeutique Global", 11, "clinique"));
-            Blocs.Add(new RestitutionBloc("conclusion",                 "Conclusion et perspectives",  12, "mixte"));
+            Blocs.Add(new RestitutionBloc("patient_situation_actuelle", "Situation actuelle",                 7, "clinique"));
+            Blocs.Add(new RestitutionBloc("carto_enfant",               "Cartographie de l'enfant",           8, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_diag",              "Synthèse diagnostique",              9, "clinique"));
+            Blocs.Add(new RestitutionBloc("bilan_final",                "Bilan final détaillé",              10, "clinique"));
+            Blocs.Add(new RestitutionBloc("synthese_globale",           "Synthèse globale",                  11, "clinique"));
+            Blocs.Add(new RestitutionBloc("projet_therapeutique",       "Projet Thérapeutique Global",       12, "clinique"));
+            Blocs.Add(new RestitutionBloc("conclusion",                 "Conclusion et perspectives",        13, "mixte"));
         }
     }
 }

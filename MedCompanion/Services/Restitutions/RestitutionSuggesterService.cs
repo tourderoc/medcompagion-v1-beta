@@ -382,6 +382,87 @@ namespace MedCompanion.Services.Restitutions
             await RunProgressiveSubsectionsAsync(systemPrompt, context, blocSa.VoixCible, subsections, onSectionReady, 400, ct);
         }
 
+        // ── Génération progressive Cartographie de l'enfant ─────────────────
+
+        /// <summary>
+        /// Génère le bloc « Cartographie de l'enfant » sphère par sphère (V0.2 : sphère 1
+        /// Attachement câblée, sphères 2-8 ajoutées progressivement dans les itérations
+        /// suivantes). Pour chaque sphère, Med reçoit le niveau numérique calculé par
+        /// CartographieScoringService + la lecture émotionnelle canonique, et produit :
+        /// (a) 2-3 observations cliniques courtes basées sur le dossier ;
+        /// (b) 1 phrase de niveau clinique au format « Mot-clé (qualifier court). ».
+        /// Le résultat est concaténé avec marqueurs `## Sphère N — Nom` pour parsing HTML.
+        /// </summary>
+        public async Task SuggestCartoEnfantProgressiveAsync(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+
+            var blocCe = new RestitutionBloc("carto_enfant", "Cartographie de l'enfant", 8, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocCe);
+
+            // V0.2 : seule la sphère 1 (Attachement) est câblée. On ajoutera les 7 autres
+            // sphère par sphère pour valider à chaque étape avec le médecin.
+            var subsections = new List<(string Title, string Instruction)>();
+            var carto = reading.LatestCartographieEnfant;
+
+            if (carto != null)
+            {
+                var seg    = carto.Attachement;
+                var niveau = Services.Evaluations.CartographieScoringService.Calculer(seg.Score, carto.AgeAuMomentDeLaSaisie);
+                if (niveau.HasValue)
+                {
+                    var niveauLabel = Models.Evaluations.CartographieContent.NiveauLabel(niveau);
+                    var lecture     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau);
+                    var ageTxt      = carto.AgeAuMomentDeLaSaisie?.ToString() ?? "?";
+
+                    subsections.Add((
+                        "## Sphère 1 — Attachement",
+                        $"Contexte numérique (à utiliser, jamais réécrire) : score {seg.Score}/6 à {ageTxt} ans → niveau « {niveauLabel} ». " +
+                        $"Lecture canonique : {lecture}\n\n" +
+                        "Rédige UNIQUEMENT cette sphère dans le format strict suivant, sans titre supplémentaire :\n\n" +
+                        "**Observations**\n" +
+                        "- 2 ou 3 puces COURTES (1 ligne chacune), style clinique pédopsychiatrique précis, basées sur le dossier patient (1ère consultation, notes, synthèse globale Med).\n" +
+                        "- Mentionner les éléments concrets observés en lien avec l'attachement et la sécurité intérieure (anxiété de séparation, besoin de réassurance, qualité du lien, capacité d'apaisement…).\n" +
+                        "- N'INVENTE RIEN : si le dossier est silencieux sur l'attachement, écris une seule puce : `- Données limitées concernant la sphère d'attachement dans le dossier.`\n\n" +
+                        "**Niveau clinique** : 1 SEULE phrase courte qui traduit cliniquement ce niveau pour cet enfant. " +
+                        "Format obligatoire : `Mot-clé (qualifier court).`\n" +
+                        "Exemples du bon format selon le niveau :\n" +
+                        "- Vert foncé → `Ressource solide (Sécurité intérieure intégrée).`\n" +
+                        "- Vert clair → `Satisfaisant (Base sécurisante présente).`\n" +
+                        "- Jaune clair → `À surveiller (Équilibre encore fragile).`\n" +
+                        "- Jaune foncé → `Fragilisé (Besoin d'étayage).`\n" +
+                        "- Rouge clair → `Alerte (Anxiété d'attachement marquée).`\n" +
+                        "- Rouge foncé → `Très fragilisé (Insécurité affective profonde).`\n" +
+                        "Adapte le mot-clé et le qualifier au cas du patient si le dossier suggère une nuance, mais reste dans ce format compact.\n\n" +
+                        "Commence directement par `**Observations**`, n'ajoute pas de titre de sphère ni de commentaire."));
+                }
+                else
+                {
+                    subsections.Add((
+                        "## Sphère 1 — Attachement",
+                        "L'étape 3 de cartographie de l'enfant n'a pas été clôturée ou l'âge est hors fourchette 3-11 ans. " +
+                        "Écris : `**Observations** : non disponibles (étape 3 d'évaluation non clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+                }
+            }
+            else
+            {
+                subsections.Add((
+                    "## Sphère 1 — Attachement",
+                    "Aucune cartographie enfant disponible. Écris : `**Observations** : non disponibles (aucune évaluation clôturée).` puis sur une ligne `**Niveau clinique** : Non évalué.`"));
+            }
+
+            // Sphères 2-8 : à ajouter dans les prochaines itérations selon le même pattern.
+            // Les cartouches restent en placeholder dans le rendu HTML tant qu'aucun contenu
+            // n'est généré pour elles.
+
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocCe.VoixCible,
+                subsections.ToArray(), onSectionReady, 400, ct);
+        }
+
         // ── Helper commun pour les générations progressives ─────────────────
 
         /// <summary>

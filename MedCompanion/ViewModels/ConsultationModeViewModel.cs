@@ -3146,7 +3146,7 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                 var pathService    = new PathService();
                 var syntheseSvc    = new MedCompanion.Services.Synthesis.SyntheseGlobaleService(pathService);
                 var projetSvc      = new MedCompanion.Services.Therapeutique.ProjetTherapeutiqueService(pathService);
-                var dossierReader  = new MedCompanion.Services.Restitutions.DossierReaderService(pathService, syntheseSvc, projetSvc);
+                var dossierReader  = new MedCompanion.Services.Restitutions.DossierReaderService(pathService, syntheseSvc, projetSvc, _evaluationPhaseService);
                 var suggesterService = new RestitutionSuggesterService(
                     _llmService!,
                     dossierReader,
@@ -3158,7 +3158,7 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                     )
                 );
                 
-                var previewService = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(pathService);
+                var previewService = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(pathService, _evaluationPhaseService);
                 var editorVm = new ViewModels.Restitutions.RestitutionEditorViewModel(
                     dossier,
                     CurrentPatient?.NomComplet ?? "Inconnu",

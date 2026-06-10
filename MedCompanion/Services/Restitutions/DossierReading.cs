@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using MedCompanion.Models.Evaluations;
 
 namespace MedCompanion.Services.Restitutions
 {
@@ -48,6 +49,14 @@ namespace MedCompanion.Services.Restitutions
 
         /// <summary>Méta-synthèse Med de l'ensemble des documents importés.</summary>
         public string SyntheseGlobaleDocuments { get; init; } = "";
+
+        /// <summary>
+        /// Dernière Étape 3 « Cartographie de l'enfant » de la dernière évaluation clôturée
+        /// (ou validée si dispo). Donne directement accès aux scores et niveaux par sphère
+        /// pour les sections Cartographie du Dossier de Restitution — sans avoir à reparser
+        /// le YAML des fichiers d'évaluation. null si aucune évaluation utilisable.
+        /// </summary>
+        public CartographieEnfant? LatestCartographieEnfant { get; init; }
 
         /// <summary>
         /// Rendu textuel structuré du dossier pour injection dans un prompt LLM.

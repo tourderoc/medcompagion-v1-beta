@@ -246,6 +246,13 @@ namespace MedCompanion.ViewModels.Restitutions
                             (cb, c) => _suggesterService.SuggestSituationActuelleProgressiveAsync(_currentReading!, cb, c), ct);
                         break;
 
+                    case "carto_enfant":
+                        // V0.2 : génération sphère 1 (Attachement) uniquement. Le total
+                        // de sections croît au fur et à mesure qu'on câble les sphères 2-8.
+                        await RunProgressiveAsync(blocVm, "Cartographie de l'enfant", 1,
+                            (cb, c) => _suggesterService.SuggestCartoEnfantProgressiveAsync(_currentReading!, cb, c), ct);
+                        break;
+
                     default:
                     {
                         var result = await _suggesterService.PrefillBlocAsync(blocVm.Model, _currentReading, ct);
@@ -371,6 +378,11 @@ namespace MedCompanion.ViewModels.Restitutions
                             case "patient_situation_actuelle":
                                 await RunProgressiveAsync(blocVm, "Situation actuelle", 5,
                                     (cb, c) => _suggesterService.SuggestSituationActuelleProgressiveAsync(_currentReading, cb, c), ct);
+                                break;
+
+                            case "carto_enfant":
+                                await RunProgressiveAsync(blocVm, "Cartographie de l'enfant", 1,
+                                    (cb, c) => _suggesterService.SuggestCartoEnfantProgressiveAsync(_currentReading, cb, c), ct);
                                 break;
 
                             default:

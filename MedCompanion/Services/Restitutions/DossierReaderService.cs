@@ -5,6 +5,8 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using MedCompanion.Models.Evaluations;
+using MedCompanion.Services.Evaluations;
 using MedCompanion.Services.Synthesis;
 using MedCompanion.Services.Therapeutique;
 
@@ -24,15 +26,18 @@ namespace MedCompanion.Services.Restitutions
         private readonly PathService _pathService;
         private readonly SyntheseGlobaleService? _syntheseGlobaleService;
         private readonly ProjetTherapeutiqueService? _projetService;
+        private readonly EvaluationPhaseService? _evaluationPhaseService;
 
         public DossierReaderService(
             PathService pathService,
             SyntheseGlobaleService? syntheseGlobaleService = null,
-            ProjetTherapeutiqueService? projetService = null)
+            ProjetTherapeutiqueService? projetService = null,
+            EvaluationPhaseService? evaluationPhaseService = null)
         {
-            _pathService           = pathService;
+            _pathService            = pathService;
             _syntheseGlobaleService = syntheseGlobaleService;
             _projetService          = projetService;
+            _evaluationPhaseService = evaluationPhaseService;
         }
 
         /// <summary>
@@ -61,7 +66,32 @@ namespace MedCompanion.Services.Restitutions
                 ProjetTherapeutique      = ReadProjetTherapeutique(patientNomComplet),
                 SynthesesDocuments       = ReadAllSynthesesDocuments(patientNomComplet),
                 SyntheseGlobaleDocuments = ReadSyntheseGlobaleDocuments(patientNomComplet),
+                LatestCartographieEnfant = ReadLatestCartographieEnfant(patientNomComplet),
             };
+        }
+
+        // ── Étape 3 — Cartographie de l'enfant (dernière validée/clôturée) ──
+
+        private CartographieEnfant? ReadLatestCartographieEnfant(string patient)
+        {
+            if (_evaluationPhaseService == null) return null;
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patient);
+                if (string.IsNullOrEmpty(dir)) return null;
+                var phases = _evaluationPhaseService.LoadAll(dir);
+
+                // Priorité 1 : étape 3 formellement validée. Priorité 2 : évaluation clôturée
+                // même si étape 3 non validée (cas où le médecin coche sans cliquer Valider).
+                var phase = phases.Where(p => !p.IsActive && p.CartographieEnfant.IsValidated)
+                                  .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                                  .FirstOrDefault()
+                          ?? phases.Where(p => !p.IsActive)
+                                  .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                                  .FirstOrDefault();
+                return phase?.CartographieEnfant;
+            }
+            catch { return null; }
         }
 
         // ── Identité ────────────────────────────────────────────────────────

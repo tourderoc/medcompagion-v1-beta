@@ -5,7 +5,9 @@ using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using MedCompanion.Models.Evaluations;
 using MedCompanion.Models.Restitutions;
+using MedCompanion.Services.Evaluations;
 
 namespace MedCompanion.Services.Restitutions
 {
@@ -23,6 +25,12 @@ namespace MedCompanion.Services.Restitutions
     public class RestitutionHtmlPreviewService
     {
         private readonly PathService _pathService;
+        private readonly EvaluationPhaseService? _evaluationService;
+
+        // Cache de l'évaluation clôturée lue une fois par patient (pour Cartographie de l'enfant).
+        // Évite de relire et reparser le YAML à chaque refresh de la preview live.
+        private string? _cachedEvalPatient;
+        private EvaluationPhase? _cachedEvalPhase;
 
         // Cache des assets binaires lus une fois (fonts + image arbre + logo) — économise des
         // Mo de lecture disque à chaque refresh de la preview live.
@@ -52,9 +60,12 @@ namespace MedCompanion.Services.Restitutions
             @"^\s*\*\*([^*\n]{3,120})\*\*\s*$",
             RegexOptions.Multiline | RegexOptions.Compiled);
 
-        public RestitutionHtmlPreviewService(PathService pathService)
+        public RestitutionHtmlPreviewService(
+            PathService pathService,
+            EvaluationPhaseService? evaluationService = null)
         {
-            _pathService = pathService;
+            _pathService       = pathService;
+            _evaluationService = evaluationService;
         }
 
         public string BuildPreviewHtml(DossierRestitutionInitial dossier, string patientNomComplet)
@@ -72,7 +83,7 @@ namespace MedCompanion.Services.Restitutions
 
             var coverHtml = BuildCoverPage(coverFields);
             var photoBase64 = LoadPatientPhotoBase64(patientNomComplet);
-            var blocsHtml = BuildBlocsPages(dossier, coverFields, photoBase64);
+            var blocsHtml = BuildBlocsPages(dossier, coverFields, photoBase64, patientNomComplet);
 
             var sb = new StringBuilder();
             sb.AppendLine("<!DOCTYPE html><html lang='fr'><head><meta charset='UTF-8'/>");
@@ -363,15 +374,16 @@ namespace MedCompanion.Services.Restitutions
 
         // ── Pages 2-9 ────────────────────────────────────────────────────────
 
-        private string BuildBlocsPages(DossierRestitutionInitial dossier, CoverFields coverFields, string photoBase64)
+        private string BuildBlocsPages(DossierRestitutionInitial dossier, CoverFields coverFields, string photoBase64, string patientNomComplet)
         {
             var sb = new StringBuilder();
             int pageNumber = 2;
 
             // Total de pages logiques pour les en-têtes "Page N/total".
-            // 1 (couverture) + 1 (restitution 1-page) + 2 (patient & contexte A+B) + 5 autres blocs (synthese_diag,
-            // bilan_final, synthese_globale, projet_therapeutique, conclusion) = 9. À mettre à jour quand on ajoute des pages dédiées.
-            int totalPages = 9;
+            // 1 (couverture) + 1 (restitution 1-page) + 2 (patient & contexte A+B) + 2 (cartographie enfant A+B)
+            // + 5 autres blocs (synthese_diag, bilan_final, synthese_globale, projet_therapeutique, conclusion) = 11.
+            // À mettre à jour quand on ajoute des pages dédiées.
+            int totalPages = 11;
 
             // Les 5 blocs patient_* sont rendus ensemble sur 2 pages dédiées (A : identification +
             // motif + contexte familial / B : antécédents + situation actuelle). On les capture
@@ -420,6 +432,20 @@ namespace MedCompanion.Services.Restitutions
                         }
                         patientPagesRendered = true;
                     }
+                    continue;
+                }
+
+                if (bloc.Key == "carto_enfant")
+                {
+                    // Cartographie de l'enfant : 2 pages (A : sphères 1-4 / B : sphères 5-8).
+                    // Sphère par sphère, on bascule les placeholders vers le vrai rendu
+                    // (pie SVG + observations + niveau lus depuis l'Étape 3 de l'évaluation).
+                    // V0.2 : sphère 1 « Attachement » câblée ; sphères 2-8 restent placeholder.
+                    var carto       = LoadLatestCartographieEnfant(patientNomComplet);
+                    var perSphere   = ParseCartoEnfantBloc(bloc.ContenuValide ?? "");
+                    sb.Append(BuildCartoEnfantPageA(bloc, carto, perSphere, pageNumber,     totalPages));
+                    sb.Append(BuildCartoEnfantPageB(bloc, carto, perSphere, pageNumber + 1, totalPages));
+                    pageNumber += 2;
                     continue;
                 }
 
@@ -680,6 +706,415 @@ namespace MedCompanion.Services.Restitutions
                 "Ces informations sont issues de l'anamnèse et des documents fournis.",
                 pageNumber, totalPages));
             sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // ── Pages Cartographie de l'enfant (A + B) — V0.1 scaffolding ───────
+
+        /// <summary>
+        /// Les 8 sphères du modèle PDF, dans l'ordre d'affichage. V0.1 : structure visuelle
+        /// uniquement, sans données réelles ni génération LLM. À chaque itération, on remplacera
+        /// le placeholder d'une sphère par son rendu réel (pie/radar + observations + niveau).
+        /// </summary>
+        private static readonly (int Num, string Title, string Subtitle, string CssClass, bool HasRadar)[] _ceSpheres =
+        {
+            (1, "ATTACHEMENT",         "et sécurité intérieure",          "ce-s1", false),
+            (2, "RÉGULATION",          "émotionnelle",                    "ce-s2", false),
+            (3, "LANGAGE",             "",                                "ce-s3", false),
+            (4, "TEMPÉRAMENT",         "et adaptabilité",                 "ce-s4", true),
+            (5, "PSYCHOMOTRICITÉ",     "(Globale et Fine)",               "ce-s5", true),
+            (6, "IMAGINATION ET JEU",  "",                                "ce-s6", false),
+            (7, "PENSÉE ET",           "APPRENTISSAGES",                  "ce-s7", false),
+            (8, "ATTENTION ET",        "FONCTIONS EXÉCUTIVES",            "ce-s8", true),
+        };
+
+        /// <summary>
+        /// Charge la dernière cartographie de l'enfant validée pour ce patient. Retourne
+        /// null si aucune évaluation clôturée n'existe ou si le service n'est pas injecté.
+        /// Mis en cache pour éviter une relecture YAML à chaque refresh de la preview.
+        /// </summary>
+        private CartographieEnfant? LoadLatestCartographieEnfant(string patientNomComplet)
+        {
+            if (_evaluationService == null || string.IsNullOrWhiteSpace(patientNomComplet)) return null;
+            if (_cachedEvalPatient == patientNomComplet && _cachedEvalPhase != null)
+                return _cachedEvalPhase.CartographieEnfant;
+
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patientNomComplet);
+                if (string.IsNullOrEmpty(dir)) return null;
+
+                var phases = _evaluationService.LoadAll(dir);
+                // On prend la plus récente clôturée et VALIDÉE pour l'étape 3 (Cartographie enfant).
+                var phase = phases
+                    .Where(p => !p.IsActive && p.CartographieEnfant.IsValidated)
+                    .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                    .FirstOrDefault();
+
+                // Fallback : la plus récente clôturée même si l'étape 3 n'est pas formellement
+                // validée (cas où le médecin coche les items sans cliquer Valider).
+                phase ??= phases
+                    .Where(p => !p.IsActive)
+                    .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                    .FirstOrDefault();
+
+                _cachedEvalPatient = patientNomComplet;
+                _cachedEvalPhase   = phase;
+                return phase?.CartographieEnfant;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Rend la page A de la Cartographie de l'enfant : sphères 1-4 (Attachement, Régulation,
+        /// Langage, Tempérament). Sphère 1 (Attachement) est câblée sur les données réelles
+        /// (Étape 3 de la dernière évaluation), les autres restent en placeholder pour V0.2.
+        /// </summary>
+        private string BuildCartoEnfantPageA(RestitutionBloc bloc, CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='page ce-page'>");
+            sb.Append(BuildPcHeader(
+                "CARTOGRAPHIE DE L'ENFANT",
+                "4.1 Vue d'ensemble — Cette section évalue les sphères de développement,<br>afin de mieux comprendre son fonctionnement interne et ses besoins spécifiques.",
+                "1/2", pageNumber, totalPages));
+
+            for (int i = 0; i < 4; i++)
+                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, perSphere));
+
+            sb.Append(BuildCeLegende());
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Rend la page B : sphères 5-8 (Psychomotricité, Imagination & Jeu, Pensée &
+        /// Apprentissages, Attention & FE).
+        /// </summary>
+        private string BuildCartoEnfantPageB(RestitutionBloc bloc, CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("<div class='page ce-page'>");
+            sb.Append(BuildPcHeader(
+                "CARTOGRAPHIE DE L'ENFANT",
+                "4.1 Vue d'ensemble — Cette section évalue les sphères de développement,<br>afin de mieux comprendre son fonctionnement interne et ses besoins spécifiques.",
+                "2/2", pageNumber, totalPages));
+
+            for (int i = 4; i < 8; i++)
+                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, perSphere));
+
+            sb.Append(BuildCeLegende());
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Rend une cartouche de sphère. Trois sources de données possibles selon l'état :
+        /// (a) Étape 3 cartographie (score + niveau numérique) → alimente la pie SVG ;
+        /// (b) Bloc carto_enfant.ContenuValide parsé (observations + niveau clinique phrase) ;
+        /// (c) placeholders si rien n'est dispo. Le texte « Niveau clinique » prend la couleur
+        /// de la section (cohérence avec le modèle PDF).
+        /// </summary>
+        private static string BuildCeSphereCard(
+            (int Num, string Title, string Subtitle, string CssClass, bool HasRadar) sphere,
+            CartographieEnfant? carto,
+            Dictionary<int, CeSphereContent> perSphere)
+        {
+            // (a) Données numériques de l'étape 3 (uniquement câblé pour Attachement en V0.2).
+            var segmentData = carto != null ? GetSegmentData(sphere.Num, carto) : null;
+            // (b) Contenu rédactionnel de Med pour cette sphère, parsé depuis le bloc.
+            perSphere.TryGetValue(sphere.Num, out var medContent);
+
+            var sb = new StringBuilder();
+            sb.AppendLine($"  <div class='ce-card {sphere.CssClass}'>");
+
+            // En-tête sphère : badge num + titre + sous-titre
+            sb.AppendLine("    <div class='ce-card-hdr'>");
+            sb.AppendLine($"      <span class='ce-num'>{sphere.Num}.</span>");
+            sb.AppendLine("      <div class='ce-card-title'>");
+            sb.AppendLine($"        <strong>{WebUtility.HtmlEncode(sphere.Title)}</strong>");
+            if (!string.IsNullOrEmpty(sphere.Subtitle))
+                sb.AppendLine($"        <em>{WebUtility.HtmlEncode(sphere.Subtitle)}</em>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div>");
+
+            // Corps : chart à gauche, observation + niveau à droite
+            sb.AppendLine("    <div class='ce-card-body'>");
+
+            // Zone chart : pie SVG si la sphère est câblée, sinon placeholder
+            sb.AppendLine($"      <div class='ce-chart {(sphere.HasRadar ? "ce-chart-radar" : "ce-chart-pie")}'>");
+            if (segmentData != null && !sphere.HasRadar)
+            {
+                sb.AppendLine(BuildCeChenillePieSvg(segmentData.Niveau, segmentData.Score));
+            }
+            else
+            {
+                sb.AppendLine(sphere.HasRadar
+                    ? "        <span class='ce-chart-placeholder'>(Radar à venir)</span>"
+                    : "        <span class='ce-chart-placeholder'>(Pie à venir)</span>");
+            }
+            sb.AppendLine("      </div>");
+
+            // Zone texte (observations + niveau clinique)
+            sb.AppendLine("      <div class='ce-card-text'>");
+            sb.AppendLine("        <div class='ce-obs-title'>Observation</div>");
+            sb.AppendLine("        <div class='ce-obs-body'>");
+            if (medContent != null && !string.IsNullOrWhiteSpace(medContent.Observations))
+            {
+                sb.AppendLine(MarkdownToHtmlLite(medContent.Observations));
+            }
+            else
+            {
+                sb.AppendLine("          <p class='ce-placeholder'><em>Observations à compléter — sphère à venir dans une prochaine itération.</em></p>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='ce-niveau-title'>Niveau clinique</div>");
+            sb.AppendLine("        <div class='ce-niveau-body'>");
+            if (medContent != null && !string.IsNullOrWhiteSpace(medContent.NiveauClinique))
+            {
+                // Texte du niveau clinique en couleur de section (style PDF modèle).
+                sb.AppendLine($"          <span class='ce-niveau-text'>{WebUtility.HtmlEncode(medContent.NiveauClinique)}</span>");
+            }
+            else
+            {
+                sb.AppendLine("          <span class='ce-placeholder'><em>—</em></span>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+            return sb.ToString();
+        }
+
+        // ── Parsing du bloc carto_enfant ────────────────────────────────────
+
+        /// <summary>Contenu rédigé par Med pour une sphère donnée (parsé depuis bloc.ContenuValide).</summary>
+        private class CeSphereContent
+        {
+            public string Observations    { get; set; } = "";
+            public string NiveauClinique  { get; set; } = "";
+        }
+
+        /// <summary>
+        /// Parse le bloc carto_enfant en sections par sphère. Reconnaît les marqueurs
+        /// `## Sphère N — Nom` (séparateurs) et, dans chaque section, les sous-marqueurs
+        /// `**Observations**` et `**Niveau clinique**`. Tolère absence d'une sphère :
+        /// les non-présentes restent en placeholder.
+        /// </summary>
+        private static Dictionary<int, CeSphereContent> ParseCartoEnfantBloc(string md)
+        {
+            var result = new Dictionary<int, CeSphereContent>();
+            if (string.IsNullOrWhiteSpace(md)) return result;
+
+            // Découpe par `## Sphère N`. Tolérant aux variations (tiret en/em, accents…).
+            var headerRx = new Regex(@"^##\s+Sphère\s+(\d+)\b[^\n]*$", RegexOptions.Multiline);
+            var matches  = headerRx.Matches(md);
+            if (matches.Count == 0) return result;
+
+            for (int i = 0; i < matches.Count; i++)
+            {
+                var m = matches[i];
+                if (!int.TryParse(m.Groups[1].Value, out var num)) continue;
+
+                var start = m.Index + m.Length;
+                var end   = (i + 1 < matches.Count) ? matches[i + 1].Index : md.Length;
+                var body  = md.Substring(start, end - start).Trim();
+
+                result[num] = ExtractSphereSubSections(body);
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Extrait les sous-sections d'une sphère : `**Observations**` (bloc multi-ligne)
+        /// et `**Niveau clinique** : valeur` (typiquement une seule ligne).
+        /// </summary>
+        private static CeSphereContent ExtractSphereSubSections(string body)
+        {
+            var content = new CeSphereContent();
+
+            // Observations : entre `**Observations**` et `**Niveau clinique**` (ou fin).
+            var obsMatch = Regex.Match(body,
+                @"\*\*Observations\*\*\s*[:\.]?\s*\n?(.*?)(?=\*\*Niveau\s+clinique\*\*|$)",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (obsMatch.Success)
+            {
+                content.Observations = obsMatch.Groups[1].Value.Trim();
+            }
+
+            // Niveau clinique : ligne unique après `**Niveau clinique**`.
+            var nivMatch = Regex.Match(body,
+                @"\*\*Niveau\s+clinique\*\*\s*[:\.]?\s*(.+?)(?:\r?\n\s*\r?\n|$)",
+                RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (nivMatch.Success)
+            {
+                var v = nivMatch.Groups[1].Value.Trim();
+                // Nettoie les balises markdown éventuelles ajoutées par le LLM.
+                v = Regex.Replace(v, @"\*+", "").Trim();
+                content.NiveauClinique = v;
+            }
+
+            return content;
+        }
+
+        // ── Cartographie enfant : helpers données + SVG ─────────────────────
+
+        /// <summary>Couple (score, niveau) extrait pour une sphère donnée.</summary>
+        private class CeSegmentData
+        {
+            public int           Score  { get; init; }
+            public NiveauSegment Niveau { get; init; }
+        }
+
+        /// <summary>
+        /// Mappe le numéro de sphère du modèle PDF (1..8) vers le segment correspondant dans
+        /// CartographieEnfant. Sphères avec radar (Tempérament, Psychomot×, Attention) ou non
+        /// encore mappées renvoient null pour l'instant. Étendu sphère par sphère.
+        /// </summary>
+        private static CeSegmentData? GetSegmentData(int sphereNum, CartographieEnfant carto)
+        {
+            ChenilleSegment? seg = sphereNum switch
+            {
+                1 => carto.Attachement,
+                // 2-8 à câbler dans les itérations suivantes (sphère par sphère).
+                _ => null
+            };
+            if (seg == null) return null;
+
+            var niveau = CartographieScoringService.Calculer(seg.Score, carto.AgeAuMomentDeLaSaisie);
+            if (!niveau.HasValue) return null;
+
+            return new CeSegmentData { Score = seg.Score, Niveau = niveau.Value };
+        }
+
+        /// <summary>
+        /// Construit le SVG d'une pie 6 wedges (un par niveau de la Chenille). Le wedge
+        /// correspondant au niveau de l'enfant est légèrement détaché du centre (translation
+        /// radiale) et entouré d'un effet de surbrillance (filter glow + stroke épais blanc).
+        /// Les 5 autres wedges sont rendus en couleur normale, opacité réduite, pour servir
+        /// de référentiel visuel à l'échelle.
+        /// </summary>
+        private static string BuildCeChenillePieSvg(NiveauSegment niveau, int score)
+        {
+            // Ordre d'affichage des wedges : du meilleur (en haut, 12h) vers le plus
+            // préoccupant (sens horaire). Cohérent avec la chenille : on lit de la ressource
+            // vers le besoin d'étayage.
+            var order = new[]
+            {
+                NiveauSegment.VertFonce,
+                NiveauSegment.VertClair,
+                NiveauSegment.JauneClair,
+                NiveauSegment.JauneFonce,
+                NiveauSegment.RougeClair,
+                NiveauSegment.RougeFonce,
+            };
+
+            const double cx = 60, cy = 60, r = 46;
+            const double sweep = 2 * Math.PI / 6;     // 60° par wedge
+            const double startAngle = -Math.PI / 2;   // commence à 12h
+            const double detachOffset = 8;            // distance de détachement du wedge actif
+
+            var sb = new StringBuilder();
+            sb.AppendLine("        <svg viewBox='0 0 120 120' class='ce-pie-svg' xmlns='http://www.w3.org/2000/svg'>");
+            sb.AppendLine("          <defs>");
+            sb.AppendLine("            <filter id='ce-glow' x='-50%' y='-50%' width='200%' height='200%'>");
+            sb.AppendLine("              <feGaussianBlur stdDeviation='2.5' result='b'/>");
+            sb.AppendLine("              <feMerge><feMergeNode in='b'/><feMergeNode in='SourceGraphic'/></feMerge>");
+            sb.AppendLine("            </filter>");
+            sb.AppendLine("          </defs>");
+
+            for (int i = 0; i < 6; i++)
+            {
+                var n = order[i];
+                var a0 = startAngle + i * sweep;
+                var a1 = a0 + sweep;
+                var color = CeNiveauColor(n);
+                bool active = n == niveau;
+
+                // Centre du wedge : si actif, on le pousse vers l'extérieur le long de sa bissectrice.
+                double dx = 0, dy = 0;
+                if (active)
+                {
+                    var mid = (a0 + a1) / 2;
+                    dx = Math.Cos(mid) * detachOffset;
+                    dy = Math.Sin(mid) * detachOffset;
+                }
+
+                var p0x = cx + dx + r * Math.Cos(a0);
+                var p0y = cy + dy + r * Math.Sin(a0);
+                var p1x = cx + dx + r * Math.Cos(a1);
+                var p1y = cy + dy + r * Math.Sin(a1);
+
+                var path = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "M {0:F2} {1:F2} L {2:F2} {3:F2} A {4:F2} {4:F2} 0 0 1 {5:F2} {6:F2} Z",
+                    cx + dx, cy + dy, p0x, p0y, r, p1x, p1y);
+
+                if (active)
+                {
+                    // Wedge actif : opacité pleine, contour blanc épais, glow.
+                    sb.AppendLine($"          <path d='{path}' fill='{color}' stroke='white' stroke-width='2' filter='url(#ce-glow)'/>");
+                }
+                else
+                {
+                    // Wedges inactifs : couleur normale mais opacité réduite pour faire ressortir l'actif.
+                    sb.AppendLine($"          <path d='{path}' fill='{color}' fill-opacity='0.32' stroke='white' stroke-width='1'/>");
+                }
+            }
+
+            // Score au centre — repère pour le médecin (« 4/6 » par ex.)
+            sb.AppendLine($"          <circle cx='{cx}' cy='{cy}' r='14' fill='white' stroke='#E2E8F0' stroke-width='1'/>");
+            sb.AppendLine($"          <text x='{cx}' y='{cy + 4}' text-anchor='middle' font-size='11' font-weight='800' fill='#1A3A6A' font-family='Segoe UI, Arial, sans-serif'>{score}/6</text>");
+
+            sb.AppendLine("        </svg>");
+            return sb.ToString();
+        }
+
+        /// <summary>Couleurs hex officielles des 6 niveaux de la Chenille Universelle.</summary>
+        private static string CeNiveauColor(NiveauSegment n) => n switch
+        {
+            NiveauSegment.VertFonce  => "#1E8449",   // Ressource solide
+            NiveauSegment.VertClair  => "#82E0AA",   // Satisfaisant
+            NiveauSegment.JauneClair => "#F7DC6F",   // À surveiller (bas)
+            NiveauSegment.JauneFonce => "#F39C12",   // À surveiller (fort) / Vigilance
+            NiveauSegment.RougeClair => "#E74C3C",   // Fragilisé
+            NiveauSegment.RougeFonce => "#922B21",   // Très fragilisé
+            _ => "#94A3B8"
+        };
+
+        /// <summary>
+        /// Rend la légende des 5 niveaux cliniques en bas de chaque page (chips colorés
+        /// alignés horizontalement). Identique sur page A et B.
+        /// </summary>
+        private static string BuildCeLegende()
+        {
+            var levels = new (string Color, string Label, string Sub)[]
+            {
+                ("#E74C3C", "Très fragilisé", "Besoin majeur"),
+                ("#F39C12", "Fragilisé",      "Besoin d'étayage"),
+                ("#F1C40F", "À surveiller",   "Équilibrage nécessaire"),
+                ("#7DCEA0", "Satisfaisant",   "Niveau correct"),
+                ("#27AE60", "Excellent",      "Ressource solide"),
+            };
+
+            var sb = new StringBuilder();
+            sb.AppendLine("  <div class='ce-legende-title'>ÉCHELLE DE NIVEAU</div>");
+            sb.AppendLine("  <div class='ce-legende'>");
+            foreach (var (color, label, sub) in levels)
+            {
+                sb.AppendLine("    <div class='ce-legende-item'>");
+                sb.AppendLine($"      <span class='ce-legende-dot' style='background:{color}'></span>");
+                sb.AppendLine("      <div class='ce-legende-text'>");
+                sb.AppendLine($"        <strong>{WebUtility.HtmlEncode(label)}</strong>");
+                sb.AppendLine($"        <span>({WebUtility.HtmlEncode(sub)})</span>");
+                sb.AppendLine("      </div>");
+                sb.AppendLine("    </div>");
+            }
+            sb.AppendLine("  </div>");
+            sb.AppendLine("  <div class='ce-footer'>");
+            sb.AppendLine("    <span class='pc-info-icon'>i</span> Cette cartographie constitue un outil d'aide à la compréhension du fonctionnement interne. " +
+                          "Elle sera réévaluée régulièrement afin d'ajuster le projet d'accompagnement.");
+            sb.AppendLine("  </div>");
             return sb.ToString();
         }
 
@@ -1630,6 +2065,181 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   margin: 0 0 4px 0;
 }
 .pc-points-body { font-size: 11px; line-height: 1.5; }
+
+/* ── Pages 7+8 : Cartographie de l'enfant (voix très pro) ──── */
+/* Reprend le pattern Patient & Contexte (.pc-page) pour la cohérence visuelle,
+   avec 4 cartouches par page + une légende des 5 niveaux en pied. */
+.ce-page {
+  padding: 28px 40px 30px 40px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 11px;
+  color: #1A1A1A;
+  position: relative;
+  min-height: 297mm;
+}
+
+/* Cartouche d'une sphère */
+.ce-card {
+  border: 1px solid rgba(0,0,0,0.07);
+  border-radius: 10px;
+  margin-bottom: 10px;
+  background: white;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+}
+.ce-card-hdr {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  color: white;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+.ce-card-hdr .ce-num {
+  background: rgba(255,255,255,0.25);
+  border-radius: 6px;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.ce-card-title { line-height: 1.15; }
+.ce-card-title strong { display: block; font-size: 12px; }
+.ce-card-title em     { font-style: normal; opacity: 0.85; font-weight: 600; font-size: 9.5px; }
+
+.ce-card-body {
+  display: flex;
+  gap: 14px;
+  padding: 10px 14px;
+  align-items: stretch;
+}
+.ce-chart {
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: #F1F5F9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #CBD5E1;
+}
+.ce-chart-radar {
+  border-radius: 8px;
+  background: #FAFBFC;
+}
+.ce-chart-placeholder {
+  color: #94A3B8;
+  font-size: 9.5px;
+  font-style: italic;
+  text-align: center;
+  padding: 0 8px;
+}
+
+.ce-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.ce-obs-title, .ce-niveau-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #6E2F8A;
+  letter-spacing: 0.4px;
+}
+.ce-obs-body  { font-size: 10px; line-height: 1.45; color: #1A1A1A; }
+.ce-obs-body ul { margin: 2px 0; padding-left: 16px; }
+.ce-obs-body li { margin-bottom: 1px; }
+.ce-niveau-title { margin-top: 4px; }
+.ce-niveau-body  { font-size: 10.5px; color: #1A1A1A; font-weight: 600; }
+.ce-placeholder  { color: #95A5A6; font-style: italic; }
+
+/* Pie SVG : retire le placeholder (chart visible), garde le cadre rond */
+.ce-chart-pie { background: transparent; border: none; padding: 0; }
+.ce-pie-svg   { width: 120px; height: 120px; display: block; }
+
+/* Texte du niveau clinique — couleur de la section (pas la couleur du niveau).
+   Style PDF modèle : phrase courte en gras, couleur du header de la cartouche. */
+.ce-niveau-text {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+/* Couleur du texte niveau clinique = couleur du header de la sphère.
+   Cohérent avec le modèle PDF (Fragilisé en teal pour Attachement, en rouge pour Régulation…). */
+.ce-s1 .ce-niveau-text { color: #00A896; }
+.ce-s2 .ce-niveau-text { color: #B03020; }
+.ce-s3 .ce-niveau-text { color: #2E6DA4; }
+.ce-s4 .ce-niveau-text { color: #C87800; }
+.ce-s5 .ce-niveau-text { color: #1F4E79; }
+.ce-s6 .ce-niveau-text { color: #1A7840; }
+.ce-s7 .ce-niveau-text { color: #6E2F8A; }
+.ce-s8 .ce-niveau-text { color: #0E7060; }
+
+/* Palette pastel par sphère (header en teinte pleine).
+   8 cartouches → 8 teintes distinctes mais cohérentes avec l'ensemble du dossier. */
+.ce-s1 .ce-card-hdr { background: #00A896; }  /* Attachement — teal */
+.ce-s2 .ce-card-hdr { background: #B03020; }  /* Régulation — rouge sourd */
+.ce-s3 .ce-card-hdr { background: #2E6DA4; }  /* Langage — bleu */
+.ce-s4 .ce-card-hdr { background: #C87800; }  /* Tempérament — orange */
+.ce-s5 .ce-card-hdr { background: #1F4E79; }  /* Psychomotricité — bleu nuit */
+.ce-s6 .ce-card-hdr { background: #1A7840; }  /* Imagination — vert */
+.ce-s7 .ce-card-hdr { background: #6E2F8A; }  /* Pensée — violet */
+.ce-s8 .ce-card-hdr { background: #0E7060; }  /* Attention — teal foncé */
+
+/* Légende ÉCHELLE DE NIVEAU en bas de page */
+.ce-legende-title {
+  font-size: 10px;
+  font-weight: 700;
+  color: #1A3A6A;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin: 12px 0 6px 0;
+}
+.ce-legende {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 8px 10px;
+  background: #FAFBFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 8px;
+}
+.ce-legende-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+}
+.ce-legende-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ce-legende-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.1;
+}
+.ce-legende-text strong { font-size: 9.5px; color: #1A1A1A; font-weight: 700; }
+.ce-legende-text span   { font-size: 8.5px; color: #6B7A8D; }
+
+/* Pied de page info */
+.ce-footer {
+  margin-top: 8px;
+  padding: 8px 10px;
+  font-size: 9.5px;
+  color: #555;
+  font-style: italic;
+  text-align: center;
+  border-top: 1px solid #E2E8F0;
+  line-height: 1.5;
+}
 ";
     }
 }
