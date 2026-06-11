@@ -1303,6 +1303,428 @@ namespace MedCompanion.Services.Restitutions
             return sb.ToString();
         }
 
+        // ── Projet Thérapeutique ────────────────────────────────────────────
+
+        /// <summary>
+        /// 7.1 — Prise en charge médicale. JSON structuré avec 6 clés.
+        /// </summary>
+        public async Task SuggestPtS1Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+
+            var blocRef    = new RestitutionBloc("pt_s1", "Prise en charge médicale", 27, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildPtS1Instruction(reading);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildPtS1Instruction(DossierReading reading)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère la section 7.1 — PRISE EN CHARGE MÉDICALE du projet thérapeutique.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("{");
+            sb.AppendLine("  \"intro\": \"1 phrase décrivant le rôle de la prise en charge médicale pour cet enfant.\",");
+            sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
+            sb.AppendLine("  \"traitement\": {");
+            sb.AppendLine("    \"situationActuelle\": \"Situation médicamenteuse actuelle — 1 phrase.\",");
+            sb.AppendLine("    \"propositions\": [\"Traitement proposé : ...\", \"Objectif attendu : ...\", \"Surveillance prévue : ...\"]");
+            sb.AppendLine("  },");
+            sb.AppendLine("  \"bilans\": {");
+            sb.AppendLine("    \"realises\": [\"Bilan déjà réalisé 1\", \"Bilan 2\"],");
+            sb.AppendLine("    \"aEnvisager\": [\"À envisager 1\", \"À envisager 2\"]");
+            sb.AppendLine("  },");
+            sb.AppendLine("  \"surveillance\": [\"Point de surveillance 1\", \"Point 2\", \"Point 3\"],");
+            sb.AppendLine("  \"suivi\": [\"Modalité de suivi 1\", \"Modalité 2\", \"Modalité 3\"],");
+            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement médical sobre et bienveillant.\"");
+            sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • objectifs : 3 à 4 items, chacun < 15 mots");
+            sb.AppendLine("  • traitement.propositions vide [] si aucun traitement médicamenteux n'est indiqué");
+            sb.AppendLine("  • traitement.situationActuelle : honnête — préciser si traitement en cours ou absent");
+            sb.AppendLine("  • bilans.realises : ce qui a déjà été fait (entretien, bilans, évaluations)");
+            sb.AppendLine("  • bilans.aEnvisager : ce qui pourrait être utile selon le tableau clinique");
+            sb.AppendLine("  • surveillance : 3 à 5 points de vigilance clinique < 12 mots chacun");
+            sb.AppendLine("  • suivi : 3 à 4 modalités pratiques (délai + action), < 10 mots chacune");
+            sb.AppendLine("  • NE PAS proposer de projet thérapeutique psychologique ou scolaire ici — section médicale uniquement");
+
+            if (reading.LatestBilanFinal != null)
+            {
+                var b = reading.LatestBilanFinal;
+                if (b.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les objectifs médicaux) :");
+                    foreach (var d in b.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
+            {
+                sb.AppendLine();
+                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section médicale comme référence) :");
+                // Limiter à 600 caractères pour éviter de surcharger le prompt
+                var pt = reading.ProjetTherapeutique.Trim();
+                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 7.2 — Accompagnement psychologique. JSON structuré avec 9 clés.
+        /// </summary>
+        public async Task SuggestPtS2Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            var blocRef    = new RestitutionBloc("pt_s2", "Accompagnement psychologique", 28, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildPtS2Instruction(reading);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildPtS2Instruction(DossierReading reading)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère la section 7.2 — ACCOMPAGNEMENT PSYCHOLOGIQUE du projet thérapeutique.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("{");
+            sb.AppendLine("  \"intro\": \"1 phrase décrivant le rôle de l'accompagnement psychologique pour cet enfant.\",");
+            sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
+            sb.AppendLine("  \"resultatsAttendus\": [\"Résultat attendu 1\", \"Résultat 2\", \"Résultat 3\"],");
+            sb.AppendLine("  \"modalites\": [\"Psychothérapie individuelle\", \"Soutien émotionnel et cognitif\"],");
+            sb.AppendLine("  \"pointsTravail\": [\"Point de travail 1\", \"Point 2\", \"Point 3\"],");
+            sb.AppendLine("  \"outilsUtilises\": [\"Outil ou approche 1\", \"Outil 2\", \"Outil 3\"],");
+            sb.AppendLine("  \"surveillance\": [\"Indicateur à surveiller 1\", \"Indicateur 2\", \"Indicateur 3\"],");
+            sb.AppendLine("  \"indicateursPositifs\": [\"Signe positif attendu 1\", \"Signe 2\", \"Signe 3\"],");
+            sb.AppendLine("  \"suivi\": [\"Modalité de suivi 1\", \"Modalité 2\", \"Modalité 3\"],");
+            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement sobre et bienveillant.\"");
+            sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • objectifs : 3 à 4 items, chacun < 15 mots, centrés sur le développement émotionnel/relationnel");
+            sb.AppendLine("  • resultatsAttendus : 3 à 4 items, observables et concrets (comportements, relations, régulation)");
+            sb.AppendLine("  • modalites : 2 à 4 types de dispositifs psych. pertinents pour ce tableau clinique");
+            sb.AppendLine("  • pointsTravail : 3 à 5 axes thérapeutiques prioritaires, < 12 mots chacun");
+            sb.AppendLine("  • outilsUtilises : approches/outils cliniques (TCC, EMDR, jeu symbolique, etc.) adaptés à l'âge");
+            sb.AppendLine("  • surveillance : 3 à 5 points de vigilance clinique sur l'évolution psychologique");
+            sb.AppendLine("  • indicateursPositifs : 3 à 4 signaux concrets d'amélioration attendus");
+            sb.AppendLine("  • suivi : 3 à 4 modalités pratiques (fréquence + action), < 10 mots chacune");
+            sb.AppendLine("  • NE PAS proposer de traitement médicamenteux ici — section psychologique uniquement");
+
+            if (reading.LatestBilanFinal != null)
+            {
+                var b = reading.LatestBilanFinal;
+                if (b.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les objectifs psychologiques) :");
+                    foreach (var d in b.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
+            {
+                sb.AppendLine();
+                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section psychologique comme référence) :");
+                var pt = reading.ProjetTherapeutique.Trim();
+                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 7.3 — Soutien développemental. JSON structuré avec 7 clés.
+        /// </summary>
+        public async Task SuggestPtS3Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            var blocRef    = new RestitutionBloc("pt_s3", "Soutien développemental", 29, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildPtS3Instruction(reading);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildPtS3Instruction(DossierReading reading)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère la section 7.3 — SOUTIEN DÉVELOPPEMENTAL du projet thérapeutique.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("{");
+            sb.AppendLine("  \"intro\": \"1 phrase décrivant l'objectif global du soutien développemental pour cet enfant.\",");
+            sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
+            sb.AppendLine("  \"interventions\": [\"Orthophonie (si nécessaire)\", \"Psychomotricité\", \"Neuropsychologie\"],");
+            sb.AppendLine("  \"axesPrioritaires\": [\"Axe prioritaire 1 (domaine + objectif)\", \"Axe 2\", \"Axe 3\"],");
+            sb.AppendLine("  \"ressourcesEnfant\": [\"Ressource ou point fort 1\", \"Ressource 2\", \"Ressource 3\"],");
+            sb.AppendLine("  \"indicateursEvolution\": [\"Indicateur attendu 1\", \"Indicateur 2\", \"Indicateur 3\"],");
+            sb.AppendLine("  \"reevaluation\": [\"Modalité de réévaluation 1\", \"Modalité 2\", \"Modalité 3\"],");
+            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement sobre et bienveillant.\"");
+            sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • objectifs : 4 à 5 items couvrant les sphères développementales fragilisées, < 15 mots chacun");
+            sb.AppendLine("  • interventions : 2 à 4 spécialités pertinentes selon le tableau clinique (pas toutes systématiques)");
+            sb.AppendLine("  • axesPrioritaires : 2 à 3 axes issus des évaluations (sphère + objectif clinique), < 20 mots chacun");
+            sb.AppendLine("  • ressourcesEnfant : 4 à 5 points forts observés chez l'enfant (appuis thérapeutiques)");
+            sb.AppendLine("  • indicateursEvolution : 4 à 5 signes concrets d'amélioration attendus à moyen terme");
+            sb.AppendLine("  • reevaluation : 3 à 4 modalités pratiques (délai + type), < 10 mots chacune");
+            sb.AppendLine("  • NE PAS proposer de traitement médicamenteux ni de suivi psy ici — section développementale uniquement");
+
+            if (reading.LatestBilanFinal != null)
+            {
+                var b = reading.LatestBilanFinal;
+                if (b.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les axes développementaux) :");
+                    foreach (var d in b.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
+            {
+                sb.AppendLine();
+                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section développementale comme référence) :");
+                var pt = reading.ProjetTherapeutique.Trim();
+                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 7.4 — Accompagnement parental, familial et éducatif. JSON structuré avec 7 clés.
+        /// </summary>
+        public async Task SuggestPtS4Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            var blocRef    = new RestitutionBloc("pt_s4", "Accompagnement parental, familial et éducatif", 30, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildPtS4Instruction(reading);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildPtS4Instruction(DossierReading reading)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère la section 7.4 — ACCOMPAGNEMENT PARENTAL, FAMILIAL ET ÉDUCATIF du projet thérapeutique.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("{");
+            sb.AppendLine("  \"intro\": \"1 phrase décrivant le rôle du soutien parental et familial pour accompagner cet enfant.\",");
+            sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
+            sb.AppendLine("  \"axesPrioritaires\": [\"Axe 1 (domaine + objectif concret)\", \"Axe 2\", \"Axe 3\"],");
+            sb.AppendLine("  \"outils\": [\"Outil ou ressource 1\", \"Outil 2\", \"Outil 3\"],");
+            sb.AppendLine("  \"forcesFamiliales\": [\"Force ou ressource familiale 1\", \"Force 2\", \"Force 3\"],");
+            sb.AppendLine("  \"objectifsCourtTerme\": [\"Objectif court terme 1\", \"Objectif 2\", \"Objectif 3\"],");
+            sb.AppendLine("  \"modalites\": [\"Modalité d'accompagnement 1\", \"Modalité 2\", \"Modalité 3\"],");
+            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement sobre et bienveillant, adressée à la famille.\"");
+            sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • objectifs : 4 à 5 items couvrant le rôle parental, la cohésion familiale, le cadre éducatif à domicile, < 15 mots");
+            sb.AppendLine("  • axesPrioritaires : 3 à 4 axes issus de la cartographie environnementale (famille, cohérence éducative, valeurs, cadre)");
+            sb.AppendLine("    Exemples d'axes : « Fonction parentale — clarifier règles et attentes », « Cohérence éducative — harmoniser les réponses des adultes »");
+            sb.AppendLine("    La dimension éducative = cadre familial (routines, règles, repères) — PAS les aménagements scolaires (réservés à 7.5)");
+            sb.AppendLine("  • outils : 3 à 5 ressources concrètes (guidance parentale, livret parental, entretiens familiaux, ateliers thématiques)");
+            sb.AppendLine("  • forcesFamiliales : 4 à 5 points d'appui observés chez la famille (motivation, liens affectifs, capacité de demande d'aide…)");
+            sb.AppendLine("  • objectifsCourtTerme : 4 à 5 objectifs observables à 3 mois (comportements, routines, interactions)");
+            sb.AppendLine("  • modalites : 3 à 4 modalités pratiques (fréquence + type), < 10 mots chacune");
+            sb.AppendLine("  • NE PAS proposer d'aménagements scolaires ici — réservés à la section 7.5");
+
+            if (reading.LatestBilanFinal != null)
+            {
+                var b = reading.LatestBilanFinal;
+                if (b.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les besoins familiaux) :");
+                    foreach (var d in b.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
+            {
+                sb.AppendLine();
+                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section parentale/familiale comme référence) :");
+                var pt = reading.ProjetTherapeutique.Trim();
+                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 7.5 — École et apprentissages. JSON structuré avec 7 clés.
+        /// </summary>
+        public async Task SuggestPtS5Async(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            var blocRef    = new RestitutionBloc("pt_s5", "École et apprentissages", 31, "clinique");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildPtS5Instruction(reading);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildPtS5Instruction(DossierReading reading)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère la section 7.5 — ÉCOLE ET APPRENTISSAGES du projet thérapeutique.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("{");
+            sb.AppendLine("  \"intro\": \"1 phrase décrivant l'objectif global du soutien scolaire pour cet enfant.\",");
+            sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
+            sb.AppendLine("  \"amenagements\": [\"Organisation et temps\", \"Environnement et cadre\", \"Apprentissages et supports\", \"Participation et sociale\"],");
+            sb.AppendLine("  \"coordination\": [\"Équipe éducative\", \"Information partagée\", \"Suivi commun\", \"Lien avec les intervenants\"],");
+            sb.AppendLine("  \"pointsAppui\": [\"Point d'appui scolaire 1\", \"Point 2\", \"Point 3\"],");
+            sb.AppendLine("  \"indicateursEvolution\": [\"Indicateur scolaire attendu 1\", \"Indicateur 2\", \"Indicateur 3\"],");
+            sb.AppendLine("  \"reevaluation\": [\"Modalité de réévaluation 1\", \"Modalité 2\", \"Modalité 3\"],");
+            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement sobre et bienveillant, centrée sur le parcours scolaire.\"");
+            sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • objectifs : 4 à 5 items portant sur la réussite scolaire, la participation, la confiance en contexte scolaire, < 15 mots");
+            sb.AppendLine("  • amenagements : 3 à 4 catégories d'aménagements pertinents selon le tableau clinique");
+            sb.AppendLine("    Exemples : « Organisation et temps (temps supplémentaire, consignes étape par étape) »,");
+            sb.AppendLine("              « Environnement et cadre (place calme, repères visuels) »,");
+            sb.AppendLine("              « Apprentissages et supports (supports visuels, fractionnement des tâches) »,");
+            sb.AppendLine("              « Participation et sociale (guidage des interactions, coopération en petit groupe) »");
+            sb.AppendLine("  • coordination : 3 à 4 modalités de lien avec l'école (réunion équipe, cahier de liaison, suivi conjoint…)");
+            sb.AppendLine("  • pointsAppui : 4 à 5 points forts de l'enfant observables en contexte scolaire");
+            sb.AppendLine("  • indicateursEvolution : 4 à 5 signes concrets d'amélioration scolaire attendus à moyen terme");
+            sb.AppendLine("  • reevaluation : 3 à 4 modalités pratiques (délai + type), < 10 mots chacune");
+            sb.AppendLine("  • NE PAS proposer de traitement médicamenteux ni de suivi psy ici — section scolaire uniquement");
+
+            if (reading.LatestBilanFinal != null)
+            {
+                var b = reading.LatestBilanFinal;
+                if (b.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les besoins scolaires) :");
+                    foreach (var d in b.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
+            {
+                sb.AppendLine();
+                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section scolaire comme référence) :");
+                var pt = reading.ProjetTherapeutique.Trim();
+                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// 8 — Conclusion et perspectives. JSON mixte (voix clinique + chaleur livre).
+        /// </summary>
+        public async Task SuggestConclusionAsync(
+            DossierReading reading,
+            Action<string> onSectionReady,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            var blocRef    = new RestitutionBloc("conclusion", "Conclusion et perspectives", 32, "mixte");
+            var sysPrompt  = BuildSystemPrompt(blocRef);
+            var instr      = BuildConclusionInstruction(reading);
+            var userPrompt = BuildSubsectionPrompt(context, instr, "mixte");
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildConclusionInstruction(DossierReading reading)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("Génère la section 8 — CONCLUSION ET PERSPECTIVES du dossier de restitution.");
+            sb.AppendLine();
+            sb.AppendLine("VOIX : mixte — précision clinique sobre + chaleur bienveillante pour les parents.");
+            sb.AppendLine("La conclusion est lue par le médecin ET par la famille — trouver le ton juste.");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
+            sb.AppendLine("{");
+            sb.AppendLine("  \"intro\": \"2 à 3 phrases intégratives sur ce que le bilan révèle de cet enfant (difficultés ET ressources).\",");
+            sb.AppendLine("  \"forces\": [\"Force 1\", \"Force 2\", \"Force 3\", \"Force 4\"],");
+            sb.AppendLine("  \"feuilleDeRoute\": [\"Étape 1 — libellé court\", \"Étape 2\", \"Étape 3\", \"Étape 4\", \"Étape 5\"],");
+            sb.AppendLine("  \"messageParents\": [\"Message court aux parents 1\", \"Message 2\", \"Message 3\", \"Message 4\"],");
+            sb.AppendLine("  \"prochainsRdv\": [\"Modalité 1\", \"Modalité 2\", \"Modalité 3\", \"Modalité 4\"],");
+            sb.AppendLine("  \"engagement\": \"1 phrase finale douce et sobre, centrée sur le chemin à parcourir ensemble.\"");
+            sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • intro : 2-3 phrases intégratives — nommer les difficultés SANS les dramatiser, valoriser les ressources");
+            sb.AppendLine("    Ne pas résumer le diagnostic ; synthétiser ce qu'on comprend de l'enfant dans sa globalité");
+            sb.AppendLine("  • forces : 4 à 6 forces ou ressources de l'enfant (mots courts : « Curiosité », « Attachement aux proches »…)");
+            sb.AppendLine("  • feuilleDeRoute : 4 à 6 étapes chronologiques du projet (Aujourd'hui → Mise en place → Réévaluation → Ajustements → Autonomie)");
+            sb.AppendLine("  • messageParents : 4 courts messages bienveillants adressés aux parents (15 mots max chacun)");
+            sb.AppendLine("    Ton : confiant, partenarial, sans condescendance. Ex : « Vous restez les partenaires essentiels de ce parcours. »");
+            sb.AppendLine("  • prochainsRdv : 3 à 4 items concrets (prochaine consultation, réévaluation, bilans, coordination)");
+            sb.AppendLine("  • engagement : phrase finale en « nous » — professionnels + famille — sobre et chaleureuse");
+
+            if (reading.LatestBilanFinal != null)
+            {
+                var b = reading.LatestBilanFinal;
+                if (b.DiagnosticsRetenus.Count > 0)
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("DIAGNOSTICS RETENUS (pour l'intro intégrative — ne pas les lister, les intégrer en prose) :");
+                    foreach (var d in b.DiagnosticsRetenus)
+                        sb.AppendLine($"  • {d.Value}");
+                }
+            }
+
+            return sb.ToString();
+        }
+
         private static string BuildEnvFeuilleInstruction(int idx, Models.Evaluations.CartographieEnvironnement? carto)
         {
             if (carto == null)

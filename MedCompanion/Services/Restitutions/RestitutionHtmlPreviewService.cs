@@ -472,7 +472,45 @@ namespace MedCompanion.Services.Restitutions
                 }
                 if (bloc.Key.StartsWith("synthese_diag_s", StringComparison.Ordinal)) continue;
 
-                // Fallback brouillon pour tous les autres blocs (bilan_final, synthese_*, projet_*, conclusion).
+                // Projet Thérapeutique — chaque pt_sX = 1 page dédiée.
+                if (bloc.Key == "pt_s1")
+                {
+                    sb.Append(BuildPtS1Page(bloc.ContenuValide, coverFields, pageNumber, totalPages));
+                    pageNumber++;
+                    continue;
+                }
+                if (bloc.Key == "pt_s2")
+                {
+                    sb.Append(BuildPtS2Page(bloc.ContenuValide, coverFields, pageNumber, totalPages));
+                    pageNumber++;
+                    continue;
+                }
+                if (bloc.Key == "pt_s3")
+                {
+                    sb.Append(BuildPtS3Page(bloc.ContenuValide, coverFields, pageNumber, totalPages));
+                    pageNumber++;
+                    continue;
+                }
+                if (bloc.Key == "pt_s4")
+                {
+                    sb.Append(BuildPtS4Page(bloc.ContenuValide, coverFields, pageNumber, totalPages));
+                    pageNumber++;
+                    continue;
+                }
+                if (bloc.Key == "pt_s5")
+                {
+                    sb.Append(BuildPtS5Page(bloc.ContenuValide, coverFields, pageNumber, totalPages));
+                    pageNumber++;
+                    continue;
+                }
+                if (bloc.Key == "conclusion")
+                {
+                    sb.Append(BuildConclusionPage(bloc.ContenuValide, coverFields, pageNumber, totalPages));
+                    pageNumber++;
+                    continue;
+                }
+
+                // Fallback brouillon pour les blocs non reconnus.
                 var content = string.IsNullOrWhiteSpace(bloc.ContenuValide)
                     ? "<p class='placeholder'><em>(Section à compléter — utilisez le bouton ✨ Suggérer)</em></p>"
                     : MarkdownToHtmlLite(bloc.ContenuValide);
@@ -1114,6 +1152,879 @@ namespace MedCompanion.Services.Restitutions
                 sb.Append(MarkdownToHtmlLite(s5Text));
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // ── Projet Thérapeutique — 7.1 Prise en charge médicale ────────────
+
+        private sealed class PtS1Traitement
+        {
+            public string       SituationActuelle { get; set; } = "";
+            public List<string> Propositions      { get; set; } = new();
+        }
+        private sealed class PtS1Bilans
+        {
+            public List<string> Realises   { get; set; } = new();
+            public List<string> AEnvisager { get; set; } = new();
+        }
+        private sealed class PtS1Data
+        {
+            public string         Intro        { get; set; } = "";
+            public List<string>   Objectifs    { get; set; } = new();
+            public PtS1Traitement Traitement   { get; set; } = new();
+            public PtS1Bilans     Bilans       { get; set; } = new();
+            public List<string>   Surveillance { get; set; } = new();
+            public List<string>   Suivi        { get; set; } = new();
+            public string         Engagement   { get; set; } = "";
+        }
+
+        private static PtS1Data? TryParsePtS1Json(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            try
+            {
+                var start = text.IndexOf('{');
+                var end   = text.LastIndexOf('}');
+                if (start < 0 || end <= start) return null;
+                var json = text.Substring(start, end - start + 1);
+                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return JsonSerializer.Deserialize<PtS1Data>(json, opts);
+            }
+            catch { return null; }
+        }
+
+        private string BuildPtS1Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
+        {
+            var data = TryParsePtS1Json(contenu);
+            var sb   = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page pt-page'>");
+            sb.Append(BuildPcHeader(
+                "PROJET THÉRAPEUTIQUE",
+                "7.1 Prise en charge médicale — Pilotage médical du projet de soin",
+                "", pageNumber, totalPages));
+
+            if (data == null)
+            {
+                sb.AppendLine("  <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Prise en charge médicale »)</em></p>");
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
+
+            // Intro
+            if (!string.IsNullOrWhiteSpace(data.Intro))
+                sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
+
+            sb.AppendLine("  <div class='pt-cards-wrapper'>");
+
+            // 1. Objectifs
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Objectifs.Count > 0)
+            {
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var o in data.Objectifs)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(o)}</li>");
+                sb.AppendLine("      </ul>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 2. Traitement médicamenteux
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> TRAITEMENT MÉDICAMENTEUX</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            sb.AppendLine("      <div class='pt-two-cols'>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>SITUATION ACTUELLE</div>");
+            if (!string.IsNullOrWhiteSpace(data.Traitement.SituationActuelle))
+                sb.AppendLine($"          <p class='pt-col-text'>{WebUtility.HtmlEncode(data.Traitement.SituationActuelle)}</p>");
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>SI UN TRAITEMENT EST PROPOSÉ</div>");
+            if (data.Traitement.Propositions.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-list'>");
+                foreach (var p in data.Traitement.Propositions)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(p)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            else
+                sb.AppendLine("          <p class='pt-col-text pt-col-none'>Toute décision sera prise en concertation avec la famille.</p>");
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div></div>");
+
+            // 3. Bilans complémentaires
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> BILANS COMPLÉMENTAIRES</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            sb.AppendLine("      <div class='pt-two-cols'>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>DÉJÀ RÉALISÉS</div>");
+            if (data.Bilans.Realises.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var r in data.Bilans.Realises)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>À ENVISAGER SI NÉCESSAIRE</div>");
+            if (data.Bilans.AEnvisager.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-list'>");
+                foreach (var a in data.Bilans.AEnvisager)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(a)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div></div>");
+
+            // 4. Surveillance clinique
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> SURVEILLANCE CLINIQUE</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Surveillance.Count > 0)
+            {
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var s in data.Surveillance)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(s)}</li>");
+                sb.AppendLine("      </ul>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 5. Modalités de suivi
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS DE SUIVI</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Suivi.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var sv in data.Suivi)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(sv)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            sb.AppendLine("  </div>"); // pt-cards-wrapper
+
+            // Notre engagement
+            if (!string.IsNullOrWhiteSpace(data.Engagement))
+                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // ── Projet Thérapeutique — 7.2 Accompagnement psychologique ───────────
+
+        private sealed class PtS2Data
+        {
+            public string       Intro               { get; set; } = "";
+            public List<string> Objectifs           { get; set; } = new();
+            public List<string> ResultatsAttendus   { get; set; } = new();
+            public List<string> Modalites           { get; set; } = new();
+            public List<string> PointsTravail       { get; set; } = new();
+            public List<string> OutilsUtilises      { get; set; } = new();
+            public List<string> Surveillance        { get; set; } = new();
+            public List<string> IndicateursPositifs { get; set; } = new();
+            public List<string> Suivi               { get; set; } = new();
+            public string       Engagement          { get; set; } = "";
+        }
+
+        private static PtS2Data? TryParsePtS2Json(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            try
+            {
+                var start = text.IndexOf('{');
+                var end   = text.LastIndexOf('}');
+                if (start < 0 || end <= start) return null;
+                var json = text.Substring(start, end - start + 1);
+                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return JsonSerializer.Deserialize<PtS2Data>(json, opts);
+            }
+            catch { return null; }
+        }
+
+        private string BuildPtS2Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
+        {
+            var data = TryParsePtS2Json(contenu);
+            var sb   = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page pt-page'>");
+            sb.Append(BuildPcHeader(
+                "PROJET THÉRAPEUTIQUE",
+                "7.2 Prise en charge psychologique — Accompagnement émotionnel et psychologique",
+                "", pageNumber, totalPages));
+
+            if (data == null)
+            {
+                sb.AppendLine("  <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Accompagnement psychologique »)</em></p>");
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
+
+            if (!string.IsNullOrWhiteSpace(data.Intro))
+                sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
+
+            sb.AppendLine("  <div class='pt-cards-wrapper'>");
+
+            // 1. Objectifs + Résultats attendus
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            sb.AppendLine("      <div class='pt-two-cols'>");
+            sb.AppendLine("        <div class='pt-col'>");
+            if (data.Objectifs.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-list'>");
+                foreach (var o in data.Objectifs)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(o)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>RÉSULTATS ATTENDUS</div>");
+            if (data.ResultatsAttendus.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var r in data.ResultatsAttendus)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div></div>");
+
+            // 2. Modalités d'accompagnement proposées
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> MODALITÉS D'ACCOMPAGNEMENT PROPOSÉES</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Modalites.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var m in data.Modalites)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(m)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 3. Points de travail prioritaires + Outils utilisés
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> POINTS DE TRAVAIL PRIORITAIRES</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            sb.AppendLine("      <div class='pt-two-cols'>");
+            sb.AppendLine("        <div class='pt-col'>");
+            if (data.PointsTravail.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-list'>");
+                foreach (var p in data.PointsTravail)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(p)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>OUTILS UTILISÉS</div>");
+            if (data.OutilsUtilises.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var t in data.OutilsUtilises)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(t)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div></div>");
+
+            // 4. Surveillance et indicateurs d'évolution
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> SURVEILLANCE ET INDICATEURS D'ÉVOLUTION</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            sb.AppendLine("      <div class='pt-two-cols'>");
+            sb.AppendLine("        <div class='pt-col'>");
+            if (data.Surveillance.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-list'>");
+                foreach (var s in data.Surveillance)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(s)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>INDICATEURS POSITIFS ATTENDUS</div>");
+            if (data.IndicateursPositifs.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var i in data.IndicateursPositifs)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(i)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div></div>");
+
+            // 5. Modalités de suivi
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS DE SUIVI</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Suivi.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var sv in data.Suivi)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(sv)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            sb.AppendLine("  </div>"); // pt-cards-wrapper
+
+            if (!string.IsNullOrWhiteSpace(data.Engagement))
+                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // ── Projet Thérapeutique — 7.3 Soutien développemental ─────────────────
+
+        private sealed class PtS3Data
+        {
+            public string       Intro                { get; set; } = "";
+            public List<string> Objectifs            { get; set; } = new();
+            public List<string> Interventions        { get; set; } = new();
+            public List<string> AxesPrioritaires     { get; set; } = new();
+            public List<string> RessourcesEnfant     { get; set; } = new();
+            public List<string> IndicateursEvolution { get; set; } = new();
+            public List<string> Reevaluation         { get; set; } = new();
+            public string       Engagement           { get; set; } = "";
+        }
+
+        private static PtS3Data? TryParsePtS3Json(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            try
+            {
+                var start = text.IndexOf('{');
+                var end   = text.LastIndexOf('}');
+                if (start < 0 || end <= start) return null;
+                var json = text.Substring(start, end - start + 1);
+                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return JsonSerializer.Deserialize<PtS3Data>(json, opts);
+            }
+            catch { return null; }
+        }
+
+        private string BuildPtS3Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
+        {
+            var data = TryParsePtS3Json(contenu);
+            var sb   = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page pt-page'>");
+            sb.Append(BuildPcHeader(
+                "PROJET THÉRAPEUTIQUE",
+                "7.3 Soutien développemental — Accompagner le développement global de l'enfant",
+                "", pageNumber, totalPages));
+
+            if (data == null)
+            {
+                sb.AppendLine("  <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Développement global »)</em></p>");
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
+
+            if (!string.IsNullOrWhiteSpace(data.Intro))
+                sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
+
+            sb.AppendLine("  <div class='pt-cards-wrapper'>");
+
+            // 1. Objectifs
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Objectifs.Count > 0)
+            {
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var o in data.Objectifs)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(o)}</li>");
+                sb.AppendLine("      </ul>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 2. Interventions proposées (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> INTERVENTIONS PROPOSÉES</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Interventions.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var iv in data.Interventions)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(iv)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 3. Axes prioritaires issus de l'évaluation
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> AXES PRIORITAIRES ISSUS DE L'ÉVALUATION</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.AxesPrioritaires.Count > 0)
+            {
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var a in data.AxesPrioritaires)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(a)}</li>");
+                sb.AppendLine("      </ul>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 4. Ressources de l'enfant + Indicateurs d'évolution attendus
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> RESSOURCES &amp; INDICATEURS D'ÉVOLUTION</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            sb.AppendLine("      <div class='pt-two-cols'>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>RESSOURCES DE L'ENFANT</div>");
+            if (data.RessourcesEnfant.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var r in data.RessourcesEnfant)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>INDICATEURS D'ÉVOLUTION ATTENDUS</div>");
+            if (data.IndicateursEvolution.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var i in data.IndicateursEvolution)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(i)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div></div>");
+
+            // 5. Modalités de réévaluation (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS DE RÉÉVALUATION</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Reevaluation.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var rv in data.Reevaluation)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(rv)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            sb.AppendLine("  </div>"); // pt-cards-wrapper
+
+            if (!string.IsNullOrWhiteSpace(data.Engagement))
+                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // ── Projet Thérapeutique — 7.4 Accompagnement parental, familial et éducatif ──
+
+        private sealed class PtS4Data
+        {
+            public string       Intro               { get; set; } = "";
+            public List<string> Objectifs           { get; set; } = new();
+            public List<string> AxesPrioritaires    { get; set; } = new();
+            public List<string> Outils              { get; set; } = new();
+            public List<string> ForcesFamiliales    { get; set; } = new();
+            public List<string> ObjectifsCourtTerme { get; set; } = new();
+            public List<string> Modalites           { get; set; } = new();
+            public string       Engagement          { get; set; } = "";
+        }
+
+        private static PtS4Data? TryParsePtS4Json(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            try
+            {
+                var start = text.IndexOf('{');
+                var end   = text.LastIndexOf('}');
+                if (start < 0 || end <= start) return null;
+                var json = text.Substring(start, end - start + 1);
+                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return JsonSerializer.Deserialize<PtS4Data>(json, opts);
+            }
+            catch { return null; }
+        }
+
+        private string BuildPtS4Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
+        {
+            var data = TryParsePtS4Json(contenu);
+            var sb   = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page pt-page'>");
+            sb.Append(BuildPcHeader(
+                "PROJET THÉRAPEUTIQUE",
+                "7.4 Accompagnement parental, familial et éducatif — Soutenir la famille pour accompagner l'enfant",
+                "", pageNumber, totalPages));
+
+            if (data == null)
+            {
+                sb.AppendLine("  <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Accompagnement parental & familial »)</em></p>");
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
+
+            if (!string.IsNullOrWhiteSpace(data.Intro))
+                sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
+
+            sb.AppendLine("  <div class='pt-cards-wrapper'>");
+
+            // 1. Objectifs
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Objectifs.Count > 0)
+            {
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var o in data.Objectifs)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(o)}</li>");
+                sb.AppendLine("      </ul>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 2. Axes prioritaires issus de la cartographie environnementale
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> AXES PRIORITAIRES — CARTOGRAPHIE ENVIRONNEMENTALE</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.AxesPrioritaires.Count > 0)
+            {
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var a in data.AxesPrioritaires)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(a)}</li>");
+                sb.AppendLine("      </ul>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 3. Outils et ressources proposés (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> OUTILS ET RESSOURCES PROPOSÉS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Outils.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var ot in data.Outils)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(ot)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 4. Forces familiales + Objectifs à court terme
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> FORCES FAMILIALES &amp; OBJECTIFS À COURT TERME</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            sb.AppendLine("      <div class='pt-two-cols'>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>FORCES FAMILIALES IDENTIFIÉES</div>");
+            if (data.ForcesFamiliales.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var f in data.ForcesFamiliales)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(f)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>OBJECTIFS À COURT TERME</div>");
+            if (data.ObjectifsCourtTerme.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var oct in data.ObjectifsCourtTerme)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(oct)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div></div>");
+
+            // 5. Modalités d'accompagnement (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS D'ACCOMPAGNEMENT</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Modalites.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var m in data.Modalites)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(m)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            sb.AppendLine("  </div>"); // pt-cards-wrapper
+
+            if (!string.IsNullOrWhiteSpace(data.Engagement))
+                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // ── Projet Thérapeutique — 7.5 École & apprentissages ───────────────────
+
+        private sealed class PtS5Data
+        {
+            public string       Intro                { get; set; } = "";
+            public List<string> Objectifs            { get; set; } = new();
+            public List<string> Amenagements         { get; set; } = new();
+            public List<string> Coordination         { get; set; } = new();
+            public List<string> PointsAppui          { get; set; } = new();
+            public List<string> IndicateursEvolution { get; set; } = new();
+            public List<string> Reevaluation         { get; set; } = new();
+            public string       Engagement           { get; set; } = "";
+        }
+
+        private static PtS5Data? TryParsePtS5Json(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            try
+            {
+                var start = text.IndexOf('{');
+                var end   = text.LastIndexOf('}');
+                if (start < 0 || end <= start) return null;
+                var json = text.Substring(start, end - start + 1);
+                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return JsonSerializer.Deserialize<PtS5Data>(json, opts);
+            }
+            catch { return null; }
+        }
+
+        private string BuildPtS5Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
+        {
+            var data = TryParsePtS5Json(contenu);
+            var sb   = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page pt-page'>");
+            sb.Append(BuildPcHeader(
+                "PROJET THÉRAPEUTIQUE",
+                "7.5 École et apprentissages — Favoriser la réussite scolaire et le bien-être à l'école",
+                "", pageNumber, totalPages));
+
+            if (data == null)
+            {
+                sb.AppendLine("  <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « École & développement »)</em></p>");
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
+
+            if (!string.IsNullOrWhiteSpace(data.Intro))
+                sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
+
+            sb.AppendLine("  <div class='pt-cards-wrapper'>");
+
+            // 1. Objectifs
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Objectifs.Count > 0)
+            {
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var o in data.Objectifs)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(o)}</li>");
+                sb.AppendLine("      </ul>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 2. Aménagements et adaptations proposés (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> AMÉNAGEMENTS ET ADAPTATIONS PROPOSÉS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Amenagements.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var am in data.Amenagements)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(am)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 3. Coordination et communication (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> COORDINATION ET COMMUNICATION</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Coordination.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var co in data.Coordination)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(co)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 4. Points d'appui à l'école + Indicateurs d'évolution
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> POINTS D'APPUI &amp; INDICATEURS D'ÉVOLUTION</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            sb.AppendLine("      <div class='pt-two-cols'>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>POINTS D'APPUI À L'ÉCOLE</div>");
+            if (data.PointsAppui.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var p in data.PointsAppui)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(p)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='pt-col'>");
+            sb.AppendLine("          <div class='pt-col-hdr'>INDICATEURS D'ÉVOLUTION ATTENDUS</div>");
+            if (data.IndicateursEvolution.Count > 0)
+            {
+                sb.AppendLine("          <ul class='sd-check-list'>");
+                foreach (var i in data.IndicateursEvolution)
+                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(i)}</li>");
+                sb.AppendLine("          </ul>");
+            }
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            sb.AppendLine("    </div></div>");
+
+            // 5. Modalités de réévaluation (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS DE RÉÉVALUATION</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Reevaluation.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var rv in data.Reevaluation)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(rv)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            sb.AppendLine("  </div>"); // pt-cards-wrapper
+
+            if (!string.IsNullOrWhiteSpace(data.Engagement))
+                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+
+            sb.AppendLine("</div>");
+            return sb.ToString();
+        }
+
+        // ── Section 8 — Conclusion et perspectives ─────────────────────────────
+
+        private sealed class ConclusionData
+        {
+            public string       Intro          { get; set; } = "";
+            public List<string> Forces         { get; set; } = new();
+            public List<string> FeuilleDeRoute { get; set; } = new();
+            public List<string> MessageParents { get; set; } = new();
+            public List<string> ProchainsRdv   { get; set; } = new();
+            public string       Engagement     { get; set; } = "";
+        }
+
+        private static ConclusionData? TryParseConclusionJson(string? text)
+        {
+            if (string.IsNullOrWhiteSpace(text)) return null;
+            try
+            {
+                var start = text.IndexOf('{');
+                var end   = text.LastIndexOf('}');
+                if (start < 0 || end <= start) return null;
+                var json = text.Substring(start, end - start + 1);
+                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                return JsonSerializer.Deserialize<ConclusionData>(json, opts);
+            }
+            catch { return null; }
+        }
+
+        private string BuildConclusionPage(string? contenu, CoverFields cover, int pageNumber, int totalPages)
+        {
+            var data = TryParseConclusionJson(contenu);
+            var sb   = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page pt-page'>");
+            sb.Append(BuildPcHeader(
+                "CONCLUSION ET PERSPECTIVES",
+                "8. Ensemble, construisons l'avenir de l'enfant",
+                "", pageNumber, totalPages));
+
+            if (data == null)
+            {
+                sb.AppendLine("  <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Conclusion et perspectives »)</em></p>");
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
+
+            sb.AppendLine("  <div class='pt-cards-wrapper'>");
+
+            // 1. Ce que nous retenons
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> CE QUE NOUS RETENONS DE L'ENFANT</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (!string.IsNullOrWhiteSpace(data.Intro))
+                sb.AppendLine($"      <p class='pt-col-text' style='font-style:italic; line-height:1.6;'>{WebUtility.HtmlEncode(data.Intro)}</p>");
+            sb.AppendLine("    </div></div>");
+
+            // 2. Ses forces pour grandir (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> SES FORCES POUR GRANDIR</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Forces.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var f in data.Forces)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(f)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 3. Notre feuille de route (chips timeline)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> NOTRE FEUILLE DE ROUTE</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.FeuilleDeRoute.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var (etape, idx) in data.FeuilleDeRoute.Select((e, i) => (e, i + 1)))
+                    sb.AppendLine($"        <div class='pt-suivi-card'><strong>{idx}</strong><br/>{WebUtility.HtmlEncode(etape)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 4. Message aux parents (chips messages courts)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> MESSAGE AUX PARENTS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.MessageParents.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var msg in data.MessageParents)
+                    sb.AppendLine($"        <div class='pt-suivi-card' style='font-style:italic;'>{WebUtility.HtmlEncode(msg)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            // 5. Prochains rendez-vous (chips)
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> PROCHAINS RENDEZ-VOUS</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.ProchainsRdv.Count > 0)
+            {
+                sb.AppendLine("      <div class='pt-suivi-cards'>");
+                foreach (var rdv in data.ProchainsRdv)
+                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(rdv)}</div>");
+                sb.AppendLine("      </div>");
+            }
+            sb.AppendLine("    </div></div>");
+
+            sb.AppendLine("  </div>"); // pt-cards-wrapper
+
+            if (!string.IsNullOrWhiteSpace(data.Engagement))
+                sb.AppendLine($"  <div class='pt-engagement' style='text-align:center; font-size:10px;'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
 
             sb.AppendLine("</div>");
             return sb.ToString();
@@ -3447,6 +4358,21 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .sd-check-list li { font-size: 9.5px; line-height: 1.5; padding-left: 14px; position: relative; }
 .sd-check-list li::before { content: '✓'; position: absolute; left: 0; color: #27AE60; font-weight: 700; }
 .sd-check-orange li::before { color: #E67E22; }
+.pt-page { display: flex; flex-direction: column; height: 297mm; }
+.pt-intro { background: #EBF5FB; border-left: 3px solid #1A3A6A; border-radius: 0 4px 4px 0; padding: 7px 12px; margin-bottom: 6px; font-size: 9.5px; color: #333; line-height: 1.5; flex-shrink: 0; }
+.pt-cards-wrapper { flex: 1; display: flex; flex-direction: column; gap: 5px; min-height: 0; }
+.pt-card { flex: 1; display: flex; flex-direction: column; border: 1px solid #D5D8DC; border-radius: 5px; overflow: hidden; min-height: 0; }
+.pt-card-hdr { display: flex; align-items: center; gap: 7px; padding: 4px 10px; background: #F0F4F8; font-size: 9.5px; font-weight: 700; color: #1A3A6A; letter-spacing: 0.3px; flex-shrink: 0; }
+.pt-num { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; background: #1A3A6A; color: white; font-size: 9px; font-weight: 700; flex-shrink: 0; }
+.pt-card-body { padding: 7px 10px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.pt-two-cols { display: flex; gap: 12px; }
+.pt-col { flex: 1 1 0; }
+.pt-col-hdr { font-size: 8.5px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; padding-bottom: 3px; border-bottom: 1px solid #E0E0E0; }
+.pt-col-text { font-size: 9.5px; color: #333; line-height: 1.45; margin: 3px 0; }
+.pt-col-none { color: #E67E22; font-style: italic; }
+.pt-suivi-cards { display: flex; gap: 7px; flex-wrap: wrap; }
+.pt-suivi-card { flex: 1 1 0; min-width: 80px; background: #EBF5FB; border-radius: 5px; padding: 6px 8px; font-size: 9px; text-align: center; color: #1A3A6A; line-height: 1.4; }
+.pt-engagement { background: #EAF4EA; border-left: 3px solid #1E6B4A; border-radius: 0 4px 4px 0; padding: 7px 12px; font-size: 9.5px; color: #1E6B4A; font-style: italic; margin-top: 4px; }
 .sd-legend {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   border-top: 1px solid #E2E8F0; padding-top: 6px; margin-top: auto;

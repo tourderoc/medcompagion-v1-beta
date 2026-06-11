@@ -140,10 +140,12 @@ namespace MedCompanion.Models.Restitutions
             Blocs.Add(new RestitutionBloc("synthese_diag_s3", "🔬 Synthèse — Différentiels écartés",     24, "clinique"));
             Blocs.Add(new RestitutionBloc("synthese_diag_s4", "🔬 Synthèse — Intégration cartographies", 25, "clinique"));
             Blocs.Add(new RestitutionBloc("synthese_diag_s5", "🔬 Synthèse — Conclusion intégrative",    26, "clinique"));
-            Blocs.Add(new RestitutionBloc("bilan_final",              "Bilan final détaillé",            27, "clinique"));
-            Blocs.Add(new RestitutionBloc("synthese_globale",         "Synthèse globale",                28, "clinique"));
-            Blocs.Add(new RestitutionBloc("projet_therapeutique",     "Projet Thérapeutique Global",     29, "clinique"));
-            Blocs.Add(new RestitutionBloc("conclusion",               "Conclusion et perspectives",      30, "mixte"));
+            Blocs.Add(new RestitutionBloc("pt_s1", "💊 Projet — Prise en charge médicale",        27, "clinique"));
+            Blocs.Add(new RestitutionBloc("pt_s2", "🧠 Projet — Accompagnement psychologique",     28, "clinique"));
+            Blocs.Add(new RestitutionBloc("pt_s3", "🌱 Projet — Développement global",              29, "clinique"));
+            Blocs.Add(new RestitutionBloc("pt_s4", "👨‍👩‍👧 Projet — Accompagnement parental & familial", 30, "clinique"));
+            Blocs.Add(new RestitutionBloc("pt_s5", "🏫 Projet — École & développement",             31, "clinique"));
+            Blocs.Add(new RestitutionBloc("conclusion", "Conclusion et perspectives",                32, "mixte"));
         }
     }
 }

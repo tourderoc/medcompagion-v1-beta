@@ -296,6 +296,36 @@ namespace MedCompanion.ViewModels.Restitutions
                             (cb, c) => _suggesterService.SuggestSyntheseDiagS5Async(_currentReading!, cb, c), ct);
                         break;
 
+                    case "pt_s1":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestPtS1Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "pt_s2":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestPtS2Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "pt_s3":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestPtS3Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "pt_s4":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestPtS4Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "pt_s5":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestPtS5Async(_currentReading!, cb, c), ct);
+                        break;
+
+                    case "conclusion":
+                        await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                            (cb, c) => _suggesterService.SuggestConclusionAsync(_currentReading!, cb, c), ct);
+                        break;
+
                     default:
                     {
                         var result = await _suggesterService.PrefillBlocAsync(blocVm.Model, _currentReading, ct);
@@ -469,6 +499,36 @@ namespace MedCompanion.ViewModels.Restitutions
                             case "synthese_diag_s5":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
                                     (cb, c) => _suggesterService.SuggestSyntheseDiagS5Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "pt_s1":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestPtS1Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "pt_s2":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestPtS2Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "pt_s3":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestPtS3Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "pt_s4":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestPtS4Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "pt_s5":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestPtS5Async(_currentReading!, cb, c), ct);
+                                break;
+
+                            case "conclusion":
+                                await RunProgressiveAsync(blocVm, blocVm.Title, 1,
+                                    (cb, c) => _suggesterService.SuggestConclusionAsync(_currentReading!, cb, c), ct);
                                 break;
 
                             default:
