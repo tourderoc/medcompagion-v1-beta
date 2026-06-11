@@ -396,10 +396,14 @@ namespace MedCompanion.Services.Restitutions
                     patientBlocs[b.Key] = b;
             }
 
-            // Détecter si la page C (détail parcours de soins) doit être générée
+            // Détecter si la page C (détail parcours de soins) doit être générée.
+            // Déclenché si ParcoursDetail a du contenu OU si SuiviResume/BilansResume
+            // contiennent des détails (lignes > 80 car = ancien format LLM trop verbeux).
             patientBlocs.TryGetValue("patient_antecedents", out var _atBlocPre);
             var _atPre = ParseAntecedents(_atBlocPre?.ContenuValide ?? "");
-            bool hasParcoursDetailPage = HasParcoursDetail(_atPre.ParcoursDetail);
+            bool hasParcoursDetailPage = HasParcoursDetail(_atPre.ParcoursDetail)
+                                      || HasDetailedBullets(_atPre.SuiviResume)
+                                      || HasDetailedBullets(_atPre.BilansResume);
             if (hasParcoursDetailPage) totalPages++;   // page C s'ajoute au total
 
             bool patientPagesRendered = false;
@@ -658,9 +662,11 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("      <div class='pc-two-col'>");
             sb.Append(BuildPcSubBlock("FAMILIAUX", at.Familiaux, "pc-sb-fam"));
 
-            // Parcours compact : 2 sous-sections + lien vers page de détail si applicable
-            var suiviBody  = string.IsNullOrWhiteSpace(at.SuiviResume)  ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(at.SuiviResume);
-            var bilansBody = string.IsNullOrWhiteSpace(at.BilansResume) ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(at.BilansResume);
+            // Parcours compact : étiquettes courtes uniquement (1 phrase par puce).
+            // TruncateBulletsToLabel retire les détails (Motif, Évolution, Conclusion…)
+            // pour les données générées en ancien format verbeux.
+            var suiviBody  = string.IsNullOrWhiteSpace(at.SuiviResume)  ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(TruncateBulletsToLabel(at.SuiviResume));
+            var bilansBody = string.IsNullOrWhiteSpace(at.BilansResume) ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(TruncateBulletsToLabel(at.BilansResume));
             var detailLink = hasDetailPage
                 ? $"<div class='pc-parcours-detail-link'>📄 Détail complet → p.{detailPageNumber}</div>"
                 : "";
@@ -717,19 +723,28 @@ namespace MedCompanion.Services.Restitutions
             blocs.TryGetValue("patient_antecedents", out var blocAt);
             var at = ParseAntecedents(blocAt?.ContenuValide ?? "");
 
-            // Séparer le détail en 2 sections (suivi / bilans) via les marqueurs en gras
-            var detailSections = SplitByBoldTitles(at.ParcoursDetail);
+            // Source du détail : ParcoursDetail si renseigné, sinon fallback sur
+            // SuiviResume / BilansResume (ancien format LLM verbeux = contenu complet).
             string suiviDetail  = "";
             string bilansDetail = "";
-            foreach (var (title, content) in detailSections)
+            if (HasParcoursDetail(at.ParcoursDetail))
             {
-                var t = title.ToLowerInvariant();
-                if      (t.Contains("suivi") || t.Contains("antérieur") || t.Contains("anterieur")) suiviDetail  = content;
-                else if (t.Contains("bilan") || t.Contains("réalisé")   || t.Contains("realise"))   bilansDetail = content;
+                var detailSections = SplitByBoldTitles(at.ParcoursDetail);
+                foreach (var (title, content) in detailSections)
+                {
+                    var t = title.ToLowerInvariant();
+                    if      (t.Contains("suivi") || t.Contains("antérieur") || t.Contains("anterieur")) suiviDetail  = content;
+                    else if (t.Contains("bilan") || t.Contains("réalisé")   || t.Contains("realise"))   bilansDetail = content;
+                }
+                if (string.IsNullOrWhiteSpace(suiviDetail) && string.IsNullOrWhiteSpace(bilansDetail))
+                    suiviDetail = at.ParcoursDetail;
             }
-            // Si pas de sections séparées, on met tout dans suivi
-            if (string.IsNullOrWhiteSpace(suiviDetail) && string.IsNullOrWhiteSpace(bilansDetail))
-                suiviDetail = at.ParcoursDetail;
+            else
+            {
+                // Fallback : SuiviResume et BilansResume contiennent le détail complet
+                suiviDetail  = at.SuiviResume;
+                bilansDetail = at.BilansResume;
+            }
 
             var sb = new StringBuilder();
             sb.AppendLine("<div class='page pc-page'>");
@@ -3222,6 +3237,45 @@ namespace MedCompanion.Services.Restitutions
             return !d.StartsWith("aucun") && d.Length > 20;
         }
 
+        /// <summary>
+        /// Retourne true si au moins une puce du markdown dépasse 80 caractères —
+        /// signe que le LLM a généré du contenu détaillé (Motif, Évolution…) au lieu
+        /// d'une étiquette courte.
+        /// </summary>
+        private static bool HasDetailedBullets(string markdown)
+        {
+            if (string.IsNullOrWhiteSpace(markdown)) return false;
+            foreach (var line in markdown.Split('\n'))
+                if ((line.TrimStart().StartsWith("- ") || line.TrimStart().StartsWith("* ")) && line.Length > 80)
+                    return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Tronque chaque puce à la première phrase (label + statut uniquement).
+        /// Supprime les détails ajoutés par le LLM (Motif :, Évolution :, Conclusion :…).
+        /// Ex : "- Suivi CMP : En cours. Motif : …" → "- Suivi CMP : En cours."
+        /// </summary>
+        private static string TruncateBulletsToLabel(string markdown)
+        {
+            if (string.IsNullOrWhiteSpace(markdown)) return markdown;
+            var lines = markdown.Split('\n');
+            var result = new System.Collections.Generic.List<string>();
+            foreach (var rawLine in lines)
+            {
+                var line = rawLine.TrimEnd();
+                var trimmed = line.TrimStart();
+                if ((trimmed.StartsWith("- ") || trimmed.StartsWith("* ")) && line.Contains(". "))
+                {
+                    var dotIdx = line.IndexOf(". ", StringComparison.Ordinal);
+                    if (dotIdx > 3)
+                        line = line.Substring(0, dotIdx + 1);
+                }
+                result.Add(line);
+            }
+            return string.Join("\n", result);
+        }
+
         private class SituationActuelle
         {
             public string Ecole     = "";
@@ -4358,13 +4412,13 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .sd-check-list li { font-size: 9.5px; line-height: 1.5; padding-left: 14px; position: relative; }
 .sd-check-list li::before { content: '✓'; position: absolute; left: 0; color: #27AE60; font-weight: 700; }
 .sd-check-orange li::before { color: #E67E22; }
-.pt-page { display: flex; flex-direction: column; height: 297mm; }
-.pt-intro { background: #EBF5FB; border-left: 3px solid #1A3A6A; border-radius: 0 4px 4px 0; padding: 7px 12px; margin-bottom: 6px; font-size: 9.5px; color: #333; line-height: 1.5; flex-shrink: 0; }
-.pt-cards-wrapper { flex: 1; display: flex; flex-direction: column; gap: 5px; min-height: 0; }
-.pt-card { flex: 1; display: flex; flex-direction: column; border: 1px solid #D5D8DC; border-radius: 5px; overflow: hidden; min-height: 0; }
-.pt-card-hdr { display: flex; align-items: center; gap: 7px; padding: 4px 10px; background: #F0F4F8; font-size: 9.5px; font-weight: 700; color: #1A3A6A; letter-spacing: 0.3px; flex-shrink: 0; }
+.pt-page { }
+.pt-intro { background: #EBF5FB; border-left: 3px solid #1A3A6A; border-radius: 0 4px 4px 0; padding: 7px 12px; margin-bottom: 8px; font-size: 9.5px; color: #333; line-height: 1.5; }
+.pt-cards-wrapper { display: flex; flex-direction: column; gap: 6px; }
+.pt-card { display: flex; flex-direction: column; border: 1px solid #D5D8DC; border-radius: 5px; overflow: hidden; }
+.pt-card-hdr { display: flex; align-items: center; gap: 7px; padding: 4px 10px; background: #F0F4F8; font-size: 9.5px; font-weight: 700; color: #1A3A6A; letter-spacing: 0.3px; }
 .pt-num { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; background: #1A3A6A; color: white; font-size: 9px; font-weight: 700; flex-shrink: 0; }
-.pt-card-body { padding: 7px 10px; flex: 1; display: flex; flex-direction: column; justify-content: center; }
+.pt-card-body { padding: 8px 10px; }
 .pt-two-cols { display: flex; gap: 12px; }
 .pt-col { flex: 1 1 0; }
 .pt-col-hdr { font-size: 8.5px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; padding-bottom: 3px; border-bottom: 1px solid #E0E0E0; }
