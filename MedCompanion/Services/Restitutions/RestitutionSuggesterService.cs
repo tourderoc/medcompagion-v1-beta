@@ -306,25 +306,28 @@ namespace MedCompanion.Services.Restitutions
                  "Format : `- **Item :** valeur.` Si non connu, écrire « non connu »."),
 
                 ("**Suivi résumé**",
-                 "Rédige UNIQUEMENT une liste à puces courte des suivis spécialisés antérieurs ou en cours " +
-                 "(CMP, CAMPS, pédopsychiatre libéral, psychologue, orthophoniste, psychomotricien, neuropsy…). " +
-                 "Format ultra-compact : `- Structure (dates ou statut).` Une ligne par suivi. " +
-                 "Si aucun suivi, écrire UNIQUEMENT : `- Aucun suivi spécialisé.` Pas de titre, pas de détail."),
+                 "Génère UNIQUEMENT des étiquettes courtes — INTERDIT d'écrire motifs, évolutions, durées, résultats.\n" +
+                 "Format STRICT : `- [Nom du suivi] — [statut court]`\n" +
+                 "Exemples autorisés : `- Suivi CMP — En cours`, `- Psychomotricité — Terminé 2024`, `- Traitement SLENYTO — Actif`\n" +
+                 "Maximum 8 mots par ligne. Une ligne par suivi. Pas de tiret secondaire, pas de parenthèse longue.\n" +
+                 "Les détails (motifs, évolution, comptes rendus) sont réservés à la section « Parcours — détail ».\n" +
+                 "Si aucun suivi, écrire UNIQUEMENT : `- Aucun suivi spécialisé.`"),
 
                 ("**Bilans résumé**",
-                 "Rédige UNIQUEMENT une liste à puces courte des bilans diagnostiques déjà réalisés " +
-                 "(bilan psychologique QI, bilan orthophonique, bilan psychomoteur, bilan neuropsychologique, " +
-                 "bilan pédiatrique, EEG, IRM…). " +
-                 "Format ultra-compact : `- Type de bilan (date si connue).` Une ligne par bilan. " +
-                 "Si aucun bilan, écrire UNIQUEMENT : `- Aucun bilan formel.` Pas de titre, pas de détail."),
+                 "Génère UNIQUEMENT des étiquettes courtes — INTERDIT d'écrire résultats, conclusions, scores.\n" +
+                 "Format STRICT : `- [Type de bilan] — [année ou statut court]`\n" +
+                 "Exemples autorisés : `- Bilan neuropsychologique — 2025`, `- Évaluation pédopsychiatrique — 06/2026`, `- Bilan orthophonique — À programmer`\n" +
+                 "Maximum 8 mots par ligne. Une ligne par bilan. Pas de résumé des résultats ici.\n" +
+                 "Les résultats et conclusions sont réservés à la section « Parcours — détail ».\n" +
+                 "Si aucun bilan, écrire UNIQUEMENT : `- Aucun bilan formel.`"),
 
                 ("**Parcours — détail**",
-                 "Rédige le détail complet du parcours de soins en 2 sections bien séparées.\n" +
-                 "SECTION 1 — `**Suivi antérieur**` : pour chaque structure de suivi, indique : " +
-                 "nom de la structure, période (dates début–fin ou 'en cours'), fréquence, " +
-                 "motif de prise en charge, évolution observée. Une entrée par structure.\n" +
-                 "SECTION 2 — `**Bilans réalisés**` : pour chaque bilan, indique : " +
-                 "type de bilan, date de réalisation, praticien/structure si connu, " +
+                 "Rédige le détail COMPLET du parcours de soins — c'est ici ET UNIQUEMENT ici que tu mets " +
+                 "les motifs, évolutions, durées, résultats, comptes rendus et conclusions cliniques.\n" +
+                 "Structure en 2 sections séparées :\n" +
+                 "SECTION 1 — `**Suivi antérieur**` : pour chaque suivi : nom de la structure, " +
+                 "période (dates début–fin ou 'en cours'), fréquence, motif de prise en charge, évolution observée.\n" +
+                 "SECTION 2 — `**Bilans réalisés**` : pour chaque bilan : type, date, praticien/structure si connu, " +
                  "résultats clés ou conclusions principales.\n" +
                  "Si aucun suivi ET aucun bilan dans le dossier, écrire UNIQUEMENT : " +
                  "`Aucun antécédent de suivi ou de bilan identifié dans le dossier.`")

@@ -379,12 +379,6 @@ namespace MedCompanion.Services.Restitutions
             var sb = new StringBuilder();
             int pageNumber = 2;
 
-            // Total de pages logiques pour les en-têtes "Page N/total".
-            // 1 (couverture) + 1 (restitution 1-page) + 2 (patient & contexte A+B) + 2 (cartographie enfant A+B)
-            // + 5 autres blocs (synthese_diag, bilan_final, synthese_globale, projet_therapeutique, conclusion) = 11.
-            // À mettre à jour quand on ajoute des pages dédiées.
-            int totalPages = 11;
-
             // Les 5 blocs patient_* sont rendus ensemble sur 2 pages dédiées (A : identification +
             // motif + contexte familial / B : antécédents + situation actuelle). On les capture
             // au passage de la boucle puis on consomme l'ensemble en une seule fois, en sautant
@@ -402,9 +396,66 @@ namespace MedCompanion.Services.Restitutions
             patientBlocs.TryGetValue("patient_antecedents", out var _atBlocPre);
             var _atPre = ParseAntecedents(_atBlocPre?.ContenuValide ?? "");
             bool hasParcoursDetailPage = HasParcoursDetail(_atPre.ParcoursDetail)
-                                      || HasDetailedBullets(_atPre.SuiviResume)
-                                      || HasDetailedBullets(_atPre.BilansResume);
-            if (hasParcoursDetailPage) totalPages++;   // page C s'ajoute au total
+                                       || HasDetailedBullets(_atPre.SuiviResume)
+                                       || HasDetailedBullets(_atPre.BilansResume);
+
+            // Calcul dynamique du nombre total de pages réelles
+            int totalPages = 1; // La couverture (page 1)
+            bool patientPagesCounted = false;
+            foreach (var bloc in dossier.Blocs)
+            {
+                if (bloc.Key == "couverture") continue;
+
+                if (bloc.Key == "restitution_1page")
+                {
+                    totalPages += 2;
+                    continue;
+                }
+
+                if (bloc.Key.StartsWith("patient_", StringComparison.Ordinal))
+                {
+                    if (!patientPagesCounted)
+                    {
+                        totalPages += 3; // Page A, Page B, Page C
+                        if (hasParcoursDetailPage)
+                        {
+                            totalPages++; // Page D
+                        }
+                        patientPagesCounted = true;
+                    }
+                    continue;
+                }
+
+                if (bloc.Key == "carto_s1")
+                {
+                    totalPages += 3;
+                    continue;
+                }
+                if (bloc.Key.StartsWith("carto_s", StringComparison.Ordinal)) continue;
+
+                if (bloc.Key == "env_edu_f1")
+                {
+                    totalPages += 3;
+                    continue;
+                }
+                if (bloc.Key.StartsWith("env_edu_", StringComparison.Ordinal)) continue;
+
+                if (bloc.Key == "synthese_diag_s1")
+                {
+                    totalPages += 2;
+                    continue;
+                }
+                if (bloc.Key.StartsWith("synthese_diag_s", StringComparison.Ordinal)) continue;
+
+                if (bloc.Key == "pt_s1" || bloc.Key == "pt_s2" || bloc.Key == "pt_s3" || bloc.Key == "pt_s4" || bloc.Key == "pt_s5" || bloc.Key == "conclusion")
+                {
+                    totalPages++;
+                    continue;
+                }
+
+                // Page brouillon
+                totalPages++;
+            }
 
             bool patientPagesRendered = false;
 
@@ -414,8 +465,8 @@ namespace MedCompanion.Services.Restitutions
 
                 if (bloc.Key == "restitution_1page")
                 {
-                    sb.Append(BuildRestitution1PagePage(bloc, coverFields, photoBase64, pageNumber));
-                    pageNumber++;
+                    sb.Append(BuildRestitution1PagePage(bloc, coverFields, photoBase64, pageNumber, totalPages));
+                    pageNumber += 2;
                     continue;
                 }
 
@@ -425,14 +476,21 @@ namespace MedCompanion.Services.Restitutions
                     // un bloc patient_*. Les autres sont absorbés silencieusement.
                     if (!patientPagesRendered)
                     {
-                        int pageCNumber = pageNumber + 2;
-                        sb.Append(BuildPatientContextePageA(patientBlocs, coverFields, pageNumber, totalPages));
-                        sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages, hasParcoursDetailPage, pageCNumber));
-                        pageNumber += 2;
                         if (hasParcoursDetailPage)
                         {
-                            sb.Append(BuildPatientContextePageC(patientBlocs, pageNumber, totalPages));
-                            pageNumber++;
+                            int pageDNumber = pageNumber + 2;
+                            sb.Append(BuildPatientContextePageA(patientBlocs, coverFields, pageNumber, totalPages));
+                            sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages, hasParcoursDetailPage, pageDNumber));
+                            sb.Append(BuildPatientContextePageD(patientBlocs, pageNumber + 2, totalPages));
+                            sb.Append(BuildPatientContextePageC(patientBlocs, pageNumber + 3, totalPages));
+                            pageNumber += 4;
+                        }
+                        else
+                        {
+                            sb.Append(BuildPatientContextePageA(patientBlocs, coverFields, pageNumber, totalPages));
+                            sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages, false, 0));
+                            sb.Append(BuildPatientContextePageC(patientBlocs, pageNumber + 2, totalPages));
+                            pageNumber += 3;
                         }
                         patientPagesRendered = true;
                     }
@@ -446,7 +504,8 @@ namespace MedCompanion.Services.Restitutions
                     var perSphere = BuildPerSphereFromBlocs(dossier.Blocs);
                     sb.Append(BuildCartoEnfantPageA(carto, perSphere, pageNumber,     totalPages));
                     sb.Append(BuildCartoEnfantPageB(carto, perSphere, pageNumber + 1, totalPages));
-                    pageNumber += 2;
+                    sb.Append(BuildCartoEnfantPageC(carto, perSphere, pageNumber + 2, totalPages));
+                    pageNumber += 3;
                     continue;
                 }
                 // carto_s2..carto_s8 : déjà intégrés dans carto_s1, on saute.
@@ -459,7 +518,8 @@ namespace MedCompanion.Services.Restitutions
                     var envBlocs  = BuildEnvEduBlocsDict(dossier.Blocs);
                     sb.Append(BuildEnvEduPage1(envCarto, envBlocs, pageNumber,     totalPages));
                     sb.Append(BuildEnvEduPage2(envCarto, envBlocs, pageNumber + 1, totalPages));
-                    pageNumber += 2;
+                    sb.Append(BuildEnvEduPage3(envCarto, envBlocs, pageNumber + 2, totalPages));
+                    pageNumber += 3;
                     continue;
                 }
                 if (bloc.Key.StartsWith("env_edu_", StringComparison.Ordinal)) continue;
@@ -551,7 +611,7 @@ namespace MedCompanion.Services.Restitutions
 
             var sb = new StringBuilder();
             sb.AppendLine("<div class='page pc-page'>");
-            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Informations cliniques initiales", "1/2", pageNumber, totalPages));
+            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Informations cliniques initiales", "1/3", pageNumber, totalPages));
 
             // ── Section 1 : Identification (cartouche teal) ─────────────────
             sb.AppendLine("  <div class='pc-card pc-c-ident'>");
@@ -632,157 +692,321 @@ namespace MedCompanion.Services.Restitutions
         /// Rend la page B : Antécédents (4 sous-blocs) + Situation actuelle (5 sous-blocs).
         /// </summary>
         private string BuildPatientContextePageB(
+
             Dictionary<string, RestitutionBloc> blocs,
+
             int pageNumber,
+
             int totalPages,
+
             bool hasDetailPage = false,
+
             int detailPageNumber = 0)
+
         {
+
             blocs.TryGetValue("patient_antecedents",        out var blocAt);
-            blocs.TryGetValue("patient_situation_actuelle", out var blocSa);
 
             var at = ParseAntecedents(blocAt?.ContenuValide ?? "");
-            var sa = ParseSituationActuelle(blocSa?.ContenuValide ?? "");
+
+
 
             var sb = new StringBuilder();
+
             sb.AppendLine("<div class='page pc-page'>");
-            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Informations cliniques complémentaires", "2/2", pageNumber, totalPages));
+
+            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Informations cliniques complémentaires", "2/3", pageNumber, totalPages));
+
+
 
             // ── Section 4 : Antécédents (cartouche bleu) ────────────────────
+
             sb.AppendLine("  <div class='pc-card pc-c-atcd'>");
+
             sb.AppendLine("    <div class='pc-card-hdr'>");
+
             sb.AppendLine("      <span class='pc-card-num'>4</span>");
+
             sb.AppendLine("      <h2>ANTÉCÉDENTS</h2>");
+
             sb.AppendLine("    </div>");
+
             sb.AppendLine("    <div class='pc-card-body'>");
+
             sb.AppendLine("      <div class='pc-two-col'>");
+
             sb.Append(BuildPcSubBlock("ANTÉCÉDENTS MÉDICAUX",   at.Medicaux,      "pc-sb-med"));
+
             sb.Append(BuildPcSubBlock("DÉVELOPPEMENTAUX",       at.Developpement, "pc-sb-dev"));
+
             sb.AppendLine("      </div>");
+
             sb.AppendLine("      <div class='pc-two-col'>");
+
             sb.Append(BuildPcSubBlock("FAMILIAUX", at.Familiaux, "pc-sb-fam"));
 
+
+
             // Parcours compact : étiquettes courtes uniquement (1 phrase par puce).
-            // TruncateBulletsToLabel retire les détails (Motif, Évolution, Conclusion…)
-            // pour les données générées en ancien format verbeux.
+
             var suiviBody  = string.IsNullOrWhiteSpace(at.SuiviResume)  ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(TruncateBulletsToLabel(at.SuiviResume));
+
             var bilansBody = string.IsNullOrWhiteSpace(at.BilansResume) ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(TruncateBulletsToLabel(at.BilansResume));
+
             var detailLink = hasDetailPage
+
                 ? $"<div class='pc-parcours-detail-link'>📄 Détail complet → p.{detailPageNumber}</div>"
+
                 : "";
+
             sb.AppendLine(
+
                 "        <div class='pc-subblock pc-sb-parcours'>" +
+
                 "<h3>PARCOURS DE SOINS</h3>" +
+
                 "<div class='pc-subblock-body'>" +
+
                   "<div class='pc-parcours-sub'><h4>SUIVI</h4>" + suiviBody + "</div>" +
+
                   "<div class='pc-parcours-sub'><h4>BILANS</h4>" + bilansBody + "</div>" +
+
                   detailLink +
+
                 "</div></div>");
 
+
+
             sb.AppendLine("      </div>");
+
             sb.AppendLine("    </div>");
+
             sb.AppendLine("  </div>");
 
-            // ── Section 5 : Situation actuelle (cartouche orange) ───────────
-            sb.AppendLine("  <div class='pc-card pc-c-situation'>");
-            sb.AppendLine("    <div class='pc-card-hdr'>");
-            sb.AppendLine("      <span class='pc-card-num'>5</span>");
-            sb.AppendLine("      <h2>SITUATION ACTUELLE</h2>");
-            sb.AppendLine("    </div>");
-            sb.AppendLine("    <div class='pc-card-body'>");
-            sb.AppendLine("      <div class='pc-three-col'>");
-            sb.Append(BuildPcSubBlock("À L'ÉCOLE",        sa.Ecole,   "pc-sb-ecole"));
-            sb.Append(BuildPcSubBlock("À LA MAISON",      sa.Maison,  "pc-sb-maison"));
-            sb.Append(BuildPcSubBlock("AVEC LES AUTRES",  sa.Autres,  "pc-sb-autres"));
-            sb.AppendLine("      </div>");
-            sb.AppendLine("      <div class='pc-two-col'>");
-            sb.Append(BuildPcSubBlock("FORCES OBSERVÉES",    sa.Forces,    "pc-sb-forces"));
-            sb.Append(BuildPcSubBlock("ACTIVITÉS / INTÉRÊTS", sa.Activites, "pc-sb-activites"));
-            sb.AppendLine("      </div>");
-            sb.AppendLine("    </div>");
-            sb.AppendLine("  </div>");
+
 
             sb.Append(BuildPcFooter(
-                "Ces éléments seront réévalués régulièrement afin d'ajuster le projet d'accompagnement.<br>" +
-                "Ils constituent la base du suivi clinique et du travail en collaboration avec la famille et les partenaires.",
+
+                "Ces antécédents et éléments de parcours tracent le contexte de développement de l'enfant. Ils guident l'analyse clinique en repérant les facteurs de vulnérabilité et de protection.",
+
                 pageNumber, totalPages));
+
             sb.AppendLine("</div>");
+
             return sb.ToString();
+
         }
 
-        /// <summary>
-        /// Rend la page C (conditionnelle) : détail du parcours de soins.
-        /// Générée seulement si patient_antecedents contient un contenu substantiel
-        /// dans la section "Parcours — détail".
-        /// </summary>
-        private string BuildPatientContextePageC(
-            Dictionary<string, RestitutionBloc> blocs,
-            int pageNumber,
-            int totalPages)
-        {
-            blocs.TryGetValue("patient_antecedents", out var blocAt);
-            var at = ParseAntecedents(blocAt?.ContenuValide ?? "");
 
-            // Source du détail : ParcoursDetail si renseigné, sinon fallback sur
-            // SuiviResume / BilansResume (ancien format LLM verbeux = contenu complet).
-            string suiviDetail  = "";
-            string bilansDetail = "";
-            if (HasParcoursDetail(at.ParcoursDetail))
-            {
-                var detailSections = SplitByBoldTitles(at.ParcoursDetail);
-                foreach (var (title, content) in detailSections)
-                {
-                    var t = title.ToLowerInvariant();
-                    if      (t.Contains("suivi") || t.Contains("antérieur") || t.Contains("anterieur")) suiviDetail  = content;
-                    else if (t.Contains("bilan") || t.Contains("réalisé")   || t.Contains("realise"))   bilansDetail = content;
-                }
-                if (string.IsNullOrWhiteSpace(suiviDetail) && string.IsNullOrWhiteSpace(bilansDetail))
-                    suiviDetail = at.ParcoursDetail;
-            }
-            else
-            {
-                // Fallback : SuiviResume et BilansResume contiennent le détail complet
-                suiviDetail  = at.SuiviResume;
-                bilansDetail = at.BilansResume;
-            }
+
+        private string BuildPatientContextePageC(
+
+            Dictionary<string, RestitutionBloc> blocs,
+
+            int pageNumber,
+
+            int totalPages)
+
+        {
+
+            blocs.TryGetValue("patient_situation_actuelle", out var blocSa);
+
+            var sa = ParseSituationActuelle(blocSa?.ContenuValide ?? "");
+
+
 
             var sb = new StringBuilder();
+
             sb.AppendLine("<div class='page pc-page'>");
-            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Parcours de soins — détail", "annexe", pageNumber, totalPages));
 
-            // Section Suivi antérieur
-            sb.AppendLine("  <div class='pc-card pc-c-atcd'>");
+            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Situation quotidienne et ressources", "3/3", pageNumber, totalPages));
+
+
+
+            // ── Section 5 : Situation actuelle (cartouche orange) ───────────
+
+            sb.AppendLine("  <div class='pc-card pc-c-situation'>");
+
             sb.AppendLine("    <div class='pc-card-hdr'>");
-            sb.AppendLine("      <span class='pc-card-num'>+</span>");
-            sb.AppendLine("      <h2>SUIVI ANTÉRIEUR</h2>");
+
+            sb.AppendLine("      <span class='pc-card-num'>5</span>");
+
+            sb.AppendLine("      <h2>SITUATION ACTUELLE</h2>");
+
             sb.AppendLine("    </div>");
+
             sb.AppendLine("    <div class='pc-card-body'>");
-            if (string.IsNullOrWhiteSpace(suiviDetail))
-                sb.AppendLine("      <p class='pc-placeholder'><em>Aucun suivi antérieur identifié.</em></p>");
-            else
-                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(suiviDetail)}</div>");
+
+            sb.AppendLine("      <div class='pc-three-col'>");
+
+            sb.Append(BuildPcSubBlock("À L'ÉCOLE",        sa.Ecole,   "pc-sb-ecole"));
+
+            sb.Append(BuildPcSubBlock("À LA MAISON",      sa.Maison,  "pc-sb-maison"));
+
+            sb.Append(BuildPcSubBlock("AVEC LES AUTRES",  sa.Autres,  "pc-sb-autres"));
+
+            sb.AppendLine("      </div>");
+
+            sb.AppendLine("      <div class='pc-two-col'>");
+
+            sb.Append(BuildPcSubBlock("FORCES OBSERVÉES",    sa.Forces,    "pc-sb-forces"));
+
+            sb.Append(BuildPcSubBlock("ACTIVITÉS / INTÉRÊTS", sa.Activites, "pc-sb-activites"));
+
+            sb.AppendLine("      </div>");
+
             sb.AppendLine("    </div>");
+
             sb.AppendLine("  </div>");
 
-            // Section Bilans réalisés
-            sb.AppendLine("  <div class='pc-card pc-c-atcd' style='margin-top:12px'>");
-            sb.AppendLine("    <div class='pc-card-hdr'>");
-            sb.AppendLine("      <span class='pc-card-num'>+</span>");
-            sb.AppendLine("      <h2>BILANS RÉALISÉS</h2>");
-            sb.AppendLine("    </div>");
-            sb.AppendLine("    <div class='pc-card-body'>");
-            if (string.IsNullOrWhiteSpace(bilansDetail))
-                sb.AppendLine("      <p class='pc-placeholder'><em>Aucun bilan formel identifié.</em></p>");
-            else
-                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(bilansDetail)}</div>");
-            sb.AppendLine("    </div>");
-            sb.AppendLine("  </div>");
+
 
             sb.Append(BuildPcFooter(
-                "Ces informations sont issues de l'anamnèse et des documents fournis.",
+
+                "Ces éléments seront réévalués régulièrement afin d'ajuster le projet d'accompagnement.<br>" +
+
+                "Ils constituent la base du suivi clinique et du travail en collaboration avec la famille et les partenaires.",
+
                 pageNumber, totalPages));
+
             sb.AppendLine("</div>");
+
             return sb.ToString();
+
+        }
+
+
+
+        private string BuildPatientContextePageD(
+
+            Dictionary<string, RestitutionBloc> blocs,
+
+            int pageNumber,
+
+            int totalPages)
+
+        {
+
+            blocs.TryGetValue("patient_antecedents", out var blocAt);
+
+            var at = ParseAntecedents(blocAt?.ContenuValide ?? "");
+
+
+
+            string suiviDetail  = "";
+
+            string bilansDetail = "";
+
+            if (HasParcoursDetail(at.ParcoursDetail))
+
+            {
+
+                var detailSections = SplitByBoldTitles(at.ParcoursDetail);
+
+                foreach (var (title, content) in detailSections)
+
+                {
+
+                    var t = title.ToLowerInvariant();
+
+                    if      (t.Contains("suivi") || t.Contains("antérieur") || t.Contains("anterieur")) suiviDetail  = content;
+
+                    else if (t.Contains("bilan") || t.Contains("réalisé")   || t.Contains("realise"))   bilansDetail = content;
+
+                }
+
+                if (string.IsNullOrWhiteSpace(suiviDetail) && string.IsNullOrWhiteSpace(bilansDetail))
+
+                    suiviDetail = at.ParcoursDetail;
+
+            }
+
+            else
+
+            {
+
+                suiviDetail  = at.SuiviResume;
+
+                bilansDetail = at.BilansResume;
+
+            }
+
+
+
+            var sb = new StringBuilder();
+
+            sb.AppendLine("<div class='page pc-page'>");
+
+            sb.Append(BuildPcHeader("PATIENT & CONTEXTE", "Parcours de soins — détail", "annexe", pageNumber, totalPages));
+
+
+
+            // Section Suivi antérieur
+
+            sb.AppendLine("  <div class='pc-card pc-c-atcd'>");
+
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+
+            sb.AppendLine("      <span class='pc-card-num'>+</span>");
+
+            sb.AppendLine("      <h2>SUIVI ANTÉRIEUR</h2>");
+
+            sb.AppendLine("    </div>");
+
+            sb.AppendLine("    <div class='pc-card-body'>");
+
+            if (string.IsNullOrWhiteSpace(suiviDetail))
+
+                sb.AppendLine("      <p class='pc-placeholder'><em>Aucun suivi antérieur identifié.</em></p>");
+
+            else
+
+                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(suiviDetail)}</div>");
+
+            sb.AppendLine("    </div>");
+
+            sb.AppendLine("  </div>");
+
+
+
+            // Section Bilans réalisés
+
+            sb.AppendLine("  <div class='pc-card pc-c-atcd' style='margin-top:12px'>");
+
+            sb.AppendLine("    <div class='pc-card-hdr'>");
+
+            sb.AppendLine("      <span class='pc-card-num'>+</span>");
+
+            sb.AppendLine("      <h2>BILANS RÉALISÉS</h2>");
+
+            sb.AppendLine("    </div>");
+
+            sb.AppendLine("    <div class='pc-card-body'>");
+
+            if (string.IsNullOrWhiteSpace(bilansDetail))
+
+                sb.AppendLine("      <p class='pc-placeholder'><em>Aucun bilan formel identifié.</em></p>");
+
+            else
+
+                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(bilansDetail)}</div>");
+
+            sb.AppendLine("    </div>");
+
+            sb.AppendLine("  </div>");
+
+
+
+            sb.Append(BuildPcFooter(
+
+                "Ces informations sont issues de l'anamnèse et des documents fournis.",
+
+                pageNumber, totalPages));
+
+            sb.AppendLine("</div>");
+
+            return sb.ToString();
+
         }
 
         // ── Pages Cartographie de l'enfant (A + B) — V0.1 scaffolding ───────
@@ -931,89 +1155,183 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
 
-            // ── Section 2 : Diagnostics retenus ─────────────────────────────
+                        // ── Section 2 : Diagnostics retenus ─────────────────────────────
+
             var diagItems = TryParseDiagS2Json(s2Text);
+
             sb.AppendLine("  <div class='sd-card'>");
+
             sb.AppendLine("    <div class='sd-card-hdr sd-green'>2. DIAGNOSTICS RETENUS</div>");
+
             sb.AppendLine("    <div class='sd-card-body'>");
+
             sb.AppendLine("      <p class='sd-sec-sub-lbl'>Hypothèses cliniques principales</p>");
+
             if (diagItems != null && diagItems.Count > 0)
+
             {
-                sb.AppendLine("      <div class='sd-diag-row'>");
+
+                var capDiag = diagItems.Take(3).ToList();
+
+                var wrapClass = capDiag.Count == 1 ? "sd-diag-row sd-diag-single" : "sd-diag-row";
+
+                sb.AppendLine($"      <div class='{wrapClass}'>");
+
                 int num = 1;
-                foreach (var item in diagItems)
+
+                foreach (var item in capDiag)
+
                 {
+
                     var (dotClass, certLabel) = MapCertitudeToDot(item.Certitude);
+
                     sb.AppendLine("        <div class='sd-diag-item'>");
+
                     sb.AppendLine($"          <div class='sd-diag-badge'>{num++}</div>");
+
                     sb.AppendLine($"          <div class='sd-diag-name'>{WebUtility.HtmlEncode(item.Label)}</div>");
+
                     sb.AppendLine("          <div class='sd-conf-lbl'>Confiance clinique</div>");
+
                     sb.AppendLine($"          <div class='sd-conf-dot-row'><span class='sd-dot {dotClass}'></span><span class='sd-conf-val'>{WebUtility.HtmlEncode(certLabel)}</span></div>");
+
                     sb.AppendLine("        </div>");
+
                 }
+
                 sb.AppendLine("      </div>");
+
             }
+
             else if (bilan != null && bilan.DiagnosticsRetenus.Count > 0)
+
             {
-                sb.AppendLine("      <div class='sd-diag-row'>");
+
+                var capDiag = bilan.DiagnosticsRetenus.Take(3).ToList();
+
+                var wrapClass = capDiag.Count == 1 ? "sd-diag-row sd-diag-single" : "sd-diag-row";
+
+                sb.AppendLine($"      <div class='{wrapClass}'>");
+
                 int num2 = 1;
-                foreach (var d in bilan.DiagnosticsRetenus)
+
+                foreach (var d in capDiag)
+
                 {
+
                     var (dotClass, certLabel) = bilan.Certitude switch
+
                     {
+
                         NiveauCertitude.HypotheseAConfirmer => ("sd-dot-orange", "Hypothèse"),
+
                         NiveauCertitude.Probable            => ("sd-dot-yellow", "Modérée"),
+
                         NiveauCertitude.Certain             => ("sd-dot-lgreen", "Élevée"),
+
                         _                                   => ("sd-dot-off",    "—")
+
                     };
+
                     sb.AppendLine("        <div class='sd-diag-item'>");
+
                     sb.AppendLine($"          <div class='sd-diag-badge'>{num2++}</div>");
+
                     sb.AppendLine($"          <div class='sd-diag-name'>{WebUtility.HtmlEncode(d.Value)}</div>");
+
                     sb.AppendLine("          <div class='sd-conf-lbl'>Confiance clinique</div>");
+
                     sb.AppendLine($"          <div class='sd-conf-dot-row'><span class='sd-dot {dotClass}'></span><span class='sd-conf-val'>{WebUtility.HtmlEncode(certLabel)}</span></div>");
+
                     sb.AppendLine("        </div>");
+
                 }
+
                 sb.AppendLine("      </div>");
+
             }
+
             else
+
                 sb.AppendLine("      <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Diagnostics retenus »)</em></p>");
+
             sb.AppendLine("    </div>");
+
             sb.AppendLine("  </div>");
+
+
 
             // ── Section 3 : Éléments cliniques en faveur ────────────────────
+
             sb.AppendLine("  <div class='sd-card'>");
+
             sb.AppendLine("    <div class='sd-card-hdr sd-gray'>3. ÉLÉMENTS CLINIQUES EN FAVEUR</div>");
+
             sb.AppendLine("    <div class='sd-card-body'>");
+
             sb.AppendLine("      <p class='sd-sec-sub-lbl'>Ce qui soutient les diagnostics retenus</p>");
+
             if (diagItems != null && diagItems.Count > 0)
+
             {
-                sb.AppendLine("      <div class='sd-elements-cols'>");
+
+                var capDiag = diagItems.Take(3).ToList();
+
+                var wrapClass = capDiag.Count == 1 ? "sd-elements-cols sd-elements-single" : "sd-elements-cols";
+
+                sb.AppendLine($"      <div class='{wrapClass}'>");
+
                 int num3 = 1;
-                foreach (var item in diagItems)
+
+                foreach (var item in capDiag)
+
                 {
+
                     sb.AppendLine("        <div class='sd-elements-col'>");
+
                     sb.AppendLine($"          <div class='sd-elements-col-title'><span class='sd-col-num'>{num3++}</span>{WebUtility.HtmlEncode(item.Label.ToUpperInvariant())}</div>");
+
                     sb.AppendLine("          <ul class='sd-list'>");
+
                     foreach (var e in item.Elements)
+
                         sb.AppendLine($"            <li>{WebUtility.HtmlEncode(e)}</li>");
+
                     sb.AppendLine("          </ul>");
+
                     sb.AppendLine("        </div>");
+
                 }
+
                 sb.AppendLine("      </div>");
+
             }
+
             else if (bilan != null && bilan.ElementsEnFaveur.Count > 0)
+
             {
+
                 sb.AppendLine("      <ul class='sd-list'>");
-                foreach (var e in bilan.ElementsEnFaveur)
+
+                foreach (var e in bilan.ElementsEnFaveur.Take(3))
+
                     sb.AppendLine($"        <li>{WebUtility.HtmlEncode(e.Value)}</li>");
+
                 sb.AppendLine("      </ul>");
+
             }
+
             else
+
                 sb.AppendLine("      <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Diagnostics retenus »)</em></p>");
+
             sb.AppendLine("    </div>");
+
             sb.AppendLine("  </div>");
 
-            // ── Légende certitude ────────────────────────────────────────────
+
+
+            // ── Légende certitude ──────────────────────────────────────────────────────────────────────────────────────
             sb.AppendLine("  " + BuildSdCertitudeLegend());
 
             sb.AppendLine("</div>");
@@ -2160,88 +2478,245 @@ namespace MedCompanion.Services.Restitutions
         }
 
         private string BuildEnvEduPage1(CartographieEnvironnement? carto, Dictionary<string, string> blocs, int pageNumber, int totalPages)
+
         {
+
             var sb = new StringBuilder();
+
             sb.AppendLine("<div class='page env-page'>");
+
             sb.Append(BuildPcHeader(
+
                 "CARTOGRAPHIE DE L'ENVIRONNEMENT (BRANCHE ÉDUCATIVE)",
-                "5.1 Facteurs éducatifs et contextuels (1/2) — Cette section explore les différentes dimensions de l'environnement de l'enfant (famille, école, écrans…) afin de comprendre leur influence sur son développement.",
-                "1/2", pageNumber, totalPages));
+
+                "5.1 Facteurs éducatifs et contextuels (1/3) — Cette section explore les différentes dimensions de l'environnement de l'enfant (famille, école, écrans…) afin de comprendre leur influence sur son développement.",
+
+                "1/3", pageNumber, totalPages));
+
+
 
             if (carto != null)
+
             {
+
                 sb.Append(BuildFeuilleCard(1, carto.Famille, blocs.GetValueOrDefault("env_edu_f1")));
+
                 sb.Append(BuildFeuilleCard(2, carto.EcolePairs, blocs.GetValueOrDefault("env_edu_f2")));
-                sb.Append(BuildFeuilleCard(3, carto.EcransMedias, blocs.GetValueOrDefault("env_edu_f3")));
-            }
-            else
-            {
-                sb.AppendLine("<p class='placeholder'><em>Aucune évaluation Cartographie de l'environnement disponible — complétez l'Étape 4 de l'évaluation.</em></p>");
+
             }
 
+            else
+
+            {
+
+                sb.AppendLine("<p class='placeholder'><em>Aucune évaluation Cartographie de l'environnement disponible — complétez l'Étape 4 de l'évaluation.</em></p>");
+
+            }
+
+
+
             sb.Append(BuildEnvEduLegend());
+
             sb.AppendLine("</div>");
+
             return sb.ToString();
+
         }
+
+
 
         private string BuildEnvEduPage2(CartographieEnvironnement? carto, Dictionary<string, string> blocs, int pageNumber, int totalPages)
+
         {
+
             var sb = new StringBuilder();
+
             sb.AppendLine("<div class='page env-page'>");
+
             sb.Append(BuildPcHeader(
+
                 "CARTOGRAPHIE DE L'ENVIRONNEMENT (BRANCHE ÉDUCATIVE)",
-                "5.1 Facteurs éducatifs et contextuels (2/2) — Cette section explore les différentes dimensions de l'environnement de l'enfant (famille, école, écrans…) afin de comprendre leur influence sur son développement.",
-                "2/2", pageNumber, totalPages));
+
+                "5.1 Facteurs éducatifs et contextuels (2/3) — Cette section explore les différentes dimensions de l'environnement de l'enfant (famille, école, écrans…) afin de comprendre leur influence sur son développement.",
+
+                "2/3", pageNumber, totalPages));
+
+
 
             if (carto != null)
-            {
-                sb.Append(BuildFeuilleCard(4, carto.ValeursSocietales, blocs.GetValueOrDefault("env_edu_f4")));
-                sb.Append(BuildFeuilleCard(5, carto.CadreEducatif, blocs.GetValueOrDefault("env_edu_f5")));
 
-                // Lecture globale
-                var globalTxt = blocs.GetValueOrDefault("env_edu_global");
-                var niveauGlobal = EnvironnementScoringService.CalculerGlobal(carto);
-                var colorGlobal  = CartographieEnvironnementContent.NiveauColor(niveauGlobal);
-                sb.AppendLine("<div class='env-global-box' style='border-left:4px solid " + colorGlobal + "'>");
-                sb.AppendLine("  <div class='env-global-title'>LECTURE GLOBALE DE LA BRANCHE ÉDUCATIVE</div>");
-                if (!string.IsNullOrWhiteSpace(globalTxt))
-                    sb.AppendLine($"  <div class='env-global-body'>{MarkdownToHtmlLite(globalTxt)}</div>");
-                else
-                    sb.AppendLine("  <p class='placeholder'><em>(Lecture globale à générer — bouton ✨ Suggérer)</em></p>");
-                sb.AppendLine("</div>");
+            {
+
+                sb.Append(BuildFeuilleCard(3, carto.EcransMedias, blocs.GetValueOrDefault("env_edu_f3")));
+
+                sb.Append(BuildFeuilleCard(4, carto.ValeursSocietales, blocs.GetValueOrDefault("env_edu_f4")));
+
             }
 
+            else
+
+            {
+
+                sb.AppendLine("<p class='placeholder'><em>Aucune évaluation Cartographie de l'environnement disponible — complétez l'Étape 4 de l'évaluation.</em></p>");
+
+            }
+
+
+
             sb.Append(BuildEnvEduLegend());
+
             sb.AppendLine("</div>");
+
             return sb.ToString();
+
         }
 
-        private static string BuildFeuilleCard(int num, FeuilleEnvironnement feuille, string? contenu)
+
+
+        private string BuildEnvEduPage3(CartographieEnvironnement? carto, Dictionary<string, string> blocs, int pageNumber, int totalPages)
+
         {
+
+            var sb = new StringBuilder();
+
+            sb.AppendLine("<div class='page env-page'>");
+
+            sb.Append(BuildPcHeader(
+
+                "CARTOGRAPHIE DE L'ENVIRONNEMENT (BRANCHE ÉDUCATIVE)",
+
+                "5.1 Facteurs éducatifs et contextuels (3/3) — Cette section explore les différentes dimensions de l'environnement de l'enfant (famille, école, écrans…) afin de comprendre leur influence sur son développement.",
+
+                "3/3", pageNumber, totalPages));
+
+
+
+            if (carto != null)
+
+            {
+
+                sb.Append(BuildFeuilleCard(5, carto.CadreEducatif, blocs.GetValueOrDefault("env_edu_f5")));
+
+
+
+                // Lecture globale
+
+                var globalTxt = blocs.GetValueOrDefault("env_edu_global");
+
+                var niveauGlobal = EnvironnementScoringService.CalculerGlobal(carto);
+
+                var colorGlobal  = CartographieEnvironnementContent.NiveauColor(niveauGlobal);
+
+                sb.AppendLine("<div class='env-global-box' style='border-left:4px solid " + colorGlobal + "'>");
+
+                sb.AppendLine("  <div class='env-global-title'>LECTURE GLOBALE DE LA BRANCHE ÉDUCATIVE</div>");
+
+                if (!string.IsNullOrWhiteSpace(globalTxt))
+
+                    sb.AppendLine($"  <div class='env-global-body'>{MarkdownToHtmlLite(globalTxt)}</div>");
+
+                else
+
+                    sb.AppendLine("  <p class='placeholder'><em>(Lecture globale à générer — bouton ✨ Suggérer)</em></p>");
+
+                sb.AppendLine("</div>");
+
+            }
+
+            else
+
+            {
+
+                sb.AppendLine("<p class='placeholder'><em>Aucune évaluation Cartographie de l'environnement disponible — complétez l'Étape 4 de l'évaluation.</em></p>");
+
+            }
+
+
+
+            sb.Append(BuildEnvEduLegend());
+
+            sb.AppendLine("</div>");
+
+            return sb.ToString();
+
+        }
+
+        private static string GetCleanEnvFeuilleLabel(string label)
+
+        {
+
+            if (string.IsNullOrEmpty(label)) return "";
+
+            var l = label.ToLowerInvariant();
+
+            if (l.Contains("famille")) return "FAMILLE";
+
+            if (l.Contains("école") || l.Contains("ecole")) return "ÉCOLE & PAIRS";
+
+            if (l.Contains("écran") || l.Contains("ecran")) return "ÉCRANS & MÉDIAS";
+
+            if (l.Contains("valeur")) return "VALEURS SOCIÉTALES";
+
+            if (l.Contains("cadre")) return "CADRE ÉDUCATIF";
+
+            return label.ToUpper(new System.Globalization.CultureInfo("fr-FR"));
+
+        }
+
+
+
+        private static string BuildFeuilleCard(int num, FeuilleEnvironnement feuille, string? contenu)
+
+        {
+
             var niveauFeuille = EnvironnementScoringService.CalculerFeuille(feuille);
+
             var couleur       = CartographieEnvironnementContent.NiveauColor(niveauFeuille);
+
             var niveauLabel   = CartographieEnvironnementContent.NiveauLabel(niveauFeuille);
+
             var svg           = BuildAxesSvg(feuille);
 
+
+
             var contenuHtml = string.IsNullOrWhiteSpace(contenu)
+
                 ? "<p class='placeholder'><em>(Observations à générer — bouton ✨ Suggérer)</em></p>"
+
                 : ParseEnvFeuilleHtml(contenu);
 
+
+
             return $@"
+
 <div class='env-feuille-card'>
+
   <div class='env-feuille-header' style='border-left:4px solid {couleur}'>
+
     <div class='env-feuille-num' style='background:{couleur}'>{num}</div>
+
     <div class='env-feuille-titres'>
-      <div class='env-feuille-label'>{WebUtility.HtmlEncode(feuille.Label).ToUpperInvariant()}</div>
+
+      <div class='env-feuille-label'>{WebUtility.HtmlEncode(GetCleanEnvFeuilleLabel(feuille.Label))}</div>
+
       <div class='env-feuille-sous'>{WebUtility.HtmlEncode(feuille.SousTitre)}</div>
+
     </div>
+
     <div class='env-feuille-badge' style='background:{couleur}'>{WebUtility.HtmlEncode(niveauLabel)}</div>
+
   </div>
+
   <div class='env-feuille-body'>
+
     <div class='env-feuille-svg'>{svg}</div>
+
     <div class='env-feuille-content'>{contenuHtml}</div>
+
   </div>
+
 </div>";
+
         }
 
         /// <summary>
@@ -2414,41 +2889,103 @@ namespace MedCompanion.Services.Restitutions
         /// (Étape 3 de la dernière évaluation), les autres restent en placeholder pour V0.2.
         /// </summary>
         private string BuildCartoEnfantPageA(CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("<div class='page ce-page'>");
-            sb.Append(BuildPcHeader(
-                "CARTOGRAPHIE DE L'ENFANT",
-                "4.1 Vue d'ensemble — Cette section évalue les sphères de développement,<br>afin de mieux comprendre son fonctionnement interne et ses besoins spécifiques.",
-                "1/2", pageNumber, totalPages));
 
-            for (int i = 0; i < 4; i++)
+        {
+
+            var sb = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page'>");
+
+            sb.Append(BuildPcHeader(
+
+                "CARTOGRAPHIE DE L'ENFANT",
+
+                "4.1 Vue d'ensemble — Cette section évalue les sphères de développement,<br>afin de mieux comprendre son fonctionnement interne et ses besoins spécifiques.",
+
+                "1/3", pageNumber, totalPages));
+
+
+
+            for (int i = 0; i < 3; i++)
+
                 sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, perSphere));
 
+
+
             sb.Append(BuildCeLegende());
+
             sb.AppendLine("</div>");
+
             return sb.ToString();
+
         }
 
-        /// <summary>
-        /// Rend la page B : sphères 5-8 (Psychomotricité, Imagination & Jeu, Pensée &
-        /// Apprentissages, Attention & FE).
-        /// </summary>
-        private string BuildCartoEnfantPageB(CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
-        {
-            var sb = new StringBuilder();
-            sb.AppendLine("<div class='page ce-page'>");
-            sb.Append(BuildPcHeader(
-                "CARTOGRAPHIE DE L'ENFANT",
-                "4.1 Vue d'ensemble — Cette section évalue les sphères de développement,<br>afin de mieux comprendre son fonctionnement interne et ses besoins spécifiques.",
-                "2/2", pageNumber, totalPages));
 
-            for (int i = 4; i < 8; i++)
+
+        private string BuildCartoEnfantPageB(CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
+
+        {
+
+            var sb = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page'>");
+
+            sb.Append(BuildPcHeader(
+
+                "CARTOGRAPHIE DE L'ENFANT",
+
+                "4.1 Vue d'ensemble — Cette section évalue les sphères de développement,<br>afin de mieux comprendre son fonctionnement interne et ses besoins spécifiques.",
+
+                "2/3", pageNumber, totalPages));
+
+
+
+            for (int i = 3; i < 5; i++)
+
                 sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, perSphere));
 
+
+
             sb.Append(BuildCeLegende());
+
             sb.AppendLine("</div>");
+
             return sb.ToString();
+
+        }
+
+
+
+        private string BuildCartoEnfantPageC(CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
+
+        {
+
+            var sb = new StringBuilder();
+
+            sb.AppendLine("<div class='page ce-page'>");
+
+            sb.Append(BuildPcHeader(
+
+                "CARTOGRAPHIE DE L'ENFANT",
+
+                "4.1 Vue d'ensemble — Cette section évalue les sphères de développement,<br>afin de mieux comprendre son fonctionnement interne et ses besoins spécifiques.",
+
+                "3/3", pageNumber, totalPages));
+
+
+
+            for (int i = 5; i < 8; i++)
+
+                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, perSphere));
+
+
+
+            sb.Append(BuildCeLegende());
+
+            sb.AppendLine("</div>");
+
+            return sb.ToString();
+
         }
 
         /// <summary>
@@ -3047,7 +3584,10 @@ namespace MedCompanion.Services.Restitutions
             var sb = new StringBuilder();
             sb.AppendLine("  <div class='pc-header'>");
             sb.AppendLine("    <div class='pc-header-left'>");
-            sb.AppendLine($"      <span class='pc-section-tag'>{WebUtility.HtmlEncode(subPageBadge)}</span>");
+            if (!string.IsNullOrWhiteSpace(subPageBadge))
+            {
+                sb.AppendLine($"      <span class='pc-section-tag'>{WebUtility.HtmlEncode(subPageBadge)}</span>");
+            }
 
             var encodedTitle = WebUtility.HtmlEncode(title)
                 .Replace("&lt;br&gt;", "<br>")
@@ -3333,7 +3873,7 @@ namespace MedCompanion.Services.Restitutions
 
         // ── Page 2 : Restitution 1-page parents ─────────────────────────────
 
-        private string BuildRestitution1PagePage(RestitutionBloc bloc, CoverFields f, string photoBase64, int pageNumber)
+        private string BuildRestitution1PagePage(RestitutionBloc bloc, CoverFields f, string photoBase64, int pageNumber, int totalPages)
         {
             var sections = ParseRestitution1PageSections(bloc.ContenuValide ?? "");
 
@@ -3352,6 +3892,8 @@ namespace MedCompanion.Services.Restitutions
                 photoHtml = "<div class='rp-photo-placeholder rp-photo-empty'><span>👤</span></div>";
 
             var sb = new StringBuilder();
+
+            // ================= PAGE 1 (P1) =================
             sb.AppendLine("<div class='page rp-page'>");
 
             // ── Bandeau supérieur (Cartouche) ────────────────────────────────
@@ -3400,6 +3942,37 @@ namespace MedCompanion.Services.Restitutions
             sb.Append(RenderRpSection("3", "LES DIFFICULTÉS ACTUELLEMENT OBSERVÉES", sections.Difficultes, "rp-s3"));
             sb.AppendLine("  </div>");
 
+            // ── Pied de page ─────────────────────────────────────────────────
+            sb.AppendLine("  <div class='rp-footer'>");
+            sb.AppendLine("    <div class='rp-footer-line'></div>");
+            sb.AppendLine("    <div class='rp-footer-content'>");
+            sb.AppendLine("      <span>MedCompanion · Document Confidentiel</span>");
+            sb.AppendLine($"      <span>Page {pageNumber}/{totalPages}</span>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
+            sb.AppendLine("</div>");
+
+            // ================= PAGE 2 (P2) =================
+            sb.AppendLine("<div class='page rp-page'>");
+
+            // ── Bandeau supérieur (Cartouche) P2 ────────────────────────────────
+            sb.AppendLine("  <div class='rp-header'>");
+            sb.AppendLine("    <div class='rp-logo'>");
+            if (!string.IsNullOrEmpty(_medcompanionHeartBase64))
+                sb.AppendLine($"      <img src='data:image/png;base64,{_medcompanionHeartBase64}' class='rp-logo-img' />");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='rp-header-title-block'>");
+            sb.AppendLine("      <h1 class='rp-main-title'>RESTITUTION AUX PARENTS</h1>");
+            sb.AppendLine("      <p class='rp-subtitle'>Comprendre pour mieux accompagner votre enfant</p>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("    <div class='rp-badge'>");
+            if (!string.IsNullOrEmpty(_iconPedopsychiatrieBase64))
+                sb.AppendLine($"      <img src='data:image/png;base64,{_iconPedopsychiatrieBase64}' class='rp-badge-icon' />");
+            sb.AppendLine("      <div class='rp-badge-text'><strong>PÉDOPSYCHIATRIE</strong><br/><span>Évaluation · Compréhension · Accompagnement</span></div>");
+            sb.AppendLine("    </div>");
+            sb.AppendLine("  </div>");
+
             // ── Section 4 pleine largeur ─────────────────────────────────────
             sb.Append(RenderRpSection("4", $"CE QUI PEUT AIDER {prenom}", sections.Aide, "rp-s4"));
 
@@ -3409,16 +3982,26 @@ namespace MedCompanion.Services.Restitutions
             sb.Append(RenderRpSection("6", "SON ENVIRONNEMENT : POINTS CLÉS", sections.Environnement, "rp-s6"));
             sb.AppendLine("  </div>");
 
-            // ── Pied de page ─────────────────────────────────────────────────
+            // ── Pied de page P2 (avec signature si disponible) ───────────────────────────────────────
             sb.AppendLine("  <div class='rp-footer'>");
+            if (!string.IsNullOrEmpty(_signatureBase64))
+            {
+                sb.AppendLine("    <div style='display: flex; justify-content: flex-end; margin-bottom: 8px;'>");
+                sb.AppendLine("      <div style='text-align: right; font-style: italic; color: #00A896; font-size: 12px; font-weight: bold; line-height: 1.25;'>");
+                sb.AppendLine($"        <img src='data:image/png;base64,{_signatureBase64}' style='display: block; margin: 0 0 -4px auto; max-height: 38px; width: auto;' alt='Signature'/>");
+                sb.AppendLine("        Dr Lassoued Nair<br>Pédopsychiatre");
+                sb.AppendLine("      </div>");
+                sb.AppendLine("    </div>");
+            }
             sb.AppendLine("    <div class='rp-footer-line'></div>");
             sb.AppendLine("    <div class='rp-footer-content'>");
             sb.AppendLine("      <span>MedCompanion · Document Confidentiel</span>");
-            sb.AppendLine($"      <span>Page {pageNumber}/9</span>");
+            sb.AppendLine($"      <span>Page {pageNumber + 1}/{totalPages}</span>");
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
 
             sb.AppendLine("</div>");
+
             return sb.ToString();
         }
 
@@ -3619,10 +4202,10 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   min-height: 297mm;
   max-height: 297mm;
   padding: 0 0 55px 0;
-  justify-content: space-between;
-  gap: 8px;
+  justify-content: flex-start;
+  gap: 20px;
   font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 11px;
+  font-size: 13px;
   color: #2C3E50;
   position: relative;
 }
@@ -3660,7 +4243,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   text-shadow: 0 1px 2px rgba(0,0,0,0.1);
 }
 .rp-subtitle {
-  font-size: 10px;
+  font-size: 11.5px;
   color: #E2E8F0;
   margin: 2px 0 0 0;
   font-style: italic;
@@ -3670,8 +4253,8 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .rp-badge { display: flex; align-items: center; gap: 8px; text-align: right; }
 .rp-badge-icon { width: 26px; height: 26px; }
 .rp-badge-text { text-align: right; line-height: 1.3; }
-.rp-badge-text strong { font-size: 10px; letter-spacing: 0.5px; display: block; font-weight: 700; }
-.rp-badge-text span { font-size: 8px; opacity: 0.85; }
+.rp-badge-text strong { font-size: 11px; letter-spacing: 0.5px; display: block; font-weight: 700; }
+.rp-badge-text span { font-size: 9.5px; opacity: 0.85; }
 
 /* Carte identité */
 .rp-identity {
@@ -3681,26 +4264,26 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   background: #F8FAFC;
   border: 1px solid #E2E8F0;
   margin: 0 30px;
-  padding: 8px 24px;
+  padding: 12px 28px;
   border-radius: 10px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.02);
-  height: 76px;
+  height: 96px;
 }
 .rp-photo-wrap {
   flex-shrink: 0;
-  width: 60px;
-  height: 60px;
+  width: 72px;
+  height: 72px;
 }
 .rp-photo-img {
-  width: 60px;
-  height: 60px;
+  width: 72px;
+  height: 72px;
   object-fit: cover;
   border: 2px solid #2DC5A2;
   border-radius: 8px;
 }
 .rp-photo-placeholder {
-  width: 60px;
-  height: 60px;
+  width: 72px;
+  height: 72px;
   background: #F1F5F9;
   display: flex;
   align-items: center;
@@ -3708,7 +4291,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   border: 2px solid #CBD5E1;
   border-radius: 8px;
 }
-.rp-photo-icon-img { width: 30px; height: 30px; opacity: 0.6; }
+.rp-photo-icon-img { width: 36px; height: 36px; opacity: 0.6; }
 .rp-photo-empty { font-size: 26px; }
 .rp-identity-details {
   display: flex;
@@ -3716,8 +4299,8 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   justify-content: center;
   flex-grow: 1;
 }
-.rp-patient-name { font-size: 14px; font-weight: 800; color: #1A3A6A; margin-bottom: 2px; }
-.rp-identity-row { font-size: 9.5px; color: #5D6D7E; margin-bottom: 1px; }
+.rp-patient-name { font-size: 16px; font-weight: 800; color: #1A3A6A; margin-bottom: 2px; }
+.rp-identity-row { font-size: 11px; color: #5D6D7E; margin-bottom: 1px; }
 
 /* Sections */
 .rp-section {
@@ -3730,10 +4313,10 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .rp-two-col { display: flex; gap: 12px; margin: 0 30px; }
 .rp-two-col .rp-section { flex: 1; margin: 0; }
 .rp-section-hdr { display: flex; align-items: center; gap: 8px; padding: 4px 12px; color: white; }
-.rp-section-hdr h2 { margin: 0; font-size: 9.5px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
-.rp-num { font-size: 13px; font-weight: 800; opacity: 0.85; line-height: 1; flex-shrink: 0; }
-.rp-section-body { padding: 8px 12px; font-size: 10px; line-height: 1.45; }
-.rp-section-body h1, .rp-section-body h2, .rp-section-body h3 { font-size: 10px; margin: 4px 0 2px 0; }
+.rp-section-hdr h2 { margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; }
+.rp-num { font-size: 15px; font-weight: 800; opacity: 0.85; line-height: 1; flex-shrink: 0; }
+.rp-section-body { padding: 8px 12px; font-size: 12px; line-height: 1.45; }
+.rp-section-body h1, .rp-section-body h2, .rp-section-body h3 { font-size: 12px; margin: 4px 0 2px 0; }
 .rp-section-body ul { margin: 2px 0; padding-left: 14px; }
 .rp-section-body li { margin-bottom: 2px; }
 .rp-section-body p { margin-bottom: 3px; }
@@ -3753,7 +4336,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .rp-footer-content {
   display: flex;
   justify-content: space-between;
-  font-size: 9px;
+  font-size: 10px;
   color: #94A3B8;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -3772,7 +4355,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .pc-page {
   padding: 28px 40px 60px 40px;
   font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 11px;
+  font-size: 13px;
   color: #1A1A1A;
   position: relative;
   min-height: 297mm;
@@ -3802,8 +4385,11 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   letter-spacing: 0.5px;
   margin-bottom: 4px;
 }
+.pc-section-tag:empty {
+  display: none !important;
+}
 .pc-subtitle {
-  font-size: 11px;
+  font-size: 12px;
   color: #555;
   margin: 2px 0 0 0;
   font-weight: 500;
@@ -3819,7 +4405,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .pc-brand strong { font-size: 13px; color: #1A3A6A; font-weight: 800; }
 .pc-brand span    { font-size: 7.5px; color: #00A896; letter-spacing: 0.6px; text-transform: uppercase; }
 .pc-page-num {
-  font-size: 9.5px;
+  font-size: 11px;
   color: #94A3B8;
   letter-spacing: 0.8px;
   margin-left: 16px;
@@ -3846,7 +4432,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   color: white;
 }
 .pc-card-hdr h2 {
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 800;
   letter-spacing: 0.8px;
   margin: 0;
@@ -3860,23 +4446,23 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
+  font-size: 13.5px;
   font-weight: 800;
 }
 .pc-card-body {
   padding: 10px 14px;
-  font-size: 10.5px;
+  font-size: 12px;
   line-height: 1.5;
   color: #1A1A1A;
 }
 .pc-card-body p { margin-bottom: 4px; }
 .pc-card-body ul { margin: 4px 0; padding-left: 18px; }
 .pc-card-body li { margin-bottom: 2px; }
-.pc-narrative p { font-size: 11px; line-height: 1.55; }
+.pc-narrative p { font-size: 12px; line-height: 1.55; }
 
 /* Cartouche Identification : grille méta-données */
 .pc-ident-narrative {
-  font-size: 11px;
+  font-size: 12.5px;
   line-height: 1.55;
   margin-bottom: 10px;
 }
@@ -3895,13 +4481,13 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .pc-meta-label {
   font-weight: 700;
   color: #555;
-  font-size: 9.5px;
+  font-size: 10.5px;
   text-transform: uppercase;
   letter-spacing: 0.3px;
   min-width: 140px;
 }
 .pc-meta-value {
-  font-size: 10.5px;
+  font-size: 12px;
   color: #1A1A1A;
 }
 
@@ -3921,10 +4507,10 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   border: 1px solid rgba(0,0,0,0.06);
   border-radius: 6px;
   padding: 6px 8px;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 .pc-mini-card h3 {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 800;
   color: #1A3A6A;
   margin: 0 0 4px 0;
@@ -3940,10 +4526,10 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   border: 1px solid rgba(0,0,0,0.06);
   border-radius: 6px;
   padding: 8px 10px;
-  font-size: 9.5px;
+  font-size: 11px;
 }
 .pc-subblock h3 {
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 800;
   color: #1A3A6A;
   margin: 0 0 5px 0;
@@ -3960,7 +4546,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   margin-top: 14px;
   border-top: 1px solid #E2E8F0;
   padding-top: 8px;
-  font-size: 9.5px;
+  font-size: 11px;
   color: #555;
 }
 .pc-footer-info {
@@ -3977,7 +4563,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   color: white;
   font-style: normal;
   font-weight: 800;
-  font-size: 9px;
+  font-size: 10px;
   line-height: 14px;
   text-align: center;
   margin-right: 6px;
@@ -4000,17 +4586,17 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 /* Parcours compact — 2 sous-sections SUIVI / BILANS dans la mini-carte */
 .pc-parcours-sub { margin-bottom: 6px; }
 .pc-parcours-sub h4 {
-  font-size: 9px; font-weight: 700; text-transform: uppercase;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .4px; color: #1A5276; margin: 0 0 3px 0;
   border-bottom: 1px solid #D6EAF8; padding-bottom: 2px;
 }
 .pc-parcours-detail-link {
-  margin-top: 6px; font-size: 9px; color: #1A5276;
+  margin-top: 6px; font-size: 10.5px; color: #1A5276;
   font-style: italic; opacity: .8;
 }
 
 /* Page C : contenu détaillé suivi / bilans */
-.pc-detail-content { font-size: 11px; line-height: 1.55; }
+.pc-detail-content { font-size: 12px; line-height: 1.55; }
 .pc-detail-content p { margin-bottom: 6px; }
 .pc-detail-content ul { margin: 4px 0; padding-left: 18px; }
 .pc-detail-content li { margin-bottom: 4px; }
@@ -4025,14 +4611,14 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   padding: 8px 12px;
 }
 .pc-points-banner h3 {
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .5px;
   color: #00A896;
   margin: 0 0 4px 0;
 }
-.pc-points-body { font-size: 11px; line-height: 1.5; }
+.pc-points-body { font-size: 12.5px; line-height: 1.5; }
 
 /* ── Pages 7+8 : Cartographie de l'enfant (voix très pro) ──── */
 /* Reprend le pattern Patient & Contexte (.pc-page) pour la cohérence visuelle,
@@ -4040,7 +4626,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .ce-page {
   padding: 28px 40px 30px 40px;
   font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 11px;
+  font-size: 13px;
   color: #1A1A1A;
   position: relative;
   min-height: 297mm;
@@ -4073,13 +4659,13 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 13px;
+  font-size: 13.5px;
   font-weight: 800;
   flex-shrink: 0;
 }
 .ce-card-title { line-height: 1.15; }
-.ce-card-title strong { display: block; font-size: 12px; }
-.ce-card-title em     { font-style: normal; opacity: 0.85; font-weight: 600; font-size: 9.5px; }
+.ce-card-title strong { display: block; font-size: 13.5px; }
+.ce-card-title em     { font-style: normal; opacity: 0.85; font-weight: 600; font-size: 11px; }
 
 .ce-card-body {
   display: flex;
@@ -4112,16 +4698,16 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 
 .ce-card-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .ce-obs-title, .ce-niveau-title {
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 700;
   color: #6E2F8A;
   letter-spacing: 0.4px;
 }
-.ce-obs-body  { font-size: 10px; line-height: 1.45; color: #1A1A1A; }
+.ce-obs-body  { font-size: 12px; line-height: 1.45; color: #1A1A1A; }
 .ce-obs-body ul { margin: 2px 0; padding-left: 16px; }
 .ce-obs-body li { margin-bottom: 1px; }
 .ce-niveau-title { margin-top: 4px; }
-.ce-niveau-body  { font-size: 10.5px; color: #1A1A1A; font-weight: 600; }
+.ce-niveau-body  { font-size: 12px; color: #1A1A1A; font-weight: 600; }
 .ce-placeholder  { color: #95A5A6; font-style: italic; }
 
 /* Pie SVG : retire le placeholder (chart visible), garde le cadre rond */
@@ -4131,7 +4717,7 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 /* Texte du niveau clinique — couleur de la section (pas la couleur du niveau).
    Style PDF modèle : phrase courte en gras, couleur du header de la cartouche. */
 .ce-niveau-text {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.2px;
 }
@@ -4245,12 +4831,12 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 }
 .env-feuille-titres { flex: 1; }
 .env-feuille-label  { font-size: 12px; font-weight: 700; color: #1A3A6A; letter-spacing: 0.5px; }
-.env-feuille-sous   { font-size: 10px; color: #7A8A9D; font-style: italic; }
+.env-feuille-sous   { font-size: 11px; color: #7A8A9D; font-style: italic; }
 .env-feuille-badge  {
   padding: 3px 10px;
   border-radius: 12px;
   color: white;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
 }
@@ -4265,12 +4851,12 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .env-feuille-content {
   flex: 1;
   padding: 10px 14px;
-  font-size: 10.5px;
+  font-size: 12px;
   color: #2C3E50;
   line-height: 1.5;
 }
 .env-section-title {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: #1A3A6A;
   margin: 6px 0 3px 0;
@@ -4280,10 +4866,10 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .env-bullet, .env-check {
   padding-left: 6px;
   margin-bottom: 2px;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 .env-check { color: #1A7840; }
-.env-para  { margin-bottom: 4px; font-size: 10px; }
+.env-para  { margin-bottom: 4px; font-size: 11.5px; }
 .env-global-box {
   border-radius: 8px;
   padding: 12px 16px;
@@ -4291,14 +4877,14 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   margin-top: 4px;
 }
 .env-global-title {
-  font-size: 11px;
+  font-size: 12.5px;
   font-weight: 700;
   color: #1A3A6A;
   letter-spacing: 0.5px;
   margin-bottom: 6px;
   text-transform: uppercase;
 }
-.env-global-body { font-size: 10.5px; color: #2C3E50; line-height: 1.6; }
+.env-global-body { font-size: 12px; color: #2C3E50; line-height: 1.6; }
 .env-legend {
   display: flex;
   align-items: center;
@@ -4337,8 +4923,8 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .sd-blue  { background: #EBF5FB; border-left-color: #2980B9; color: #1A5276; }
 .sd-green { background: #E9F7EF; border-left-color: #27AE60; color: #1D6A3A; }
 .sd-gray  { background: #F4F6F7; border-left-color: #7F8C8D; color: #2C3E50; }
-.sd-card-body { padding: 10px 14px; font-size: 10.5px; line-height: 1.55; color: #2C3E50; }
-.sd-sec-sub-lbl { font-size: 9px; color: #7F8C8D; font-style: italic; margin: 0 0 8px; }
+.sd-card-body { padding: 10px 14px; font-size: 12px; line-height: 1.55; color: #2C3E50; }
+.sd-sec-sub-lbl { font-size: 10.5px; color: #7F8C8D; font-style: italic; margin: 0 0 8px; }
 .sd-diag-row  { display: flex; gap: 10px; flex-wrap: wrap; }
 .sd-diag-item {
   flex: 1; min-width: 110px;
@@ -4353,21 +4939,21 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   font-size: 11px; font-weight: 700;
   margin-bottom: 6px;
 }
-.sd-diag-name { font-size: 10px; font-weight: 700; color: #1A3A6A; margin-bottom: 6px; min-height: 26px; }
-.sd-conf-lbl      { font-size: 8px; color: #888; margin-bottom: 4px; }
+.sd-diag-name { font-size: 12px; font-weight: 700; color: #1A3A6A; margin-bottom: 6px; min-height: 26px; }
+.sd-conf-lbl      { font-size: 10px; color: #888; margin-bottom: 4px; }
 .sd-conf-dot-row  { display: flex; align-items: center; gap: 6px; }
 .sd-elements-cols { display: flex; gap: 10px; }
 .sd-elements-col  { flex: 1; min-width: 0; }
 .sd-elements-col-title {
   display: flex; align-items: center; gap: 5px;
-  font-size: 9px; font-weight: 700; color: #1A3A6A; letter-spacing: 0.3px;
+  font-size: 10.5px; font-weight: 700; color: #1A3A6A; letter-spacing: 0.3px;
   border-bottom: 1px solid #E2E8F0; padding-bottom: 4px; margin-bottom: 5px;
 }
 .sd-col-num {
   display: inline-flex; align-items: center; justify-content: center;
   width: 16px; height: 16px; border-radius: 50%;
   background: #7F8C8D; color: white;
-  font-size: 9px; font-weight: 700; flex-shrink: 0;
+  font-size: 10.5px; font-weight: 700; flex-shrink: 0;
 }
 .sd-dot           { display: inline-block; width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0; }
 .sd-dot-off       { background: #D5D8DC; }
@@ -4376,8 +4962,8 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .sd-dot-yellow{ background: #F1C40F; }
 .sd-dot-lgreen{ background: #82E0AA; }
 .sd-dot-green { background: #1E8449; }
-.sd-conf-val  { font-size: 9px; color: #555; font-weight: 600; }
-.sd-list      { margin: 0; padding-left: 16px; font-size: 10px; line-height: 1.55; }
+.sd-conf-val  { font-size: 11px; color: #555; font-weight: 600; }
+.sd-list      { margin: 0; padding-left: 16px; font-size: 11.5px; line-height: 1.55; }
 .sd-ecarte-row  { display: flex; gap: 10px; flex-wrap: wrap; }
 .sd-ecarte-item {
   flex: 1; min-width: 110px;
@@ -4385,54 +4971,61 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   border-radius: 6px;
   padding: 8px 10px;
 }
-.sd-ecarte-name  { font-size: 10px; font-weight: 700; color: #1A3A6A; margin-bottom: 4px; }
-.sd-ecarte-motif { font-size: 9.5px; color: #4A4A4A; line-height: 1.45; margin: 0; }
+.sd-ecarte-name  { font-size: 12px; font-weight: 700; color: #1A3A6A; margin-bottom: 4px; }
+.sd-ecarte-motif { font-size: 11.5px; color: #4A4A4A; line-height: 1.45; margin: 0; }
 .sd-ecarte-cols { display: flex; gap: 10px; flex-wrap: nowrap; align-items: stretch; }
 .sd-ecarte-single .sd-ecarte-col { max-width: 55%; }
+.sd-diag-single .sd-diag-item { max-width: 55%; }
+.sd-elements-single .sd-elements-col { max-width: 55%; }
+
+.sd-diag-single .sd-diag-item { max-width: 55%; }
+
+.sd-elements-single .sd-elements-col { max-width: 55%; }
 .sd-ecarte-col {
   flex: 1 1 0; display: flex; flex-direction: column;
   border: 1px solid #D5D8DC; border-radius: 6px; padding: 8px 10px;
 }
 .sd-ecarte-col-hdr { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.sd-ecarte-col-name { font-size: 10px; font-weight: 700; color: #1A3A6A; }
+.sd-ecarte-col-name { font-size: 11.5px; font-weight: 700; color: #1A3A6A; }
 .sd-ecarte-conclusion {
-  font-size: 9px; color: #555; font-style: italic;
+  font-size: 11px; color: #555; font-style: italic;
   border-top: 1px solid #EEE; margin-top: 6px; padding-top: 5px;
   line-height: 1.45; margin-bottom: 0;
 }
 .sd-carto-cols { display: flex; gap: 12px; flex-wrap: nowrap; align-items: stretch; }
 .sd-carto-col { flex: 1 1 0; display: flex; flex-direction: column; border: 1px solid #D5D8DC; border-radius: 6px; overflow: hidden; }
-.sd-carto-col-hdr { padding: 6px 10px; font-size: 8.5px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; color: white; line-height: 1.3; }
+.sd-carto-col-hdr { padding: 6px 10px; font-size: 10px; font-weight: 700; letter-spacing: 0.3px; text-transform: uppercase; color: white; line-height: 1.3; }
 .sd-carto-blue  { background: #1A3A6A; }
 .sd-carto-green { background: #1E6B4A; }
 .sd-carto-subsec { padding: 7px 10px; border-bottom: 1px solid #F0F0F0; flex: 1; }
 .sd-carto-subsec:last-child { border-bottom: none; }
-.sd-carto-sub-title { font-size: 9.5px; font-weight: 700; color: #333; margin-bottom: 4px; }
+.sd-carto-sub-title { font-size: 11.5px; font-weight: 700; color: #333; margin-bottom: 4px; }
 .sd-check-list { list-style: none; padding-left: 0; margin: 0; }
-.sd-check-list li { font-size: 9.5px; line-height: 1.5; padding-left: 14px; position: relative; }
+.sd-check-list li { font-size: 11.5px; line-height: 1.5; padding-left: 14px; position: relative; }
 .sd-check-list li::before { content: '✓'; position: absolute; left: 0; color: #27AE60; font-weight: 700; }
 .sd-check-orange li::before { color: #E67E22; }
-.pt-page { }
-.pt-intro { background: #EBF5FB; border-left: 3px solid #1A3A6A; border-radius: 0 4px 4px 0; padding: 7px 12px; margin-bottom: 8px; font-size: 9.5px; color: #333; line-height: 1.5; }
-.pt-cards-wrapper { display: flex; flex-direction: column; gap: 6px; }
-.pt-card { display: flex; flex-direction: column; border: 1px solid #D5D8DC; border-radius: 5px; overflow: hidden; }
-.pt-card-hdr { display: flex; align-items: center; gap: 7px; padding: 4px 10px; background: #F0F4F8; font-size: 9.5px; font-weight: 700; color: #1A3A6A; letter-spacing: 0.3px; }
-.pt-num { display: inline-flex; align-items: center; justify-content: center; width: 17px; height: 17px; border-radius: 50%; background: #1A3A6A; color: white; font-size: 9px; font-weight: 700; flex-shrink: 0; }
-.pt-card-body { padding: 8px 10px; }
-.pt-two-cols { display: flex; gap: 12px; }
+.pt-page { font-size: 13px; }
+.pt-page .sd-list, .pt-page .sd-check-list li { font-size: 13px; line-height: 1.55; }
+.pt-intro { background: #EBF5FB; border-left: 3px solid #1A3A6A; border-radius: 0 4px 4px 0; padding: 8px 14px; margin-bottom: 12px; font-size: 13px; color: #333; line-height: 1.55; }
+.pt-cards-wrapper { display: flex; flex-direction: column; gap: 10px; }
+.pt-card { display: flex; flex-direction: column; border: 1px solid #D5D8DC; border-radius: 6px; overflow: hidden; }
+.pt-card-hdr { display: flex; align-items: center; gap: 8px; padding: 6px 12px; background: #F0F4F8; font-size: 13px; font-weight: 700; color: #1A3A6A; letter-spacing: 0.3px; }
+.pt-num { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; border-radius: 50%; background: #1A3A6A; color: white; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+.pt-card-body { padding: 10px 12px; }
+.pt-two-cols { display: flex; gap: 16px; }
 .pt-col { flex: 1 1 0; }
-.pt-col-hdr { font-size: 8.5px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; padding-bottom: 3px; border-bottom: 1px solid #E0E0E0; }
-.pt-col-text { font-size: 9.5px; color: #333; line-height: 1.45; margin: 3px 0; }
+.pt-col-hdr { font-size: 11.5px; font-weight: 700; color: #555; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #E0E0E0; }
+.pt-col-text { font-size: 13px; color: #333; line-height: 1.5; margin: 4px 0; }
 .pt-col-none { color: #E67E22; font-style: italic; }
-.pt-suivi-cards { display: flex; gap: 7px; flex-wrap: wrap; }
-.pt-suivi-card { flex: 1 1 0; min-width: 80px; background: #EBF5FB; border-radius: 5px; padding: 6px 8px; font-size: 9px; text-align: center; color: #1A3A6A; line-height: 1.4; }
-.pt-engagement { background: #EAF4EA; border-left: 3px solid #1E6B4A; border-radius: 0 4px 4px 0; padding: 7px 12px; font-size: 9.5px; color: #1E6B4A; font-style: italic; margin-top: 4px; }
+.pt-suivi-cards { display: flex; gap: 8px; flex-wrap: wrap; }
+.pt-suivi-card { flex: 1 1 0; min-width: 90px; background: #EBF5FB; border-radius: 5px; padding: 8px 10px; font-size: 12px; text-align: center; color: #1A3A6A; line-height: 1.45; }
+.pt-engagement { background: #EAF4EA; border-left: 3px solid #1E6B4A; border-radius: 0 4px 4px 0; padding: 8px 14px; font-size: 13px; color: #1E6B4A; font-style: italic; margin-top: 10px; }
 .sd-legend {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   border-top: 1px solid #E2E8F0; padding-top: 6px; margin-top: auto;
-  font-size: 8.5px; color: #555;
+  font-size: 10px; color: #555;
 }
-.sd-legend-title { font-weight: 700; font-size: 8px; letter-spacing: 0.4px; color: #1A3A6A; white-space: nowrap; }
+.sd-legend-title { font-weight: 700; font-size: 9.5px; letter-spacing: 0.4px; color: #1A3A6A; white-space: nowrap; }
 .sd-legend-item  { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
 .sd-legend-item .sd-dot { width: 10px; height: 10px; }
 ";
