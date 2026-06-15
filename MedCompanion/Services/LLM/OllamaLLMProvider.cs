@@ -18,6 +18,18 @@ namespace MedCompanion.Services.LLM
         private string _currentModel;
         private List<string> _availableModels = new();
 
+        // Les modèles à raisonnement (gpt-oss, format harmony) consomment une partie du budget
+        // de génération en « thinking » (canal analysis) AVANT de produire la réponse finale.
+        // Comme num_predict plafonne le TOTAL (raisonnement + réponse), un budget calibré pour la
+        // seule réponse (ex. 450) est épuisé par le raisonnement → réponse tronquée ou vide. On
+        // ajoute donc cette réserve à num_predict uniquement quand think=true, pour que la réponse
+        // finale ne soit jamais affamée. Sans effet sur les modèles non-raisonnants.
+        private const int ReasoningHeadroomTokens = 2000;
+
+        /// <summary>num_predict effectif : ajoute la réserve de raisonnement pour les modèles think=true.</summary>
+        private static int EffectiveNumPredict(int maxTokens, bool thinkMode)
+            => (thinkMode && maxTokens > 0) ? maxTokens + ReasoningHeadroomTokens : maxTokens;
+
         public OllamaLLMProvider(string baseUrl = "http://localhost:11434", string defaultModel = "llama3.2:latest")
         {
             _baseUrl = baseUrl.TrimEnd('/');
@@ -217,7 +229,7 @@ namespace MedCompanion.Services.LLM
                         think = thinkMode,
                         options = new
                         {
-                            num_predict = maxTokens,
+                            num_predict = EffectiveNumPredict(maxTokens, thinkMode),
                             num_ctx = 16384,
                             temperature = 0.3,
                             num_gpu = 99  // Forcer le maximum de layers sur GPU
@@ -286,15 +298,16 @@ namespace MedCompanion.Services.LLM
                 }
 
                 var activeModel = forceModel ?? _currentModel;
+                var thinkMode = IsGptOssModel(activeModel);  // gpt-oss : harmony nécessite think=true ; autres : false
                 var requestBody = new
                 {
                     model = activeModel,
                     messages = ollamaMessages.ToArray(),
                     stream = false,
-                    think = IsGptOssModel(activeModel),  // gpt-oss : harmony nécessite think=true ; autres : false
+                    think = thinkMode,
                     options = new
                     {
-                        num_predict = maxTokens,
+                        num_predict = EffectiveNumPredict(maxTokens, thinkMode),
                         num_ctx = 16384,
                         temperature = 0.3,
                         num_gpu = 99  // Forcer le maximum de layers sur GPU
@@ -414,15 +427,16 @@ namespace MedCompanion.Services.LLM
                     ollamaMessages.Add(new { role = role, content = content });
                 }
 
+                var thinkMode = IsGptOssModel(_currentModel);  // gpt-oss : harmony nécessite think=true
                 var requestBody = new
                 {
                     model = _currentModel,
                     messages = ollamaMessages.ToArray(),
                     stream = true, // Activer le streaming
-                    think = IsGptOssModel(_currentModel),  // gpt-oss : harmony nécessite think=true
+                    think = thinkMode,
                     options = new
                     {
-                        num_predict = maxTokens,
+                        num_predict = EffectiveNumPredict(maxTokens, thinkMode),
                         num_ctx = 16384,
                         temperature = 0.3,
                         num_gpu = 99  // Forcer le maximum de layers sur GPU
