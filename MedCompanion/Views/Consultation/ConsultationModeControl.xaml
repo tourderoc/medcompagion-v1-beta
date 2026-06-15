@@ -553,411 +553,257 @@
                                     </Border>
                                 </Grid>
 
-                                <!-- Carte "Reprendre suivi en cours" — visible quand brouillon de suivi non sauvegardé -->
-                                <Border DockPanel.Dock="Left" Margin="0,0,8,0"
-                                        Background="#FEF9E7" BorderBrush="#F39C12" BorderThickness="1.5"
-                                        CornerRadius="8" Padding="4">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                            <Style.Triggers>
-                                                <MultiDataTrigger>
-                                                    <MultiDataTrigger.Conditions>
-                                                        <Condition Binding="{Binding HasSuiviInProgress}" Value="True"/>
-                                                        <Condition Binding="{Binding IsEditingConsultation}" Value="False"/>
-                                                    </MultiDataTrigger.Conditions>
-                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                </MultiDataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
-                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                        <Button Command="{Binding ResumeSuiviCommand}"
-                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                ToolTip="Reprendre la consultation de suivi en cours">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border Background="{TemplateBinding Background}" Padding="8,6" CornerRadius="6">
-                                                        <StackPanel>
-                                                            <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="#B7770D">
-                                                                <Run Text="▶"/>
-                                                                <Run Text="Reprendre suivi"/>
-                                                            </TextBlock>
-                                                            <TextBlock Text="brouillon en cours" FontSize="10" Foreground="#7D6608"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                    <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Background" Value="#FCF3CF"/>
-                                                        </Trigger>
-                                                    </ControlTemplate.Triggers>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
-                                        <Button Command="{Binding DiscardSuiviCommand}"
-                                                Width="22" Height="22" Margin="2,0,2,0"
-                                                Background="Transparent" BorderThickness="0" Cursor="Hand"
-                                                ToolTip="Abandonner le brouillon">
-                                            <Button.Template>
-                                                <ControlTemplate TargetType="Button">
-                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                                                        <TextBlock Text="🗑" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                    </Border>
-                                                    <ControlTemplate.Triggers>
-                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                            <Setter Property="Background" Value="#FADBD8"/>
-                                                        </Trigger>
-                                                    </ControlTemplate.Triggers>
-                                                </ControlTemplate>
-                                            </Button.Template>
-                                        </Button>
-                                    </StackPanel>
-                                </Border>
-
-                                <!-- Placeholder si aucun élément dans la frise (ni consult ni évaluation) -->
-                                <TextBlock Text="Aucun élément — cliquez sur ＋ pour en créer un"
-                                           FontSize="12" Foreground="#AAAAAA" VerticalAlignment="Center"
-                                           Visibility="{Binding HasNoTimelineCards, Converter={StaticResource BoolToVis}}"/>
-
-                                <!-- Frise scrollable horizontale : consultations + évaluations côte à côte -->
+                                <!-- Frise à deux lignes : LIGNE FIXE (parcours) + LIGNE LIBRE (notes de suivi) -->
                                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                               VerticalScrollBarVisibility="Disabled">
-                                    <StackPanel Orientation="Horizontal">
-                                        <ItemsControl ItemsSource="{Binding ConsultationCards}">
+                                    <StackPanel Orientation="Vertical">
+
+                                        <!-- ══ LIGNE FIXE : jalons séquentiels du parcours patient ══ -->
+                                        <ItemsControl ItemsSource="{Binding FriseStages}">
                                             <ItemsControl.ItemsPanel>
                                                 <ItemsPanelTemplate>
-                                                    <StackPanel Orientation="Horizontal"/>
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center"/>
                                                 </ItemsPanelTemplate>
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <Grid x:Name="CardHost" Margin="0,0,8,0">
-                                                        <Button Cursor="Hand"
-                                                                Command="{Binding DataContext.OpenCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}">
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <!-- Jalon -->
+                                                        <Button Command="{Binding ActivateCommand}"
+                                                                IsEnabled="{Binding IsClickable}"
+                                                                Cursor="Hand">
                                                             <Button.Template>
                                                                 <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="Cd" Width="130" Height="64"
+                                                                    <Border x:Name="Bg" Width="128" Height="60"
                                                                             CornerRadius="8" Padding="8,6"
-                                                                            Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1">
+                                                                            BorderThickness="1.5"
+                                                                            Background="#F2F2F2" BorderBrush="#D5D5D5">
                                                                         <StackPanel>
                                                                             <StackPanel Orientation="Horizontal">
-                                                                                <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
-                                                                                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                                                                           Foreground="#2C3E50" TextTrimming="CharacterEllipsis"/>
+                                                                                <TextBlock x:Name="IconTb" Text="{Binding Icon}"
+                                                                                           FontSize="12" Margin="0,0,4,0"
+                                                                                           Foreground="#AAAAAA"/>
+                                                                                <TextBlock x:Name="LabelTb" Text="{Binding Label}"
+                                                                                           FontSize="10.5" FontWeight="SemiBold"
+                                                                                           Foreground="#AAAAAA"
+                                                                                           TextTrimming="CharacterEllipsis"
+                                                                                           MaxWidth="100"/>
                                                                             </StackPanel>
-                                                                            <TextBlock Text="{Binding DateText}" FontSize="11"
-                                                                                       Foreground="#7F8C8D" Margin="0,6,0,0"/>
-                                                                        </StackPanel>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="Cd" Property="Background" Value="#E8F1F8"/>
-                                                                            <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
-                                                                        </Trigger>
-                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                            <Setter TargetName="Cd" Property="Background" Value="#D6EAF8"/>
-                                                                            <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
-                                                                        </DataTrigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </Button.Template>
-                                                        </Button>
-
-                                                        <!-- Bouton supprimer (haut-droit, visible au survol de la card) -->
-                                                        <Button x:Name="DeleteBtn"
-                                                                Width="20" Height="20"
-                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                Margin="0,-4,-4,0"
-                                                                Cursor="Hand"
-                                                                Visibility="Collapsed"
-                                                                Background="Transparent" BorderThickness="0"
-                                                                ToolTip="Supprimer cette consultation/note"
-                                                                Command="{Binding DataContext.DeleteConsultationCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}">
-                                                            <Button.Template>
-                                                                <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="DBorder" Background="#FFFFFF"
-                                                                            BorderBrush="#D6E2EC" BorderThickness="1"
-                                                                            CornerRadius="10">
-                                                                        <TextBlock Text="🗑" FontSize="11"
-                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
-                                                                            <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
-                                                                        </Trigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </Button.Template>
-                                                        </Button>
-                                                    </Grid>
-                                                    <DataTemplate.Triggers>
-                                                        <Trigger SourceName="CardHost" Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
-                                                        </Trigger>
-                                                    </DataTemplate.Triggers>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-
-                                        <!-- Cards d'évaluation (icône 🧠) : active = bordure violette, clôturée = grise -->
-                                        <ItemsControl ItemsSource="{Binding EvaluationCards}">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <StackPanel Orientation="Horizontal"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <!-- Grid pour superposer le bouton supprimer (visible au survol) -->
-                                                    <Grid x:Name="CardHost" Margin="0,0,8,0">
-                                                        <Button Cursor="Hand"
-                                                                Command="{Binding DataContext.OpenEvaluationCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}">
-                                                            <Button.Template>
-                                                                <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="Ec" Width="140" Height="64"
-                                                                            CornerRadius="8" Padding="8,6"
-                                                                            Background="#F4F0FB" BorderBrush="#D8CCE8" BorderThickness="1">
-                                                                        <StackPanel>
-                                                                            <StackPanel Orientation="Horizontal">
-                                                                                <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
-                                                                                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                                                                           Foreground="#4A2C6A" TextTrimming="CharacterEllipsis"/>
-                                                                            </StackPanel>
-                                                                            <TextBlock Text="{Binding StateText}" FontSize="11"
-                                                                                       Foreground="#7F6E91" Margin="0,6,0,0"
+                                                                            <TextBlock x:Name="StatusTb" Text="{Binding StatusText}"
+                                                                                       FontSize="9.5" Margin="0,4,0,0"
+                                                                                       Foreground="#BBBBBB"
                                                                                        TextTrimming="CharacterEllipsis"/>
                                                                         </StackPanel>
                                                                     </Border>
                                                                     <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="Ec" Property="Background" Value="#EAE0F5"/>
-                                                                            <Setter TargetName="Ec" Property="BorderBrush" Value="#8E5BC2"/>
-                                                                        </Trigger>
-                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                            <Setter TargetName="Ec" Property="Background" Value="#E3D6F2"/>
-                                                                            <Setter TargetName="Ec" Property="BorderBrush" Value="#8E5BC2"/>
+                                                                        <!-- Available : bleu -->
+                                                                        <DataTrigger Binding="{Binding Status}" Value="Available">
+                                                                            <Setter TargetName="Bg"      Property="Background"   Value="#EBF5FB"/>
+                                                                            <Setter TargetName="Bg"      Property="BorderBrush"  Value="#3498DB"/>
+                                                                            <Setter TargetName="IconTb"  Property="Foreground"   Value="#2980B9"/>
+                                                                            <Setter TargetName="LabelTb" Property="Foreground"   Value="#1A5276"/>
+                                                                            <Setter TargetName="StatusTb" Property="Foreground"  Value="#5DADE2"/>
                                                                         </DataTrigger>
+                                                                        <!-- InProgress : orange -->
+                                                                        <DataTrigger Binding="{Binding Status}" Value="InProgress">
+                                                                            <Setter TargetName="Bg"      Property="Background"   Value="#FEF3E2"/>
+                                                                            <Setter TargetName="Bg"      Property="BorderBrush"  Value="#E67E22"/>
+                                                                            <Setter TargetName="Bg"      Property="BorderThickness" Value="2"/>
+                                                                            <Setter TargetName="IconTb"  Property="Foreground"   Value="#D35400"/>
+                                                                            <Setter TargetName="LabelTb" Property="Foreground"   Value="#784212"/>
+                                                                            <Setter TargetName="StatusTb" Property="Foreground"  Value="#E67E22"/>
+                                                                        </DataTrigger>
+                                                                        <!-- Completed : vert -->
+                                                                        <DataTrigger Binding="{Binding Status}" Value="Completed">
+                                                                            <Setter TargetName="Bg"      Property="Background"   Value="#E9F7EF"/>
+                                                                            <Setter TargetName="Bg"      Property="BorderBrush"  Value="#27AE60"/>
+                                                                            <Setter TargetName="IconTb"  Property="Foreground"   Value="#1E8449"/>
+                                                                            <Setter TargetName="LabelTb" Property="Foreground"   Value="#145A32"/>
+                                                                            <Setter TargetName="StatusTb" Property="Foreground"  Value="#27AE60"/>
+                                                                        </DataTrigger>
+                                                                        <!-- Hover (seulement si clickable) -->
+                                                                        <MultiDataTrigger>
+                                                                            <MultiDataTrigger.Conditions>
+                                                                                <Condition Binding="{Binding RelativeSource={RelativeSource TemplatedParent}, Path=IsMouseOver}" Value="True"/>
+                                                                                <Condition Binding="{Binding IsClickable}" Value="True"/>
+                                                                            </MultiDataTrigger.Conditions>
+                                                                            <Setter TargetName="Bg" Property="Opacity" Value="0.82"/>
+                                                                        </MultiDataTrigger>
                                                                     </ControlTemplate.Triggers>
                                                                 </ControlTemplate>
                                                             </Button.Template>
                                                         </Button>
-
-                                                        <!-- Bouton supprimer (haut-droit, visible au survol de la card) -->
-                                                        <Button x:Name="DeleteBtn"
-                                                                Width="20" Height="20"
-                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                Margin="0,-4,-4,0"
-                                                                Cursor="Hand"
-                                                                Visibility="Collapsed"
-                                                                Background="Transparent" BorderThickness="0"
-                                                                ToolTip="Supprimer cette évaluation"
-                                                                Command="{Binding DataContext.DeleteEvaluationCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}">
-                                                            <Button.Template>
-                                                                <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="DBorder" Background="#FFFFFF"
-                                                                            BorderBrush="#D8CCE8" BorderThickness="1"
-                                                                            CornerRadius="10">
-                                                                        <TextBlock Text="🗑" FontSize="11"
-                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
-                                                                            <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
-                                                                        </Trigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </Button.Template>
-                                                        </Button>
-                                                    </Grid>
-                                                    <DataTemplate.Triggers>
-                                                        <Trigger SourceName="CardHost" Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
-                                                        </Trigger>
-                                                    </DataTemplate.Triggers>
+                                                        <!-- Flèche connecteur (masquée pour le dernier jalon) -->
+                                                        <TextBlock Text="›" FontSize="20" Foreground="#CCCCCC"
+                                                                   VerticalAlignment="Center" Margin="2,0"
+                                                                   Visibility="{Binding ShowArrow, Converter={StaticResource BoolToVis}}"/>
+                                                    </StackPanel>
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
 
-                                        <!-- Cards de Projet Thérapeutique (icône 🎯) : vert sapin, badge ⚠ si réévaluation passée -->
-                                        <ItemsControl ItemsSource="{Binding ProjetTherapeutiqueCards}">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <StackPanel Orientation="Horizontal"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid x:Name="PrjHost" Margin="0,0,8,0">
-                                                        <Button Cursor="Hand"
-                                                                Command="{Binding DataContext.OpenProjetTherapeutiqueCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}">
-                                                            <Button.Template>
-                                                                <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="Pc" Width="140" Height="64"
-                                                                            CornerRadius="8" Padding="8,6"
-                                                                            Background="#E8F5E9" BorderBrush="#A5D6A7" BorderThickness="1">
-                                                                        <StackPanel>
-                                                                            <StackPanel Orientation="Horizontal">
-                                                                                <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
-                                                                                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                                                                           Foreground="#1E8449" TextTrimming="CharacterEllipsis"/>
+                                        <!-- Connecteur L entre 1ère consultation (ligne fixe) et ligne libre -->
+                                        <Grid Height="14" HorizontalAlignment="Left" Width="160"
+                                              Visibility="{Binding HasFriseStages, Converter={StaticResource BoolToVis}}">
+                                            <!-- branche verticale depuis sous le 1er jalon -->
+                                            <Border Width="1.5" Background="#C8D0DA"
+                                                    HorizontalAlignment="Left" Margin="64,0,0,0"
+                                                    VerticalAlignment="Stretch"/>
+                                            <!-- branche horizontale vers la ligne libre -->
+                                            <Border Height="1.5" Background="#C8D0DA"
+                                                    VerticalAlignment="Bottom" Margin="64,0,0,0"/>
+                                        </Grid>
+
+                                        <!-- ══ LIGNE LIBRE : notes de suivi ══ -->
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+
+                                            <!-- Carte "Reprendre suivi en cours" -->
+                                            <Border Margin="0,0,8,0"
+                                                    Background="#FEF9E7" BorderBrush="#F39C12" BorderThickness="1.5"
+                                                    CornerRadius="8" Padding="4">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <MultiDataTrigger>
+                                                                <MultiDataTrigger.Conditions>
+                                                                    <Condition Binding="{Binding HasSuiviInProgress}" Value="True"/>
+                                                                    <Condition Binding="{Binding IsEditingConsultation}" Value="False"/>
+                                                                </MultiDataTrigger.Conditions>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </MultiDataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                    <Button Command="{Binding ResumeSuiviCommand}"
+                                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                            ToolTip="Reprendre la consultation de suivi en cours">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" Padding="8,6" CornerRadius="6">
+                                                                    <StackPanel>
+                                                                        <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="#B7770D">
+                                                                            <Run Text="▶"/>
+                                                                            <Run Text="Reprendre suivi"/>
+                                                                        </TextBlock>
+                                                                        <TextBlock Text="brouillon en cours" FontSize="10" Foreground="#7D6608"/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#FCF3CF"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                    <Button Command="{Binding DiscardSuiviCommand}"
+                                                            Width="22" Height="22" Margin="2,0,2,0"
+                                                            Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                            ToolTip="Abandonner le brouillon">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4">
+                                                                    <TextBlock Text="🗑" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#FADBD8"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Notes de suivi (type Suivi uniquement, 1ère consultation exclue) -->
+                                            <ItemsControl ItemsSource="{Binding SuiviCards}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Grid x:Name="CardHost" Margin="0,0,8,0">
+                                                            <Button Cursor="Hand"
+                                                                    Command="{Binding DataContext.OpenCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                    CommandParameter="{Binding}">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border x:Name="Cd" Width="120" Height="52"
+                                                                                CornerRadius="8" Padding="8,6"
+                                                                                Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1">
+                                                                            <StackPanel>
+                                                                                <StackPanel Orientation="Horizontal">
+                                                                                    <TextBlock Text="{Binding Icon}" FontSize="12" Margin="0,0,4,0"/>
+                                                                                    <TextBlock Text="{Binding Type}" FontSize="10" FontWeight="SemiBold"
+                                                                                               Foreground="#2C3E50" TextTrimming="CharacterEllipsis"/>
+                                                                                </StackPanel>
+                                                                                <TextBlock Text="{Binding DateText}" FontSize="10"
+                                                                                           Foreground="#7F8C8D" Margin="0,4,0,0"/>
                                                                             </StackPanel>
-                                                                            <TextBlock Text="{Binding StateText}" FontSize="11"
-                                                                                       Foreground="#2D7037" Margin="0,6,0,0"
-                                                                                       TextTrimming="CharacterEllipsis"/>
-                                                                        </StackPanel>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="Pc" Property="Background" Value="#C8E6C9"/>
-                                                                            <Setter TargetName="Pc" Property="BorderBrush" Value="#27AE60"/>
-                                                                        </Trigger>
-                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                            <Setter TargetName="Pc" Property="Background" Value="#A5D6A7"/>
-                                                                            <Setter TargetName="Pc" Property="BorderBrush" Value="#27AE60"/>
-                                                                            <Setter TargetName="Pc" Property="BorderThickness" Value="2"/>
-                                                                        </DataTrigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </Button.Template>
-                                                        </Button>
-                                                        <!-- Badge ⚠ si réévaluation dépassée -->
-                                                        <Border Width="20" Height="20"
-                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                Margin="0,-3,-3,0"
-                                                                Background="#E74C3C" CornerRadius="10"
-                                                                BorderBrush="White" BorderThickness="2"
-                                                                ToolTip="Réévaluation prévue dépassée"
-                                                                Visibility="{Binding IsReevaluationPassee, Converter={StaticResource BoolToVis}}">
-                                                            <TextBlock Text="⚠" FontSize="10" Foreground="White"
-                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                        </Border>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter TargetName="Cd" Property="Background" Value="#E8F1F8"/>
+                                                                                <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
+                                                                            </Trigger>
+                                                                            <DataTrigger Binding="{Binding IsActive}" Value="True">
+                                                                                <Setter TargetName="Cd" Property="Background" Value="#D6EAF8"/>
+                                                                                <Setter TargetName="Cd" Property="BorderBrush" Value="#3498DB"/>
+                                                                            </DataTrigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+                                                            <!-- Bouton supprimer -->
+                                                            <Button x:Name="DeleteBtn"
+                                                                    Width="18" Height="18"
+                                                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                    Margin="0,-3,-3,0" Cursor="Hand"
+                                                                    Visibility="Collapsed"
+                                                                    Background="Transparent" BorderThickness="0"
+                                                                    ToolTip="Supprimer cette note"
+                                                                    Command="{Binding DataContext.DeleteConsultationCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                    CommandParameter="{Binding}">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border x:Name="DBorder" Background="#FFFFFF"
+                                                                                BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="9">
+                                                                            <TextBlock Text="🗑" FontSize="10"
+                                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
+                                                                                <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
+                                                                            </Trigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+                                                        </Grid>
+                                                        <DataTemplate.Triggers>
+                                                            <Trigger SourceName="CardHost" Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
+                                                            </Trigger>
+                                                        </DataTemplate.Triggers>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
 
-                                                        <!-- Bouton supprimer (haut-droit, visible au survol de la card) -->
-                                                        <Button x:Name="DeleteBtn"
-                                                                Width="20" Height="20"
-                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                Margin="0,-4,-4,0"
-                                                                Cursor="Hand"
-                                                                Visibility="Collapsed"
-                                                                Background="Transparent" BorderThickness="0"
-                                                                ToolTip="Supprimer ce projet"
-                                                                Command="{Binding DataContext.DeleteProjetTherapeutiqueCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}">
-                                                            <Button.Template>
-                                                                <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="DBorder" Background="#FFFFFF"
-                                                                            BorderBrush="#A5D6A7" BorderThickness="1"
-                                                                            CornerRadius="10">
-                                                                        <TextBlock Text="🗑" FontSize="11"
-                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
-                                                                            <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
-                                                                        </Trigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </Button.Template>
-                                                        </Button>
-                                                    </Grid>
-                                                    <DataTemplate.Triggers>
-                                                        <Trigger SourceName="PrjHost" Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
-                                                        </Trigger>
-                                                    </DataTemplate.Triggers>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
+                                            <!-- Placeholder ligne libre si aucune note de suivi -->
+                                            <TextBlock Text="＋ via le bouton ＋ pour ajouter une note de suivi"
+                                                       FontSize="11" Foreground="#C8D6E0"
+                                                       VerticalAlignment="Center" Margin="4,0"
+                                                       Visibility="{Binding HasNoSuiviCards, Converter={StaticResource BoolToVis}}"/>
 
-                                        <!-- Cards de Synthèse Globale (icône 🧭) : brouillon = bord doré vif, validée = bord doré pâle -->
-                                        <ItemsControl ItemsSource="{Binding SyntheseGlobaleCards}">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <StackPanel Orientation="Horizontal"/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Grid x:Name="SynthHost" Margin="0,0,8,0">
-                                                        <Button Cursor="Hand"
-                                                                Command="{Binding DataContext.OpenSyntheseGlobaleCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}">
-                                                            <Button.Template>
-                                                                <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="Sc" Width="140" Height="64"
-                                                                            CornerRadius="8" Padding="8,6"
-                                                                            Background="#FBF6E3" BorderBrush="#E5D08F" BorderThickness="1">
-                                                                        <StackPanel>
-                                                                            <StackPanel Orientation="Horizontal">
-                                                                                <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,4,0"/>
-                                                                                <TextBlock Text="{Binding Type}" FontSize="11" FontWeight="SemiBold"
-                                                                                           Foreground="#7D6608" TextTrimming="CharacterEllipsis"/>
-                                                                            </StackPanel>
-                                                                            <TextBlock Text="{Binding StateText}" FontSize="11"
-                                                                                       Foreground="#9C7A00" Margin="0,6,0,0"
-                                                                                       TextTrimming="CharacterEllipsis"/>
-                                                                        </StackPanel>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="Sc" Property="Background" Value="#F5ECC2"/>
-                                                                            <Setter TargetName="Sc" Property="BorderBrush" Value="#D4AF37"/>
-                                                                        </Trigger>
-                                                                        <DataTrigger Binding="{Binding IsActive}" Value="True">
-                                                                            <Setter TargetName="Sc" Property="Background" Value="#F0E3A8"/>
-                                                                            <Setter TargetName="Sc" Property="BorderBrush" Value="#D4AF37"/>
-                                                                            <Setter TargetName="Sc" Property="BorderThickness" Value="2"/>
-                                                                        </DataTrigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </Button.Template>
-                                                        </Button>
+                                        </StackPanel>
+                                        <!-- ══ Fin ligne libre ══ -->
 
-                                                        <!-- Bouton supprimer (haut-droit, visible au survol de la card) -->
-                                                        <Button x:Name="DeleteBtn"
-                                                                Width="20" Height="20"
-                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                Margin="0,-4,-4,0"
-                                                                Cursor="Hand"
-                                                                Visibility="Collapsed"
-                                                                Background="Transparent" BorderThickness="0"
-                                                                ToolTip="Supprimer cette synthèse"
-                                                                Command="{Binding DataContext.DeleteSyntheseGlobaleCardCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                CommandParameter="{Binding}">
-                                                            <Button.Template>
-                                                                <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="DBorder" Background="#FFFFFF"
-                                                                            BorderBrush="#E5D08F" BorderThickness="1"
-                                                                            CornerRadius="10">
-                                                                        <TextBlock Text="🗑" FontSize="11"
-                                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                    </Border>
-                                                                    <ControlTemplate.Triggers>
-                                                                        <Trigger Property="IsMouseOver" Value="True">
-                                                                            <Setter TargetName="DBorder" Property="Background" Value="#FADBD8"/>
-                                                                            <Setter TargetName="DBorder" Property="BorderBrush" Value="#E74C3C"/>
-                                                                        </Trigger>
-                                                                    </ControlTemplate.Triggers>
-                                                                </ControlTemplate>
-                                                            </Button.Template>
-                                                        </Button>
-                                                    </Grid>
-                                                    <DataTemplate.Triggers>
-                                                        <Trigger SourceName="SynthHost" Property="IsMouseOver" Value="True">
-                                                            <Setter TargetName="DeleteBtn" Property="Visibility" Value="Visible"/>
-                                                        </Trigger>
-                                                    </DataTemplate.Triggers>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
                                     </StackPanel>
                                 </ScrollViewer>
                             </DockPanel>
@@ -2650,7 +2496,7 @@
                                                 </ControlTemplate>
                                             </Button.Template>
                                         </Button>
-                                        <Button Content="✅ Confirmer → PDF" Command="{Binding ConfirmRestitutionCommand}"
+                                        <Button Content="💾 Sauvegarder PDF" Command="{Binding ConfirmRestitutionCommand}"
                                                 Padding="12,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
                                                 Background="#2980B9" Foreground="White" BorderThickness="0">
                                             <Button.Style>
@@ -5047,27 +4893,50 @@
                                                                             </ControlTemplate>
                                                                         </Button.Template>
                                                                     </Button>
-                                                                    <!-- Bouton PDF (ouvre le fichier original) — superposé en haut à droite -->
-                                                                    <Button Command="{Binding DataContext.OpenPdfFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
-                                                                            CommandParameter="{Binding}"
-                                                                            ToolTip="Ouvrir le fichier original"
-                                                                            HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                            Margin="0,8,10,0" Padding="6,3" Cursor="Hand"
-                                                                            Background="#E74C3C" Foreground="White" FontSize="10" FontWeight="Bold"
-                                                                            BorderThickness="0">
-                                                                        <Button.Template>
-                                                                            <ControlTemplate TargetType="Button">
-                                                                                <Border x:Name="PdfBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                                                    <TextBlock Text="📕 PDF" Foreground="White" FontSize="10" FontWeight="Bold"/>
-                                                                                </Border>
-                                                                                <ControlTemplate.Triggers>
-                                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                                        <Setter TargetName="PdfBd" Property="Background" Value="#C0392B"/>
-                                                                                    </Trigger>
-                                                                                </ControlTemplate.Triggers>
-                                                                            </ControlTemplate>
-                                                                        </Button.Template>
-                                                                    </Button>
+                                                                    <!-- Boutons superposés en haut à droite : PDF + Supprimer -->
+                                                                    <StackPanel HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                                Orientation="Horizontal" Margin="0,8,10,0">
+                                                                        <!-- Ouvrir PDF -->
+                                                                        <Button Command="{Binding DataContext.OpenPdfFileCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                ToolTip="Ouvrir le fichier"
+                                                                                Padding="6,3" Cursor="Hand"
+                                                                                Background="#E74C3C" Foreground="White" FontSize="10" FontWeight="Bold"
+                                                                                BorderThickness="0" Margin="0,0,6,0">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border x:Name="PdfBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                        <TextBlock Text="📕 PDF" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                                            <Setter TargetName="PdfBd" Property="Background" Value="#C0392B"/>
+                                                                                        </Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                        </Button>
+                                                                        <!-- Supprimer document -->
+                                                                        <Button Command="{Binding DataContext.DeletePatientDocumentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                ToolTip="Supprimer ce document"
+                                                                                Padding="6,3" Cursor="Hand"
+                                                                                Background="#95A5A6" Foreground="White" FontSize="10" FontWeight="Bold"
+                                                                                BorderThickness="0">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border x:Name="DelBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                        <TextBlock Text="🗑" Foreground="White" FontSize="10"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                                            <Setter TargetName="DelBd" Property="Background" Value="#7F8C8D"/>
+                                                                                        </Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                        </Button>
+                                                                    </StackPanel>
                                                                 </Grid>
                                                             </DataTemplate>
                                                         </ItemsControl.ItemTemplate>

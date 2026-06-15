@@ -40,6 +40,12 @@ namespace MedCompanion.ViewModels
         private void RaiseNoteSavedToPatient()
             => NoteSavedToPatient?.Invoke(this, EventArgs.Empty);
 
+        /// <summary>
+        /// Émis après qu'un PDF de restitution 1er entretien a été sauvegardé.
+        /// MainWindow s'abonne pour l'enregistrer dans le panel DOCUMENTS (dossier bleu).
+        /// </summary>
+        public event EventHandler<string>? RestitutionPdfSavedToPatient;
+
 
         #region INotifyPropertyChanged
 
@@ -306,6 +312,7 @@ namespace MedCompanion.ViewModels
 
         /// <summary>Âge confirmé du patient (null si pas encore confirmé)</summary>
         private int? _confirmedAge;
+        private int? _ageFromInterrogatoire;   // âge dit pendant l'interrogatoire (extrait du bloc "age")
         public int? ConfirmedAge
         {
             get => _confirmedAge;
@@ -704,6 +711,7 @@ namespace MedCompanion.ViewModels
 
             OnPropertyChanged(nameof(HasNoTimelineCards));
             OnPropertyChanged(nameof(HasProjetTherapeutiqueBlocks));
+            RefreshFriseStages();
         }
 
         private SyntheseGlobaleViewModel? _syntheseGlobaleVM;
@@ -1091,9 +1099,18 @@ namespace MedCompanion.ViewModels
                     if (ageBlock != null && ageBlock.CoveredThemes.Contains("age"))
                     {
                         _isAgeConfirmed = true;
+
+                        // Extraire l'âge numérique mentionné ("10 ans", "âgé de 7 ans", etc.)
+                        var ageText = ageBlock.FreeText ?? "";
+                        var m = System.Text.RegularExpressions.Regex.Match(
+                            ageText, @"\b(\d+)\s*ans?\b",
+                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                        if (m.Success && int.TryParse(m.Groups[1].Value, out var ag))
+                            _ageFromInterrogatoire = ag;
+
                         OnPropertyChanged(nameof(HasConfirmedAge));
                         if (_confirmedAge.HasValue) ApplyAutoHideRules(_confirmedAge.Value);
-                        System.Diagnostics.Debug.WriteLine("[Blocks] Âge confirmé via l'interrogatoire.");
+                        System.Diagnostics.Debug.WriteLine($"[Blocks] Âge confirmé via interrogatoire ({_ageFromInterrogatoire} ans mentionnés, {_confirmedAge} ans DDN).");
                     }
                 }
 
@@ -2189,14 +2206,29 @@ clinical_observations_json: |
                 return;
 
             var age = _confirmedAge ?? CurrentPatient?.Age;
-            if (age.HasValue && age.Value >= 3 && age.Value <= 11)
+            var needsFullContext = age.HasValue && age.Value >= 3 && age.Value <= 11;
+
+            // Discordance âge : DDN absente OU âge interrogatoire ≠ âge calculé DDN
+            var hasDob = !string.IsNullOrEmpty(CurrentPatient?.Dob);
+            var ageDiscrepancy = _ageFromInterrogatoire.HasValue
+                                 && _ageFromInterrogatoire.Value != (_confirmedAge ?? -999);
+            var needsAgeCheck = !hasDob || ageDiscrepancy;
+
+            if (!needsAgeCheck && !needsFullContext)
+                return;
+
+            try
             {
-                try
+                var oldStatus = ExtractionStatus;
+                ExtractionStatus = "Vérification de la complétude du contexte patient...";
+
+                MedCompanion.Services.Restitutions.PatientContextDetails prefilled;
+
+                // Extraction LLM complète uniquement pour les 3-11 ans
+                if (needsFullContext && _llmService != null)
                 {
-                    var oldStatus = ExtractionStatus;
-                    ExtractionStatus = "Vérification de la complétude du contexte patient...";
                     var auditor = new MedCompanion.Services.Restitutions.PatientContextAuditService();
-                    var prefilled = await auditor.ExtractContextAsync(_llmService, NoteContent);
+                    prefilled = await auditor.ExtractContextAsync(_llmService, NoteContent);
 
                     // Fusionner avec les données existantes de patient.json s'il y en a
                     if (_patientIndex != null && CurrentPatient != null)
@@ -2210,29 +2242,76 @@ clinical_observations_json: |
                                 prefilled.Classe = adminMeta.Classe;
                         }
                     }
+                }
+                else
+                {
+                    prefilled = new MedCompanion.Services.Restitutions.PatientContextDetails();
+                }
 
-                    // Ouvrir la boîte de dialogue WPF modale sur le thread UI principal
-                    var dialogResult = false;
-                    MedCompanion.Views.Consultation.ContextCompletionWindow? completionDialog = null;
+                // Renseigner la section vérification d'âge
+                prefilled.ShowFullContext    = needsFullContext;
+                prefilled.AgeCalcule        = _confirmedAge;
+                prefilled.AgeInterrogatoire = _ageFromInterrogatoire;
+                prefilled.DateNaissanceActuelle = CurrentPatient?.Dob;
+                prefilled.HasAgeDiscrepancy = ageDiscrepancy;
+                prefilled.NeedsDobEntry     = !hasDob;
 
-                    await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                // Ouvrir la boîte de dialogue WPF modale sur le thread UI principal
+                var dialogResult = false;
+                MedCompanion.Views.Consultation.ContextCompletionWindow? completionDialog = null;
+
+                await System.Windows.Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    var activeWindow = System.Windows.Application.Current.MainWindow;
+                    completionDialog = new MedCompanion.Views.Consultation.ContextCompletionWindow(prefilled)
                     {
-                        var activeWindow = System.Windows.Application.Current.MainWindow;
-                        completionDialog = new MedCompanion.Views.Consultation.ContextCompletionWindow(prefilled)
+                        Owner = activeWindow
+                    };
+                    dialogResult = completionDialog.ShowDialog() == true;
+                });
+
+                // Indiquer qu'on a fait la vérification (sauvegardé ou ignoré)
+                _contextCompletionChecked = true;
+
+                // Si validé et enregistré, appliquer les modifications
+                if (dialogResult && completionDialog != null && completionDialog.IsSaved)
+                {
+                    var result = completionDialog.CompletedDetails;
+
+                    // 0. Mettre à jour la DDN si corrigée
+                    if (!string.IsNullOrWhiteSpace(result.DateNaissanceCorrigee) && CurrentPatient != null)
+                    {
+                        // Normaliser en YYYY-MM-DD
+                        string? dobNorm = null;
+                        if (DateTime.TryParse(result.DateNaissanceCorrigee,
+                                System.Globalization.CultureInfo.CurrentCulture,
+                                System.Globalization.DateTimeStyles.None, out var parsedDob))
+                            dobNorm = parsedDob.ToString("yyyy-MM-dd");
+
+                        if (dobNorm != null)
                         {
-                            Owner = activeWindow
-                        };
-                        dialogResult = completionDialog.ShowDialog() == true;
-                    });
+                            // Mettre à jour dans patient.json
+                            if (_patientIndex != null)
+                            {
+                                var adminMeta = _patientIndex.GetMetadata(CurrentPatient.Id);
+                                if (adminMeta != null)
+                                {
+                                    adminMeta.Dob = dobNorm;
+                                    _patientIndex.Upsert(adminMeta);
+                                }
+                            }
+                            // Mettre à jour en mémoire
+                            CurrentPatient.Dob = dobNorm;
+                            var newAge = DateTime.Now.Year - parsedDob.Year;
+                            if (DateTime.Now.DayOfYear < parsedDob.DayOfYear) newAge--;
+                            ConfirmedAge = newAge;  // passe par le setter → OnAgeConfirmed → ApplyAutoHideRules
+                            OnPropertyChanged(nameof(PatientAge));
+                        }
+                    }
 
-                    // Indiquer qu'on a fait la vérification (sauvegardé ou ignoré)
-                    _contextCompletionChecked = true;
-
-                    // Si validé et enregistré, appliquer les modifications
-                    if (dialogResult && completionDialog != null && completionDialog.IsSaved)
+                    // Sections 1-3 : uniquement pour 3-11 ans (données extraites par LLM)
+                    if (needsFullContext)
                     {
-                        var result = completionDialog.CompletedDetails;
-
                         // 1. Enregistrer école et classe dans patient.json
                         if (_patientIndex != null && CurrentPatient != null)
                         {
@@ -2246,7 +2325,6 @@ clinical_observations_json: |
                         }
 
                         // 2. Injecter les compléments dans les blocs d'interrogatoire correspondants
-                        // Famille
                         var familleBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "famille");
                         if (familleBlock != null)
                         {
@@ -2272,7 +2350,6 @@ clinical_observations_json: |
                             }
                         }
 
-                        // Antécédents
                         var atcdBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "antecedents");
                         if (atcdBlock != null)
                         {
@@ -2301,12 +2378,12 @@ clinical_observations_json: |
                         NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocksList, ConsultationDate);
                         UpdateBlockCollections();
                     }
-                    ExtractionStatus = oldStatus;
                 }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[PatientContextAssistant] Erreur assistant complétude : {ex.Message}");
-                }
+                ExtractionStatus = oldStatus;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[PatientContextAssistant] Erreur assistant complétude : {ex.Message}");
             }
         }
 
@@ -3321,33 +3398,23 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                 var stamp    = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 var htmlPath = Path.Combine(restitutionsDir, $"restitution_PremierEntretien_v1_{stamp}.html");
                 var pdfPath  = Path.Combine(restitutionsDir, $"restitution_PremierEntretien_v1_{stamp}.pdf");
+                var mdPath   = Path.Combine(restitutionsDir, $"restitution_PremierEntretien_v1_{stamp}.md");
                 File.WriteAllText(htmlPath, html, System.Text.Encoding.UTF8);
-
-                // Sauvegarder également un manifest Markdown minimal pour la Phase P1
-                var mdPath = Path.Combine(restitutionsDir, $"restitution_PremierEntretien_v1_{stamp}.md");
-                var mdContent = $@"---
-type: PremierEntretien
-version: 1
-statut: Validee
-patient: ""{_currentPatient.NomComplet}""
-date_creation: ""{DateTime.Now:O}""
-date_validation: ""{DateTime.Now:O}""
----
-";
-                File.WriteAllText(mdPath, mdContent, System.Text.Encoding.UTF8);
 
                 _restitution.GeneratedHtmlPath = htmlPath;
                 OnPropertyChanged(nameof(Restitution));
 
-                var edgeSvc = new MedCompanion.Services.EdgeHeadlessPdfService();
+                var edgeSvc  = new MedCompanion.Services.EdgeHeadlessPdfService();
+                var savedPdf = string.Empty;
                 if (edgeSvc.IsAvailable)
                 {
                     var pdfOk = await edgeSvc.ConvertAsync(htmlPath, pdfPath);
                     if (pdfOk)
                     {
+                        savedPdf = pdfPath;
                         _restitution.GeneratedPdfPath = pdfPath;
                         OnPropertyChanged(nameof(Restitution));
-                        RestitutionStatusMessage = "✅ PDF prêt — cliquez Ouvrir pour imprimer";
+                        RestitutionStatusMessage = "✅ PDF sauvegardé dans le dossier patient";
                     }
                     else
                     {
@@ -3358,6 +3425,28 @@ date_validation: ""{DateTime.Now:O}""
                 {
                     RestitutionStatusMessage = "⚠️ Microsoft Edge introuvable — HTML disponible";
                 }
+
+                // Manifest Markdown — écrit après le PDF pour inclure le chemin réel
+                var now = DateTime.Now;
+                var mdContent = $@"---
+type: PremierEntretien
+version: 1
+statut: Validee
+patient: ""{_currentPatient.NomComplet}""
+date_creation: ""{now:O}""
+date_validation: ""{now:O}""
+pdf_path: ""{savedPdf.Replace("\\", "\\\\")}""
+---
+";
+                File.WriteAllText(mdPath, mdContent, System.Text.Encoding.UTF8);
+
+                // Rafraîchir le panel DOCS (dossier bleu) avec le nouveau PDF
+                if (!string.IsNullOrEmpty(savedPdf))
+                    LoadPatientDocumentsFromDisk();
+
+                // Notifier MainWindow (enregistrement optionnel dans l'index Documents du panel IA)
+                if (_currentPatient != null && !string.IsNullOrEmpty(savedPdf))
+                    RestitutionPdfSavedToPatient?.Invoke(this, savedPdf);
 
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
@@ -3532,8 +3621,11 @@ RETOURNE UNIQUEMENT ce texte structuré (copie exactement les balises ===) :
             get => _suivi;
             set
             {
+                value ??= new ConsultationSuivi();
                 if (_suivi != null) _suivi.PropertyChanged -= OnSuiviInnerPropertyChanged;
-                if (SetProperty(ref _suivi, value))
+#pragma warning disable CS8601
+                if (SetProperty(ref _suivi, value!))
+#pragma warning restore CS8601
                 {
                     if (_suivi != null) _suivi.PropertyChanged += OnSuiviInnerPropertyChanged;
                     OnPropertyChanged(nameof(HasSuiviInProgress));
@@ -3866,7 +3958,7 @@ source: ""MedCompanion""
 
             RestitutionsHub = new RestitutionsHubViewModel(new RestitutionService(new PathService()));
             RestitutionsHub.RequestCreateNew += () => {
-                if (SwitchToRestitutionCommand.CanExecute(null))
+                if (SwitchToRestitutionCommand?.CanExecute(null) == true)
                     SwitchToRestitutionCommand.Execute(null);
             };
 
@@ -4191,8 +4283,9 @@ source: ""MedCompanion""
             StartEditSynthesisCommand  = new RelayCommand(_ => StartEditSynthesis(),  _ => !IsSynthesisEditing);
             CancelEditSynthesisCommand = new RelayCommand(_ => CancelEditSynthesis(), _ => IsSynthesisEditing);
             SaveEditSynthesisCommand   = new RelayCommand(_ => SaveEditSynthesis(),   _ => IsSynthesisEditing);
-            OpenDocumentDetailCommand  = new RelayCommand(OpenDocumentDetail);
-            OpenPdfFileCommand         = new RelayCommand(OpenPdfFile);
+            OpenDocumentDetailCommand        = new RelayCommand(OpenDocumentDetail);
+            OpenPdfFileCommand               = new RelayCommand(OpenPdfFile);
+            DeletePatientDocumentCommand     = new RelayCommand(DeletePatientDocument);
 
             // Drawer "Patients récents" (bord gauche)
             ToggleRecentDrawerCommand  = new RelayCommand(_ => ToggleRecentDrawer());
@@ -4227,6 +4320,9 @@ source: ""MedCompanion""
 
         // Frise chronologique (hub de consultations)
         public ObservableCollection<ConsultationCardViewModel> ConsultationCards { get; } = new();
+
+        // Ligne fixe : étapes séquentielles du parcours patient (3-11 ans)
+        public ObservableCollection<FriseStageViewModel> FriseStages { get; } = new();
 
         // Frise chronologique (cards d'évaluation — active + clôturées, en parallèle des consultations)
         public ObservableCollection<EvaluationCardViewModel> EvaluationCards { get; } = new();
@@ -4335,6 +4431,151 @@ source: ""MedCompanion""
                 ConsultationCards.Add(c);
 
             OnPropertyChanged(nameof(HasNoConsultationCards));
+            OnPropertyChanged(nameof(SuiviCards));
+            OnPropertyChanged(nameof(HasNoSuiviCards));
+            RefreshFriseStages();
+        }
+
+        /// <summary>
+        /// Reconstruit la ligne fixe du parcours patient (3-11 ans) à partir de l'état actuel
+        /// des collections (consultations, évaluations, synthèses, projets, documents).
+        /// Appelé après chaque LoadXxx() pour maintenir la frise à jour.
+        /// </summary>
+        private void RefreshFriseStages()
+        {
+            FriseStages.Clear();
+
+            // ── Étape 1 : 1ère consultation ────────────────────────────────────────────
+            var premiereCard = ConsultationCards.FirstOrDefault(c => c.Type == "1ère consultation");
+            bool premiereCompleted = premiereCard != null;
+
+            FriseStages.Add(new FriseStageViewModel
+            {
+                Key    = "premiere",
+                Label  = "1ère consultation",
+                Icon   = "🩺",
+                Status = premiereCompleted ? FriseStageStatus.Completed : FriseStageStatus.Available,
+                Date   = premiereCard?.Date,
+                ActivateCommand = NewConsultationCommand
+            });
+
+            // Pour l'instant seul le parcours 3-11 ans est défini
+            bool age3to11 = _confirmedAge.HasValue && _confirmedAge >= 3 && _confirmedAge <= 11;
+            if (!premiereCompleted || !age3to11)
+            {
+                FriseStages[0].ShowArrow = false;
+                OnPropertyChanged(nameof(FriseStages));
+                return;
+            }
+
+            // ── Étape 2 : Évaluation ────────────────────────────────────────────────────
+            bool evalCompleted  = EvaluationCards.Any(c => c.IsClosed);
+            bool evalInProgress = EvaluationCards.Any(c => c.IsActive);
+            var  evalDate       = evalCompleted
+                ? EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault()?.DateCloture
+                : EvaluationCards.FirstOrDefault(c => c.IsActive)?.Date;
+
+            FriseStages.Add(new FriseStageViewModel
+            {
+                Key    = "evaluation",
+                Label  = "Évaluation",
+                Icon   = "📋",
+                Status = evalCompleted  ? FriseStageStatus.Completed :
+                         evalInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
+                Date   = evalDate,
+                ActivateCommand = new Commands.RelayCommand(_ => NewConsultationCommand.Execute("evaluation"))
+            });
+
+            // ── Étape 3 : Synthèse ──────────────────────────────────────────────────────
+            bool synthCompleted  = SyntheseGlobaleCards.Any(c => c.IsValidee);
+            bool synthInProgress = SyntheseGlobaleCards.Any(c => c.IsActive);
+            var  synthDate       = synthCompleted
+                ? SyntheseGlobaleCards.Where(c => c.IsValidee).OrderByDescending(c => c.Date).FirstOrDefault()?.Date
+                : SyntheseGlobaleCards.FirstOrDefault(c => c.IsActive)?.Date;
+
+            FriseStages.Add(new FriseStageViewModel
+            {
+                Key    = "synthese",
+                Label  = "Synthèse",
+                Icon   = "🧭",
+                Status = !evalCompleted   ? FriseStageStatus.Locked :
+                         synthCompleted  ? FriseStageStatus.Completed :
+                         synthInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
+                Date   = synthDate,
+                ActivateCommand = new Commands.RelayCommand(_ => NewConsultationCommand.Execute("synthese_globale"),
+                                                            _ => evalCompleted)
+            });
+
+            // ── Étape 4 : Projet thérapeutique ──────────────────────────────────────────
+            bool projetCompleted  = ProjetTherapeutiqueCards.Any(c => c.IsValidee);
+            bool projetInProgress = ProjetTherapeutiqueCards.Any(c => c.IsActive);
+            var  projetDate       = projetCompleted
+                ? ProjetTherapeutiqueCards.Where(c => c.IsValidee).OrderByDescending(c => c.DateValidation).FirstOrDefault()?.DateValidation
+                : ProjetTherapeutiqueCards.FirstOrDefault(c => c.IsActive)?.Date;
+
+            FriseStages.Add(new FriseStageViewModel
+            {
+                Key    = "projet",
+                Label  = "Projet thérapeutique",
+                Icon   = "🎯",
+                Status = !synthCompleted   ? FriseStageStatus.Locked :
+                         projetCompleted  ? FriseStageStatus.Completed :
+                         projetInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
+                Date   = projetDate,
+                ActivateCommand = new Commands.RelayCommand(_ => NewConsultationCommand.Execute("projet_therapeutique"),
+                                                            _ => synthCompleted)
+            });
+
+            // ── Étape 5 : Restitution ────────────────────────────────────────────────────
+            bool restitutionCompleted = false;
+            if (CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
+            {
+                try
+                {
+                    foreach (var yearDir in System.IO.Directory.GetDirectories(CurrentPatient.DirectoryPath))
+                    {
+                        var rDir = System.IO.Path.Combine(yearDir, "restitutions");
+                        if (System.IO.Directory.Exists(rDir) && System.IO.Directory.GetFiles(rDir, "*.pdf").Length > 0)
+                        { restitutionCompleted = true; break; }
+                    }
+                }
+                catch { }
+            }
+
+            FriseStages.Add(new FriseStageViewModel
+            {
+                Key    = "restitution",
+                Label  = "Restitution",
+                Icon   = "📝",
+                Status = !projetCompleted     ? FriseStageStatus.Locked :
+                         restitutionCompleted ? FriseStageStatus.Completed : FriseStageStatus.Available,
+                ActivateCommand = new Commands.RelayCommand(_ => SelectDossierTabCommand.Execute("Documents"),
+                                                            _ => projetCompleted)
+            });
+
+            // ── Étape 6 : Bilan semestriel ───────────────────────────────────────────────
+            FriseStages.Add(new FriseStageViewModel
+            {
+                Key    = "bilan_s",
+                Label  = "Bilan semestriel",
+                Icon   = "📅",
+                Status = restitutionCompleted ? FriseStageStatus.Available : FriseStageStatus.Locked,
+                ActivateCommand = new Commands.RelayCommand(_ => { }, _ => false)
+            });
+
+            // ── Étape 7 : Bilan annuel ────────────────────────────────────────────────────
+            FriseStages.Add(new FriseStageViewModel
+            {
+                Key       = "bilan_a",
+                Label     = "Bilan annuel",
+                Icon      = "🗓",
+                Status    = FriseStageStatus.Locked,
+                ShowArrow = false,
+                ActivateCommand = new Commands.RelayCommand(_ => { }, _ => false)
+            });
+
+            OnPropertyChanged(nameof(FriseStages));
+            OnPropertyChanged(nameof(HasFriseStages));
         }
 
         /// <summary>
@@ -4405,6 +4646,7 @@ source: ""MedCompanion""
             OnPropertyChanged(nameof(HasDiagnosticSyntheseBlocks));
             OnPropertyChanged(nameof(HasCartographieBilans));
             OnPropertyChanged(nameof(HasCartographieEnvironnementBilans));
+            RefreshFriseStages();
         }
 
         /// <summary>
@@ -4437,6 +4679,7 @@ source: ""MedCompanion""
 
             OnPropertyChanged(nameof(HasSyntheseGlobaleBlocks));
             OnPropertyChanged(nameof(HasNoTimelineCards));
+            RefreshFriseStages();
         }
 
         private static bool HasAnyEnvironnementScore(MedCompanion.Models.Evaluations.CartographieEnvironnement carto)
@@ -4458,6 +4701,13 @@ source: ""MedCompanion""
 
         public bool HasNoConsultationCards => ConsultationCards.Count == 0;
         public bool HasNoTimelineCards     => ConsultationCards.Count == 0 && EvaluationCards.Count == 0 && SyntheseGlobaleCards.Count == 0 && ProjetTherapeutiqueCards.Count == 0;
+
+        // Ligne libre : notes de suivi uniquement (exclut la 1ère consultation)
+        public IEnumerable<ConsultationCardViewModel> SuiviCards =>
+            ConsultationCards.Where(c => c.Type != "1ère consultation");
+        public bool HasNoSuiviCards  => !SuiviCards.Any();
+        // Vrai dès qu'il y a au moins 1 jalon dans la ligne fixe (pour afficher le connecteur)
+        public bool HasFriseStages   => FriseStages.Count > 0;
 
         #endregion
 
@@ -4560,6 +4810,7 @@ source: ""MedCompanion""
         /// </summary>
         public void LoadPatient(PatientIndexEntry patient)
         {
+            if (patient is null) return;
             // Stash le brouillon de Suivi du patient PRÉCÉDENT avant le swap
             StashCurrentSuiviDraftFor(_currentPatient?.NomComplet);
 
@@ -4597,6 +4848,7 @@ source: ""MedCompanion""
 
             // V0b : réinitialiser l'état adaptatif
             _confirmedAge = null;
+            _ageFromInterrogatoire = null;
             OnPropertyChanged(nameof(ConfirmedAge));
             OnPropertyChanged(nameof(HasConfirmedAge));
             _motifDetector.Reset();
@@ -4610,8 +4862,10 @@ source: ""MedCompanion""
             // Pré-calculer l'âge si DOB disponible (servira de valeur par défaut),
             // mais on EXIGE confirmation via l'interrogatoire — parfois la DOB enregistrée
             // est fausse ou pas du tout mentionnée. Bloc "age" dédié à cette confirmation.
+#pragma warning disable CS8602
             if (!string.IsNullOrEmpty(patient.Dob) &&
                 DateTime.TryParse(patient.Dob, out var dob))
+#pragma warning restore CS8602
             {
                 var age = DateTime.Now.Year - dob.Year;
                 if (DateTime.Now.DayOfYear < dob.DayOfYear) age--;
@@ -4776,8 +5030,9 @@ source: ""MedCompanion""
         public ICommand CancelEditSynthesisCommand { get; }
         public ICommand SaveEditSynthesisCommand   { get; }
 
-        public ICommand OpenDocumentDetailCommand  { get; private set; } = null!;
-        public ICommand OpenPdfFileCommand         { get; private set; } = null!;
+        public ICommand OpenDocumentDetailCommand       { get; private set; } = null!;
+        public ICommand OpenPdfFileCommand              { get; private set; } = null!;
+        public ICommand DeletePatientDocumentCommand    { get; private set; } = null!;
 
         private void OpenDocumentDetail(object? param)
         {
@@ -4875,6 +5130,46 @@ source: ""MedCompanion""
                 System.Windows.MessageBox.Show(
                     "Impossible d'ouvrir le fichier :\n" + ex.Message,
                     "Document",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Error);
+            }
+        }
+
+        private void DeletePatientDocument(object? param)
+        {
+            if (param is not PatientDocumentItem item) return;
+
+            var result = System.Windows.MessageBox.Show(
+                $"Supprimer ce document ?\n\n{item.FileName}",
+                "Confirmer la suppression",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+
+            if (result != System.Windows.MessageBoxResult.Yes) return;
+
+            try
+            {
+                // Pour les restitutions : supprimer le PDF + MD + HTML associés (même base de nom)
+                var basePath = Path.Combine(
+                    Path.GetDirectoryName(item.FilePath) ?? "",
+                    Path.GetFileNameWithoutExtension(item.FilePath));
+                foreach (var ext in new[] { ".pdf", ".md", ".html" })
+                {
+                    var linked = basePath + ext;
+                    if (File.Exists(linked))
+                        try { File.Delete(linked); } catch { /* meilleur effort */ }
+                }
+                // Fichier principal s'il n'est pas couvert ci-dessus
+                if (File.Exists(item.FilePath))
+                    try { File.Delete(item.FilePath); } catch { }
+
+                LoadPatientDocumentsFromDisk();
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show(
+                    "Erreur lors de la suppression :\n" + ex.Message,
+                    "Erreur",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
             }
@@ -5008,17 +5303,16 @@ source: ""MedCompanion""
                     }
                 }
 
-                // V0: Add Restitutions to PatientDocumentsList
-                var restitutionsDir = Path.Combine(_currentPatient.DirectoryPath, "restitutions", year.ToString());
+                // Restitutions du patient (1er entretien, dossier initial…)
+                var restitutionsDir = Path.Combine(_currentPatient.DirectoryPath, year.ToString(), "restitutions");
                 if (Directory.Exists(restitutionsDir))
                 {
-                    var restFiles = Directory.GetFiles(restitutionsDir, "*.md", SearchOption.AllDirectories)
+                    var restFiles = Directory.GetFiles(restitutionsDir, "*.md", SearchOption.TopDirectoryOnly)
                         .OrderByDescending(f => File.GetCreationTime(f))
                         .ToList();
                     foreach (var docPath in restFiles)
                     {
                         var pdfPath = Path.ChangeExtension(docPath, ".pdf");
-                        // Use PDF if it exists, else MD
                         var finalPath = File.Exists(pdfPath) ? pdfPath : docPath;
                         var item = BuildDocumentItem(finalPath, "Restitutions", synthesesDir);
                         PatientDocumentsList.Add(item);
@@ -5030,6 +5324,7 @@ source: ""MedCompanion""
 
             OnPropertyChanged(nameof(HasPatientDocuments));
             OnPropertyChanged(nameof(HasNoPatientDocuments));
+            RefreshFriseStages();   // met à jour l'état "Restitution" sur la ligne fixe
         }
 
         private void LoadPatientSynthesisFromDisk()
@@ -5140,7 +5435,9 @@ source: ""MedCompanion""
 
     public class QualityIssueViewModel : INotifyPropertyChanged
     {
+#pragma warning disable CS0067
         public event PropertyChangedEventHandler? PropertyChanged;
+#pragma warning restore CS0067
 
         private readonly ConsultationModeViewModel _parent;
         public QualityIssue Issue { get; }

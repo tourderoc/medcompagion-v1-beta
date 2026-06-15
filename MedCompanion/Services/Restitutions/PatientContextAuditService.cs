@@ -9,6 +9,7 @@ namespace MedCompanion.Services.Restitutions
 {
     public class PatientContextDetails
     {
+        // ── Contexte clinique 3-11 ans ──────────────────────────────────────────
         public string? Ecole { get; set; }
         public string? Classe { get; set; }
         public string? MereNom { get; set; }
@@ -21,6 +22,22 @@ namespace MedCompanion.Services.Restitutions
         public string? MarcheAge { get; set; }
         public string? LangageAcq { get; set; }
         public string? PropreteAcq { get; set; }
+
+        // ── Vérification d'âge (tous âges) ─────────────────────────────────────
+        /// <summary>Âge calculé depuis la DDN stockée dans patient.json (null si DDN absente).</summary>
+        public int? AgeCalcule { get; set; }
+        /// <summary>Âge mentionné pendant l'interrogatoire (extrait du bloc "age").</summary>
+        public int? AgeInterrogatoire { get; set; }
+        /// <summary>DDN actuellement enregistrée (format YYYY-MM-DD), pour affichage et édition.</summary>
+        public string? DateNaissanceActuelle { get; set; }
+        /// <summary>DDN corrigée saisie par le médecin dans le panel (format YYYY-MM-DD ou dd/MM/yyyy).</summary>
+        public string? DateNaissanceCorrigee { get; set; }
+        /// <summary>True si AgeCalcule ≠ AgeInterrogatoire.</summary>
+        public bool HasAgeDiscrepancy { get; set; }
+        /// <summary>True si aucune DDN dans le dossier.</summary>
+        public bool NeedsDobEntry { get; set; }
+        /// <summary>True si la section contexte complet (école, famille…) doit être affichée (3-11 ans).</summary>
+        public bool ShowFullContext { get; set; }
     }
 
     public class PatientContextAuditService

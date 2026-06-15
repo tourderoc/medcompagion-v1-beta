@@ -27,6 +27,12 @@ namespace MedCompanion.Views.Consultation
         /// </summary>
         public event EventHandler? NoteSavedToPatient;
 
+        /// <summary>
+        /// Émis après qu'un PDF de restitution 1er entretien est sauvegardé.
+        /// Payload : chemin complet du PDF. MainWindow l'enregistre dans le panel DOCUMENTS.
+        /// </summary>
+        public event EventHandler<string>? RestitutionPdfSavedToPatient;
+
         public ConsultationModeControl()
         {
             InitializeComponent();
@@ -41,10 +47,15 @@ namespace MedCompanion.Views.Consultation
             if (vm == null) return;
             vm.NoteSavedToPatient -= OnViewModelNoteSaved;
             vm.NoteSavedToPatient += OnViewModelNoteSaved;
+            vm.RestitutionPdfSavedToPatient -= OnRestitutionPdfSaved;
+            vm.RestitutionPdfSavedToPatient += OnRestitutionPdfSaved;
         }
 
         private void OnViewModelNoteSaved(object? sender, EventArgs e)
             => NoteSavedToPatient?.Invoke(this, EventArgs.Empty);
+
+        private void OnRestitutionPdfSaved(object? sender, string pdfPath)
+            => RestitutionPdfSavedToPatient?.Invoke(this, pdfPath);
 
         public void Initialize(ILLMService llmService, StorageService storageService,
                                WhisperStreamingService? whisperService = null,

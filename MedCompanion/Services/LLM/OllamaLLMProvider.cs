@@ -26,6 +26,11 @@ namespace MedCompanion.Services.LLM
         // finale ne soit jamais affamée. Sans effet sur les modèles non-raisonnants.
         private const int ReasoningHeadroomTokens = 2000;
 
+        // Gemma 4 12B (et les modèles modernes) supportent 128K tokens.
+        // 16384 était trop court pour les transcriptions longues (>145 min ≈ 30 000+ tokens).
+        // 65536 couvre ~300 min de transcription et reste raisonnable en VRAM (~4-6 GB de KV cache).
+        private const int DefaultNumCtx = 65536;
+
         /// <summary>num_predict effectif : ajoute la réserve de raisonnement pour les modèles think=true.</summary>
         private static int EffectiveNumPredict(int maxTokens, bool thinkMode)
             => (thinkMode && maxTokens > 0) ? maxTokens + ReasoningHeadroomTokens : maxTokens;
@@ -36,9 +41,8 @@ namespace MedCompanion.Services.LLM
             _currentModel = defaultModel;
             _httpClient = new HttpClient
             {
-                // Timeout de 3 minutes pour supporter les modèles 8B/12B
-                // Au-delà, le modèle est probablement trop lent pour l'usage interactif
-                Timeout = TimeSpan.FromMinutes(3)
+                // Timeout de 6 minutes : contexte 64K sur Gemma 4 12B peut prendre plus de 3 min
+                Timeout = TimeSpan.FromMinutes(6)
             };
         }
 
@@ -212,7 +216,7 @@ namespace MedCompanion.Services.LLM
                         think = thinkMode,
                         options = new
                         {
-                            num_ctx = 16384,
+                            num_ctx = DefaultNumCtx,
                             temperature = 0.3,
                             num_gpu = 99  // Forcer le maximum de layers sur GPU
                         }
@@ -230,7 +234,7 @@ namespace MedCompanion.Services.LLM
                         options = new
                         {
                             num_predict = EffectiveNumPredict(maxTokens, thinkMode),
-                            num_ctx = 16384,
+                            num_ctx = DefaultNumCtx,
                             temperature = 0.3,
                             num_gpu = 99  // Forcer le maximum de layers sur GPU
                         }
@@ -308,7 +312,7 @@ namespace MedCompanion.Services.LLM
                     options = new
                     {
                         num_predict = EffectiveNumPredict(maxTokens, thinkMode),
-                        num_ctx = 16384,
+                        num_ctx = DefaultNumCtx,
                         temperature = 0.3,
                         num_gpu = 99  // Forcer le maximum de layers sur GPU
                     }
@@ -437,7 +441,7 @@ namespace MedCompanion.Services.LLM
                     options = new
                     {
                         num_predict = EffectiveNumPredict(maxTokens, thinkMode),
-                        num_ctx = 16384,
+                        num_ctx = DefaultNumCtx,
                         temperature = 0.3,
                         num_gpu = 99  // Forcer le maximum de layers sur GPU
                     }

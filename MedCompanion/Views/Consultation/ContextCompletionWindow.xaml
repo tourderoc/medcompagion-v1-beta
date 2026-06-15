@@ -1,8 +1,8 @@
 <Window x:Class="MedCompanion.Views.Consultation.ContextCompletionWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Assistant Complétude Contexte Patient (3-11 ans)"
-        Width="680" Height="680"
+        Title="Assistant Complétude — Contexte Patient"
+        Width="680" Height="700"
         WindowStartupLocation="CenterOwner"
         Background="#F4F6F9"
         ResizeMode="NoResize"
@@ -21,9 +21,9 @@
                 <DropShadowEffect ShadowDepth="1" BlurRadius="4" Opacity="0.05"/>
             </Border.Effect>
             <StackPanel>
-                <TextBlock Text="✨ Assistant de Complétude — Contexte Patient" 
+                <TextBlock Text="✨ Assistant de Complétude — Contexte Patient"
                            FontSize="18" FontWeight="Bold" Foreground="#2C3E50"/>
-                <TextBlock Text="Pour fiabiliser la restitution clinique finale, veuillez vérifier et compléter les informations manquantes détectées dans le dossier :" 
+                <TextBlock Text="Pour fiabiliser la restitution clinique finale, veuillez vérifier et compléter les informations manquantes détectées dans le dossier :"
                            FontSize="12" Foreground="#7F8C8D" Margin="0,5,0,0" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
@@ -31,105 +31,143 @@
         <!-- Zones de saisie -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Margin="0,0,0,15">
             <StackPanel>
-                
-                <!-- Groupe 1 : Scolarité -->
-                <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+
+                <!-- ── Section Vérification d'âge (tous les patients) ── -->
+                <Border x:Name="AgeSectionBorder" Visibility="Collapsed"
+                        Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15"
+                        BorderBrush="#E8A01F" BorderThickness="2">
                     <StackPanel>
-                        <TextBlock Text="🏫 Scolarité" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
-                        <Grid>
+                        <TextBlock Text="⚠️ Vérification de l'âge" FontSize="14" FontWeight="SemiBold"
+                                   Foreground="#D35400" Margin="0,0,0,10"/>
+
+                        <!-- Comparaison âges -->
+                        <Grid Margin="0,0,0,12">
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="15"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            
-                            <StackPanel Grid.Column="0">
-                                <TextBlock Text="École / Établissement" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
-                                <TextBox x:Name="TxtEcole" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
-                            </StackPanel>
-                            
-                            <StackPanel Grid.Column="2">
-                                <TextBlock Text="Classe / Niveau" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
-                                <TextBox x:Name="TxtClasse" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
-                            </StackPanel>
+                            <Border Grid.Column="0" Background="#FEF9F0" CornerRadius="6" Padding="10">
+                                <StackPanel>
+                                    <TextBlock Text="Âge calculé (dossier DDN)" FontSize="11" Foreground="#7F8C8D"/>
+                                    <TextBlock x:Name="TxtAgeCalculeDisplay" FontSize="20" FontWeight="Bold"
+                                               Foreground="#2C3E50" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Grid.Column="2" Background="#FEF9F0" CornerRadius="6" Padding="10">
+                                <StackPanel>
+                                    <TextBlock Text="Âge mentionné (interrogatoire)" FontSize="11" Foreground="#7F8C8D"/>
+                                    <TextBlock x:Name="TxtAgeInterrDisplay" FontSize="20" FontWeight="Bold"
+                                               Foreground="#E74C3C" Margin="0,4,0,0"/>
+                                </StackPanel>
+                            </Border>
                         </Grid>
+
+                        <!-- DDN actuelle -->
+                        <TextBlock x:Name="TxtDobActuelleInfo" Text="" FontSize="12"
+                                   Foreground="#7F8C8D" Margin="0,0,0,10" TextWrapping="Wrap"/>
+
+                        <!-- Saisie DDN corrigée -->
+                        <TextBlock Text="Date de naissance à corriger / confirmer (format jj/mm/aaaa) :"
+                                   FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                        <TextBox x:Name="TxtDobCorrigee" Height="32" Padding="5,0"
+                                 VerticalContentAlignment="Center" BorderBrush="#D6DBDF"
+                                 FontSize="14"/>
                     </StackPanel>
                 </Border>
 
-                <!-- Groupe 2 : Famille & Parents -->
-                <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
-                    <StackPanel>
-                        <TextBlock Text="👪 Famille &amp; Parents" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
-                        
-                        <!-- Mère -->
-                        <TextBlock Text="Mère" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,5"/>
-                        <Grid Margin="0,0,0,10">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="10"/>
-                                <ColumnDefinition Width="70"/>
-                                <ColumnDefinition Width="10"/>
-                                <ColumnDefinition Width="1.5*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtMereNom" Grid.Column="0" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Prénom" BorderBrush="#D6DBDF"/>
-                            <TextBox x:Name="TxtMereAge" Grid.Column="2" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Âge" BorderBrush="#D6DBDF"/>
-                            <TextBox x:Name="TxtMereJob" Grid.Column="4" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Profession" BorderBrush="#D6DBDF"/>
-                        </Grid>
+                <!-- ── Sections contexte complet (3-11 ans seulement) ── -->
+                <StackPanel x:Name="FullContextPanel" Visibility="Collapsed">
 
-                        <!-- Père -->
-                        <TextBlock Text="Père" FontWeight="SemiBold" Foreground="#34495E" Margin="0,5,0,5"/>
-                        <Grid Margin="0,0,0,15">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="10"/>
-                                <ColumnDefinition Width="70"/>
-                                <ColumnDefinition Width="10"/>
-                                <ColumnDefinition Width="1.5*"/>
-                            </Grid.ColumnDefinitions>
-                            <TextBox x:Name="TxtPereNom" Grid.Column="0" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Prénom" BorderBrush="#D6DBDF"/>
-                            <TextBox x:Name="TxtPereAge" Grid.Column="2" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Âge" BorderBrush="#D6DBDF"/>
-                            <TextBox x:Name="TxtPereJob" Grid.Column="4" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Profession" BorderBrush="#D6DBDF"/>
-                        </Grid>
+                    <!-- Groupe 1 : Scolarité -->
+                    <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="🏫 Scolarité" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="15"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="École / Établissement" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtEcole" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="2">
+                                    <TextBlock Text="Classe / Niveau" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtClasse" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
 
-                        <!-- Fratrie -->
-                        <TextBlock Text="Fratrie (Frères et sœurs, âges, liens)" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
-                        <TextBox x:Name="TxtFratrie" Height="50" AcceptsReturn="True" TextWrapping="Wrap" Padding="5" BorderBrush="#D6DBDF"/>
-                    </StackPanel>
-                </Border>
+                    <!-- Groupe 2 : Famille & Parents -->
+                    <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="👪 Famille &amp; Parents" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
+                            <TextBlock Text="Mère" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,5"/>
+                            <Grid Margin="0,0,0,10">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="70"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="1.5*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtMereNom" Grid.Column="0" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Prénom" BorderBrush="#D6DBDF"/>
+                                <TextBox x:Name="TxtMereAge" Grid.Column="2" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Âge" BorderBrush="#D6DBDF"/>
+                                <TextBox x:Name="TxtMereJob" Grid.Column="4" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Profession" BorderBrush="#D6DBDF"/>
+                            </Grid>
+                            <TextBlock Text="Père" FontWeight="SemiBold" Foreground="#34495E" Margin="0,5,0,5"/>
+                            <Grid Margin="0,0,0,15">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="70"/>
+                                    <ColumnDefinition Width="10"/>
+                                    <ColumnDefinition Width="1.5*"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="TxtPereNom" Grid.Column="0" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Prénom" BorderBrush="#D6DBDF"/>
+                                <TextBox x:Name="TxtPereAge" Grid.Column="2" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Âge" BorderBrush="#D6DBDF"/>
+                                <TextBox x:Name="TxtPereJob" Grid.Column="4" Height="30" Padding="5" VerticalContentAlignment="Center" Tag="Profession" BorderBrush="#D6DBDF"/>
+                            </Grid>
+                            <TextBlock Text="Fratrie (Frères et sœurs, âges, liens)" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                            <TextBox x:Name="TxtFratrie" Height="50" AcceptsReturn="True" TextWrapping="Wrap" Padding="5" BorderBrush="#D6DBDF"/>
+                        </StackPanel>
+                    </Border>
 
-                <!-- Groupe 3 : Acquisitions développementales -->
-                <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
-                    <StackPanel>
-                        <TextBlock Text="👶 Acquisitions développementales" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
-                        
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="15"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
+                    <!-- Groupe 3 : Acquisitions développementales -->
+                    <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+                        <StackPanel>
+                            <TextBlock Text="👶 Acquisitions développementales" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="15"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,10">
+                                    <TextBlock Text="Âge de la marche" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtMarche" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
+                                </StackPanel>
+                                <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,10">
+                                    <TextBlock Text="Acquisition du langage" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtLangage" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
+                                </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3">
+                                    <TextBlock Text="Statut de la propreté (Diurne &amp; Nocturne)" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtProprete" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
 
-                            <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,10">
-                                <TextBlock Text="Âge de la marche" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
-                                <TextBox x:Name="TxtMarche" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
-                            </StackPanel>
-
-                            <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,10">
-                                <TextBlock Text="Acquisition du langage" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
-                                <TextBox x:Name="TxtLangage" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
-                            </StackPanel>
-
-                            <StackPanel Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="3">
-                                <TextBlock Text="Statut de la propreté (Diurne &amp; Nocturne)" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
-                                <TextBox x:Name="TxtProprete" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
-                            </StackPanel>
-                        </Grid>
-                    </StackPanel>
-                </Border>
+                </StackPanel>
+                <!-- ── Fin contexte complet ── -->
 
             </StackPanel>
         </ScrollViewer>
@@ -146,10 +184,10 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
 
-                <TextBlock Grid.Column="0" Text="Ignorer passera à la sauvegarde sans compléments." 
+                <TextBlock Grid.Column="0" Text="Ignorer passera à la sauvegarde sans compléments."
                            VerticalAlignment="Center" FontSize="11" Foreground="#7F8C8D" FontStyle="Italic"/>
 
-                <Button x:Name="BtnIgnore" Grid.Column="1" Content="Ignorer / Passer" 
+                <Button x:Name="BtnIgnore" Grid.Column="1" Content="Ignorer / Passer"
                         Padding="15,8" Background="#95A5A6" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"
                         Click="BtnIgnore_Click">
                     <Button.Template>
@@ -164,7 +202,7 @@
                     </Button.Template>
                 </Button>
 
-                <Button x:Name="BtnSave" Grid.Column="2" Content="💾 Enregistrer les compléments" 
+                <Button x:Name="BtnSave" Grid.Column="2" Content="💾 Enregistrer les compléments"
                         Padding="15,8" Background="#27AE60" Foreground="White" BorderThickness="0" Cursor="Hand"
                         Click="BtnSave_Click">
                     <Button.Template>
