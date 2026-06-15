@@ -5184,11 +5184,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\TestRunner.csproj",
+      "projectUniqueName": "C:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\TestRunner.csproj",
       "projectName": "TestRunner",
-      "projectPath": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\TestRunner.csproj",
+      "projectPath": "C:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\TestRunner.csproj",
       "packagesPath": "C:\\Users\\nair\\.nuget\\packages\\",
-      "outputPath": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\obj\\",
+      "outputPath": "C:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\TestRunner\\obj\\",
       "projectStyle": "PackageReference",
       "configFilePaths": [
         "C:\\Users\\nair\\AppData\\Roaming\\NuGet\\NuGet.Config",
@@ -5205,8 +5205,8 @@
         "net8.0-windows10.0.19041": {
           "targetAlias": "net8.0-windows10.0.19041.0",
           "projectReferences": {
-            "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj": {
-              "projectPath": "c:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj"
+            "C:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj": {
+              "projectPath": "C:\\Users\\nair\\Desktop\\MedCompagion V1 béta\\MedCompanion\\MedCompanion.csproj"
             }
           }
         }

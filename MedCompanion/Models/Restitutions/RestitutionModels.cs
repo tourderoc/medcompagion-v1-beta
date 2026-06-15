@@ -106,6 +106,11 @@ namespace MedCompanion.Models.Restitutions
         }
     }
 
+    public class RestitutionPremierEntretien : RestitutionBase
+    {
+        public override RestitutionType Type => RestitutionType.PremierEntretien;
+    }
+
     public class DossierRestitutionInitial : RestitutionBase
     {
         public override RestitutionType Type => RestitutionType.DossierInitial;

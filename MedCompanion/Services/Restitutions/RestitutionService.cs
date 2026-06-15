@@ -73,10 +73,7 @@ namespace MedCompanion.Services.Restitutions
                 RestitutionBase r;
                 if (typeStr.Equals("PremierEntretien", StringComparison.OrdinalIgnoreCase))
                 {
-                    // Placeholder pour l'instant si on a besoin d'une classe spécifique,
-                    // mais pour la V1 on peut l'ignorer ou juste renvoyer null si non géré.
-                    // On ne va pas la coder maintenant.
-                    return null;
+                    r = new MedCompanion.Models.Restitutions.RestitutionPremierEntretien();
                 }
                 else if (typeStr.Equals("DossierInitial", StringComparison.OrdinalIgnoreCase))
                 {

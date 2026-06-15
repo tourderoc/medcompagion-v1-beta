@@ -16,14 +16,14 @@ namespace MedCompanion
     {
         private readonly LLMServiceFactory _llmFactory;
         private AppSettings _settings; // ⚠️ NON readonly pour permettre ReloadSettings()
-        private readonly PromptConfigService _promptConfig;
+        private readonly PromptConfigService _promptConfig = null!;
         private readonly AnonymizationService _anonymizationService;
         private readonly PromptTrackerService? _promptTracker;  // ✅ NOUVEAU - Tracking des prompts
 
         // Cache des prompts pour éviter les appels répétés
-        private string _cachedSystemPrompt;
-        private string _cachedNoteStructurationPrompt;
-        private string _cachedChatInteractionPrompt;
+        private string _cachedSystemPrompt = string.Empty;
+        private string _cachedNoteStructurationPrompt = string.Empty;
+        private string _cachedChatInteractionPrompt = string.Empty;
 
         public OpenAIService(LLMServiceFactory llmFactory, PromptConfigService promptConfig, AnonymizationService anonymizationService, PromptTrackerService? promptTracker = null)
         {
@@ -326,7 +326,7 @@ POIDS_SYNTHESE: X.X
             try
             {
                 // Construire le prompt système
-                string systemPrompt;
+                string systemPrompt = string.Empty;
                 if (customSystemPrompt != null)
                 {
                     // Un prompt personnalisé est fourni (ex: attestations, lettres, etc.)
@@ -421,9 +421,9 @@ POIDS_SYNTHESE: X.X
 
                 var messages = new List<(string role, string content)>
                 {
-                    ("user", userPrompt)
+                    ("user", userPrompt ?? string.Empty)
                 };
-                var (success, result, error) = await currentLLM.ChatAsync(systemPrompt, messages, maxTokens);
+                var (success, result, error) = await currentLLM.ChatAsync(systemPrompt!, messages, maxTokens);
 
                 System.Diagnostics.Debug.WriteLine($"✅ Succès: {success}");
                 System.Diagnostics.Debug.WriteLine($"📤 Résultat: {result?.Length ?? 0} caractères");

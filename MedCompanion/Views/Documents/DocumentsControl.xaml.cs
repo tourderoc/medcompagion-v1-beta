@@ -73,6 +73,12 @@ namespace MedCompanion.Views.Documents
         }
 
         /// <summary>
+        /// Recharge la liste des documents du patient courant (sans changer le patient).
+        /// Appelé depuis MainWindow après enregistrement d'un PDF externe (ex. restitution 1er entretien).
+        /// </summary>
+        public void RefreshDocuments() => LoadPatientDocuments();
+
+        /// <summary>
         /// Charge la liste des documents du patient courant
         /// </summary>
         private async void LoadPatientDocuments()

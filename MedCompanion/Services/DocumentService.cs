@@ -412,6 +412,30 @@ SYNTHESE: [synthèse]";
         }
         
         /// <summary>
+        /// Enregistre un PDF existant (chemin original conservé, aucune copie) dans l'index documents
+        /// du patient pour qu'il apparaisse dans le panel DOCUMENTS sans import manuel.
+        /// </summary>
+        public async Task RegisterExistingDocumentAsync(string existingPdfPath, string nomComplet, string displayName = "")
+        {
+            if (!File.Exists(existingPdfPath)) return;
+            // Créer le dossier documents/ s'il n'existe pas encore (nouveau patient sans import)
+            var documentsPath = _pathService.GetDocumentsDirectory(nomComplet);
+            Directory.CreateDirectory(documentsPath);
+            var fi = new FileInfo(existingPdfPath);
+            var doc = new PatientDocument
+            {
+                FileName      = string.IsNullOrEmpty(displayName) ? fi.Name : displayName,
+                FilePath      = existingPdfPath,
+                Category      = "restitutions",
+                DateAdded     = fi.CreationTime,
+                FileExtension = ".pdf",
+                FileSizeBytes = fi.Length,
+                Summary       = "Restitution 1er entretien — généré depuis le Mode Consultation."
+            };
+            await SaveDocumentToIndexAsync(nomComplet, doc);
+        }
+
+        /// <summary>
         /// Récupère tous les documents d'un patient
         /// </summary>
         public async Task<List<PatientDocument>> GetAllDocumentsAsync(string nomComplet)

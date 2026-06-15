@@ -519,7 +519,7 @@
                                 <!-- Bouton + (nouvelle consultation) avec badge 🔔 incrémental Synthèse Globale -->
                                 <Grid DockPanel.Dock="Right" Margin="8,0,0,0">
                                     <Button x:Name="NewConsultationBtn"
-                                            Width="40" Height="40"
+                                            Width="32" Height="32"
                                             Click="NewConsultationBtn_Click"
                                             Background="#3498DB" Foreground="White"
                                             BorderThickness="0" Cursor="Hand"
@@ -527,8 +527,8 @@
                                         <Button.Template>
                                             <ControlTemplate TargetType="Button">
                                                 <Border x:Name="Bd" Background="{TemplateBinding Background}"
-                                                        CornerRadius="20">
-                                                    <TextBlock Text="＋" FontSize="20" FontWeight="Bold"
+                                                        CornerRadius="16">
+                                                    <TextBlock Text="＋" FontSize="16" FontWeight="Bold"
                                                                Foreground="White"
                                                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                 </Border>
@@ -541,14 +541,14 @@
                                         </Button.Template>
                                     </Button>
                                     <!-- Badge 🔔 : visible si tracker.ShouldUpdateSynthesis() = true -->
-                                    <Border Width="18" Height="18"
+                                    <Border Width="15" Height="15"
                                             HorizontalAlignment="Right" VerticalAlignment="Top"
                                             Margin="0,-2,-2,0"
-                                            Background="#D4AF37" CornerRadius="9"
-                                            BorderBrush="White" BorderThickness="2"
+                                            Background="#D4AF37" CornerRadius="7.5"
+                                            BorderBrush="White" BorderThickness="1.5"
                                             ToolTip="{Binding SyntheseUpdateBadge}"
                                             Visibility="{Binding SyntheseUpdateRecommandee, Converter={StaticResource BoolToVis}}">
-                                        <TextBlock Text="🔔" FontSize="9" Foreground="White"
+                                        <TextBlock Text="🔔" FontSize="7.5" Foreground="White"
                                                    HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                     </Border>
                                 </Grid>
@@ -574,23 +574,23 @@
                                                                 Cursor="Hand">
                                                             <Button.Template>
                                                                 <ControlTemplate TargetType="Button">
-                                                                    <Border x:Name="Bg" Width="128" Height="60"
-                                                                            CornerRadius="8" Padding="8,6"
-                                                                            BorderThickness="1.5"
+                                                                    <Border x:Name="Bg" Width="96" Height="36"
+                                                                            CornerRadius="5" Padding="5,3"
+                                                                            BorderThickness="1"
                                                                             Background="#F2F2F2" BorderBrush="#D5D5D5">
                                                                         <StackPanel>
                                                                             <StackPanel Orientation="Horizontal">
                                                                                 <TextBlock x:Name="IconTb" Text="{Binding Icon}"
-                                                                                           FontSize="12" Margin="0,0,4,0"
+                                                                                           FontSize="10" Margin="0,0,3,0"
                                                                                            Foreground="#AAAAAA"/>
                                                                                 <TextBlock x:Name="LabelTb" Text="{Binding Label}"
-                                                                                           FontSize="10.5" FontWeight="SemiBold"
+                                                                                           FontSize="8.5" FontWeight="SemiBold"
                                                                                            Foreground="#AAAAAA"
                                                                                            TextTrimming="CharacterEllipsis"
-                                                                                           MaxWidth="100"/>
+                                                                                           MaxWidth="70"/>
                                                                             </StackPanel>
                                                                             <TextBlock x:Name="StatusTb" Text="{Binding StatusText}"
-                                                                                       FontSize="9.5" Margin="0,4,0,0"
+                                                                                       FontSize="7.5" Margin="0,1,0,0"
                                                                                        Foreground="#BBBBBB"
                                                                                        TextTrimming="CharacterEllipsis"/>
                                                                         </StackPanel>
@@ -608,7 +608,7 @@
                                                                         <DataTrigger Binding="{Binding Status}" Value="InProgress">
                                                                             <Setter TargetName="Bg"      Property="Background"   Value="#FEF3E2"/>
                                                                             <Setter TargetName="Bg"      Property="BorderBrush"  Value="#E67E22"/>
-                                                                            <Setter TargetName="Bg"      Property="BorderThickness" Value="2"/>
+                                                                            <Setter TargetName="Bg"      Property="BorderThickness" Value="1.5"/>
                                                                             <Setter TargetName="IconTb"  Property="Foreground"   Value="#D35400"/>
                                                                             <Setter TargetName="LabelTb" Property="Foreground"   Value="#784212"/>
                                                                             <Setter TargetName="StatusTb" Property="Foreground"  Value="#E67E22"/>
@@ -634,7 +634,7 @@
                                                             </Button.Template>
                                                         </Button>
                                                         <!-- Flèche connecteur (masquée pour le dernier jalon) -->
-                                                        <TextBlock Text="›" FontSize="20" Foreground="#CCCCCC"
+                                                        <TextBlock Text="›" FontSize="14" Foreground="#CCCCCC"
                                                                    VerticalAlignment="Center" Margin="2,0"
                                                                    Visibility="{Binding ShowArrow, Converter={StaticResource BoolToVis}}"/>
                                                     </StackPanel>
@@ -643,15 +643,15 @@
                                         </ItemsControl>
 
                                         <!-- Connecteur L entre 1ère consultation (ligne fixe) et ligne libre -->
-                                        <Grid Height="14" HorizontalAlignment="Left" Width="160"
+                                        <Grid Height="8" HorizontalAlignment="Left" Width="120"
                                               Visibility="{Binding HasFriseStages, Converter={StaticResource BoolToVis}}">
                                             <!-- branche verticale depuis sous le 1er jalon -->
                                             <Border Width="1.5" Background="#C8D0DA"
-                                                    HorizontalAlignment="Left" Margin="64,0,0,0"
+                                                    HorizontalAlignment="Left" Margin="48,0,0,0"
                                                     VerticalAlignment="Stretch"/>
                                             <!-- branche horizontale vers la ligne libre -->
                                             <Border Height="1.5" Background="#C8D0DA"
-                                                    VerticalAlignment="Bottom" Margin="64,0,0,0"/>
+                                                    VerticalAlignment="Bottom" Margin="48,0,0,0"/>
                                         </Grid>
 
                                         <!-- ══ LIGNE LIBRE : notes de suivi ══ -->
@@ -660,7 +660,7 @@
                                             <!-- Carte "Reprendre suivi en cours" -->
                                             <Border Margin="0,0,8,0"
                                                     Background="#FEF9E7" BorderBrush="#F39C12" BorderThickness="1.5"
-                                                    CornerRadius="8" Padding="4">
+                                                    CornerRadius="5" Padding="2">
                                                 <Border.Style>
                                                     <Style TargetType="Border">
                                                         <Setter Property="Visibility" Value="Collapsed"/>
@@ -681,13 +681,13 @@
                                                             ToolTip="Reprendre la consultation de suivi en cours">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
-                                                                <Border Background="{TemplateBinding Background}" Padding="8,6" CornerRadius="6">
+                                                                <Border Background="{TemplateBinding Background}" Padding="5,3" CornerRadius="4">
                                                                     <StackPanel>
-                                                                        <TextBlock FontSize="11" FontWeight="SemiBold" Foreground="#B7770D">
+                                                                        <TextBlock FontSize="9" FontWeight="SemiBold" Foreground="#B7770D">
                                                                             <Run Text="▶"/>
                                                                             <Run Text="Reprendre suivi"/>
                                                                         </TextBlock>
-                                                                        <TextBlock Text="brouillon en cours" FontSize="10" Foreground="#7D6608"/>
+                                                                        <TextBlock Text="brouillon en cours" FontSize="7.5" Foreground="#7D6608"/>
                                                                     </StackPanel>
                                                                 </Border>
                                                                 <ControlTemplate.Triggers>
@@ -699,13 +699,13 @@
                                                         </Button.Template>
                                                     </Button>
                                                     <Button Command="{Binding DiscardSuiviCommand}"
-                                                            Width="22" Height="22" Margin="2,0,2,0"
+                                                            Width="16" Height="16" Margin="2,0,2,0"
                                                             Background="Transparent" BorderThickness="0" Cursor="Hand"
                                                             ToolTip="Abandonner le brouillon">
                                                         <Button.Template>
                                                             <ControlTemplate TargetType="Button">
-                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4">
-                                                                    <TextBlock Text="🗑" FontSize="13" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                <Border Background="{TemplateBinding Background}" CornerRadius="3">
+                                                                    <TextBlock Text="🗑" FontSize="9" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                                 </Border>
                                                                 <ControlTemplate.Triggers>
                                                                     <Trigger Property="IsMouseOver" Value="True">
@@ -733,17 +733,18 @@
                                                                     CommandParameter="{Binding}">
                                                                 <Button.Template>
                                                                     <ControlTemplate TargetType="Button">
-                                                                        <Border x:Name="Cd" Width="120" Height="52"
-                                                                                CornerRadius="8" Padding="8,6"
+                                                                        <Border x:Name="Cd" Width="90" Height="30"
+                                                                                CornerRadius="5" Padding="5,3"
                                                                                 Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1">
                                                                             <StackPanel>
                                                                                 <StackPanel Orientation="Horizontal">
-                                                                                    <TextBlock Text="{Binding Icon}" FontSize="12" Margin="0,0,4,0"/>
-                                                                                    <TextBlock Text="{Binding Type}" FontSize="10" FontWeight="SemiBold"
-                                                                                               Foreground="#2C3E50" TextTrimming="CharacterEllipsis"/>
+                                                                                    <TextBlock Text="{Binding Icon}" FontSize="10" Margin="0,0,3,0"/>
+                                                                                    <TextBlock Text="{Binding Type}" FontSize="8.5" FontWeight="SemiBold"
+                                                                                               Foreground="#2C3E50" TextTrimming="CharacterEllipsis"
+                                                                                               MaxWidth="65"/>
                                                                                 </StackPanel>
-                                                                                <TextBlock Text="{Binding DateText}" FontSize="10"
-                                                                                           Foreground="#7F8C8D" Margin="0,4,0,0"/>
+                                                                                <TextBlock Text="{Binding DateText}" FontSize="7.5"
+                                                                                           Foreground="#7F8C8D" Margin="0,1,0,0"/>
                                                                             </StackPanel>
                                                                         </Border>
                                                                         <ControlTemplate.Triggers>
@@ -761,9 +762,9 @@
                                                             </Button>
                                                             <!-- Bouton supprimer -->
                                                             <Button x:Name="DeleteBtn"
-                                                                    Width="18" Height="18"
+                                                                    Width="14" Height="14"
                                                                     HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                    Margin="0,-3,-3,0" Cursor="Hand"
+                                                                    Margin="0,-2,-2,0" Cursor="Hand"
                                                                     Visibility="Collapsed"
                                                                     Background="Transparent" BorderThickness="0"
                                                                     ToolTip="Supprimer cette note"
@@ -772,8 +773,8 @@
                                                                 <Button.Template>
                                                                     <ControlTemplate TargetType="Button">
                                                                         <Border x:Name="DBorder" Background="#FFFFFF"
-                                                                                BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="9">
-                                                                            <TextBlock Text="🗑" FontSize="10"
+                                                                                BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="7">
+                                                                            <TextBlock Text="🗑" FontSize="8"
                                                                                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                                         </Border>
                                                                         <ControlTemplate.Triggers>

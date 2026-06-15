@@ -60,9 +60,6 @@ namespace MedCompanion.Views.Pilotage
         public ObservableCollection<PatientToken> Tokens { get; } = new();
         private PatientToken? _selectedToken;
 
-        // Dernière synchro
-        private DateTime? _lastSyncTime;
-
         /// <summary>
         /// Event pour notifier les changements de statut
         /// </summary>
@@ -71,7 +68,9 @@ namespace MedCompanion.Views.Pilotage
         /// <summary>
         /// Event pour demander la navigation vers un dossier patient
         /// </summary>
+#pragma warning disable CS0067
         public event EventHandler<string>? NavigateToPatientRequested;
+#pragma warning restore CS0067
 
         /// <summary>
         /// Event quand de nouveaux messages sont détectés
@@ -1167,6 +1166,7 @@ namespace MedCompanion.Views.Pilotage
                     var explorerItem = new MenuItem { Header = "\ud83d\udee0\ufe0f Explorer les comptes...", Foreground = Brushes.White };
                     explorerItem.Click += (s, e) =>
                     {
+                        if (_settings == null) return;
                         var dialog = new Dialogs.VpsAccountsDialog(_settings);
                         dialog.Owner = Window.GetWindow(this);
                         dialog.ShowDialog();
@@ -1176,6 +1176,7 @@ namespace MedCompanion.Views.Pilotage
                     var groupsItem = new MenuItem { Header = "\ud83c\udf99\ufe0f Explorer les groupes...", Foreground = Brushes.White };
                     groupsItem.Click += (s, e) =>
                     {
+                        if (_settings == null) return;
                         var dialog = new Dialogs.VpsGroupsDialog(_settings);
                         dialog.Owner = Window.GetWindow(this);
                         dialog.ShowDialog();

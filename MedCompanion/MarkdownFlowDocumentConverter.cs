@@ -504,10 +504,10 @@ namespace MedCompanion
         {
             System.Diagnostics.Debug.WriteLine($"[RemoveYamlHeader] Entrée - Longueur: {markdown?.Length ?? 0}");
 
-            if (!markdown.TrimStart().StartsWith("---"))
+            if (string.IsNullOrEmpty(markdown) || !markdown.TrimStart().StartsWith("---"))
             {
                 System.Diagnostics.Debug.WriteLine("[RemoveYamlHeader] Pas de YAML détecté (ne commence pas par ---)");
-                return markdown;
+                return markdown ?? string.Empty;
             }
 
             var lines = markdown.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
@@ -557,7 +557,7 @@ namespace MedCompanion
             {
                 var result = string.Join("\n", lines.Skip(yamlEndIndex));
                 System.Diagnostics.Debug.WriteLine($"[RemoveYamlHeader] YAML valide supprimé - Résultat: {result?.Length ?? 0} caractères");
-                return result;
+                return result ?? string.Empty;
             }
 
             if (yamlEndIndex > 0 && !hasValidYamlContent)

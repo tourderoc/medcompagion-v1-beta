@@ -193,33 +193,49 @@ public partial class MainWindow : Window
 
         try
         {
-            var (success, message) = await provider.UnloadAsync();
-            if (success)
+            // 1. Vider le KV cache GPU
+            var (unloadOk, unloadMsg) = await provider.UnloadAsync();
+            if (!unloadOk)
             {
-                UnloadModelBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(76, 175, 80));   // vert : OK
-                StatusTextBlock.Text       = $"💤 {message}";
-                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
-                // Couleur de l'indicateur principal : "froid" jusqu'au prochain appel
-                LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(149, 165, 166));   // gris
-                LLMStatusIndicator.ToolTip    = "Med déchargé. Premier appel : ~5-10s de réveil.";
+                UnloadModelBtn.BorderBrush    = new SolidColorBrush(Color.FromRgb(244, 67, 54));
+                StatusTextBlock.Text          = $"❌ {unloadMsg}";
+                StatusTextBlock.Foreground    = new SolidColorBrush(Colors.Red);
+                return;
+            }
+
+            // 2. KV cache vidé → rechargement immédiat pour que Med reste disponible
+            LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(255, 193, 7));   // orange : rechargement
+            LLMStatusIndicator.ToolTip    = "KV cache effacé — rechargement de Med...";
+            StatusTextBlock.Text          = "💤 Cache effacé. Rechargement de Med...";
+            StatusTextBlock.Foreground    = new SolidColorBrush(Colors.DarkOrange);
+
+            var (warmupOk, warmupMsg) = await provider.WarmupAsync();
+            if (warmupOk)
+            {
+                UnloadModelBtn.BorderBrush    = new SolidColorBrush(Color.FromRgb(76, 175, 80));
+                LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(76, 175, 80));   // vert
+                LLMStatusIndicator.ToolTip    = $"Med prêt ({warmupMsg})";
+                StatusTextBlock.Text          = $"✅ KV cache vidé et Med rechargé.";
+                StatusTextBlock.Foreground    = new SolidColorBrush(Colors.Green);
             }
             else
             {
-                UnloadModelBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));    // rouge : échec
-                StatusTextBlock.Text       = $"❌ {message}";
-                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+                // Warmup échoué : Med est déchargé mais accessible au prochain appel (Ollama auto-reload)
+                LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(149, 165, 166));   // gris
+                LLMStatusIndicator.ToolTip    = "Med déchargé. Premier appel : ~5-10s de réveil.";
+                StatusTextBlock.Text          = "💤 KV cache vidé. Premier appel : ~5-10s.";
+                StatusTextBlock.Foreground    = new SolidColorBrush(Colors.Gray);
             }
         }
         catch (Exception ex)
         {
-            StatusTextBlock.Text       = $"❌ Erreur déchargement : {ex.Message}";
-            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
-            UnloadModelBtn.BorderBrush = new SolidColorBrush(Color.FromRgb(244, 67, 54));
+            StatusTextBlock.Text          = $"❌ Erreur : {ex.Message}";
+            StatusTextBlock.Foreground    = new SolidColorBrush(Colors.Red);
+            UnloadModelBtn.BorderBrush    = new SolidColorBrush(Color.FromRgb(244, 67, 54));
         }
         finally
         {
             UnloadModelBtn.IsEnabled = true;
-            // Revenir au cadre neutre après 2 secondes
             _ = Task.Delay(2000).ContinueWith(_ =>
                 Dispatcher.Invoke(() => UnloadModelBtn.BorderBrush = originalBrush));
         }
@@ -269,30 +285,6 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Déchargement silencieux du modèle (fire-and-forget) — appelé automatiquement
-    /// lors du changement de patient pour éviter la contamination de contexte entre dossiers.
-    /// </summary>
-    private void UnloadModelSilently()
-    {
-        var provider = _currentLLMService;
-        if (provider == null) return;
-        // Fire-and-forget : on ne bloque pas le changement de patient sur l'unload
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await provider.UnloadAsync();
-                Dispatcher.InvokeAsync(() =>
-                {
-                    LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(149, 165, 166));   // gris
-                    LLMStatusIndicator.ToolTip    = "Med déchargé (changement patient).";
-                });
-            }
-            catch { /* silencieux : meilleur effort */ }
-        });
-    }
-
-    /// <summary>
     /// Réinitialise le processor Whisper en arrière-plan, sans bloquer l'UI.
     /// Appelé au changement de patient pour éviter la dégradation progressive de la
     /// qualité de transcription (KV cache décodeur, fragmentation VRAM, résidus de contexte).
@@ -308,7 +300,7 @@ public partial class MainWindow : Window
                 var (ok, _) = await whisper.ResetEngineAsync();
                 if (ok)
                 {
-                    Dispatcher.InvokeAsync(() =>
+                    _ = Dispatcher.InvokeAsync(() =>
                     {
                         if (WhisperResetButton != null)
                             WhisperResetButton.ToolTip = "Whisper réinitialisé (changement patient).";

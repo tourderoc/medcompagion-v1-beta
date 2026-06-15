@@ -105,10 +105,11 @@ namespace MedCompanion.Services.Consultation
         // ── Capture audio (recréés à chaque Start/Stop) ───────────────────────
         private WaveInEvent? _waveIn;
         // Resampling propre 48 kHz → 16 kHz (filtre anti-aliasing via MediaFoundationResampler)
+#pragma warning disable CS0414
         private BufferedWaveProvider? _captureBuffer;
+#pragma warning restore CS0414
         private MediaFoundationResampler? _resampler;
         private byte[] _resampleScratch = new byte[64 * 1024];   // buffer de lecture pour MFR
-        private bool _mediaFoundationStarted;
         private CancellationTokenSource? _cts;
         private Channel<float[]>? _audioQueue;
         private Task? _transcriptionTask;

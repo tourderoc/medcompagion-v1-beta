@@ -74,13 +74,12 @@ public partial class MainWindow : Window
             // Réinitialiser l'interface pour le nouveau patient
             ResetPatientUI();
 
-            // Décharger Med si on change effectivement de patient (évite la contamination
-            // de contexte entre dossiers + reset le KV cache GPU). No-op pour OpenAI.
-            // Idem pour Whisper : reset du processor pour éviter la dégradation progressive
-            // de la qualité de transcription sur plusieurs consultations consécutives.
+            // Reset Whisper au changement de patient pour éviter la dégradation progressive
+            // de la qualité de transcription (KV cache décodeur, résidus de contexte).
+            // Med LLM n'est PAS déchargé : l'API Ollama est stateless, aucune contamination
+            // de contexte entre patients. Utiliser 💤 manuellement si saturation ressentie.
             if (_selectedPatient != null && _selectedPatient.Id != patient.Id)
             {
-                UnloadModelSilently();
                 ResetWhisperEngineSilently();
             }
 

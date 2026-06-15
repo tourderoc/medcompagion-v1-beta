@@ -912,7 +912,7 @@ namespace MedCompanion.Services
                     foreach (var doc in documents.EnumerateArray())
                     {
                         var name = doc.GetProperty("name").GetString();
-                        var uid = name.Substring(name.LastIndexOf('/') + 1);
+                        var uid = name?.Substring(name.LastIndexOf('/') + 1) ?? string.Empty;
                         
                         // Chercher fields -> avatar -> mapValue -> fields -> aiUrl -> stringValue
                         if (doc.TryGetProperty("fields", out var fields) && 

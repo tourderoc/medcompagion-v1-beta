@@ -38,7 +38,7 @@ public partial class MainWindow : Window
     private readonly ParsingService _parsingService;
     private readonly PatientIndexService _patientIndex;
     private readonly PatientIdService _patientIdService; // ✅ NOUVEAU
-    private readonly PatientContextService _patientContextService; // ✅ NOUVEAU
+    private readonly PatientContextService _patientContextService = null!; // ✅ NOUVEAU
     private readonly LetterReAdaptationService _reAdaptationService; // ✅ NOUVEAU
     private readonly AnonymizationService _anonymizationService; // ✅ NOUVEAU
     private readonly ChatMemoryService _chatMemoryService; // ✅ NOUVEAU
@@ -448,6 +448,16 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             {
                 NoteViewModel.LoadNotes(_selectedPatient.NomComplet, _patientIndex);
                 NotesControlPanel.SetCurrentPatient(_selectedPatient);
+            }
+        };
+
+        // Quand un PDF de restitution 1er entretien est sauvegardé → l'enregistrer dans le panel DOCUMENTS (dossier bleu)
+        ConsultationModeContent.RestitutionPdfSavedToPatient += async (_, pdfPath) =>
+        {
+            if (_selectedPatient != null && !string.IsNullOrEmpty(pdfPath))
+            {
+                await _documentService.RegisterExistingDocumentAsync(pdfPath, _selectedPatient.NomComplet, "Restitution 1er entretien");
+                DocumentsControlPanel.RefreshDocuments();
             }
         };
 
