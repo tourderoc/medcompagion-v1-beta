@@ -4488,6 +4488,14 @@ source: ""MedCompanion""
                 ? EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault()?.DateCloture
                 : EvaluationCards.FirstOrDefault(c => c.IsActive)?.Date;
 
+            // Évaluation : Completed/InProgress → ouvre la carte existante ; Available → nouvelle
+            var closedEvalCard  = EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault();
+            var activeEvalCard  = EvaluationCards.FirstOrDefault(c => c.IsActive);
+            System.Windows.Input.ICommand evalCmd =
+                evalCompleted  && closedEvalCard != null ? new Commands.RelayCommand(_ => OpenEvaluationCard(closedEvalCard)) :
+                evalInProgress && activeEvalCard  != null ? new Commands.RelayCommand(_ => OpenEvaluationCard(activeEvalCard))  :
+                new Commands.RelayCommand(_ => NewConsultationCommand.Execute("evaluation"));
+
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "evaluation",
@@ -4496,7 +4504,7 @@ source: ""MedCompanion""
                 Status = evalCompleted  ? FriseStageStatus.Completed :
                          evalInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
                 Date   = evalDate,
-                ActivateCommand = new Commands.RelayCommand(_ => NewConsultationCommand.Execute("evaluation"))
+                ActivateCommand = evalCmd
             });
 
             // ── Étape 3 : Synthèse ──────────────────────────────────────────────────────
@@ -4506,17 +4514,23 @@ source: ""MedCompanion""
                 ? SyntheseGlobaleCards.Where(c => c.IsValidee).OrderByDescending(c => c.Date).FirstOrDefault()?.Date
                 : SyntheseGlobaleCards.FirstOrDefault(c => c.IsActive)?.Date;
 
+            var validSynthCard  = SyntheseGlobaleCards.Where(c => c.IsValidee).OrderByDescending(c => c.Date).FirstOrDefault();
+            var activeSynthCard = SyntheseGlobaleCards.FirstOrDefault(c => c.IsActive);
+            System.Windows.Input.ICommand synthCmd =
+                synthCompleted  && validSynthCard  != null ? new Commands.RelayCommand(_ => OpenSyntheseGlobaleCard(validSynthCard))  :
+                synthInProgress && activeSynthCard != null ? new Commands.RelayCommand(_ => OpenSyntheseGlobaleCard(activeSynthCard)) :
+                new Commands.RelayCommand(_ => NewConsultationCommand.Execute("synthese_globale"), _ => evalCompleted);
+
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "synthese",
                 Label  = "Synthèse",
                 Icon   = "🧭",
-                Status = !evalCompleted   ? FriseStageStatus.Locked :
+                Status = !evalCompleted  ? FriseStageStatus.Locked :
                          synthCompleted  ? FriseStageStatus.Completed :
                          synthInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
                 Date   = synthDate,
-                ActivateCommand = new Commands.RelayCommand(_ => NewConsultationCommand.Execute("synthese_globale"),
-                                                            _ => evalCompleted)
+                ActivateCommand = synthCmd
             });
 
             // ── Étape 4 : Projet thérapeutique ──────────────────────────────────────────
@@ -4526,17 +4540,23 @@ source: ""MedCompanion""
                 ? ProjetTherapeutiqueCards.Where(c => c.IsValidee).OrderByDescending(c => c.DateValidation).FirstOrDefault()?.DateValidation
                 : ProjetTherapeutiqueCards.FirstOrDefault(c => c.IsActive)?.Date;
 
+            var validProjetCard  = ProjetTherapeutiqueCards.Where(c => c.IsValidee).OrderByDescending(c => c.DateValidation).FirstOrDefault();
+            var activeProjetCard = ProjetTherapeutiqueCards.FirstOrDefault(c => c.IsActive);
+            System.Windows.Input.ICommand projetCmd =
+                projetCompleted  && validProjetCard  != null ? new Commands.RelayCommand(_ => OpenProjetTherapeutiqueCard(validProjetCard))  :
+                projetInProgress && activeProjetCard != null ? new Commands.RelayCommand(_ => OpenProjetTherapeutiqueCard(activeProjetCard)) :
+                new Commands.RelayCommand(_ => NewConsultationCommand.Execute("projet_therapeutique"), _ => synthCompleted);
+
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "projet",
                 Label  = "Projet thérapeutique",
                 Icon   = "🎯",
-                Status = !synthCompleted   ? FriseStageStatus.Locked :
+                Status = !synthCompleted  ? FriseStageStatus.Locked :
                          projetCompleted  ? FriseStageStatus.Completed :
                          projetInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
                 Date   = projetDate,
-                ActivateCommand = new Commands.RelayCommand(_ => NewConsultationCommand.Execute("projet_therapeutique"),
-                                                            _ => synthCompleted)
+                ActivateCommand = projetCmd
             });
 
             // ── Étape 5 : Restitution ────────────────────────────────────────────────────
