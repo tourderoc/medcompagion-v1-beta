@@ -1726,10 +1726,15 @@ namespace MedCompanion.ViewModels
                     {
                         foreach (var c in obsData)
                         {
+                            // Compat : nouveau format SelectedOptions[] prioritaire, sinon ancien SelectedOption
+                            var selectedOpts = c.SelectedOptions?.Where(s => !string.IsNullOrWhiteSpace(s)).ToList()
+                                ?? (string.IsNullOrEmpty(c.SelectedOption)
+                                    ? new List<string>()
+                                    : new List<string> { c.SelectedOption });
                             PastClinicalCards.Add(new PastClinicalCard
                             {
-                                Title = c.Title ?? c.Branch.ToString(),
-                                SelectedOption = c.SelectedOption ?? "",
+                                Title = c.Title ?? c.Branch,
+                                SelectedOptions = selectedOpts,
                                 FreeText = c.FreeText ?? ""
                             });
                         }
@@ -1752,7 +1757,7 @@ namespace MedCompanion.ViewModels
                     PastClinicalCards.Add(new PastClinicalCard
                     {
                         Title = title,
-                        SelectedOption = "",
+                        SelectedOptions = new List<string>(),
                         FreeText = ""
                     });
                 }
@@ -1798,7 +1803,8 @@ namespace MedCompanion.ViewModels
         {
             public string Branch { get; set; } = "";
             public string Title { get; set; } = "";
-            public string SelectedOption { get; set; } = "";
+            public List<string>? SelectedOptions { get; set; }   // nouveau format multi-select
+            public string? SelectedOption { get; set; }           // ancien format (compat lecture)
             public string FreeText { get; set; } = "";
         }
 
@@ -2071,7 +2077,13 @@ namespace MedCompanion.ViewModels
                 }
 
                 var jsonBlocks = System.Text.Json.JsonSerializer.Serialize(InterrogatoireBlocks.Select(b => new { b.Key, b.FreeText, b.Title }));
-                var jsonObs = System.Text.Json.JsonSerializer.Serialize(ClinicalObservations.Cards.Select(c => new { c.Branch, c.SelectedOption, c.FreeText, c.Title }));
+                var jsonObs = System.Text.Json.JsonSerializer.Serialize(ClinicalObservations.Cards.Select(c => new
+                {
+                    Branch = c.Branch.ToString(),
+                    c.Title,
+                    SelectedOptions = c.OptionItems.Where(o => o.IsSelected).Select(o => o.Label).ToList(),
+                    c.FreeText
+                }));
                 var jsonBlocksIndented = string.Join("\n  ", jsonBlocks.Split('\n'));
                 var jsonObsIndented = string.Join("\n  ", jsonObs.Split('\n'));
 
@@ -2441,17 +2453,41 @@ clinical_observations_json: |
                     OnPropertyChanged(nameof(IsInSaisieMode));
                     OnPropertyChanged(nameof(IsInExtractionMode));
                     OnPropertyChanged(nameof(IsInFinalNoteMode));
+                    // Génère les suggestions IA au 1er passage en Étape 2
+                    if (value && !_suggestionsGenerated && !string.IsNullOrWhiteSpace(NoteContent))
+                        _ = GenerateObservationSuggestionsAsync();
                 }
             }
         }
 
+        private bool _suggestionsGenerated = false;
+
+        private bool _isGeneratingSuggestions;
+        public bool IsGeneratingSuggestions
+        {
+            get => _isGeneratingSuggestions;
+            set => SetProperty(ref _isGeneratingSuggestions, value);
+        }
+
+        private string _suggestionsStatus = "";
+        public string SuggestionsStatus
+        {
+            get => _suggestionsStatus;
+            set => SetProperty(ref _suggestionsStatus, value);
+        }
+
+        public ICommand GenerateSuggestionsCommand { get; private set; } = null!;
+
         /// <summary>
-        /// Initialise les 10 cartes d'observation clinique avec leurs options
+        /// Initialise les 10 cartes d'observation clinique avec leurs options génériques (fallback).
+        /// Les suggestions IA seront générées dès l'entrée en Étape 2.
         /// </summary>
         private void InitializeClinicalObservations()
         {
             _clinicalObservations.Cards.Clear();
             _clinicalObservations.CreatedAt = DateTime.Now;
+            _suggestionsGenerated = false;
+            SuggestionsStatus = "";
 
             AddClinicalCard(ClinicalObservationBranch.Contact, "Contact/Rapport",
                 new[] { "Bon", "Distant", "Fuyant", "Adhésif", "Instable" });
@@ -2488,18 +2524,16 @@ clinical_observations_json: |
 
         private void AddClinicalCard(ClinicalObservationBranch branch, string title, string[] options)
         {
-            var card = new ClinicalObservationCard
-            {
-                Branch = branch,
-                Title = title,
-                Options = new List<string>(options)
-            };
+            var card = new ClinicalObservationCard { Branch = branch, Title = title };
+            card.SetOptions(options);
             _clinicalObservations.Cards.Add(card);
         }
 
         public void SelectObservationOption(ClinicalObservationCard card, string option)
         {
-            card.SelectedOption = option;
+            // Compat : coche la première option correspondante dans OptionItems
+            var item = card.OptionItems.FirstOrDefault(o => o.Label == option);
+            if (item != null) item.IsSelected = !item.IsSelected;
             OnPropertyChanged(nameof(ClinicalObservations));
         }
 
@@ -2540,8 +2574,8 @@ clinical_observations_json: |
             var sb = new System.Text.StringBuilder();
             foreach (var card in obs.Cards)
             {
-                if (card.SelectedOption == null) continue;
-                sb.Append("• ").Append(card.Title).Append(" : ").Append(card.SelectedOption);
+                if (!card.HasAnySelection) continue;
+                sb.Append("• ").Append(card.Title).Append(" : ").Append(card.SelectedOptionsText);
                 if (!string.IsNullOrWhiteSpace(card.FreeText))
                     sb.Append(" (").Append(card.FreeText.Trim()).Append(')');
                 sb.AppendLine();
@@ -2616,10 +2650,91 @@ clinical_observations_json: |
             IsInClinicalMode = true;
         }
 
+        /// <summary>
+        /// Génère des suggestions d'observation contextuelles (LLM) à partir de l'interrogatoire.
+        /// Remplace les options génériques par des items pertinents au tableau clinique.
+        /// </summary>
+        private async Task GenerateObservationSuggestionsAsync()
+        {
+            if (_llmService == null || string.IsNullOrWhiteSpace(NoteContent))
+            {
+                SuggestionsStatus = "";
+                return;
+            }
+
+            IsGeneratingSuggestions = true;
+            SuggestionsStatus = "⏳ Génération des suggestions en cours…";
+
+            try
+            {
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("Tu es un expert en pédopsychiatrie. À partir des éléments recueillis lors de l'interrogatoire ci-dessous, propose pour chacun des 10 axes d'observation clinique 2 à 4 suggestions contextuelles pertinentes.");
+                sb.AppendLine("Chaque suggestion = qualificatif clinique descriptif court (2 à 6 mots). Pas de diagnostic, pas d'interprétation.");
+                sb.AppendLine();
+                sb.AppendLine("INTERROGATOIRE :");
+                sb.AppendLine(NoteContent.Trim());
+                sb.AppendLine();
+                sb.AppendLine("Réponds UNIQUEMENT en JSON valide, sans markdown ni commentaire :");
+                sb.AppendLine("{\"Contact\":[],\"Langage\":[],\"Comprehension\":[],\"Psychomotricite\":[],\"MimiquRegard\":[],\"ProfilCognitif\":[],\"HumeurAnxiete\":[],\"ImaginaireJeu\":[],\"RapportCadre\":[],\"Vigilance\":[]}");
+
+                var (ok, json, _) = await _llmService.ChatAsync(sb.ToString(), new(), maxTokens: 800);
+                if (!ok || string.IsNullOrWhiteSpace(json)) throw new InvalidOperationException("LLM non disponible");
+
+                // Extrait le JSON brut (ignore texte éventuel avant/après)
+                var start = json.IndexOf('{');
+                var end   = json.LastIndexOf('}');
+                if (start < 0 || end <= start) throw new FormatException("JSON introuvable");
+                var cleanJson = json[start..(end + 1)];
+
+                using var doc = System.Text.Json.JsonDocument.Parse(cleanJson);
+
+                var branchMap = new Dictionary<string, Models.ClinicalObservationBranch>(StringComparer.OrdinalIgnoreCase)
+                {
+                    ["Contact"]          = Models.ClinicalObservationBranch.Contact,
+                    ["Langage"]          = Models.ClinicalObservationBranch.Langage,
+                    ["Comprehension"]    = Models.ClinicalObservationBranch.Comprehension,
+                    ["Psychomotricite"]  = Models.ClinicalObservationBranch.Psychomotricite,
+                    ["MimiquRegard"]     = Models.ClinicalObservationBranch.MimiquRegard,
+                    ["ProfilCognitif"]   = Models.ClinicalObservationBranch.ProfilCognitif,
+                    ["HumeurAnxiete"]    = Models.ClinicalObservationBranch.HumeurAnxiete,
+                    ["ImaginaireJeu"]    = Models.ClinicalObservationBranch.ImaginaireJeu,
+                    ["RapportCadre"]     = Models.ClinicalObservationBranch.RapportCadre,
+                    ["Vigilance"]        = Models.ClinicalObservationBranch.Vigilance,
+                };
+
+                foreach (var prop in doc.RootElement.EnumerateObject())
+                {
+                    if (!branchMap.TryGetValue(prop.Name, out var branch)) continue;
+                    var card = ClinicalObservations.Cards.FirstOrDefault(c => c.Branch == branch);
+                    if (card == null) continue;
+
+                    var suggestions = prop.Value.EnumerateArray()
+                        .Select(e => e.GetString() ?? "")
+                        .Where(s => !string.IsNullOrWhiteSpace(s))
+                        .Take(4)
+                        .ToList();
+
+                    if (suggestions.Count > 0)
+                        card.SetOptions(suggestions);
+                }
+
+                _suggestionsGenerated = true;
+                SuggestionsStatus = "✨ Suggestions IA — basées sur l'interrogatoire";
+            }
+            catch
+            {
+                SuggestionsStatus = "ℹ️ Options génériques (LLM indisponible ou interrogatoire vide)";
+            }
+            finally
+            {
+                IsGeneratingSuggestions = false;
+            }
+        }
+
         private async Task<string> GenerateClinicalNarrativeAsync(ClinicalObservationsSession obs)
         {
             if (_llmService == null) return "";
-            if (!obs.Cards.Any(c => c.SelectedOption != null)) return ""; // aucune carte renseignée → fallback
+            if (!obs.Cards.Any(c => c.HasAnySelection)) return "";
 
             var prompt = new System.Text.StringBuilder();
             prompt.AppendLine("Rédige un paragraphe descriptif d'observations cliniques pédopsychiatriques à partir des éléments ci-dessous.");
@@ -2636,8 +2751,8 @@ clinical_observations_json: |
             prompt.AppendLine("ÉLÉMENTS OBSERVÉS :");
             foreach (var card in obs.Cards)
             {
-                if (card.SelectedOption == null) continue;
-                prompt.Append("- ").Append(card.Title).Append(" : ").Append(card.SelectedOption);
+                if (!card.HasAnySelection) continue;
+                prompt.Append("- ").Append(card.Title).Append(" : ").Append(card.SelectedOptionsText);
                 if (!string.IsNullOrWhiteSpace(card.FreeText))
                     prompt.Append(" — ").Append(card.FreeText.Trim());
                 prompt.AppendLine();
@@ -4202,6 +4317,10 @@ source: ""MedCompanion""
                 await TerminateClinicalObservationsAsync();
             }, _ => IsInClinicalMode);
 
+            GenerateSuggestionsCommand = new RelayCommand(
+                async _ => await GenerateObservationSuggestionsAsync(),
+                _ => IsInClinicalMode && !IsGeneratingSuggestions && !string.IsNullOrWhiteSpace(NoteContent));
+
             SaveObservationsNoteCommand = new RelayCommand(
                 async _ => await SaveObservationsNoteAsync(),
                 _ => IsInObservationsReviewMode && HasPatient
@@ -5560,8 +5679,9 @@ source: ""MedCompanion""
     public class PastClinicalCard
     {
         public string Title { get; set; } = "";
-        public string SelectedOption { get; set; } = "";
+        public List<string> SelectedOptions { get; set; } = new();
+        public string SelectedOption => SelectedOptions.FirstOrDefault() ?? ""; // compat lecture
         public string FreeText { get; set; } = "";
-        public bool HasSelection => !string.IsNullOrEmpty(SelectedOption);
+        public bool HasSelection => SelectedOptions.Count > 0;
     }
 }

@@ -1719,12 +1719,50 @@
                                     </Style>
                                 </Grid.Style>
                                 <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
+                                <!-- Bannière suggestions IA -->
+                                <Border Grid.Row="0" Margin="0,0,0,6" Padding="8,6" CornerRadius="6"
+                                        Background="#EBF5FB" BorderBrush="#AED6F1" BorderThickness="1">
+                                    <DockPanel>
+                                        <Button DockPanel.Dock="Right"
+                                                Command="{Binding GenerateSuggestionsCommand}"
+                                                Padding="10,5" FontSize="10" Cursor="Hand"
+                                                Background="#3498DB" Foreground="White" BorderThickness="0">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Content" Value="↺ Regénérer"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsGeneratingSuggestions}" Value="True">
+                                                            <Setter Property="Content" Value="⏳"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Button.Style>
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="SuggestBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsEnabled" Value="False">
+                                                            <Setter TargetName="SuggestBd" Property="Opacity" Value="0.55"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+                                        <TextBlock Text="{Binding SuggestionsStatus}"
+                                                   FontSize="11" Foreground="#1A5276"
+                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis"/>
+                                    </DockPanel>
+                                </Border>
+
                                 <!-- Grille 2 colonnes de cartes d'observation -->
-                                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                                     <Grid>
                                         <Grid.ColumnDefinitions>
                                             <ColumnDefinition Width="*"/>
@@ -1739,17 +1777,15 @@
                                             </ItemsControl.ItemsPanel>
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
-                                                    <!-- Carte : bordure verte quand une option est sélectionnée -->
+                                                    <!-- Carte : bordure verte quand au moins une option cochée -->
                                                     <Border CornerRadius="8" Padding="14" Margin="6"
                                                             BorderThickness="1.5">
                                                         <Border.Style>
                                                             <Style TargetType="Border">
-                                                                <!-- Default : option sélectionnée (vert) -->
                                                                 <Setter Property="Background" Value="#F0FAF5"/>
                                                                 <Setter Property="BorderBrush" Value="#27AE60"/>
                                                                 <Style.Triggers>
-                                                                    <!-- Aucune option : revenir au gris -->
-                                                                    <DataTrigger Binding="{Binding SelectedOption}" Value="{x:Null}">
+                                                                    <DataTrigger Binding="{Binding HasAnySelection}" Value="False">
                                                                         <Setter Property="Background" Value="#FAFAFA"/>
                                                                         <Setter Property="BorderBrush" Value="#E0E0E0"/>
                                                                     </DataTrigger>
@@ -1763,7 +1799,7 @@
                                                                 <RowDefinition Height="Auto"/>
                                                             </Grid.RowDefinitions>
 
-                                                            <!-- Titre + valeur sélectionnée -->
+                                                            <!-- Titre + badge ✓ -->
                                                             <Grid Grid.Row="0" Margin="0,0,0,10">
                                                                 <Grid.ColumnDefinitions>
                                                                     <ColumnDefinition Width="*"/>
@@ -1779,7 +1815,7 @@
                                                                         <Style TargetType="Border">
                                                                             <Setter Property="Visibility" Value="Visible"/>
                                                                             <Style.Triggers>
-                                                                                <DataTrigger Binding="{Binding SelectedOption}" Value="{x:Null}">
+                                                                                <DataTrigger Binding="{Binding HasAnySelection}" Value="False">
                                                                                     <Setter Property="Visibility" Value="Collapsed"/>
                                                                                 </DataTrigger>
                                                                             </Style.Triggers>
@@ -1789,8 +1825,8 @@
                                                                 </Border>
                                                             </Grid>
 
-                                                            <!-- Chips d'options : MVVM clean -->
-                                                            <ItemsControl Grid.Row="1" ItemsSource="{Binding Options}" Margin="0,0,0,4">
+                                                            <!-- Cases à cocher (OptionItems) — chaque item porte son propre ToggleCommand et IsSelected -->
+                                                            <ItemsControl Grid.Row="1" ItemsSource="{Binding OptionItems}" Margin="0,0,0,4">
                                                                 <ItemsControl.ItemsPanel>
                                                                     <ItemsPanelTemplate>
                                                                         <WrapPanel/>
@@ -1798,10 +1834,8 @@
                                                                 </ItemsControl.ItemsPanel>
                                                                 <ItemsControl.ItemTemplate>
                                                                     <DataTemplate>
-                                                                        <!-- Button utilise la commande de la CARTE (DataContext via AncestorLevel=1) -->
-                                                                        <Button Content="{Binding}"
-                                                                                Command="{Binding DataContext.SelectOptionCommand, RelativeSource={RelativeSource AncestorType=ItemsControl, AncestorLevel=1}}"
-                                                                                CommandParameter="{Binding}"
+                                                                        <Button Content="{Binding Label}"
+                                                                                Command="{Binding ToggleCommand}"
                                                                                 Padding="12,7" Margin="0,0,6,5"
                                                                                 FontSize="11" FontWeight="Medium" Cursor="Hand">
                                                                             <Button.Template>
@@ -1823,20 +1857,13 @@
                                                                             </Button.Template>
                                                                             <Button.Style>
                                                                                 <Style TargetType="Button">
-                                                                                    <!-- Default : non sélectionné -->
                                                                                     <Setter Property="Background" Value="White"/>
                                                                                     <Setter Property="Foreground" Value="#2C3E50"/>
                                                                                     <Setter Property="BorderBrush" Value="#BDC3C7"/>
                                                                                     <Setter Property="BorderThickness" Value="1"/>
                                                                                     <Style.Triggers>
-                                                                                        <!-- SÉLECTIONNÉ : compare Card.SelectedOption avec l'option du bouton -->
-                                                                                        <DataTrigger Value="True">
-                                                                                            <DataTrigger.Binding>
-                                                                                                <MultiBinding Converter="{StaticResource StringEquals}">
-                                                                                                    <Binding Path="DataContext.SelectedOption" RelativeSource="{RelativeSource AncestorType=ItemsControl, AncestorLevel=1}"/>
-                                                                                                    <Binding/>
-                                                                                                </MultiBinding>
-                                                                                            </DataTrigger.Binding>
+                                                                                        <!-- Sélectionné : IsSelected directement sur l'ObservationOptionViewModel -->
+                                                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
                                                                                             <Setter Property="Background" Value="#3498DB"/>
                                                                                             <Setter Property="Foreground" Value="White"/>
                                                                                             <Setter Property="BorderBrush" Value="#2980B9"/>
@@ -1887,7 +1914,7 @@
                                 </ScrollViewer>
 
                                 <!-- Boutons d'action -->
-                                <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+                                <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
                                     <Button Content="← Retour Interrogatoire"
                                             Command="{Binding SwitchToInterrogatoireCommand}"
                                             Padding="10,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"

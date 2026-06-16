@@ -316,8 +316,32 @@ namespace MedCompanion.Models
         Vigilance
     }
 
+    /// <summary>Option cochable pour une carte d'observation clinique</summary>
+    public class ObservationOptionViewModel : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public string Label { get; init; } = "";
+
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set
+            {
+                if (_isSelected == value) return;
+                _isSelected = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+            }
+        }
+
+        public ICommand ToggleCommand => _cmd ??= new RelayCommand(_ => IsSelected = !IsSelected);
+        private ICommand? _cmd;
+    }
+
     /// <summary>
-    /// Carte d'observation clinique avec choix radio + notes optionnelles
+    /// Carte d'observation clinique avec cases à cocher + notes optionnelles.
+    /// Les options peuvent être génériques (fallback) ou générées par le LLM.
     /// </summary>
     public class ClinicalObservationCard : INotifyPropertyChanged
     {
@@ -332,19 +356,50 @@ namespace MedCompanion.Models
             set { _title = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Title))); }
         }
 
-        private List<string> _options = new();
-        public List<string> Options
+        // Options sous forme d'items cochables (remplace List<string> Options)
+        private ObservableCollection<ObservationOptionViewModel> _optionItems = new();
+        public ObservableCollection<ObservationOptionViewModel> OptionItems
         {
-            get => _options;
-            set { _options = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Options))); }
+            get => _optionItems;
+            private set
+            {
+                _optionItems = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(OptionItems)));
+                NotifySelectionChanged();
+            }
         }
 
-        private string? _selectedOption;
-        public string? SelectedOption
+        /// <summary>Remplace les options et subscribe aux changements de chaque item.</summary>
+        public void SetOptions(IEnumerable<string> labels, IEnumerable<string>? preselected = null)
         {
-            get => _selectedOption;
-            set { _selectedOption = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedOption))); }
+            var preSet = preselected?.ToHashSet(StringComparer.OrdinalIgnoreCase) ?? new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var items = new ObservableCollection<ObservationOptionViewModel>();
+            foreach (var l in labels)
+            {
+                var opt = new ObservationOptionViewModel { Label = l };
+                if (preSet.Contains(l)) opt.IsSelected = true;
+                opt.PropertyChanged += OnOptionChanged;
+                items.Add(opt);
+            }
+            OptionItems = items;
         }
+
+        private void OnOptionChanged(object? sender, PropertyChangedEventArgs e)
+        {
+            if (e.PropertyName == nameof(ObservationOptionViewModel.IsSelected))
+                NotifySelectionChanged();
+        }
+
+        private void NotifySelectionChanged()
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasAnySelection)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedOptionsText)));
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(SelectedOption)));
+        }
+
+        public bool HasAnySelection => OptionItems.Any(o => o.IsSelected);
+        public string SelectedOptionsText => string.Join(", ", OptionItems.Where(o => o.IsSelected).Select(o => o.Label));
+        public string? SelectedOption => OptionItems.FirstOrDefault(o => o.IsSelected)?.Label; // compat save/load
 
         private string _freeText = "";
         public string FreeText
@@ -359,15 +414,6 @@ namespace MedCompanion.Models
             get => _isExpanded;
             set { _isExpanded = value; PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsExpanded))); }
         }
-
-        // Commande de sélection — liée directement aux boutons d'option (binding MVVM).
-        // Évite le code-behind fragile qui marchait sur le visual tree.
-        public ICommand SelectOptionCommand => _selectOptionCommand ??= new RelayCommand(p =>
-        {
-            if (p is string opt)
-                SelectedOption = SelectedOption == opt ? null : opt; // toggle
-        });
-        private ICommand? _selectOptionCommand;
 
         public ICommand ToggleExpandCommand => _toggleExpandCommand ??= new RelayCommand(_ => IsExpanded = !IsExpanded);
         private ICommand? _toggleExpandCommand;
