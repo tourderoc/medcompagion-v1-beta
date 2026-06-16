@@ -642,20 +642,28 @@
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
 
-                                        <!-- Connecteur L entre 1ère consultation (ligne fixe) et ligne libre -->
-                                        <Grid Height="8" HorizontalAlignment="Left" Width="120"
+                                        <!-- Connecteur en L : descend sous la 1ère consultation puis mène à la note de suivi.
+                                             Le point d'origine vert rappelle le jalon « 1ère consultation » (clôturée) d'où dérive la note. -->
+                                        <Grid Height="20" HorizontalAlignment="Left" Width="160"
                                               Visibility="{Binding HasFriseStages, Converter={StaticResource BoolToVis}}">
-                                            <!-- branche verticale depuis sous le 1er jalon -->
-                                            <Border Width="1.5" Background="#C8D0DA"
-                                                    HorizontalAlignment="Left" Margin="48,0,0,0"
+                                            <!-- point d'origine sous le centre du 1er jalon -->
+                                            <Ellipse Width="6" Height="6" Fill="#27AE60"
+                                                     HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                     Margin="45,0,0,0"/>
+                                            <!-- branche verticale depuis le 1er jalon -->
+                                            <Border Width="2" Background="#9FB0C0"
+                                                    HorizontalAlignment="Left" Margin="47,3,0,0"
                                                     VerticalAlignment="Stretch"/>
-                                            <!-- branche horizontale vers la ligne libre -->
-                                            <Border Height="1.5" Background="#C8D0DA"
-                                                    VerticalAlignment="Bottom" Margin="48,0,0,0"/>
+                                            <!-- branche horizontale qui mène au CENTRE de la cartouche note
+                                                 (47 = sous le 1er jalon ; +60 ≈ bord gauche note (62) + demi-largeur (45)) -->
+                                            <Border Height="2" Background="#9FB0C0"
+                                                    HorizontalAlignment="Left" Width="60"
+                                                    VerticalAlignment="Bottom" Margin="47,0,0,0"/>
                                         </Grid>
 
                                         <!-- ══ LIGNE LIBRE : notes de suivi ══ -->
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <!-- Indentée pour démarrer au bout du connecteur en L (≈ sous la 1ère consultation). -->
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="62,0,0,0">
 
                                             <!-- Carte "Reprendre suivi en cours" -->
                                             <Border Margin="0,0,8,0"

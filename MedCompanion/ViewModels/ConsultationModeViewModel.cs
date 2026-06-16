@@ -46,6 +46,14 @@ namespace MedCompanion.ViewModels
         /// </summary>
         public event EventHandler<string>? RestitutionPdfSavedToPatient;
 
+        /// <summary>
+        /// Émis quand l'utilisateur choisit un patient dans le drawer « Consultations récentes ».
+        /// MainWindow s'abonne pour exécuter son flux COMPLET de sélection (en-tête patient +
+        /// tous les panneaux), pas seulement le dossier consultation — sinon l'en-tête du haut
+        /// resterait figé sur le patient précédent.
+        /// </summary>
+        public event EventHandler<PatientIndexEntry>? PatientSwitchRequested;
+
 
         #region INotifyPropertyChanged
 
@@ -5100,15 +5108,25 @@ source: ""MedCompanion""
         {
             if (param is not RecentPatientItem item) return;
             IsRecentDrawerOpen = false;
-            LoadPatient(item.Patient);
-            // MRU : on remet ce patient en tête de la liste
-            _patientIndex?.AddRecentPatient(item.Patient.Id);
+
+            // Router via MainWindow pour que TOUT se mette à jour (en-tête patient du haut +
+            // tous les panneaux), pas seulement le dossier consultation. MainWindow.LoadPatientAsync
+            // appelle déjà LoadPatient + AddRecentPatient. Fallback direct si personne n'écoute.
+            if (PatientSwitchRequested != null)
+            {
+                PatientSwitchRequested.Invoke(this, item.Patient);
+            }
+            else
+            {
+                LoadPatient(item.Patient);
+                _patientIndex?.AddRecentPatient(item.Patient.Id);  // MRU : remet ce patient en tête
+            }
         }
 
         private void OpenPdfFile(object? param)
         {
             if (param is not PatientDocumentItem item) return;
-            if (string.IsNullOrWhiteSpace(item.FilePath) || !File.Exists(item.FilePath))
+            if (string.IsNullOrWhiteSpace(item.FilePath))
             {
                 System.Windows.MessageBox.Show(
                     "Fichier introuvable :\n" + item.FilePath,
@@ -5117,11 +5135,47 @@ source: ""MedCompanion""
                     System.Windows.MessageBoxImage.Warning);
                 return;
             }
+
+            var pathToOpen = item.FilePath;
+
+            // Cas restitution : le fichier suivi est le .md source. Le bouton « PDF » doit ouvrir le
+            // PDF exporté — pas le markdown brut, qui s'ouvre dans LibreOffice et s'affiche en YAML
+            // illisible. Si le PDF n'a pas encore été généré (brouillon), on guide l'utilisateur.
+            if (pathToOpen.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            {
+                var pdfPath = Path.ChangeExtension(pathToOpen, ".pdf");
+                if (File.Exists(pdfPath))
+                {
+                    pathToOpen = pdfPath;
+                }
+                else
+                {
+                    System.Windows.MessageBox.Show(
+                        "Le PDF de ce dossier de restitution n'a pas encore été généré.\n\n" +
+                        "Ouvrez le dossier dans l'éditeur de restitution puis exportez-le en PDF " +
+                        "(bouton « 💾 Sauvegarder PDF »).",
+                        "PDF non disponible",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information);
+                    return;
+                }
+            }
+
+            if (!File.Exists(pathToOpen))
+            {
+                System.Windows.MessageBox.Show(
+                    "Fichier introuvable :\n" + pathToOpen,
+                    "Document",
+                    System.Windows.MessageBoxButton.OK,
+                    System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
             try
             {
                 System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                 {
-                    FileName        = item.FilePath,
+                    FileName        = pathToOpen,
                     UseShellExecute = true
                 });
             }

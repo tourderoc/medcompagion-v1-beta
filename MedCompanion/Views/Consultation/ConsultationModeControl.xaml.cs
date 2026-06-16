@@ -33,6 +33,12 @@ namespace MedCompanion.Views.Consultation
         /// </summary>
         public event EventHandler<string>? RestitutionPdfSavedToPatient;
 
+        /// <summary>
+        /// Émis quand un patient est choisi dans le drawer « Consultations récentes ».
+        /// MainWindow s'abonne pour exécuter sa sélection patient complète (en-tête + panneaux).
+        /// </summary>
+        public event EventHandler<PatientIndexEntry>? PatientSwitchRequested;
+
         public ConsultationModeControl()
         {
             InitializeComponent();
@@ -49,6 +55,8 @@ namespace MedCompanion.Views.Consultation
             vm.NoteSavedToPatient += OnViewModelNoteSaved;
             vm.RestitutionPdfSavedToPatient -= OnRestitutionPdfSaved;
             vm.RestitutionPdfSavedToPatient += OnRestitutionPdfSaved;
+            vm.PatientSwitchRequested -= OnPatientSwitchRequested;
+            vm.PatientSwitchRequested += OnPatientSwitchRequested;
         }
 
         private void OnViewModelNoteSaved(object? sender, EventArgs e)
@@ -56,6 +64,9 @@ namespace MedCompanion.Views.Consultation
 
         private void OnRestitutionPdfSaved(object? sender, string pdfPath)
             => RestitutionPdfSavedToPatient?.Invoke(this, pdfPath);
+
+        private void OnPatientSwitchRequested(object? sender, PatientIndexEntry patient)
+            => PatientSwitchRequested?.Invoke(this, patient);
 
         public void Initialize(ILLMService llmService, StorageService storageService,
                                WhisperStreamingService? whisperService = null,

@@ -461,6 +461,14 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             }
         };
 
+        // Quand un patient est choisi dans le drawer « Consultations récentes » du mode Consultation
+        // → exécuter le flux COMPLET de sélection (en-tête patient + tous les panneaux), pas juste
+        // le dossier consultation. Sinon l'en-tête du haut resterait figé sur le patient précédent.
+        ConsultationModeContent.PatientSwitchRequested += (_, patient) =>
+        {
+            if (patient != null) LoadPatientAsync(patient);
+        };
+
         // Initialiser TemplatesControl
         TemplatesPanel.Initialize(_templateExtractor, _mccLibrary);
         TemplatesPanel.StatusChanged += (s, msg) => {
