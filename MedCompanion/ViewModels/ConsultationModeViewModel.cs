@@ -2668,16 +2668,27 @@ clinical_observations_json: |
             try
             {
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("Tu es un expert en pédopsychiatrie. À partir des éléments recueillis lors de l'interrogatoire ci-dessous, propose pour chacun des 10 axes d'observation clinique 2 à 4 suggestions contextuelles pertinentes.");
-                sb.AppendLine("Chaque suggestion = qualificatif clinique descriptif court (2 à 6 mots). Pas de diagnostic, pas d'interprétation.");
+                sb.AppendLine("Tu es un clinicien en pédopsychiatrie. Lis l'interrogatoire ci-dessous pour comprendre le tableau clinique global (âge, motif, antécédents), puis propose pour chaque axe d'observation 3 à 4 qualificatifs adaptés au profil probable de cet enfant.");
                 sb.AppendLine();
-                sb.AppendLine("INTERROGATOIRE :");
+                sb.AppendLine("RÈGLES IMPÉRATIVES :");
+                sb.AppendLine("✅ Chaque item = qualificatif qui décrit la QUALITÉ ou l'INTENSITÉ d'une observation clinique (ex: \"Bon contact\", \"Contact médiocre\", \"Retrait relationnel\", \"Contact adhésif\").");
+                sb.AppendLine("✅ 3 à 4 items par axe, du plus favorable au moins favorable ou du plus fréquent au plus spécifique.");
+                sb.AppendLine("❌ NE JAMAIS reprendre ou paraphraser un élément de l'interrogatoire (ex: \"Réaction à l'interrogatoire\" ou \"Établissement du lien\" sont INTERDITS).");
+                sb.AppendLine("❌ NE PAS nommer une activité, une situation ou une observation faite à l'interrogatoire.");
+                sb.AppendLine("❌ Pas de diagnostic, pas d'interprétation.");
+                sb.AppendLine();
+                sb.AppendLine("EXEMPLES DE FORMAT ATTENDU :");
+                sb.AppendLine("Contact → [\"Bon contact\", \"Contact médiocre\", \"Retrait relationnel\", \"Contact adhésif\"]");
+                sb.AppendLine("Langage → [\"Adapté à l'âge\", \"Langage pauvre\", \"Mutisme relatif\", \"Logorrhée\"]");
+                sb.AppendLine("Psychomotricite → [\"Motricité harmonieuse\", \"Instabilité motrice\", \"Inhibition motrice\", \"Agitation constante\"]");
+                sb.AppendLine();
+                sb.AppendLine("INTERROGATOIRE (contexte clinique uniquement) :");
                 sb.AppendLine(NoteContent.Trim());
                 sb.AppendLine();
                 sb.AppendLine("Réponds UNIQUEMENT en JSON valide, sans markdown ni commentaire :");
                 sb.AppendLine("{\"Contact\":[],\"Langage\":[],\"Comprehension\":[],\"Psychomotricite\":[],\"MimiquRegard\":[],\"ProfilCognitif\":[],\"HumeurAnxiete\":[],\"ImaginaireJeu\":[],\"RapportCadre\":[],\"Vigilance\":[]}");
 
-                var (ok, json, _) = await _llmService.ChatAsync(sb.ToString(), new(), maxTokens: 800);
+                var (ok, json, _) = await _llmService.ChatAsync(sb.ToString(), new(), maxTokens: 1200);
                 if (!ok || string.IsNullOrWhiteSpace(json)) throw new InvalidOperationException("LLM non disponible");
 
                 // Extrait le JSON brut (ignore texte éventuel avant/après)
