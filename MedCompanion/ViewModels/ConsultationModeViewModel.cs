@@ -4457,6 +4457,11 @@ source: ""MedCompanion""
             var premiereCard = ConsultationCards.FirstOrDefault(c => c.Type == "1ère consultation");
             bool premiereCompleted = premiereCard != null;
 
+            // Clôturée → lecture seule  |  disponible → nouvelle consultation
+            var premiereCmd = premiereCompleted && premiereCard != null
+                ? new Commands.RelayCommand(_ => OpenPastConsultation(premiereCard))
+                : (System.Windows.Input.ICommand)NewConsultationCommand;
+
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "premiere",
@@ -4464,7 +4469,7 @@ source: ""MedCompanion""
                 Icon   = "🩺",
                 Status = premiereCompleted ? FriseStageStatus.Completed : FriseStageStatus.Available,
                 Date   = premiereCard?.Date,
-                ActivateCommand = NewConsultationCommand
+                ActivateCommand = premiereCmd
             });
 
             // Pour l'instant seul le parcours 3-11 ans est défini
