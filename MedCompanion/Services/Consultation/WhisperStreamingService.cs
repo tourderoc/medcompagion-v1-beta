@@ -95,6 +95,7 @@ namespace MedCompanion.Services.Consultation
         // ── Whisper (créés une seule fois) ────────────────────────────────────
         private WhisperFactory?   _factory;
         private WhisperProcessor? _processor;
+        private string?           _modelPath;   // chemin du modèle, pour recréer le factory lors d'un reset complet
         private bool _whisperInitialized;
         private readonly SemaphoreSlim _initLock = new(1, 1);
 
@@ -186,6 +187,7 @@ namespace MedCompanion.Services.Consultation
                 System.Diagnostics.Debug.WriteLine(
                     $"[Whisper] Prompt dynamique : {_vocabService.Count} termes custom chargés.");
 
+                _modelPath = modelManager.ModelPath;
                 _factory   = WhisperFactory.FromPath(modelManager.ModelPath);
                 _processor = _factory.CreateBuilder()
                                      .WithLanguage("fr")
@@ -817,13 +819,21 @@ namespace MedCompanion.Services.Consultation
         // ── Reset engine (anti-saturation Whisper) ────────────────────────────
 
         /// <summary>
-        /// Réinitialise le processor Whisper sans recharger le modèle depuis disque.
-        /// À appeler entre 2 patients ou manuellement lorsque la qualité de transcription
-        /// se dégrade après plusieurs heures d'usage (KV cache décodeur, fragmentation VRAM,
-        /// résidus de contexte). Coût ≈ 200-500 ms, le modèle reste en RAM via le factory.
+        /// Réinitialise le moteur Whisper. Deux niveaux :
+        ///
+        ///  • <paramref name="full"/> = false (défaut) : recrée uniquement le <c>_processor</c>
+        ///    (KV cache décodeur, résidus de contexte). Le factory/modèle reste en VRAM.
+        ///    Coût ≈ 200-500 ms. Suffisant contre la contamination de contexte entre chunks.
+        ///
+        ///  • <paramref name="full"/> = true : dispose AUSSI le <c>_factory</c> et recharge le
+        ///    modèle depuis le disque. Seul moyen de réellement défragmenter la VRAM et de
+        ///    réinitialiser le contexte CUDA natif — corrige la dégradation progressive de
+        ///    qualité observée après plusieurs sessions (typiquement à partir de la 4ᵉ).
+        ///    Coût ≈ 1-2 s (rechargement modèle). À appeler au changement de patient.
+        ///
         /// No-op si Whisper n'a jamais été initialisé OU si une session est active.
         /// </summary>
-        public async Task<(bool ok, string message)> ResetEngineAsync()
+        public async Task<(bool ok, string message)> ResetEngineAsync(bool full = false)
         {
             if (!_whisperInitialized) return (true, "Whisper non initialisé — rien à réinitialiser.");
             if (IsActive) return (false, "Enregistrement en cours — arrêtez d'abord la transcription.");
@@ -831,15 +841,34 @@ namespace MedCompanion.Services.Consultation
             await _initLock.WaitAsync();
             try
             {
-                Log("ResetEngineAsync : disposal processor + recréation");
-                StatusChanged?.Invoke("🔄 Réinitialisation Whisper...");
+                Log($"ResetEngineAsync (full={full}) : disposal {(full ? "factory + processor" : "processor")} + recréation");
+                StatusChanged?.Invoke(full ? "🔄 Réinitialisation complète Whisper..." : "🔄 Réinitialisation Whisper...");
+
                 try { _processor?.Dispose(); } catch { /* ignoré */ }
                 _processor = null;
 
-                // Force la libération de la mémoire native (KV cache décodeur, etc.)
+                if (full)
+                {
+                    // Détruire le factory libère le modèle ggml + le contexte CUDA natif → défragmente la VRAM.
+                    try { _factory?.Dispose(); } catch { /* ignoré */ }
+                    _factory = null;
+                }
+
+                // Force la libération de la mémoire native (KV cache décodeur, VRAM, etc.)
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
+
+                if (full)
+                {
+                    // Recharger le modèle depuis le disque (le factory venait d'être détruit).
+                    if (string.IsNullOrEmpty(_modelPath) || !File.Exists(_modelPath))
+                    {
+                        _whisperInitialized = false;
+                        return (false, "Chemin du modèle introuvable — réinitialisation impossible (relancez l'app).");
+                    }
+                    _factory = WhisperFactory.FromPath(_modelPath);
+                }
 
                 if (_factory == null)
                 {
@@ -853,8 +882,8 @@ namespace MedCompanion.Services.Consultation
                                      .WithPrompt(_dynamicPrompt)
                                      .WithTemperature(0f)
                                      .Build();
-                StatusChanged?.Invoke("✓ Whisper réinitialisé.");
-                return (true, "Whisper réinitialisé.");
+                StatusChanged?.Invoke(full ? "✓ Whisper réinitialisé (complet)." : "✓ Whisper réinitialisé.");
+                return (true, full ? "Whisper réinitialisé (rechargement complet)." : "Whisper réinitialisé.");
             }
             catch (Exception ex)
             {

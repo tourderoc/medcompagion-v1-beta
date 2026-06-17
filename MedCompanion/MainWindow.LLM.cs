@@ -256,7 +256,7 @@ public partial class MainWindow : Window
 
         try
         {
-            var (success, message) = await whisper.ResetEngineAsync();
+            var (success, message) = await whisper.ResetEngineAsync(full: true);
             if (success)
             {
                 WhisperResetButton.BorderBrush = new SolidColorBrush(Color.FromRgb(76, 175, 80));   // vert
@@ -285,9 +285,12 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// Réinitialise le processor Whisper en arrière-plan, sans bloquer l'UI.
-    /// Appelé au changement de patient pour éviter la dégradation progressive de la
-    /// qualité de transcription (KV cache décodeur, fragmentation VRAM, résidus de contexte).
+    /// Réinitialise COMPLÈTEMENT le moteur Whisper en arrière-plan (teardown factory + processor,
+    /// rechargement du modèle depuis le disque), sans bloquer l'UI.
+    /// Appelé au changement de patient pour éviter la dégradation progressive de la qualité de
+    /// transcription : seul le reset complet défragmente la VRAM et réinitialise le contexte CUDA
+    /// natif (le reset partiel ne vidait que le KV cache décodeur, d'où la dégradation à partir
+    /// de ~4 sessions). Coût ~1-2 s, invisible car on n'enregistre pas pendant le chargement patient.
     /// </summary>
     private void ResetWhisperEngineSilently()
     {
@@ -297,7 +300,7 @@ public partial class MainWindow : Window
         {
             try
             {
-                var (ok, _) = await whisper.ResetEngineAsync();
+                var (ok, _) = await whisper.ResetEngineAsync(full: true);
                 if (ok)
                 {
                     _ = Dispatcher.InvokeAsync(() =>
