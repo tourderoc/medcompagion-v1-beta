@@ -95,6 +95,14 @@ namespace MedCompanion.ViewModels
             set => SetProp(ref _isHidden, value);
         }
 
+        /// <summary>Vrai pendant une opération LLM sur ce bloc (ex: reformulation) — désactive le bouton.</summary>
+        private bool _isBusy = false;
+        public bool IsBusy
+        {
+            get => _isBusy;
+            set => SetProp(ref _isBusy, value);
+        }
+
         // ── Helpers ───────────────────────────────────────────────────────────
 
         public void AddTheme(string theme)

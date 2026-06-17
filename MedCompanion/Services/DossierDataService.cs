@@ -539,6 +539,12 @@ namespace MedCompanion.Services
                 "Medecin" => "Médecin traitant",
                 "Ecole" => "École",
                 "Classe" => "Classe",
+                "EcoleCommune" => "École — Commune",
+                "EcoleAdresse" => "École — Adresse",
+                "EcoleCodePostal" => "École — Code postal",
+                "EcoleTelephone" => "École — Téléphone",
+                "EcoleEmail" => "École — Email",
+                "EcoleUai" => "École — Code UAI",
                 _ => propName
             };
         }

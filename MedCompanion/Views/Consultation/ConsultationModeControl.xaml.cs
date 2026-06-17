@@ -68,6 +68,15 @@ namespace MedCompanion.Views.Consultation
         private void OnPatientSwitchRequested(object? sender, PatientIndexEntry patient)
             => PatientSwitchRequested?.Invoke(this, patient);
 
+        /// <summary>
+        /// Note finale : referme le popup « + Ajouter une section » après le choix.
+        /// L'ajout proprement dit est réalisé par AddFinalNoteSectionCommand (binding).
+        /// </summary>
+        private void AddSection_Click(object sender, RoutedEventArgs e)
+        {
+            if (AddSectionToggle != null) AddSectionToggle.IsChecked = false;
+        }
+
         public void Initialize(ILLMService llmService, StorageService storageService,
                                WhisperStreamingService? whisperService = null,
                                DocumentService? documentService = null,

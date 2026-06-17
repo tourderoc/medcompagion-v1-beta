@@ -11,7 +11,15 @@ namespace MedCompanion.Services.Restitutions
     {
         // ── Contexte clinique 3-11 ans ──────────────────────────────────────────
         public string? Ecole { get; set; }
+        public string? EcoleLieu { get; set; }
         public string? Classe { get; set; }
+
+        // ── Coordonnées de l'école (remplies via l'Annuaire Éducation Nationale) ──
+        public string? EcoleAdresse { get; set; }
+        public string? EcoleCodePostal { get; set; }
+        public string? EcoleTelephone { get; set; }
+        public string? EcoleEmail { get; set; }
+        public string? EcoleUai { get; set; }
         public string? MereNom { get; set; }
         public string? MereAge { get; set; }
         public string? MereJob { get; set; }
@@ -55,6 +63,7 @@ Tu ne dois renvoyer AUCUN texte explicatif, AUCUN préambule, et AUCUN code de b
 Champs JSON à extraire :
 {
   ""ecole"": ""Nom de l'école ou établissement (ou null si non trouvé)"",
+  ""ecoleLieu"": ""Ville ou commune de l'école (ou null si non trouvé)"",
   ""classe"": ""Classe ou niveau scolaire (ex: 6e, CM1, ou null si non trouvé)"",
   ""mereNom"": ""Prénom de la mère (ou null)"",
   ""mereAge"": ""Âge de la mère (ex: '38 ans', ou null)"",

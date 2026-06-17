@@ -1,7 +1,9 @@
 using System;
+using System.Collections.Generic;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using MedCompanion.Services;
 using MedCompanion.Services.Restitutions;
 
 namespace MedCompanion.Views.Consultation
@@ -10,6 +12,9 @@ namespace MedCompanion.Views.Consultation
     {
         public PatientContextDetails CompletedDetails { get; private set; }
         public bool IsSaved { get; private set; } = false;
+
+        private readonly EcoleAnnuaireService _ecoleService = new();
+        private EcoleAnnuaireResult? _selectedEcole;
 
         public ContextCompletionWindow(PatientContextDetails prefilledDetails)
         {
@@ -67,7 +72,19 @@ namespace MedCompanion.Views.Consultation
             if (d.ShowFullContext)
             {
                 TxtEcole.Text = d.Ecole ?? "";
+                TxtEcoleLieu.Text = d.EcoleLieu ?? "";
                 TxtClasse.Text = d.Classe ?? "";
+
+                // Coordonnées école déjà connues → préremplir et afficher le bloc
+                TxtEcoleAdresse.Text = d.EcoleAdresse ?? "";
+                TxtEcoleTel.Text     = d.EcoleTelephone ?? "";
+                TxtEcoleEmail.Text   = d.EcoleEmail ?? "";
+                if (!string.IsNullOrWhiteSpace(d.EcoleAdresse) ||
+                    !string.IsNullOrWhiteSpace(d.EcoleTelephone) ||
+                    !string.IsNullOrWhiteSpace(d.EcoleEmail))
+                {
+                    PanelCoordonnees.Visibility = Visibility.Visible;
+                }
                 TxtMereNom.Text = d.MereNom ?? "";
                 TxtMereAge.Text = d.MereAge ?? "";
                 TxtMereJob.Text = d.MereJob ?? "";
@@ -128,6 +145,88 @@ namespace MedCompanion.Views.Consultation
             return text;
         }
 
+        // ── Recherche de l'école dans l'Annuaire Éducation Nationale ─────────────
+
+        private async void BtnRechercheEcole_Click(object sender, RoutedEventArgs e)
+        {
+            var nom    = TxtEcole.Text.Trim();
+            var commune = TxtEcoleLieu.Text.Trim();
+
+            if (string.IsNullOrWhiteSpace(nom))
+            {
+                ShowRechercheStatut("Renseignez d'abord le nom de l'école.", isError: true);
+                return;
+            }
+
+            BtnRechercheEcole.IsEnabled = false;
+            ShowRechercheStatut("Recherche dans l'annuaire officiel...", isError: false);
+            PanelResultats.Visibility = Visibility.Collapsed;
+
+            try
+            {
+                var (ok, results, error) = await _ecoleService.SearchAsync(nom, commune);
+
+                if (!ok)
+                {
+                    ShowRechercheStatut(error ?? "Recherche impossible.", isError: true);
+                    return;
+                }
+
+                if (results.Count == 0)
+                {
+                    ShowRechercheStatut("Aucun établissement trouvé. Vérifiez le nom/la ville ou saisissez les coordonnées manuellement.", isError: true);
+                    return;
+                }
+
+                if (results.Count == 1)
+                {
+                    FillCoordonnees(results[0]);
+                    ShowRechercheStatut("✓ Établissement trouvé — vérifiez les coordonnées ci-dessous.", isError: false);
+                    return;
+                }
+
+                // Plusieurs résultats → laisser le médecin choisir
+                CmbEcoleResultats.ItemsSource = results;
+                PanelResultats.Visibility = Visibility.Visible;
+                ShowRechercheStatut($"{results.Count} établissements trouvés — sélectionnez le bon.", isError: false);
+            }
+            catch (Exception ex)
+            {
+                ShowRechercheStatut($"Erreur : {ex.Message}", isError: true);
+            }
+            finally
+            {
+                BtnRechercheEcole.IsEnabled = true;
+            }
+        }
+
+        private void CmbEcoleResultats_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (CmbEcoleResultats.SelectedItem is EcoleAnnuaireResult result)
+                FillCoordonnees(result);
+        }
+
+        private void FillCoordonnees(EcoleAnnuaireResult r)
+        {
+            _selectedEcole = r;
+
+            // Aligner nom/commune sur les valeurs officielles
+            if (!string.IsNullOrWhiteSpace(r.Nom))     TxtEcole.Text     = r.Nom;
+            if (!string.IsNullOrWhiteSpace(r.Commune)) TxtEcoleLieu.Text = r.Commune;
+
+            TxtEcoleAdresse.Text = r.Adresse;
+            TxtEcoleTel.Text     = r.Telephone;
+            TxtEcoleEmail.Text   = r.Email;
+            PanelCoordonnees.Visibility = Visibility.Visible;
+        }
+
+        private void ShowRechercheStatut(string message, bool isError)
+        {
+            TxtRechercheStatut.Text = message;
+            TxtRechercheStatut.Foreground = isError ? Brushes.IndianRed : new SolidColorBrush(Color.FromRgb(0x7F, 0x8C, 0x8D));
+            TxtRechercheStatut.Visibility = Visibility.Visible;
+        }
+
         private void BtnIgnore_Click(object sender, RoutedEventArgs e)
         {
             IsSaved = false;
@@ -158,8 +257,16 @@ namespace MedCompanion.Views.Consultation
                 DateNaissanceCorrigee = string.IsNullOrWhiteSpace(dobCorrigee) ? null : dobCorrigee,
 
                 // Contexte complet (3-11 ans)
-                Ecole    = d.ShowFullContext ? TxtEcole.Text.Trim() : null,
-                Classe   = d.ShowFullContext ? TxtClasse.Text.Trim() : null,
+                Ecole     = d.ShowFullContext ? TxtEcole.Text.Trim() : null,
+                EcoleLieu = d.ShowFullContext ? TxtEcoleLieu.Text.Trim() : null,
+                Classe    = d.ShowFullContext ? TxtClasse.Text.Trim() : null,
+
+                // Coordonnées école (annuaire EN ou saisie manuelle)
+                EcoleAdresse    = d.ShowFullContext ? TxtEcoleAdresse.Text.Trim() : null,
+                EcoleTelephone  = d.ShowFullContext ? TxtEcoleTel.Text.Trim()     : null,
+                EcoleEmail      = d.ShowFullContext ? TxtEcoleEmail.Text.Trim()   : null,
+                EcoleCodePostal = d.ShowFullContext ? (_selectedEcole?.CodePostal ?? "") : null,
+                EcoleUai        = d.ShowFullContext ? (_selectedEcole?.Uai ?? "")        : null,
                 MereNom  = d.ShowFullContext ? GetCleanText(TxtMereNom, "Prénom") : null,
                 MereAge  = d.ShowFullContext ? GetCleanText(TxtMereAge, "Âge") : null,
                 MereJob  = d.ShowFullContext ? GetCleanText(TxtMereJob, "Profession") : null,

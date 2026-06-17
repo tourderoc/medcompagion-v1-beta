@@ -228,6 +228,9 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(IsProjetActive));
                     OnPropertyChanged(nameof(IsBilansActive));
                     OnPropertyChanged(nameof(IsDocumentsActive));
+
+                    if (value == DossierTab.Administratif)
+                        RefreshAdminInfo();
                 }
             }
         }
@@ -239,6 +242,77 @@ namespace MedCompanion.ViewModels
         public bool IsProjetActive => ActiveDossierTab == DossierTab.ProjetTherapeutique;
         public bool IsBilansActive => ActiveDossierTab == DossierTab.Bilans;
         public bool IsDocumentsActive => ActiveDossierTab == DossierTab.Documents;
+
+        // ── Page Administratif du dossier (infos réelles depuis patient.json) ────
+
+        private string _adminInfoText = "Aucune information administrative.";
+        public string AdminInfoText { get => _adminInfoText; private set => SetProperty(ref _adminInfoText, value); }
+
+        private string _ecoleContactText = "";
+        public string EcoleContactText { get => _ecoleContactText; private set => SetProperty(ref _ecoleContactText, value); }
+
+        private bool _hasEcoleContact;
+        public bool HasEcoleContact { get => _hasEcoleContact; private set => SetProperty(ref _hasEcoleContact, value); }
+
+        /// <summary>
+        /// Recharge les infos de la page Administratif depuis patient.json
+        /// (appelé à l'ouverture de l'intercalaire et après mise à jour des métadonnées).
+        /// </summary>
+        private void RefreshAdminInfo()
+        {
+            if (_patientIndex == null || CurrentPatient == null)
+            {
+                AdminInfoText = "Aucun patient sélectionné.";
+                EcoleContactText = "";
+                HasEcoleContact = false;
+                return;
+            }
+
+            var m = _patientIndex.GetMetadata(CurrentPatient.Id);
+            if (m == null)
+            {
+                AdminInfoText = "Aucune information administrative enregistrée.";
+                EcoleContactText = "";
+                HasEcoleContact = false;
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            void Add(string label, string? val) { if (!string.IsNullOrWhiteSpace(val)) sb.AppendLine($"{label} : {val.Trim()}"); }
+
+            Add("Nom", m.NomComplet);
+            Add("Date de naissance", m.DobFormatted);
+            Add("Sexe", m.Sexe);
+            Add("N° dossier", m.NumeroDossier);
+            Add("Adresse", string.Join(" ", new[] { m.AdresseRue, m.AdresseCodePostal, m.AdresseVille }
+                                                .Where(s => !string.IsNullOrWhiteSpace(s))));
+            Add("Sécurité sociale", m.NumeroSecuriteSociale);
+
+            var acc = $"{m.AccompagnantPrenom} {m.AccompagnantNom}".Trim();
+            if (!string.IsNullOrWhiteSpace(m.AccompagnantLien))
+                acc = string.IsNullOrWhiteSpace(acc) ? m.AccompagnantLien : $"{acc} ({m.AccompagnantLien})";
+            Add("Accompagnant", acc);
+            Add("Tél. accompagnant", m.AccompagnantTelephone);
+            Add("Email accompagnant", m.AccompagnantEmail);
+            Add("Médecin traitant", $"{m.MedecinTraitantPrenom} {m.MedecinTraitantNom}".Trim());
+            Add("École", m.Ecole);
+            Add("Classe", m.Classe);
+
+            AdminInfoText = sb.Length > 0 ? sb.ToString().TrimEnd() : "Aucune information administrative enregistrée.";
+
+            // Zone contact école
+            var esb = new System.Text.StringBuilder();
+            void AddE(string label, string? val) { if (!string.IsNullOrWhiteSpace(val)) esb.AppendLine($"{label} : {val.Trim()}"); }
+            AddE("Établissement", m.Ecole);
+            AddE("Adresse", string.Join(" ", new[] { m.EcoleAdresse, m.EcoleCodePostal, m.EcoleCommune }
+                                              .Where(s => !string.IsNullOrWhiteSpace(s))));
+            AddE("Téléphone", m.EcoleTelephone);
+            AddE("Email", m.EcoleEmail);
+            AddE("Code UAI", m.EcoleUai);
+
+            EcoleContactText = esb.ToString().TrimEnd();
+            HasEcoleContact = esb.Length > 0;
+        }
 
         private PatientIndexEntry? _currentPatient;
         /// <summary>
@@ -289,6 +363,55 @@ namespace MedCompanion.ViewModels
         }
 
         public bool HasNoteContent => !string.IsNullOrWhiteSpace(NoteContent);
+
+        // ── Note finale : relecture/correction par cartouches éditables (V0d) ────
+
+        /// <summary>
+        /// Sections affichées à l'étape de relecture : uniquement les blocs remplis et non masqués.
+        /// Snapshot pris à l'entrée en mode FinalNote ; l'utilisateur édite les FreeText en place
+        /// (mêmes instances que <see cref="InterrogatoireBlocks"/>, donc aucune divergence).
+        /// </summary>
+        public ObservableCollection<ConsultationBlockViewModel> FinalNoteBlocks { get; } = new();
+
+        /// <summary>Blocs disponibles à l'ajout manuel (vides ou masqués, pas encore affichés).</summary>
+        public IEnumerable<ConsultationBlockViewModel> AvailableSectionsToAdd =>
+            InterrogatoireBlocks.Where(b => !FinalNoteBlocks.Contains(b));
+
+        /// <summary>Y a-t-il des sections ajoutables ? (pilote la visibilité du bouton « + Ajouter »)</summary>
+        public bool HasSectionsToAdd => AvailableSectionsToAdd.Any();
+
+        private void PopulateFinalNoteBlocks()
+        {
+            FinalNoteBlocks.Clear();
+            foreach (var b in InterrogatoireBlocks.Where(b => !b.IsHidden && b.IsNotEmpty))
+                FinalNoteBlocks.Add(b);
+            OnPropertyChanged(nameof(AvailableSectionsToAdd));
+            OnPropertyChanged(nameof(HasSectionsToAdd));
+        }
+
+        /// <summary>Ajoute manuellement une section (vide) à la relecture — bouton « + Ajouter une section ».</summary>
+        private void AddFinalNoteSection(ConsultationBlockViewModel? block)
+        {
+            if (block == null || FinalNoteBlocks.Contains(block)) return;
+            block.IsHidden = false;
+            FinalNoteBlocks.Add(block);
+            OnPropertyChanged(nameof(AvailableSectionsToAdd));
+            OnPropertyChanged(nameof(HasSectionsToAdd));
+        }
+
+        /// <summary>
+        /// Reconstruit <see cref="NoteContent"/> (markdown) depuis les FreeText des blocs.
+        /// Appelé avant la sauvegarde : les cartouches sont l'unique source de vérité.
+        /// </summary>
+        private void RebuildNoteContentFromBlocks()
+        {
+            var blocks = InterrogatoireBlocks.Select(vm => new ConsultationBlock
+            {
+                Key = vm.Key, Title = vm.Title, FreeText = vm.FreeText,
+                ExpectedThemes = vm.ExpectedThemes, CoveredThemes = vm.CoveredThemes
+            }).ToList();
+            NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocks, ConsultationDate);
+        }
 
         private DateTime _consultationDate = DateTime.Now;
         /// <summary>
@@ -1183,6 +1306,8 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(IsInSaisieMode));
                     OnPropertyChanged(nameof(IsInExtractionMode));
                     OnPropertyChanged(nameof(IsInFinalNoteMode));
+                    if (value == InterrogatoireState.FinalNote)
+                        PopulateFinalNoteBlocks();
                 }
             }
         }
@@ -2209,8 +2334,22 @@ clinical_observations_json: |
 
         internal void ApplyQualityIssue(QualityIssue issue)
         {
-            NoteContent = NoteContent.Replace(issue.Original, issue.Suggestion,
-                System.StringComparison.OrdinalIgnoreCase);
+            // La note finale est désormais éditée par cartouches : on applique la correction
+            // directement dans le FreeText du (des) bloc(s) qui contient le texte d'origine,
+            // puis on régénère NoteContent pour rester cohérent (contrôle qualité, sauvegarde).
+            if (!string.IsNullOrEmpty(issue.Original))
+            {
+                foreach (var block in InterrogatoireBlocks)
+                {
+                    if (!string.IsNullOrEmpty(block.FreeText) &&
+                        block.FreeText.Contains(issue.Original, System.StringComparison.OrdinalIgnoreCase))
+                    {
+                        block.FreeText = block.FreeText.Replace(issue.Original, issue.Suggestion,
+                            System.StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+            }
+            RebuildNoteContentFromBlocks();
         }
 
         internal void DismissQualityIssue(QualityIssueViewModel vm)
@@ -2332,7 +2471,7 @@ clinical_observations_json: |
                     // Sections 1-3 : uniquement pour 3-11 ans (données extraites par LLM)
                     if (needsFullContext)
                     {
-                        // 1. Enregistrer école et classe dans patient.json
+                        // 1. Enregistrer école, classe et coordonnées dans patient.json (panneau admin)
                         if (_patientIndex != null && CurrentPatient != null)
                         {
                             var adminMeta = _patientIndex.GetMetadata(CurrentPatient.Id);
@@ -2340,11 +2479,25 @@ clinical_observations_json: |
                             {
                                 adminMeta.Ecole = result.Ecole;
                                 adminMeta.Classe = result.Classe;
+
+                                // Coordonnées de l'école (annuaire EN) — n'écraser que si renseigné
+                                if (!string.IsNullOrWhiteSpace(result.EcoleLieu))       adminMeta.EcoleCommune    = result.EcoleLieu;
+                                if (!string.IsNullOrWhiteSpace(result.EcoleAdresse))    adminMeta.EcoleAdresse    = result.EcoleAdresse;
+                                if (!string.IsNullOrWhiteSpace(result.EcoleCodePostal)) adminMeta.EcoleCodePostal = result.EcoleCodePostal;
+                                if (!string.IsNullOrWhiteSpace(result.EcoleTelephone))  adminMeta.EcoleTelephone  = result.EcoleTelephone;
+                                if (!string.IsNullOrWhiteSpace(result.EcoleEmail))      adminMeta.EcoleEmail      = result.EcoleEmail;
+                                if (!string.IsNullOrWhiteSpace(result.EcoleUai))        adminMeta.EcoleUai        = result.EcoleUai;
+
                                 _patientIndex.Upsert(adminMeta);
+                                RefreshAdminInfo();   // rafraîchir la page Administratif du dossier
                             }
                         }
 
-                        // 2. Injecter les compléments dans les blocs d'interrogatoire correspondants
+                        // 2. Injecter chaque complément vérifié dans SON bloc respectif (fusion LLM).
+                        //    On utilise les vraies clés de block_library.json — chaque info atterrit
+                        //    dans le bon bloc, même s'il était vide (il réapparaîtra en cartouche).
+
+                        // Famille & contexte social : parents
                         var familleBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "famille");
                         if (familleBlock != null)
                         {
@@ -2361,27 +2514,58 @@ clinical_observations_json: |
                             var familyLines = new System.Collections.Generic.List<string>();
                             if (!string.IsNullOrEmpty(mereText)) familyLines.Add($"- Mère : {mereText}");
                             if (!string.IsNullOrEmpty(pereText)) familyLines.Add($"- Père : {pereText}");
-                            if (!string.IsNullOrEmpty(result.Fratrie)) familyLines.Add($"- Fratrie : {result.Fratrie}");
 
                             if (familyLines.Count > 0)
                             {
-                                var currentText = familleBlock.FreeText ?? "";
-                                familleBlock.FreeText = (currentText.Trim() + "\n\n[Complément Contexte Familial] :\n" + string.Join("\n", familyLines)).Trim();
+                                ExtractionStatus = "Intégration des informations vérifiées (famille)...";
+                                await MergeVerifiedFactsIntoBlockAsync(familleBlock, familyLines);
                             }
                         }
 
-                        var atcdBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "antecedents");
-                        if (atcdBlock != null)
+                        // Fratrie : bloc dédié
+                        var fratrieBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "fratrie");
+                        if (fratrieBlock != null && !string.IsNullOrEmpty(result.Fratrie))
                         {
-                            var atcdLines = new System.Collections.Generic.List<string>();
-                            if (!string.IsNullOrEmpty(result.MarcheAge)) atcdLines.Add($"- Âge de la marche : {result.MarcheAge}");
-                            if (!string.IsNullOrEmpty(result.LangageAcq)) atcdLines.Add($"- Acquisition du langage : {result.LangageAcq}");
-                            if (!string.IsNullOrEmpty(result.PropreteAcq)) atcdLines.Add($"- Statut propreté : {result.PropreteAcq}");
+                            ExtractionStatus = "Intégration des informations vérifiées (fratrie)...";
+                            await MergeVerifiedFactsIntoBlockAsync(fratrieBlock,
+                                new System.Collections.Generic.List<string> { $"- Fratrie : {result.Fratrie}" });
+                        }
 
-                            if (atcdLines.Count > 0)
+                        // Développement psychomoteur : marche / langage / propreté
+                        var devBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "developpement");
+                        if (devBlock != null)
+                        {
+                            var devLines = new System.Collections.Generic.List<string>();
+                            if (!string.IsNullOrEmpty(result.MarcheAge))   devLines.Add($"- Âge de la marche : {result.MarcheAge}");
+                            if (!string.IsNullOrEmpty(result.LangageAcq))  devLines.Add($"- Acquisition du langage : {result.LangageAcq}");
+                            if (!string.IsNullOrEmpty(result.PropreteAcq)) devLines.Add($"- Statut propreté : {result.PropreteAcq}");
+
+                            if (devLines.Count > 0)
                             {
-                                var currentText = atcdBlock.FreeText ?? "";
-                                atcdBlock.FreeText = (currentText.Trim() + "\n\n[Complément Développement/ATCD] :\n" + string.Join("\n", atcdLines)).Trim();
+                                ExtractionStatus = "Intégration des informations vérifiées (développement psychomoteur)...";
+                                await MergeVerifiedFactsIntoBlockAsync(devBlock, devLines);
+                            }
+                        }
+
+                        // Identité : école (+ ville) / classe — c'est ici que vit l'école
+                        // (le bloc "identite" attend les thèmes accompagnant/classe/ecole).
+                        var identiteBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "identite");
+                        if (identiteBlock != null)
+                        {
+                            var ecoleText = result.Ecole ?? "";
+                            if (!string.IsNullOrEmpty(result.EcoleLieu))
+                                ecoleText = string.IsNullOrEmpty(ecoleText)
+                                    ? result.EcoleLieu
+                                    : $"{ecoleText} ({result.EcoleLieu})";
+
+                            var idLines = new System.Collections.Generic.List<string>();
+                            if (!string.IsNullOrEmpty(ecoleText))     idLines.Add($"- École : {ecoleText}");
+                            if (!string.IsNullOrEmpty(result.Classe)) idLines.Add($"- Classe : {result.Classe}");
+
+                            if (idLines.Count > 0)
+                            {
+                                ExtractionStatus = "Intégration des informations vérifiées (identité / scolarité)...";
+                                await MergeVerifiedFactsIntoBlockAsync(identiteBlock, idLines);
                             }
                         }
 
@@ -2398,6 +2582,12 @@ clinical_observations_json: |
                         NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocksList, ConsultationDate);
                         UpdateBlockCollections();
                     }
+
+                    // Les compléments (DDN, famille, antécédents…) viennent d'être injectés dans
+                    // les blocs APRÈS la prise du snapshot des cartouches : on rafraîchit la liste
+                    // pour que ces sections (même celles auparavant vides) apparaissent à la
+                    // relecture finale et soient corrigeables par l'utilisateur.
+                    PopulateFinalNoteBlocks();
                 }
                 ExtractionStatus = oldStatus;
             }
@@ -2407,13 +2597,167 @@ clinical_observations_json: |
             }
         }
 
+        /// <summary>
+        /// Fusionne des faits vérifiés par le médecin (pop-up de complétude) dans le texte d'un bloc.
+        /// Plutôt que d'empiler un « complément » redondant, on demande au LLM de RÉÉCRIRE proprement
+        /// le bloc : intégration des faits (prioritaires), conservation du reste, suppression des
+        /// doublons, aucune invention. En cas d'échec LLM, repli sur un ajout simple (info jamais perdue).
+        /// </summary>
+        private async Task MergeVerifiedFactsIntoBlockAsync(ConsultationBlockViewModel block, List<string> verifiedFacts)
+        {
+            // Le médecin a fourni des infos pour ce bloc → on le démasque pour qu'il
+            // apparaisse en relecture, même s'il avait été auto-masqué ou laissé vide.
+            block.IsHidden = false;
+
+            var existing  = (block.FreeText ?? "").Trim();
+            var factsText = string.Join("\n", verifiedFacts);
+
+            if (_llmService != null)
+            {
+                var prompt = $@"Tu es pédopsychiatre. Voici la section « {block.Title} » d'un interrogatoire, extraite automatiquement :
+
+--- TEXTE ACTUEL ---
+{(string.IsNullOrEmpty(existing) ? "(vide)" : existing)}
+--- FIN ---
+
+Le médecin a vérifié et corrigé les informations suivantes (elles font foi) :
+{factsText}
+
+Réécris cette section en un seul texte propre qui :
+- intègre les informations vérifiées ci-dessus (elles priment en cas de contradiction) ;
+- conserve toutes les autres informations du texte actuel ;
+- supprime les redondances et les doublons ;
+- n'invente rien qui ne figure pas dans les sources ;
+- reste factuel et concis, en français.
+
+Retourne UNIQUEMENT le texte de la section, sans titre ni préambule ni balises de code.";
+
+                try
+                {
+                    var (ok, raw, _) = await _llmService.GenerateTextAsync(prompt, maxTokens: 800);
+                    if (ok && !string.IsNullOrWhiteSpace(raw))
+                    {
+                        block.FreeText = StripMarkdownFences(raw);
+                        return;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[ContextMerge] Échec LLM ({block.Key}) : {ex.Message}");
+                }
+            }
+
+            // Repli : ajout simple (ancien comportement) pour ne jamais perdre l'info vérifiée.
+            block.FreeText = string.IsNullOrEmpty(existing) ? factsText : existing + "\n\n" + factsText;
+        }
+
+        private bool _isReformulatingAll;
+        /// <summary>Vrai pendant la reformulation globale (désactive le bouton « Reformuler »).</summary>
+        public bool IsReformulatingAll
+        {
+            get => _isReformulatingAll;
+            private set => SetProperty(ref _isReformulatingAll, value);
+        }
+
+        /// <summary>
+        /// Reformule TOUTES les sections remplies avant sauvegarde (un seul bouton).
+        /// Traite chaque bloc indépendamment pour préserver la structure et éviter toute
+        /// contamination entre sections. Le texte reste éditable après coup.
+        /// </summary>
+        private async Task ReformulateAllAsync()
+        {
+            if (IsReformulatingAll || _llmService == null) return;
+
+            IsReformulatingAll = true;
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+            try
+            {
+                foreach (var block in FinalNoteBlocks.ToList())
+                {
+                    if (string.IsNullOrWhiteSpace(block.FreeText)) continue;
+                    await ReformulateBlockAsync(block);
+                }
+                ExtractionStatus = "✓ Reformulation terminée — relisez avant de sauvegarder.";
+            }
+            finally
+            {
+                IsReformulatingAll = false;
+                System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        /// <summary>
+        /// Reformule un bloc via le LLM : correction orthographe/grammaire/ponctuation et mise au
+        /// propre, SANS modifier le sens ni inventer/supprimer d'information clinique. Le texte reste éditable.
+        /// </summary>
+        private async Task ReformulateBlockAsync(ConsultationBlockViewModel? block)
+        {
+            if (block == null || block.IsBusy || _llmService == null) return;
+
+            var text = (block.FreeText ?? "").Trim();
+            if (string.IsNullOrEmpty(text)) return;
+
+            block.IsBusy = true;
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+            var previousStatus = ExtractionStatus;
+            ExtractionStatus = $"Reformulation : {block.Title}...";
+
+            try
+            {
+                var prompt = $@"Tu es secrétaire médicale en pédopsychiatrie. Corrige et mets au propre le texte ci-dessous :
+- corrige l'orthographe, la grammaire, la ponctuation et la casse ;
+- améliore légèrement la lisibilité si nécessaire, sans changer le sens ;
+- NE MODIFIE PAS, n'ajoute, ne supprime et n'invente AUCUNE information clinique ;
+- conserve les chiffres, noms propres, dates, abréviations médicales et la structure (puces, retours à la ligne).
+
+Retourne UNIQUEMENT le texte corrigé, sans préambule ni balises de code.
+
+Texte :
+{text}";
+
+                var (ok, raw, _) = await _llmService.GenerateTextAsync(prompt, maxTokens: 1000);
+                if (ok && !string.IsNullOrWhiteSpace(raw))
+                    block.FreeText = StripMarkdownFences(raw);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Reformulate] échec ({block.Key}) : {ex.Message}");
+            }
+            finally
+            {
+                block.IsBusy = false;
+                ExtractionStatus = previousStatus;
+                System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        /// <summary>Retire les éventuelles balises ```…``` autour d'une réponse LLM.</summary>
+        private static string StripMarkdownFences(string raw)
+        {
+            var text = raw.Trim();
+            if (!text.StartsWith("```")) return text;
+
+            var lines = text.Split('\n').ToList();
+            if (lines.Count > 0) lines.RemoveAt(0);                                   // ouverture ```
+            if (lines.Count > 0 && lines[^1].Trim() == "```") lines.RemoveAt(lines.Count - 1); // fermeture ```
+            return string.Join("\n", lines).Trim();
+        }
+
         private async Task SaveInterrogatoireNoteAsync()
         {
-            if (CurrentPatient == null || string.IsNullOrWhiteSpace(NoteContent))
-                return;
+            if (CurrentPatient == null) return;
 
-            // Déclencher l'assistant de complétude si pas encore fait
+            // Déclencher l'assistant de complétude AVANT de figer la note : il peut encore
+            // injecter des compléments (DDN, famille, antécédents) dans les blocs.
+            // (no-op si déjà effectué à l'extraction.)
             await TriggerContextCompletionAssistantAsync();
+
+            // Les cartouches éditables sont la source de vérité : on régénère la note APRÈS
+            // l'assistant, pour que les compléments injectés soient bien écrits dans le .md.
+            RebuildNoteContentFromBlocks();
+
+            if (string.IsNullOrWhiteSpace(NoteContent))
+                return;
 
             var (ok, err) = await WritePremiereConsultationFileAsync();
             if (ok)
@@ -4018,6 +4362,8 @@ source: ""MedCompanion""
 
         public ICommand ExtractInterrogatoireCommand { get; }
         public ICommand SaveInterrogatoireNoteCommand { get; }
+        public ICommand AddFinalNoteSectionCommand { get; }   // param : ConsultationBlockViewModel
+        public ICommand ReformulateAllCommand { get; }        // reformule toutes les sections
         public ICommand BackToSaisieCommand { get; }
         public ICommand StartRecordingCommand { get; }
         public ICommand StopRecordingCommand { get; }
@@ -4123,6 +4469,9 @@ source: ""MedCompanion""
             // Commands interrogatoire
             ExtractInterrogatoireCommand   = new RelayCommand(async _ => await ExtractInterrogatoireAsync(), _ => CanExtract);
             SaveInterrogatoireNoteCommand  = new RelayCommand(async _ => await SaveInterrogatoireNoteAsync(), _ => IsInFinalNoteMode && HasPatient && HasNoteContent && !_noteSaved);
+            AddFinalNoteSectionCommand     = new RelayCommand(p => AddFinalNoteSection(p as ConsultationBlockViewModel), p => p is ConsultationBlockViewModel);
+            ReformulateAllCommand          = new RelayCommand(async _ => await ReformulateAllAsync(),
+                                                              _ => !IsReformulatingAll && FinalNoteBlocks.Any(b => !string.IsNullOrWhiteSpace(b.FreeText)));
             BackToSaisieCommand = new RelayCommand(_ =>
             {
                 foreach (var b in InterrogatoireBlocks) b.Reset();

@@ -84,20 +84,85 @@
                         <StackPanel>
                             <TextBlock Text="🏫 Scolarité" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
                             <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>
                                     <ColumnDefinition Width="15"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0">
+                                <StackPanel Grid.Row="0" Grid.Column="0" Margin="0,0,0,10">
                                     <TextBlock Text="École / Établissement" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
                                     <TextBox x:Name="TxtEcole" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
                                 </StackPanel>
-                                <StackPanel Grid.Column="2">
+                                <StackPanel Grid.Row="0" Grid.Column="2" Margin="0,0,0,10">
                                     <TextBlock Text="Classe / Niveau" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
                                     <TextBox x:Name="TxtClasse" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
                                 </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="0">
+                                    <TextBlock Text="Ville / Commune de l'école" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                    <TextBox x:Name="TxtEcoleLieu" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
+                                </StackPanel>
+                                <StackPanel Grid.Row="1" Grid.Column="2" VerticalAlignment="Bottom">
+                                    <Button x:Name="BtnRechercheEcole" Content="🔎 Rechercher l'école"
+                                            Height="30" Padding="8,0" Cursor="Hand" FontSize="12"
+                                            Background="#2980B9" Foreground="White" BorderThickness="0"
+                                            Click="BtnRechercheEcole_Click">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#2471A3"/></Trigger>
+                                                    <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#AAB7B8"/></Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                </StackPanel>
                             </Grid>
+
+                            <!-- Statut de recherche -->
+                            <TextBlock x:Name="TxtRechercheStatut" Text="" FontSize="11" FontStyle="Italic"
+                                       Foreground="#7F8C8D" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Visibility="Collapsed"/>
+
+                            <!-- Sélecteur si plusieurs résultats -->
+                            <StackPanel x:Name="PanelResultats" Visibility="Collapsed" Margin="0,8,0,0">
+                                <TextBlock Text="Plusieurs établissements trouvés — sélectionnez :" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                <ComboBox x:Name="CmbEcoleResultats" Height="30"
+                                          DisplayMemberPath="DisplayLabel"
+                                          SelectionChanged="CmbEcoleResultats_SelectionChanged"/>
+                            </StackPanel>
+
+                            <!-- Coordonnées récupérées (éditables) -->
+                            <StackPanel x:Name="PanelCoordonnees" Visibility="Collapsed" Margin="0,10,0,0">
+                                <Border Background="#EAF2F8" CornerRadius="6" Padding="10">
+                                    <StackPanel>
+                                        <TextBlock Text="📍 Coordonnées de l'école (vérifiables)" FontSize="11" FontWeight="SemiBold" Foreground="#2471A3" Margin="0,0,0,6"/>
+                                        <TextBlock Text="Adresse" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                        <TextBox x:Name="TxtEcoleAdresse" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF" Margin="0,0,0,8"/>
+                                        <Grid>
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="15"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="Téléphone" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="TxtEcoleTel" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2">
+                                                <TextBlock Text="Email" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>
+                                                <TextBox x:Name="TxtEcoleEmail" Height="30" Padding="5" VerticalContentAlignment="Center" BorderBrush="#D6DBDF"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 

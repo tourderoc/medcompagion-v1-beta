@@ -26,6 +26,14 @@ namespace MedCompanion.Models
         public string? Ecole { get; set; }  // École/Établissement
         public string? Classe { get; set; }  // Classe/Niveau
 
+        // === Coordonnées de l'école (Annuaire Éducation Nationale) ===
+        public string? EcoleCommune { get; set; }     // Ville/commune de l'école
+        public string? EcoleAdresse { get; set; }      // Adresse postale
+        public string? EcoleCodePostal { get; set; }
+        public string? EcoleTelephone { get; set; }
+        public string? EcoleEmail { get; set; }
+        public string? EcoleUai { get; set; }          // Code UAI (identifiant officiel)
+
         // === Adresse ===
         public string? AdresseRue { get; set; }
         public string? AdresseCodePostal { get; set; }
