@@ -2063,6 +2063,195 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- MODE FORMULAIRE PARENTS — Générer / Scanner (OCR) -->
+                            <Grid Grid.Row="1">
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsFormulaireMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+
+                                <!-- En-tête -->
+                                <DockPanel Grid.Row="0" Margin="0,0,0,14">
+                                    <Button DockPanel.Dock="Right"
+                                            Command="{Binding CloseFormulaireCommand}"
+                                            Content="✕ Fermer"
+                                            Padding="10,5" FontSize="11" Cursor="Hand"
+                                            Background="#ECF0F1" Foreground="#7F8C8D"
+                                            BorderThickness="0">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter Property="Background" Value="#BDC3C7"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                    <TextBlock Text="📋 Formulaire parents"
+                                               FontSize="15" FontWeight="SemiBold" Foreground="#2C3E50"
+                                               VerticalAlignment="Center"/>
+                                </DockPanel>
+
+                                <!-- 2 cartes de choix -->
+                                <UniformGrid Grid.Row="1" Columns="2" Margin="0,0,0,12">
+
+                                    <!-- Carte Générer -->
+                                    <Border Margin="0,0,6,0" Padding="16,14" CornerRadius="8"
+                                            Background="#FDF2E9" BorderBrush="#E67E22" BorderThickness="1.5">
+                                        <StackPanel>
+                                            <TextBlock Text="📄 Générer formulaire"
+                                                       FontSize="13" FontWeight="SemiBold" Foreground="#E67E22" Margin="0,0,0,6"/>
+                                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,12"
+                                                       Text="Crée le PDF pré-rempli (nom, date, école) à remettre aux parents en salle d'attente."/>
+                                            <Button Command="{Binding GenererFormulaireCommand}"
+                                                    Content="Générer PDF"
+                                                    Padding="12,7" Cursor="Hand" FontSize="12"
+                                                    Background="#E67E22" Foreground="White" BorderThickness="0">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter Property="Background" Value="#CA6F1E"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsEnabled" Value="False">
+                                                                <Setter Property="Opacity" Value="0.5"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+
+                                    <!-- Carte Scanner OCR -->
+                                    <Border Margin="6,0,0,0" Padding="16,14" CornerRadius="8"
+                                            Background="#EAF4FB" BorderBrush="#3498DB" BorderThickness="1.5">
+                                        <StackPanel>
+                                            <TextBlock Text="📷 Scanner formulaire rempli"
+                                                       FontSize="13" FontWeight="SemiBold" Foreground="#3498DB" Margin="0,0,0,6"/>
+                                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,12"
+                                                       Text="Photographiez le formulaire rempli par les parents — le LLM extrait les informations cliniques."/>
+                                            <StackPanel Orientation="Horizontal">
+                                                <Button Command="{Binding ImportFormulaireImageCommand}"
+                                                        Content="📁 Importer"
+                                                        Padding="10,7" Cursor="Hand" FontSize="11" Margin="0,0,6,0"
+                                                        Background="#3498DB" Foreground="White" BorderThickness="0">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#2E86C1"/></Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                                <Button Command="{Binding CameraFormulaireCommand}"
+                                                        Content="📷 Caméra"
+                                                        Padding="10,7" Cursor="Hand" FontSize="11"
+                                                        Background="#2980B9" Foreground="White" BorderThickness="0">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#1A6B9A"/></Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </UniformGrid>
+
+                                <!-- Zone résultat OCR -->
+                                <Border Grid.Row="2" CornerRadius="6" Padding="12"
+                                        Background="#FAFAFA" BorderBrush="#D5D8DC" BorderThickness="1">
+                                    <Grid>
+                                        <!-- Spinner en cours -->
+                                        <TextBlock Text="⏳ Analyse en cours…"
+                                                   FontSize="13" Foreground="#7F8C8D"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsFormulaireOcrProcessing}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <!-- Texte d'accueil quand vide -->
+                                        <TextBlock Text="Le résultat de l'analyse OCR s'affichera ici."
+                                                   FontSize="12" Foreground="#BDC3C7" FontStyle="Italic"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <MultiDataTrigger>
+                                                            <MultiDataTrigger.Conditions>
+                                                                <Condition Binding="{Binding IsFormulaireOcrProcessing}" Value="False"/>
+                                                                <Condition Binding="{Binding HasFormulaireOcrResult}" Value="False"/>
+                                                            </MultiDataTrigger.Conditions>
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </MultiDataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <!-- Résultat -->
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <TextBlock Text="{Binding FormulaireOcrResult}"
+                                                       TextWrapping="Wrap" FontSize="12" Foreground="#2C3E50"
+                                                       LineHeight="20">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding HasFormulaireOcrResult}" Value="True">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </ScrollViewer>
+                                    </Grid>
+                                </Border>
+
+                                <!-- Barre de statut -->
+                                <TextBlock Grid.Row="3" Text="{Binding FormulaireStatusMessage}"
+                                           FontSize="11" Foreground="#7F8C8D" Margin="0,8,0,0"
+                                           TextWrapping="Wrap"/>
+                            </Grid>
+
                             <!-- V0d : MODE SYNTHÈSE INITIALE — Poids + Génération -->
                             <Grid Grid.Row="1">
                                 <Grid.Style>

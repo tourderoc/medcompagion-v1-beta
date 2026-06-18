@@ -33,9 +33,12 @@ namespace MedCompanion.Services
 
         /// <summary>
         /// Génère le PDF pré-rempli dans <paramref name="outputDir"/>.
+        /// <paramref name="perePrenom"/> et <paramref name="merePrenom"/> sont extraits par le LLM
+        /// depuis le bloc famille de l'interrogatoire avant d'appeler cette méthode.
         /// </summary>
         public async Task<(bool ok, string? pdfPath, string? error)> GenerateAsync(
-            PatientMetadata meta, string outputDir)
+            PatientMetadata meta, string outputDir,
+            string? perePrenom = null, string? merePrenom = null)
         {
             if (!File.Exists(TemplatePath))
                 return (false, null,
@@ -47,7 +50,7 @@ namespace MedCompanion.Services
             try
             {
                 var html = await File.ReadAllTextAsync(TemplatePath, Encoding.UTF8);
-                html = FillPlaceholders(html, BuildValues(meta));
+                html = FillPlaceholders(html, BuildValues(meta, perePrenom, merePrenom));
 
                 Directory.CreateDirectory(outputDir);
                 var stamp   = DateTime.Now.ToString("yyyy-MM-dd_HHmm");
@@ -70,30 +73,22 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
-        /// Valeurs pré-remplies depuis patient.json. Les champs non encore structurés
-        /// (prénoms parents, fratrie…) restent vides — ils seront remplis à la main par les parents,
-        /// puis structurés en Phase 0 du plan.
+        /// Valeurs pré-remplies. Seuls le bandeau enfant, la date et les prénoms des parents
+        /// sont injectés. Tout le reste est laissé vide — rempli à la main par les parents.
         /// </summary>
-        private static Dictionary<string, string> BuildValues(PatientMetadata m)
-        {
-            var adresse = string.Join(" ",
-                new[] { m.AdresseRue, m.AdresseCodePostal, m.AdresseVille }
-                    .Where(s => !string.IsNullOrWhiteSpace(s)));
-
-            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        private static Dictionary<string, string> BuildValues(
+            PatientMetadata m, string? perePrenom, string? merePrenom) =>
+            new(StringComparer.OrdinalIgnoreCase)
             {
                 ["date_rdv"]      = DateTime.Now.ToString("dd/MM/yyyy"),
                 ["enfant_nom"]    = m.Nom ?? "",
                 ["enfant_prenom"] = m.Prenom ?? "",
                 ["enfant_dob"]    = m.DobFormatted ?? "",
-                ["adresse"]       = adresse,
-                ["adresse_rue"]   = m.AdresseRue ?? "",
-                ["adresse_cp"]    = m.AdresseCodePostal ?? "",
-                ["adresse_ville"] = m.AdresseVille ?? "",
                 ["ecole"]         = m.Ecole ?? "",
                 ["classe"]        = m.Classe ?? "",
+                ["pere_prenom"]   = perePrenom ?? "",
+                ["mere_prenom"]   = merePrenom ?? "",
             };
-        }
 
         /// <summary>
         /// Remplace les placeholders {{cle}} par leur valeur (HTML-encodée).

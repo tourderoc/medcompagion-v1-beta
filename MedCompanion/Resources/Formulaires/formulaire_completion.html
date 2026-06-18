@@ -4,6 +4,16 @@
 <meta charset="UTF-8">
 <title>Formulaire de Complétion — 1ère Consultation</title>
 <style>
+/*
+  Échelle typographique harmonisée :
+  — 7px   : note légale (confidentialité)
+  — 8px   : annotations secondaires (label-detail, sous-titres logo, texte photo)
+  — 9px   : corps principal (labels, checkboxes, tableaux, textes autorisations)
+  — 10px  : accents d'en-tête (bandeau patient, en-têtes sections, date-box)
+  — 14px  : titres de marque et cases de lettres standard
+  — 12px  : cases de lettres medium
+*/
+
 @page {
   size: A4 portrait;
   margin: 0;
@@ -49,16 +59,16 @@ body {
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  font-size: 13px;
+  font-size: 14px;
 }
 .logo-text h2 {
-  font-size: 13px;
+  font-size: 14px;
   color: #004098;
   font-weight: 800;
   line-height: 1;
 }
 .logo-text p {
-  font-size: 7.5px;
+  font-size: 8px;
   color: #004098;
   font-weight: 600;
 }
@@ -66,14 +76,14 @@ body {
   text-align: center;
 }
 .title-container h1 {
-  font-size: 13px;
+  font-size: 14px;
   color: #004098;
   font-weight: 800;
   letter-spacing: 0.5px;
   text-transform: uppercase;
 }
 .title-container p {
-  font-size: 7.5px;
+  font-size: 8px;
   color: #004098;
   font-weight: 700;
   margin-top: 1px;
@@ -83,14 +93,14 @@ body {
   border-radius: 4px;
   padding: 2px 6px;
   text-align: center;
-  font-size: 7.5px;
+  font-size: 10px;
   font-weight: 700;
   color: #004098;
   background-color: #f0f5fc;
 }
 .date-box .date-fields {
   margin-top: 1px;
-  font-size: 8.5px;
+  font-size: 10px;
   letter-spacing: 1px;
 }
 
@@ -103,7 +113,7 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   color: #00264d;
 }
@@ -136,7 +146,7 @@ body {
 .section-header {
   background-color: #004098;
   color: #ffffff;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   padding: 3px 6px;
   display: flex;
@@ -148,13 +158,13 @@ body {
   background-color: #ffffff;
   color: #004098;
   border-radius: 1px;
-  width: 11px;
-  height: 11px;
+  width: 13px;
+  height: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
   font-weight: 800;
-  font-size: 8px;
+  font-size: 10px;
 }
 .section-content {
   padding: 4px 6px;
@@ -177,14 +187,14 @@ body {
   gap: 1.5px;
 }
 .field-label {
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 700;
   color: #00264d;
 }
 .field-label-detail {
   font-weight: normal;
   color: #4f6d8a;
-  font-size: 7px;
+  font-size: 8px;
 }
 
 /* Double sized letter boxes */
@@ -202,7 +212,7 @@ body {
   align-items: center;
   justify-content: center;
   font-family: 'Courier New', Courier, monospace;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: bold;
   color: #00264d;
 }
@@ -211,27 +221,27 @@ body {
 .letter-boxes-row.medium .letter-box {
   width: 15px;
   height: 18px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 /* Checkbox style (standard size) */
 .checkbox-item {
   display: flex;
   align-items: center;
-  font-size: 7.5px;
+  font-size: 9px;
   color: #00264d;
   font-weight: 600;
 }
 .custom-checkbox {
-  width: 9px;
-  height: 9px;
+  width: 11px;
+  height: 11px;
   border: 1px solid #004098;
   border-radius: 1px;
   margin-right: 3px;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 7.5px;
+  font-size: 9px;
   font-weight: bold;
   color: #004098;
   background-color: #ffffff;
@@ -241,21 +251,11 @@ body {
   content: '✓';
 }
 
-/* Email boxes split by @ */
-.email-boxes-row {
-  display: flex;
-  align-items: center;
-  gap: 1px;
-}
-.email-half {
-  display: flex;
-  gap: 1px;
-}
-.email-separator {
-  font-weight: bold;
-  font-size: 10px;
-  color: #004098;
-  margin: 0 2px;
+/* Email — ligne libre */
+.email-free-line {
+  border-bottom: 1.2px solid #7f9db9;
+  height: 16px;
+  width: 100%;
 }
 
 /* Section 4 specific content (Situation familiale) */
@@ -271,7 +271,7 @@ body {
   gap: 2.5px;
 }
 .sub-section-title {
-  font-size: 7.5px;
+  font-size: 9px;
   font-weight: 800;
   color: #004098;
   text-transform: uppercase;
@@ -288,7 +288,7 @@ body {
 .atcd-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 7.5px;
+  font-size: 9px;
 }
 .atcd-table th {
   background-color: #f0f5fc;
@@ -312,6 +312,12 @@ body {
   font-weight: 600;
   color: #00264d;
 }
+.footnote {
+  font-size: 7px;
+  color: #4f6d8a;
+  font-style: italic;
+  margin-top: 1px;
+}
 
 /* Section 6 Photo horizontal layout (Enlarged) */
 .photo-info-container {
@@ -329,11 +335,11 @@ body {
   justify-content: center;
   padding: 6px;
   background-color: #fcfdfe;
-  height: 76px; /* Enlarged from 48px */
+  height: 76px;
 }
 .photo-avatar {
-  width: 32px; /* Enlarged from 20px */
-  height: 32px; /* Enlarged from 20px */
+  width: 32px;
+  height: 32px;
   background-color: #e1edf8;
   border-radius: 50%;
   display: flex;
@@ -343,7 +349,7 @@ body {
   margin-bottom: 4px;
 }
 .photo-label {
-  font-size: 6.5px;
+  font-size: 8px;
   font-weight: 800;
   color: #4f6d8a;
   text-align: center;
@@ -357,12 +363,12 @@ body {
   height: 76px;
 }
 .photo-auth-title {
-  font-size: 8px;
+  font-size: 9px;
   font-weight: bold;
   color: #004098;
 }
 .photo-auth-text {
-  font-size: 7px;
+  font-size: 8px;
   color: #4f6d8a;
   line-height: 1.15;
 }
@@ -371,7 +377,7 @@ body {
   gap: 8px;
 }
 .signature-line {
-  font-size: 7px;
+  font-size: 8px;
   font-weight: bold;
   color: #004098;
 }
@@ -394,14 +400,14 @@ body {
 .info-important-header {
   background-color: #004098;
   color: #ffffff;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: bold;
   padding: 2.5px 4px;
   text-align: center;
 }
 .info-important-body {
   padding: 4px 6px;
-  font-size: 6.5px;
+  font-size: 8px;
   display: flex;
   flex-direction: column;
   gap: 3px;
@@ -430,7 +436,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 3.5px;
-  font-size: 7.5px;
+  font-size: 9px;
   justify-content: center;
 }
 .autorisation-row {
@@ -461,7 +467,7 @@ body {
   height: 100%;
 }
 .signature-label {
-  font-size: 7.2px;
+  font-size: 9px;
   font-weight: bold;
   color: #004098;
 }
@@ -478,14 +484,14 @@ body {
   align-items: flex-end;
 }
 .confidentiality-notice {
-  font-size: 5.8px;
+  font-size: 7px;
   color: #4f6d8a;
   max-width: 70%;
   line-height: 1.1;
   font-weight: 500;
 }
 .date-input-field {
-  font-size: 7px;
+  font-size: 9px;
   font-weight: bold;
   color: #004098;
   white-space: nowrap;
@@ -505,32 +511,32 @@ body {
   align-items: center;
   border-top: 1px solid #e1edf8;
   padding-top: 3px;
-  margin-top: auto; /* Push footer to the very bottom */
+  margin-top: auto;
 }
 .notice-scanner {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   color: #004098;
 }
 .info-icon {
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   background-color: #004098;
   color: #ffffff;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 7.5px;
+  font-size: 9px;
   font-weight: bold;
 }
 .print-badge {
   background-color: #004098;
   color: #ffffff;
-  font-size: 7px;
+  font-size: 9px;
   font-weight: 700;
   padding: 1px 5px;
   border-radius: 8px;
@@ -601,7 +607,7 @@ body {
           </div>
           <div class="field-item" style="width: 66%;">
             <span class="field-label">Email :</span>
-            <div class="email-boxes-row" data-email-boxes="" data-len-local="15" data-len-domain="10"></div>
+            <div class="email-free-line"></div>
           </div>
         </div>
       </div>
@@ -639,7 +645,7 @@ body {
           </div>
           <div class="field-item" style="width: 66%;">
             <span class="field-label">Email :</span>
-            <div class="email-boxes-row" data-email-boxes="" data-len-local="15" data-len-domain="10"></div>
+            <div class="email-free-line"></div>
           </div>
         </div>
       </div>
@@ -712,7 +718,7 @@ body {
     <!-- 5. ANTÉCÉDENTS FAMILIAUX -->
     <div class="section-card">
       <div class="section-header">
-        <span class="section-number">5</span> ANTÉCÉDENTS FAMILIAUX <span style="font-size: 6.5px; margin-left: 2px; text-transform: none; font-weight: normal;">(dans la famille proche*)</span>
+        <span class="section-number">5</span> ANTÉCÉDENTS FAMILIAUX <span style="font-size: 8px; margin-left: 2px; text-transform: none; font-weight: normal;">(dans la famille proche*)</span>
       </div>
       <div class="section-content" style="padding: 2.5px 6px;">
         <table class="atcd-table">
@@ -762,7 +768,7 @@ body {
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
             <tr>
-              <td>Addictions <span style="font-weight: normal; font-size: 6px; color:#4f6d8a;">(alcool, etc.)</span></td>
+              <td>Addictions <span style="font-weight: normal; font-size: 8px; color:#4f6d8a;">(alcool, etc.)</span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
@@ -846,21 +852,21 @@ body {
         <div class="autorisation-row">
           <span class="autorisation-text">J'autorise le Dr Lassoued à utiliser les informations de ce formulaire pour le suivi de mon enfant.</span>
           <div class="autorisation-choices">
-            <div class="checkbox-item"><span class="custom-checkbox checked"></span> OUI</div>
+            <div class="checkbox-item"><span class="custom-checkbox"></span> OUI</div>
             <div class="checkbox-item"><span class="custom-checkbox"></span> NON</div>
           </div>
         </div>
         <div class="autorisation-row">
           <span class="autorisation-text">J'autorise l'envoi de SMS (rappels de rendez-vous, informations pratiques).</span>
           <div class="autorisation-choices">
-            <div class="checkbox-item"><span class="custom-checkbox checked"></span> OUI</div>
+            <div class="checkbox-item"><span class="custom-checkbox"></span> OUI</div>
             <div class="checkbox-item"><span class="custom-checkbox"></span> NON</div>
           </div>
         </div>
         <div class="autorisation-row">
           <span class="autorisation-text">J'autorise l'envoi d'emails.</span>
           <div class="autorisation-choices">
-            <div class="checkbox-item"><span class="custom-checkbox checked"></span> OUI</div>
+            <div class="checkbox-item"><span class="custom-checkbox"></span> OUI</div>
             <div class="checkbox-item"><span class="custom-checkbox"></span> NON</div>
           </div>
         </div>
@@ -929,33 +935,6 @@ body {
         html += '<span class="letter-box">' + (cleanVal.charAt(5) || '') + '</span>';
         html += '<span class="letter-box">' + (cleanVal.charAt(6) || '') + '</span>';
         html += '<span class="letter-box">' + (cleanVal.charAt(7) || '') + '</span>';
-        
-        el.innerHTML = html;
-      });
-
-      // Rendu des adresses e-mail (coupées au symbole @)
-      document.querySelectorAll('[data-email-boxes]').forEach(function(el) {
-        var val = el.getAttribute('data-email-boxes') || '';
-        var parts = val.split('@');
-        var localPart = parts[0] || '';
-        var domainPart = parts[1] || '';
-        
-        var lenLocal = parseInt(el.getAttribute('data-len-local') || '15', 10);
-        var lenDomain = parseInt(el.getAttribute('data-len-domain') || '10', 10);
-        
-        var html = '<div class="email-half">';
-        for (var i = 0; i < lenLocal; i++) {
-          html += '<span class="letter-box">' + (localPart.charAt(i) || '').toUpperCase() + '</span>';
-        }
-        html += '</div>';
-        
-        html += '<span class="email-separator">@</span>';
-        
-        html += '<div class="email-half">';
-        for (var i = 0; i < lenDomain; i++) {
-          html += '<span class="letter-box">' + (domainPart.charAt(i) || '').toUpperCase() + '</span>';
-        }
-        html += '</div>';
         
         el.innerHTML = html;
       });

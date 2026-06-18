@@ -42,38 +42,37 @@
 
 ## 3. Modèle de données & correspondance des champs
 
-> Convention de nommage AcroForm : `section_champ` en minuscules, sans accents
-> (ex. `enfant_nom`, `pere_prenom`, `atcd_tdah`, `fratrie_2_prenom`).
+> ⚠️ **Périmètre calé sur le template HTML réel** (`formulaire_completion.html`).
+> Fratrie, profession et téléphone fixe ont été retirés du formulaire papier — ils ne font plus
+> partie du périmètre V1.
 
-### 3.1 Mapping formulaire → modèle
+> Convention de nommage : placeholders `{{snake_case}}` dans le HTML, champs JSON en camelCase.
 
-| Section formulaire | Champ(s) | Pré-rempli ? | Destination (modèle) |
+### 3.1 Mapping formulaire → modèle (ce qui existe dans le template)
+
+| Zone template | Placeholder(s) HTML | Pré-rempli ? | Destination (modèle) |
 |---|---|---|---|
-| 1. Enfant | nom, prénom, DDN | ✅ | `PatientMetadata.Nom/Prenom/Dob` |
-| 2. Père | prénom (pré), nom (même/diff), tél port., tél fixe, email, profession | partiel | **à créer** : contacts parent (voir §3.2) + bloc `famille` |
-| 3. Mère | idem père | partiel | idem |
-| 4. Adresse foyer | adresse (pré), correcte / à modifier | ✅ | `PatientMetadata.Adresse*` |
-| 5. Situation familiale | parents ensemble/séparés/divorcés/garde alternée/recomposée/autre ; garde principale | ❌ | bloc `famille` (statut_parental) + **à créer** `SituationFamiliale` |
-| 6. Fratrie | ordre, prénom (pré), DDN, correct / à corriger ; autre enfant | partiel | bloc `fratrie` |
-| 7. Antécédents familiaux | TDAH, dyslexie, TSA, anxieux, dépression, bipolarité, addictions, T. suicide → oui/non/ne sait pas | ❌ | bloc `atcds` (atcds_familiaux) + **à créer** structure ATCD |
-| 8. Photo | autorisation oui/non | ❌ | `PatientMetadata.ConsentementPhoto` + `PhotoFileName` |
-| 9. Autorisations | usage infos, SMS, emails (oui/non) + signatures/dates | ❌ | **à créer** : `ConsentUsageInfos`, `ConsentSMS`, `ConsentEmail` |
+| **Bandeau enfant** (haut de page) | `{{enfant_prenom}}` `{{enfant_nom}}` `{{enfant_dob}}` `{{ecole}}` `{{classe}}` | ✅ | `PatientMetadata.Prenom/Nom/Dob` + bloc `scolarite` |
+| **Date du RDV** | `{{date_rdv}}` | ✅ | date de génération |
+| **1. Coordonnées père** | `{{pere_prenom}}` + cases nom vides + cases tél portable vides + cases email vides | partiel (prénom seul) | **à créer** : `PerePrenomContact`, `PereNomContact`, `PereTelephone`, `PereEmail` |
+| **2. Coordonnées mère** | `{{mere_prenom}}` + idem | partiel (prénom seul) | **à créer** : `MerePrenomContact`, `MereNomContact`, `MereTelephone`, `MereEmail` |
+| **3. Adresse** | `{{adresse_rue}}` `{{adresse_cp}}` `{{adresse_ville}}` | ✅ | `PatientMetadata.Adresse*` |
+| **4. Situation familiale** | cases à cocher : ensemble/séparés/divorcés/garde alternée/recomposée/autre + mode de garde principal | ❌ | **à créer** : `SituationFamiliale`, `ModeGardePrincipal` |
+| **5. Antécédents familiaux** | cases oui/non/ne sait pas × 8 items (TDAH, dyslexie, TSA, anxieux, dépression, bipolarité, addictions, T. suicide) | ❌ | **à créer** : `AntecedentsFamiliaux` (dict clé → oui/non/ne sait pas) |
+| **6. Photo** | case autorisation oui/non | ❌ | **à créer** : `ConsentementPhoto` (bool?) |
+| **7. Autorisations** | usage infos oui/non, SMS oui/non, emails oui/non | ❌ | **à créer** : `ConsentUsageInfos`, `ConsentSMS`, `ConsentEmail` (bool?) |
 
 ### 3.2 Extensions de `PatientMetadata` à prévoir (Phase 0)
 
-- **Contacts parents** (le modèle n'a aujourd'hui qu'un seul « Accompagnant ») :
-  `PereNom/PrenomPere` n'existent pas en tant que contacts → ajouter
-  `PereTelephone/PereEmail/PereProfession`, `MereTelephone/MereEmail/MereProfession`
-  (les prénoms/âges/jobs cliniques restent dans le bloc `famille`).
+- **Contacts parents** : ajouter `PerePrenomContact`, `PereNomContact`, `PereTelephone`, `PereEmail`
+  et les équivalents `Mere*`. Les données cliniques (âge, métier) restent dans le bloc `famille`.
 - **Situation familiale** : `SituationFamiliale` (ensemble/séparés/divorcés/recomposée/autre),
   `ModeGardePrincipal`.
-- **Consentements** : `ConsentUsageInfos`, `ConsentSMS`, `ConsentEmail` (bool?), + dates/signatures.
-- **Antécédents familiaux structurés** : soit un sous-objet `AntecedentsFamiliaux`
-  (dict clé→{oui/non/nesaitpas}), soit injection dans le bloc `atcds`. **À trancher** (cf. §7).
+- **Consentements** : `ConsentementPhoto`, `ConsentUsageInfos`, `ConsentSMS`, `ConsentEmail` (bool?).
+- **Antécédents familiaux** : sous-objet `AntecedentsFamiliaux`
+  (dict clé → `"oui"/"non"/"ne sait pas"`) — cas à cocher = données nettes, structuré dans patient.json.
 
-> ⚠️ Décision à valider : antécédents familiaux **structurés dans patient.json** (réutilisables,
-> filtrables) **ou** simplement fusionnés en texte dans le bloc `atcds` (plus simple, cohérent
-> avec la relecture par cartouches). Recommandation : **structuré** (cases à cocher = données nettes).
+> Fratrie, profession et téléphone fixe : **hors périmètre V1** (absents du template papier).
 
 ---
 
@@ -163,15 +162,16 @@
 
 ---
 
-## 7. Décisions ouvertes (à trancher avant Phase 1)
+## 7. Décisions ouvertes (à trancher avant Phase 4)
 
-1. **Antécédents familiaux** : structurés dans patient.json **ou** texte fusionné dans `atcds` ?
-   (reco : structuré).
-2. **Rédaction du template HTML/CSS** : prototypage externe (Antigravity/Flash) puis intégration,
-   ou directement dans le repo ? (Dans tous les cas, **rendu final via `EdgeHeadlessPdfService`**.)
-3. **Contacts parents** : nouveaux champs `PatientMetadata` (reco) vs sous-objet dédié ?
-4. **Écran de relecture** : réutiliser tel quel l'écran cartouches ou un écran spécifique formulaire ?
-5. **Tablette** plus tard ? (hors périmètre V1 — papier d'abord, plus inclusif en salle d'attente.)
+1. **Antécédents familiaux** : ✅ **Tranché** — structurés dans patient.json
+   (dict clé → oui/non/ne sait pas). Cases à cocher = données nettes.
+2. **Template HTML/CSS** : ✅ **Fait** — `Resources/Formulaires/formulaire_completion.html`.
+3. **Contacts parents** : ✅ **Tranché** — nouveaux champs plats dans `PatientMetadata`
+   (`PerePrenomContact`, `PereNomContact`, `PereTelephone`, `PereEmail` + équivalents Mère).
+4. **Fratrie / profession / tél fixe** : ✅ **Hors périmètre V1** — absents du template papier.
+5. **Écran de relecture** : réutiliser l'écran cartouches existant ou écran dédié formulaire ?
+6. **Tablette** : hors périmètre V1 — papier d'abord, plus inclusif en salle d'attente.
 
 ---
 

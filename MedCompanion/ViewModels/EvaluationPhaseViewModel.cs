@@ -978,7 +978,7 @@ namespace MedCompanion.ViewModels
             if (Phase == null || _axesSuggester == null) return;
 
             IsBusy = true;
-            StatusMessage = "Génération IA des axes en cours...";
+            StatusMessage = "Génération IA — axes principaux...";
             try
             {
                 var hypotheses    = Phase.Preparation.HypothesesPrincipales.Select(e => e.Value).Where(NonEmptyStr).ToList();
@@ -986,22 +986,41 @@ namespace MedCompanion.ViewModels
                 var vigilance     = Phase.Preparation.PointsVigilance.Select(e => e.Value).Where(NonEmptyStr).ToList();
                 var motif         = (await BuildContextAsync()).Motif;
 
-                var (ok, sug, err) = await _axesSuggester.SuggestAsync(_patient?.Age, hypotheses, differentiels, vigilance, motif);
+                int step = 0;
+                var (ok, sug, err) = await _axesSuggester.SuggestAsync(
+                    _patient?.Age, hypotheses, differentiels, vigilance, motif,
+                    onPartialResult: partial =>
+                    {
+                        step++;
+                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        {
+                            if (partial.AxesPrincipaux.Count > 0)
+                                ReplaceAxes(Phase.EvaluationCiblee.AxesPrincipaux, partial.AxesPrincipaux, AxisCategory.Principal);
+                            if (partial.AxesDifferentiels.Count > 0)
+                                ReplaceAxes(Phase.EvaluationCiblee.AxesDifferentiels, partial.AxesDifferentiels, AxisCategory.Differentiel);
+                            if (partial.AxesSystemiques.Count > 0)
+                                ReplaceAxes(Phase.EvaluationCiblee.AxesSystemiques, partial.AxesSystemiques, AxisCategory.Systemique);
+
+                            _phaseService.Save(Phase);
+                            NotifyEvaluationCollections();
+                            OnPropertyChanged(nameof(HasAnyAxes));
+
+                            StatusMessage = step switch
+                            {
+                                1 => "Axes principaux générés — différentiels en cours...",
+                                2 => "Différentiels générés — axes systémiques en cours...",
+                                _ => "Axes systémiques générés."
+                            };
+                        });
+                    });
+
                 if (!ok || sug == null)
                 {
                     StatusMessage = $"Suggestion IA indisponible : {err}";
                     return;
                 }
 
-                // On REMPLACE — le médecin pourra ré-éditer librement
-                ReplaceAxes(Phase.EvaluationCiblee.AxesPrincipaux,    sug.AxesPrincipaux,    AxisCategory.Principal);
-                ReplaceAxes(Phase.EvaluationCiblee.AxesDifferentiels, sug.AxesDifferentiels, AxisCategory.Differentiel);
-                ReplaceAxes(Phase.EvaluationCiblee.AxesSystemiques,   sug.AxesSystemiques,   AxisCategory.Systemique);
-
-                _phaseService.Save(Phase);
                 StatusMessage = "Axes proposés — explorez librement, prenez des notes par axe.";
-                NotifyEvaluationCollections();
-                OnPropertyChanged(nameof(HasAnyAxes));
             }
             catch (Exception ex)
             {

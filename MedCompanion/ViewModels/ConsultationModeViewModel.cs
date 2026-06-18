@@ -441,6 +441,10 @@ namespace MedCompanion.ViewModels
         private readonly ContextualBlockSuggester     _blockSuggester;
         private readonly BlockPrefiller               _blockPrefiller       = new();
 
+        // ── Brouillon 1ère consultation (persistance multi-session) ───────────
+        private readonly MedCompanion.Services.Consultation.PremiereConsultationDraftService _draftSvc = new();
+        private System.Threading.CancellationTokenSource? _draftSaveCts;
+
         /// <summary>Âge confirmé du patient (null si pas encore confirmé)</summary>
         private int? _confirmedAge;
         private int? _ageFromInterrogatoire;   // âge dit pendant l'interrogatoire (extrait du bloc "age")
@@ -1312,9 +1316,9 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode;
-        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode;
-        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode;
+        public bool IsInSaisieMode    => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Saisie && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode && !IsFormulaireMode;
+        public bool IsInExtractionMode => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.Extraction && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode && !IsFormulaireMode;
+        public bool IsInFinalNoteMode  => IsInterrogatoireMode && InterrogatoireState == InterrogatoireState.FinalNote && !IsInClinicalMode && !IsSynthesisMode && !IsInObservationsReviewMode && !IsRestitutionMode && !IsFormulaireMode;
 
         // Transcription
         private string _transcriptionInput = "";
@@ -1416,7 +1420,15 @@ namespace MedCompanion.ViewModels
             // Tous les blocs sont présents dès le départ (logique « soustraction »).
             // L'âge et le motif permettront un auto-masquage ultérieur (puberté, adolescence…).
             foreach (var d in _blockSetResolver.ResolveWithoutAge())
-                InterrogatoireBlocks.Add(ConsultationBlockViewModel.FromDefinition(d));
+            {
+                var bloc = ConsultationBlockViewModel.FromDefinition(d);
+                bloc.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName == nameof(ConsultationBlockViewModel.FreeText))
+                        ScheduleDraftSave();
+                };
+                InterrogatoireBlocks.Add(bloc);
+            }
 
             // Auto-masquage uniquement si l'âge a été CONFIRMÉ en consultation
             // (la DOB du profil patient seule ne suffit pas — elle peut être erronée).
@@ -1447,6 +1459,7 @@ namespace MedCompanion.ViewModels
             IsInClinicalMode = false;
             IsInObservationsReviewMode = false;
             IsSynthesisMode = false;
+            IsFormulaireMode = false;
             IsRestitutionMode = false;
             IsRestitutionReviewMode = false;
             IsEvaluationPhaseMode = false;
@@ -1461,6 +1474,119 @@ namespace MedCompanion.ViewModels
             // bien qu'il soit souvent basculé en même temps.
         }
 
+        // ── Brouillon 1ère consultation ───────────────────────────────────────
+
+        /// <summary>Déclenche une sauvegarde différée (2 s) du brouillon en cours.</summary>
+        private void ScheduleDraftSave()
+        {
+            if (!IsInterrogatoireMode || _currentPatient == null) return;
+            _draftSaveCts?.Cancel();
+            _draftSaveCts = new System.Threading.CancellationTokenSource();
+            var cts = _draftSaveCts;
+            _ = System.Threading.Tasks.Task.Delay(2000, cts.Token).ContinueWith(t =>
+            {
+                if (t.IsCanceled) return;
+                _draftSvc.Save(_currentPatient?.DirectoryPath, BuildDraft());
+            }, System.Threading.Tasks.TaskScheduler.Default);
+        }
+
+        /// <summary>Prend un snapshot de l'état courant pour persistance.</summary>
+        private MedCompanion.Models.PremiereConsultationDraft BuildDraft() => new()
+        {
+            DateConsultation  = ConsultationDate,
+            MotifDetecte      = _detectedMotif,
+            AgeConfirme       = _confirmedAge,
+            IsStructureFrozen = IsStructureFrozen,
+            InterrogatoireState = _interrogatoireState.ToString(),
+            EtapeActive       = IsInClinicalMode ? "clinical" : IsSynthesisMode ? "synthesis" : "saisie",
+            TranscriptionInput    = TranscriptionInput,
+            NoteContent           = NoteContent,
+            ObservationsNarrative = ObservationsNarrative,
+            SynthesisContent      = SynthesisContent,
+            Blocs = InterrogatoireBlocks.Select(b => new MedCompanion.Models.BlocDraft
+            {
+                Key          = b.Key,
+                FreeText     = b.FreeText,
+                CoveredThemes = b.CoveredThemes.ToList(),
+                IsHidden     = b.IsHidden,
+            }).ToList(),
+        };
+
+        /// <summary>
+        /// Restaure l'état de la 1ère consultation depuis un brouillon sauvegardé.
+        /// Appelé depuis StartNewConsultation quand l'utilisateur choisit "Reprendre".
+        /// </summary>
+        private void RestoreFromDraft(MedCompanion.Models.PremiereConsultationDraft draft)
+        {
+            ConsultationDate             = draft.DateConsultation;
+            _premiereConsultationFilePath = null;
+            _noteSaved                   = false;
+            _observationsNoteSaved       = false;
+            IsEditingConsultation        = true;
+            ExtractionStatus             = "";
+
+            // Crée les blocs vierges (via InitInterrogatoireBlocks), puis on écrase leur contenu
+            ConsultationType = ConsultationType.PremiereConsultation;
+
+            // Restaurer le contenu des blocs
+            foreach (var bd in draft.Blocs)
+            {
+                var block = InterrogatoireBlocks.FirstOrDefault(b => b.Key == bd.Key);
+                if (block == null) continue;
+                block.FreeText      = bd.FreeText;
+                block.CoveredThemes = new System.Collections.Generic.List<string>(bd.CoveredThemes);
+                block.IsHidden      = bd.IsHidden;
+            }
+
+            // Restaurer motif / âge sans repasser par les détecteurs
+            if (!string.IsNullOrEmpty(draft.MotifDetecte))
+                DetectedMotif = draft.MotifDetecte;
+            if (draft.AgeConfirme.HasValue)
+            {
+                _isAgeConfirmed = true;
+                _confirmedAge   = draft.AgeConfirme.Value;
+                OnPropertyChanged(nameof(ConfirmedAge));
+                OnPropertyChanged(nameof(HasConfirmedAge));
+            }
+            IsStructureFrozen = draft.IsStructureFrozen;
+
+            // Restaurer textes
+            TranscriptionInput    = draft.TranscriptionInput    ?? "";
+            NoteContent           = draft.NoteContent           ?? "";
+            ObservationsNarrative = draft.ObservationsNarrative ?? "";
+            SynthesisContent      = draft.SynthesisContent      ?? "";
+
+            // Restaurer l'état de l'étape interrogatoire
+            if (System.Enum.TryParse<InterrogatoireState>(draft.InterrogatoireState, out var iState))
+            {
+                _interrogatoireState = iState;
+                if (iState == InterrogatoireState.FinalNote)
+                    PopulateFinalNoteBlocks();
+                OnPropertyChanged(nameof(IsInSaisieMode));
+                OnPropertyChanged(nameof(IsInExtractionMode));
+                OnPropertyChanged(nameof(IsInFinalNoteMode));
+                OnPropertyChanged(nameof(CanExtract));
+            }
+
+            // Restaurer l'étape active (clinical / synthesis / saisie)
+            switch (draft.EtapeActive)
+            {
+                case "clinical":
+                    if (_clinicalObservations.Cards.Count == 0)
+                        InitializeClinicalObservations();
+                    ResetWorkspaceModes();
+                    IsInClinicalMode = true;
+                    break;
+                case "synthesis":
+                    ResetWorkspaceModes();
+                    IsSynthesisMode = true;
+                    break;
+                // "saisie" → état par défaut après InitInterrogatoireBlocks
+            }
+
+            UpdateBlockCollections();
+        }
+
         /// <summary>
         /// Démarre une nouvelle consultation selon le type choisi dans le menu "+".
         /// </summary>
@@ -1469,7 +1595,27 @@ namespace MedCompanion.ViewModels
             switch (type)
             {
                 case "premiere":
-                    _premiereConsultationFilePath = null;  // nouvelle consult → nouveau fichier au prochain save
+                    // Si un brouillon existe, proposer de reprendre
+                    if (_draftSvc.HasDraft(_currentPatient?.DirectoryPath))
+                    {
+                        var r = System.Windows.MessageBox.Show(
+                            "Une 1ère consultation est en cours pour ce patient.\n\n" +
+                            "OUI — Reprendre là où vous en étiez\n" +
+                            "NON — Démarrer une NOUVELLE consultation (brouillon supprimé)",
+                            "Brouillon en cours",
+                            System.Windows.MessageBoxButton.YesNo,
+                            System.Windows.MessageBoxImage.Question);
+                        if (r == System.Windows.MessageBoxResult.Yes)
+                        {
+                            var draft = _draftSvc.Load(_currentPatient?.DirectoryPath);
+                            if (draft != null) { RestoreFromDraft(draft); break; }
+                        }
+                        else
+                        {
+                            _draftSvc.Delete(_currentPatient?.DirectoryPath);
+                        }
+                    }
+                    _premiereConsultationFilePath = null;
                     NoteContent = "";
                     ObservationsNarrative = "";
                     _noteSaved = false;
@@ -2292,6 +2438,7 @@ clinical_observations_json: |
             NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocks, ConsultationDate);
             ExtractionStatus = "Extraction terminée.";
             InterrogatoireState = InterrogatoireState.FinalNote;
+            ScheduleDraftSave();
             System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                 System.Windows.Input.CommandManager.InvalidateRequerySuggested);
 
@@ -2769,25 +2916,122 @@ Texte :
                 return;
             }
 
+            // Extraire les prénoms des parents depuis le bloc famille de l'interrogatoire
+            string? perePrenom = null;
+            string? merePrenom = null;
+
+            var familleBloc = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "famille");
+            var familleText = familleBloc?.FreeText?.Trim();
+
+            if (!string.IsNullOrWhiteSpace(familleText) && _llmService != null)
+            {
+                FormulaireStatusMessage = "⏳ Extraction des prénoms parents...";
+
+                var prompt =
+                    $"Voici le texte du bloc Famille d'un interrogatoire pédopsychiatrique :\n\n{familleText}\n\n" +
+                    "Extrait uniquement le prénom du père et le prénom de la mère. " +
+                    "Réponds UNIQUEMENT avec ce format JSON strict, sans rien d'autre :\n" +
+                    "{\"pere_prenom\": \"Prénom\", \"mere_prenom\": \"Prénom\"}\n" +
+                    "Si un prénom est inconnu ou absent, utilise une chaîne vide.";
+
+                var (llmOk, raw, _) = await _llmService.GenerateTextAsync(prompt, maxTokens: 100);
+                if (llmOk && !string.IsNullOrWhiteSpace(raw))
+                {
+                    try
+                    {
+                        var start = raw.IndexOf('{');
+                        var end   = raw.LastIndexOf('}');
+                        if (start >= 0 && end > start)
+                        {
+                            var json = raw[start..(end + 1)];
+                            using var doc = System.Text.Json.JsonDocument.Parse(json);
+                            perePrenom = doc.RootElement.GetProperty("pere_prenom").GetString()?.Trim();
+                            merePrenom = doc.RootElement.GetProperty("mere_prenom").GetString()?.Trim();
+                        }
+                    }
+                    catch { /* extraction best-effort, on laisse les prénoms vides */ }
+                }
+            }
+
             var outputDir = Path.Combine(
                 CurrentPatient.DirectoryPath, DateTime.Now.Year.ToString(), "documents", "formulaires");
 
-            ExtractionStatus = "Génération du formulaire parents...";
-            var (ok, pdfPath, error) = await svc.GenerateAsync(meta, outputDir);
+            FormulaireStatusMessage = "⏳ Génération du formulaire...";
+            var (ok, pdfPath, error) = await svc.GenerateAsync(meta, outputDir, perePrenom, merePrenom);
 
             if (ok && !string.IsNullOrEmpty(pdfPath))
             {
-                ExtractionStatus = "Formulaire parents généré.";
+                FormulaireStatusMessage = "✅ Formulaire généré.";
                 try
                 {
                     System.Diagnostics.Process.Start(
                         new System.Diagnostics.ProcessStartInfo(pdfPath) { UseShellExecute = true });
                 }
                 catch { /* ouverture best-effort */ }
+                // Refermer le panneau après un court délai
+                await Task.Delay(1200);
+                IsFormulaireMode = false;
+                FormulaireStatusMessage = "";
             }
             else
             {
-                ExtractionStatus = $"Erreur formulaire : {error}";
+                FormulaireStatusMessage = $"❌ {error}";
+            }
+        }
+
+        /// <summary>
+        /// Envoie l'image du formulaire au LLM (vision) pour extraction OCR des champs remplis.
+        /// Même flux que la photo portrait : OpenFileDialog ou Camera Roll.
+        /// </summary>
+        private async Task ScanFormulaireAsync(string imagePath)
+        {
+            if (_llmService == null)
+            {
+                FormulaireStatusMessage = "❌ Service LLM non disponible.";
+                return;
+            }
+
+            IsFormulaireOcrProcessing = true;
+            FormulaireStatusMessage   = "⏳ Analyse du formulaire en cours...";
+            FormulaireOcrResult       = "";
+
+            try
+            {
+                var imageBytes = await File.ReadAllBytesAsync(imagePath);
+
+                const string prompt =
+                    "Tu es assistant médical. Voici une photo du formulaire de complétion de première consultation " +
+                    "pédopsychiatrique, rempli à la main par les parents.\n\n" +
+                    "Lis attentivement tout ce qui est écrit dans le formulaire (écriture manuscrite et cases cochées).\n\n" +
+                    "Extrais et présente de façon structurée :\n" +
+                    "- Antécédents médicaux de l'enfant (grossesse, naissance, développement, hospitalisations)\n" +
+                    "- Traitements actuels et allergies\n" +
+                    "- Bilans déjà réalisés et résultats mentionnés\n" +
+                    "- Médecin traitant / pédiatre (nom, téléphone si lisible)\n" +
+                    "- Consentements cochés (OUI ou NON)\n" +
+                    "- Toute autre information clinique renseignée par les parents\n\n" +
+                    "Ignore les champs laissés vides. Si un mot est illisible, indique [illisible]. Réponds en français.";
+
+                var (ok, result, error) = await _llmService.AnalyzeImageAsync(prompt, imageBytes);
+
+                if (ok && !string.IsNullOrWhiteSpace(result))
+                {
+                    FormulaireOcrResult   = result;
+                    FormulaireStatusMessage = "✅ Formulaire analysé.";
+                    OnPropertyChanged(nameof(HasFormulaireOcrResult));
+                }
+                else
+                {
+                    FormulaireStatusMessage = $"❌ Analyse impossible : {error ?? "réponse vide"}";
+                }
+            }
+            catch (Exception ex)
+            {
+                FormulaireStatusMessage = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsFormulaireOcrProcessing = false;
             }
         }
 
@@ -2851,6 +3095,46 @@ Texte :
                 }
             }
         }
+
+        // ── Mode Formulaire parents (choix Générer / Scanner OCR) ────────────
+
+        private bool _isFormulaireMode;
+        public bool IsFormulaireMode
+        {
+            get => _isFormulaireMode;
+            set
+            {
+                if (SetProperty(ref _isFormulaireMode, value))
+                {
+                    OnPropertyChanged(nameof(IsInSaisieMode));
+                    OnPropertyChanged(nameof(IsInExtractionMode));
+                    OnPropertyChanged(nameof(IsInFinalNoteMode));
+                }
+            }
+        }
+
+        private bool _isFormulaireOcrProcessing;
+        public bool IsFormulaireOcrProcessing
+        {
+            get => _isFormulaireOcrProcessing;
+            set => SetProperty(ref _isFormulaireOcrProcessing, value);
+        }
+
+        private string _formulaireStatusMessage = "";
+        public string FormulaireStatusMessage
+        {
+            get => _formulaireStatusMessage;
+            set => SetProperty(ref _formulaireStatusMessage, value);
+        }
+
+        private string _formulaireOcrResult = "";
+        public string FormulaireOcrResult
+        {
+            get => _formulaireOcrResult;
+            set => SetProperty(ref _formulaireOcrResult, value);
+        }
+
+        public bool HasFormulaireOcrResult => !string.IsNullOrWhiteSpace(_formulaireOcrResult);
 
         private bool _suggestionsGenerated = false;
 
@@ -2959,6 +3243,7 @@ Texte :
             IsInClinicalMode = false;
             IsInObservationsReviewMode = true;
             _observationsNoteSaved = false;
+            ScheduleDraftSave();
         }
 
         private static string BuildFallbackNarrative(ClinicalObservationsSession obs)
@@ -3327,6 +3612,7 @@ Texte :
             finally
             {
                 IsGeneratingSynthesis = false;
+                ScheduleDraftSave();
             }
         }
 
@@ -3398,6 +3684,9 @@ justification: {SynthesisWeights.LLMJustification ?? ""}
                         _premiereConsultationFilePath = null;
                         _noteSaved = false;
                         _observationsNoteSaved = false;
+                        // Brouillon terminé → supprimer
+                        _draftSaveCts?.Cancel();
+                        _draftSvc.Delete(_currentPatient?.DirectoryPath);
                     });
                 });
             }
@@ -4444,6 +4733,10 @@ source: ""MedCompanion""
         public ICommand SwitchToInterrogatoireCommand { get; }
         public ICommand SwitchToClinicalCommand { get; }
         public ICommand OpenFormulaireParentsCommand { get; }
+        public ICommand GenererFormulaireCommand     { get; }
+        public ICommand ImportFormulaireImageCommand { get; }
+        public ICommand CameraFormulaireCommand      { get; }
+        public ICommand CloseFormulaireCommand       { get; }
         public ICommand SelectObservationCommand { get; }
         public ICommand ToggleCardExpandCommand { get; }
         public ICommand TerminateClinicalObservationsCommand { get; }
@@ -4523,7 +4816,7 @@ source: ""MedCompanion""
                                                               _ => !IsReformulatingAll && FinalNoteBlocks.Any(b => !string.IsNullOrWhiteSpace(b.FreeText)));
             BackToSaisieCommand = new RelayCommand(_ =>
             {
-                foreach (var b in InterrogatoireBlocks) b.Reset();
+                // Retour en saisie sans effacer les blocs (le contenu est précieux)
                 NoteContent = "";
                 _noteSaved = false;
                 InterrogatoireState = InterrogatoireState.Saisie;
@@ -4689,6 +4982,7 @@ source: ""MedCompanion""
             // V0c : Commandes Observations Cliniques
             SwitchToInterrogatoireCommand = new RelayCommand(_ =>
             {
+                ScheduleDraftSave();
                 ResetWorkspaceModes();
             }, _ => IsInterrogatoireMode);
 
@@ -4696,13 +4990,78 @@ source: ""MedCompanion""
             {
                 if (_clinicalObservations.Cards.Count == 0)
                     InitializeClinicalObservations();
+                ScheduleDraftSave();
                 ResetWorkspaceModes();
                 IsInClinicalMode = true;
             }, _ => IsInterrogatoireMode);
 
-            OpenFormulaireParentsCommand = new RelayCommand(
+            OpenFormulaireParentsCommand = new RelayCommand(_ =>
+            {
+                FormulaireStatusMessage = "";
+                FormulaireOcrResult = "";
+                IsFormulaireMode = true;
+            }, _ => IsInterrogatoireMode && HasPatient);
+
+            GenererFormulaireCommand = new RelayCommand(
                 async _ => await GenerateFormulaireParentsAsync(),
-                _ => IsInterrogatoireMode && HasPatient);
+                _ => IsFormulaireMode && !IsFormulaireOcrProcessing);
+
+            ImportFormulaireImageCommand = new RelayCommand(_ =>
+            {
+                var dlg = new Microsoft.Win32.OpenFileDialog
+                {
+                    Title  = "Sélectionner la photo du formulaire",
+                    Filter = "Images (*.jpg;*.jpeg;*.png)|*.jpg;*.jpeg;*.png",
+                    InitialDirectory = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures)
+                };
+                if (dlg.ShowDialog() == true)
+                    _ = ScanFormulaireAsync(dlg.FileName);
+            }, _ => IsFormulaireMode && !IsFormulaireOcrProcessing);
+
+            CameraFormulaireCommand = new RelayCommand(_ =>
+            {
+                try
+                {
+                    var cameraRoll = Path.Combine(
+                        Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Camera Roll");
+                    var beforeCapture = DateTime.Now.AddSeconds(-5);
+                    System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo("microsoft.windows.camera:") { UseShellExecute = true });
+                    System.Windows.MessageBox.Show(
+                        "Photographiez le formulaire rempli par les parents.\n\n" +
+                        "1. Prenez la photo.\n2. Fermez l'application Caméra.\n3. Cliquez OK.",
+                        "Scanner le formulaire",
+                        System.Windows.MessageBoxButton.OK,
+                        System.Windows.MessageBoxImage.Information);
+                    if (Directory.Exists(cameraRoll))
+                    {
+                        var newest = new System.IO.DirectoryInfo(cameraRoll)
+                            .GetFiles("*.*")
+                            .Where(f => f.Extension.ToLower() is ".jpg" or ".jpeg" or ".png")
+                            .OrderByDescending(f => f.CreationTime)
+                            .FirstOrDefault();
+                        if (newest != null && newest.CreationTime >= beforeCapture)
+                            _ = ScanFormulaireAsync(newest.FullName);
+                        else
+                            System.Windows.MessageBox.Show(
+                                "Aucune nouvelle photo détectée dans la Pellicule.\nAssurez-vous d'avoir pris la photo.",
+                                "Photo non trouvée",
+                                System.Windows.MessageBoxButton.OK,
+                                System.Windows.MessageBoxImage.Warning);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    FormulaireStatusMessage = $"❌ Caméra indisponible : {ex.Message}";
+                }
+            }, _ => IsFormulaireMode && !IsFormulaireOcrProcessing);
+
+            CloseFormulaireCommand = new RelayCommand(_ =>
+            {
+                IsFormulaireMode = false;
+                FormulaireOcrResult = "";
+                FormulaireStatusMessage = "";
+            }, _ => IsFormulaireMode);
 
             SelectObservationCommand = new RelayCommand(param =>
             {
@@ -4748,6 +5107,7 @@ source: ""MedCompanion""
             // Pour tests: juste IsInterrogatoireMode
             SwitchToSynthesisCommand = new RelayCommand(_ =>
             {
+                ScheduleDraftSave();
                 SwitchToSynthesis();
             }, _ => IsInterrogatoireMode);
 
@@ -5376,6 +5736,8 @@ source: ""MedCompanion""
         public void LoadPatient(PatientIndexEntry patient)
         {
             if (patient is null) return;
+            // Annuler toute sauvegarde de brouillon en cours pour le patient précédent
+            _draftSaveCts?.Cancel();
             // Stash le brouillon de Suivi du patient PRÉCÉDENT avant le swap
             StashCurrentSuiviDraftFor(_currentPatient?.NomComplet);
 
