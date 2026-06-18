@@ -51,4 +51,10 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="Resources\Formulaires\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

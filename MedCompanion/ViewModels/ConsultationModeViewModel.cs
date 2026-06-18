@@ -2743,6 +2743,54 @@ Texte :
             return string.Join("\n", lines).Trim();
         }
 
+        /// <summary>
+        /// Génère le « Formulaire de complétion » pré-rempli à remettre aux parents
+        /// (bouton après l'Interrogatoire). HTML → Edge headless → PDF, puis ouverture.
+        /// </summary>
+        private async Task GenerateFormulaireParentsAsync()
+        {
+            if (_patientIndex == null || CurrentPatient == null || string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
+            {
+                ExtractionStatus = "Aucun patient sélectionné.";
+                return;
+            }
+
+            var meta = _patientIndex.GetMetadata(CurrentPatient.Id);
+            if (meta == null)
+            {
+                ExtractionStatus = "Métadonnées patient introuvables.";
+                return;
+            }
+
+            var svc = new MedCompanion.Services.FormulaireCompletionService();
+            if (!svc.TemplateExists)
+            {
+                ExtractionStatus = "Template du formulaire non installé (Resources/Formulaires/formulaire_completion.html).";
+                return;
+            }
+
+            var outputDir = Path.Combine(
+                CurrentPatient.DirectoryPath, DateTime.Now.Year.ToString(), "documents", "formulaires");
+
+            ExtractionStatus = "Génération du formulaire parents...";
+            var (ok, pdfPath, error) = await svc.GenerateAsync(meta, outputDir);
+
+            if (ok && !string.IsNullOrEmpty(pdfPath))
+            {
+                ExtractionStatus = "Formulaire parents généré.";
+                try
+                {
+                    System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo(pdfPath) { UseShellExecute = true });
+                }
+                catch { /* ouverture best-effort */ }
+            }
+            else
+            {
+                ExtractionStatus = $"Erreur formulaire : {error}";
+            }
+        }
+
         private async Task SaveInterrogatoireNoteAsync()
         {
             if (CurrentPatient == null) return;
@@ -4395,6 +4443,7 @@ source: ""MedCompanion""
         // V0c : Commandes Observations Cliniques
         public ICommand SwitchToInterrogatoireCommand { get; }
         public ICommand SwitchToClinicalCommand { get; }
+        public ICommand OpenFormulaireParentsCommand { get; }
         public ICommand SelectObservationCommand { get; }
         public ICommand ToggleCardExpandCommand { get; }
         public ICommand TerminateClinicalObservationsCommand { get; }
@@ -4650,6 +4699,10 @@ source: ""MedCompanion""
                 ResetWorkspaceModes();
                 IsInClinicalMode = true;
             }, _ => IsInterrogatoireMode);
+
+            OpenFormulaireParentsCommand = new RelayCommand(
+                async _ => await GenerateFormulaireParentsAsync(),
+                _ => IsInterrogatoireMode && HasPatient);
 
             SelectObservationCommand = new RelayCommand(param =>
             {
