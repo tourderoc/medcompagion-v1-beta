@@ -1370,6 +1370,20 @@ namespace MedCompanion.ViewModels
 
         public string RecordingStatusColor => IsRecording ? "#27AE60" : "#AAAAAA";
 
+        // ── Modèle Whisper sélectionné ────────────────────────────────────────
+
+        private WhisperModelSize _selectedWhisperModel;
+        public WhisperModelSize SelectedWhisperModel
+        {
+            get => _selectedWhisperModel;
+            set
+            {
+                if (SetProperty(ref _selectedWhisperModel, value))
+                    OnPropertyChanged(nameof(WhisperModelLabel));
+            }
+        }
+        public string WhisperModelLabel => _selectedWhisperModel == WhisperModelSize.LargeV3 ? "Large-v3" : "Medium";
+
         // ── Indicateurs visuels enregistrement ────────────────────────────────
 
         private int _micLevelPct;
@@ -3002,15 +3016,31 @@ Texte :
                 const string prompt =
                     "Tu es assistant médical. Voici une photo du formulaire de complétion de première consultation " +
                     "pédopsychiatrique, rempli à la main par les parents.\n\n" +
-                    "Lis attentivement tout ce qui est écrit dans le formulaire (écriture manuscrite et cases cochées).\n\n" +
-                    "Extrais et présente de façon structurée :\n" +
-                    "- Antécédents médicaux de l'enfant (grossesse, naissance, développement, hospitalisations)\n" +
-                    "- Traitements actuels et allergies\n" +
-                    "- Bilans déjà réalisés et résultats mentionnés\n" +
-                    "- Médecin traitant / pédiatre (nom, téléphone si lisible)\n" +
-                    "- Consentements cochés (OUI ou NON)\n" +
-                    "- Toute autre information clinique renseignée par les parents\n\n" +
-                    "Ignore les champs laissés vides. Si un mot est illisible, indique [illisible]. Réponds en français.";
+                    "Ce formulaire comporte exactement 7 blocs numérotés. Pour chaque bloc, lis ce qui est écrit " +
+                    "(manuscrit) ou coché, et restitue uniquement les informations REMPLIES. " +
+                    "Ignore les cases vides ou non cochées. Si un mot est illisible, écris [illisible].\n\n" +
+                    "BLOC 1 — COORDONNÉES DU PÈRE\n" +
+                    "  Champs : Prénom, Nom de famille, Téléphone portable, Email\n\n" +
+                    "BLOC 2 — COORDONNÉES DE LA MÈRE\n" +
+                    "  Champs : Prénom, Nom de famille, Téléphone portable, Email\n\n" +
+                    "BLOC 3 — ADRESSE DU MILIEU PRINCIPAL DE VIE\n" +
+                    "  Champs : Adresse (rue, code postal, ville)\n\n" +
+                    "BLOC 4 — SITUATION FAMILIALE\n" +
+                    "  Cases à cocher : Parents ensemble / Parents séparés / Divorcés / Garde alternée / " +
+                    "Famille recomposée / Autre\n" +
+                    "  Mode de garde principal : Parents / Mère / Père / Autre\n\n" +
+                    "BLOC 5 — ANTÉCÉDENTS FAMILIAUX (dans la famille proche)\n" +
+                    "  Tableau avec colonnes OUI / NON / Ne sait pas pour chaque ligne :\n" +
+                    "  TDAH / Troubles de l'attention, Dyslexie / Troubles des apprentissages, " +
+                    "Troubles du spectre de l'autisme (TSA), Troubles anxieux, Dépression, " +
+                    "Bipolarité, Addictions (alcool, etc.), Tentative de suicide\n\n" +
+                    "BLOC 6 — PHOTO DE L'ENFANT\n" +
+                    "  (zone photo collée par les parents, pas de texte à extraire)\n\n" +
+                    "BLOC 7 — AUTORISATIONS ET COMMUNICATION\n" +
+                    "  Trois autorisations avec cases OUI / NON à cocher par les parents.\n" +
+                    "  Indique quelle case est cochée pour chacune.\n\n" +
+                    "Présente le résultat bloc par bloc, en ne mentionnant que ce qui est effectivement rempli. " +
+                    "Réponds en français.";
 
                 var (ok, result, error) = await _llmService.AnalyzeImageAsync(prompt, imageBytes);
 
@@ -4702,6 +4732,7 @@ source: ""MedCompanion""
         public ICommand AddFinalNoteSectionCommand { get; }   // param : ConsultationBlockViewModel
         public ICommand ReformulateAllCommand { get; }        // reformule toutes les sections
         public ICommand BackToSaisieCommand { get; }
+        public ICommand SwitchWhisperModelCommand { get; private set; }
         public ICommand StartRecordingCommand { get; }
         public ICommand StopRecordingCommand { get; }
 
@@ -4772,6 +4803,12 @@ source: ""MedCompanion""
 
         public ConsultationModeViewModel()
         {
+            // Charger le modèle Whisper persisté
+            var savedSettings = AppSettings.Load();
+            _selectedWhisperModel = savedSettings.WhisperModel == "LargeV3"
+                ? WhisperModelSize.LargeV3
+                : WhisperModelSize.Medium;
+
             // V0b : initialiser le suggester avec le resolver
             _blockSuggester = new ContextualBlockSuggester(_blockSetResolver);
             _motifDetector.MotifDetected += OnMotifDetected;
@@ -4822,13 +4859,29 @@ source: ""MedCompanion""
                 InterrogatoireState = InterrogatoireState.Saisie;
             });
 
+            SwitchWhisperModelCommand = new RelayCommand(
+                async _ =>
+                {
+                    if (_whisperService == null) return;
+                    var newModel = _selectedWhisperModel == WhisperModelSize.Medium
+                        ? WhisperModelSize.LargeV3
+                        : WhisperModelSize.Medium;
+                    await _whisperService.UnloadModelAsync();
+                    SelectedWhisperModel = newModel;
+                    var settings = AppSettings.Load();
+                    settings.WhisperModel = newModel == WhisperModelSize.LargeV3 ? "LargeV3" : "Medium";
+                    settings.Save();
+                    ExtractionStatus = $"Modèle Whisper basculé : {WhisperModelLabel} (chargement au prochain démarrage de dictée)";
+                },
+                _ => !IsRecording && _whisperService != null);
+
             StartRecordingCommand = new RelayCommand(
                 async _ =>
                 {
                     if (_whisperService == null) return;
                     _whisperService.Mode                 = UseBatchMode ? RecordingMode.Batch : RecordingMode.Streaming;
                     _whisperService.BatchDurationSeconds = BatchDurationSeconds;
-                    var modelManager = new WhisperModelManager();
+                    var modelManager = new WhisperModelManager { ModelSize = _selectedWhisperModel };
                     await _whisperService.StartAsync(modelManager);
                     IsRecording = true;
                 },

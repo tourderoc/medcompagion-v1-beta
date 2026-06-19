@@ -833,6 +833,31 @@ namespace MedCompanion.Services.Consultation
         ///
         /// No-op si Whisper n'a jamais été initialisé OU si une session est active.
         /// </summary>
+        /// <summary>
+        /// Décharge complètement le modèle chargé (factory + processor) et remet le flag
+        /// d'initialisation à false, sans recharger. Utilisé pour changer de taille de modèle :
+        /// le prochain StartAsync chargera le nouveau modèle depuis zéro.
+        /// </summary>
+        public async Task UnloadModelAsync()
+        {
+            if (!_whisperInitialized) return;
+            if (IsActive) await StopAsync();
+            await _initLock.WaitAsync();
+            try
+            {
+                try { _processor?.Dispose(); } catch { }
+                _processor = null;
+                try { _factory?.Dispose(); } catch { }
+                _factory = null;
+                _modelPath = null;
+                _whisperInitialized = false;
+                GC.Collect();
+                GC.WaitForPendingFinalizers();
+                GC.Collect();
+            }
+            finally { _initLock.Release(); }
+        }
+
         public async Task<(bool ok, string message)> ResetEngineAsync(bool full = false)
         {
             if (!_whisperInitialized) return (true, "Whisper non initialisé — rien à réinitialiser.");

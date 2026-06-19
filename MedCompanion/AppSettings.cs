@@ -38,6 +38,9 @@ namespace MedCompanion
         public string PilotageAgentModel { get; set; } = "gpt-oss:20b";  // ✅ Corrigé: gpt-oss (avec 2 's')
         public double PilotageAgentTemperature { get; set; } = 0.3;
 
+        // Modèle Whisper sélectionné ("Medium" | "LargeV3")
+        public string WhisperModel { get; set; } = "Medium";
+
         // Configuration Handy (transcription vocale)
         public string HandyHotkey { get; set; } = "Ctrl+Space";
         public bool HandyEnabled { get; set; } = true;

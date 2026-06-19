@@ -1255,7 +1255,9 @@ namespace MedCompanion.ViewModels
             {
                 _whisper.Mode = RecordingMode.Batch;
                 _whisper.BatchDurationSeconds = 90;
-                var modelManager = new WhisperModelManager();
+                var savedModel = AppSettings.Load().WhisperModel;
+                var modelSize  = savedModel == "LargeV3" ? WhisperModelSize.LargeV3 : WhisperModelSize.Medium;
+                var modelManager = new WhisperModelManager { ModelSize = modelSize };
                 await _whisper.StartAsync(modelManager);
                 IsDicteActive = true;
                 DicteStatus = "🔴 Med écoute — concentrez-vous sur le patient.";
