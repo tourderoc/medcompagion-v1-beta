@@ -1555,18 +1555,13 @@
                                     </Button>
 
                                     <!-- Toggle modèle Whisper (Medium ↔ Large-v3) -->
-                                    <Button Command="{Binding SwitchWhisperModelCommand}"
+                                    <Button Content="{Binding WhisperModelLabel}"
+                                            Command="{Binding SwitchWhisperModelCommand}"
                                             ToolTip="Basculer entre Whisper Medium et Large-v3 (chargement au prochain démarrage)"
                                             Padding="8,7" Cursor="Hand" FontSize="11"
                                             Background="#8E44AD" Foreground="White"
                                             BorderThickness="0" Margin="0,0,6,0"
                                             Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}">
-                                        <Button.Content>
-                                            <TextBlock>
-                                                <Run Text="🔊 "/>
-                                                <Run Text="{Binding WhisperModelLabel}"/>
-                                            </TextBlock>
-                                        </Button.Content>
                                         <Button.Style>
                                             <Style TargetType="Button">
                                                 <Setter Property="Template">

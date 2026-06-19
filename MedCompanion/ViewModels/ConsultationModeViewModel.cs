@@ -1382,7 +1382,7 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(WhisperModelLabel));
             }
         }
-        public string WhisperModelLabel => _selectedWhisperModel == WhisperModelSize.LargeV3 ? "Large-v3" : "Medium";
+        public string WhisperModelLabel => _selectedWhisperModel == WhisperModelSize.LargeV3 ? "🔊 Large-v3" : "🔊 Medium";
 
         // ── Indicateurs visuels enregistrement ────────────────────────────────
 
