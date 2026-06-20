@@ -239,6 +239,22 @@
                         </Button.Style>
                     </Button>
 
+                    <!-- ♻ Recommencer : visible uniquement en lecture seule (projet validé) -->
+                    <Button Padding="10,5" Margin="0,0,6,0"
+                            Command="{Binding RecommencerCommand}"
+                            Visibility="{Binding IsReadOnly, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Supprimer ce projet et repartir d'un brouillon v1 vierge.">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Content"          Value="♻ Recommencer"/>
+                                <Setter Property="Background"       Value="#784212"/>
+                                <Setter Property="Foreground"       Value="White"/>
+                                <Setter Property="FontWeight"       Value="SemiBold"/>
+                                <Setter Property="BorderThickness"  Value="0"/>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+
                     <Button Content="⏸ Fermer" Padding="10,5" Margin="0,0,6,0"
                             Command="{Binding FermerCommand}"
                             ToolTip="Quitter sans valider (brouillon sauvegardé)"/>
@@ -389,6 +405,20 @@
 
             <ScrollViewer VerticalScrollBarVisibility="Auto" PanningMode="VerticalOnly">
                 <StackPanel>
+
+                    <!-- Orientation du médecin (priorité absolue pour Med) -->
+                    <Border Background="#FEF9E7" BorderBrush="#F0C040" BorderThickness="1" CornerRadius="6"
+                            Margin="0,0,0,14" Padding="12">
+                        <StackPanel>
+                            <TextBlock Text="✏ Orientation du médecin" FontSize="13" FontWeight="SemiBold" Foreground="#7D6608"/>
+                            <TextBox Text="{Binding Projet.OrientationMedecin, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="12" Background="#FFFEF5" BorderBrush="#F0C040" BorderThickness="1"
+                                     TextWrapping="Wrap" AcceptsReturn="True" MinHeight="70" Padding="8" Margin="0,6,0,4"
+                                     IsReadOnly="{Binding IsReadOnly}"/>
+                            <TextBlock FontSize="10" Foreground="#8A7000" FontStyle="Italic"
+                                       Text="Vos orientations cliniques — Med en tiendra compte comme priorité absolue lors de la proposition ou du patch."/>
+                        </StackPanel>
+                    </Border>
 
                     <!-- 1. Objectifs prioritaires (texte libre) -->
                     <Border Background="#FBFCFD" BorderBrush="#E5E8EC" BorderThickness="1" CornerRadius="6" Margin="0,0,0,12" Padding="12">

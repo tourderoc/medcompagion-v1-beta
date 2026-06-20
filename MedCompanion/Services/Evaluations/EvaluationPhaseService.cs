@@ -351,8 +351,9 @@ namespace MedCompanion.Services.Evaluations
 
         private static bool FeuilleHasAnyScore(FeuilleEnvironnement f)
         {
-            if (f.NervureCentrale.Score > 0) return true;
-            foreach (var s in f.NervuresSecondaires) if (s.Score > 0) return true;
+            if (f.NervureCentrale.Score > 0 || f.NervureCentrale.AucunSigneNotable) return true;
+            foreach (var s in f.NervuresSecondaires)
+                if (s.Score > 0 || s.AucunSigneNotable) return true;
             return false;
         }
 
@@ -401,6 +402,8 @@ namespace MedCompanion.Services.Evaluations
                 sb.Append(n.Items[i].IsChecked ? "true" : "false");
             }
             sb.AppendLine("]");
+            if (n.AucunSigneNotable)
+                sb.AppendLine($"    {n.Key}_aucun: true");
         }
 
         private static void AppendFeuilleMd(StringBuilder sb, FeuilleEnvironnement feuille)
@@ -427,9 +430,18 @@ namespace MedCompanion.Services.Evaluations
         private static void AppendNervureMd(StringBuilder sb, Nervure n)
         {
             var hasScore = n.Score > 0;
-            var couleur = EnvironnementScoringService.CalculerNervure(n);
-            var label = hasScore ? CartographieEnvironnementContent.NiveauLabel(couleur) : CartographieEnvironnementContent.NonEvalueLabel;
-            var emoji = hasScore ? EnvironnementEmoji(couleur) : "⚪";
+            string label, emoji;
+            if (n.AucunSigneNotable && !hasScore)
+            {
+                label = "Rien de notable";
+                emoji = "🔵";
+            }
+            else
+            {
+                var couleur = EnvironnementScoringService.CalculerNervure(n);
+                label = hasScore ? CartographieEnvironnementContent.NiveauLabel(couleur) : CartographieEnvironnementContent.NonEvalueLabel;
+                emoji = hasScore ? EnvironnementEmoji(couleur) : "⚪";
+            }
             var role = n.IsCentrale ? " *(centrale)*" : "";
             sb.AppendLine($"- **{n.Label}**{role} : {n.Score}/{n.MaxScore} — {emoji} {label}");
         }
@@ -1260,18 +1272,29 @@ namespace MedCompanion.Services.Evaluations
         private static void ApplyNervureItemsFromYaml(string feuilleBlock, Nervure nervure)
         {
             var lines = feuilleBlock.Replace("\r\n", "\n").Split('\n');
-            var prefix = nervure.Key + ":";
+            var prefix    = nervure.Key + ":";
+            var prefixAucun = nervure.Key + "_aucun:";
             foreach (var line in lines)
             {
                 var t = line.TrimStart();
-                if (!t.StartsWith(prefix)) continue;
-                var rest = t.Substring(prefix.Length).Trim();
-                if (!rest.StartsWith("[") || !rest.EndsWith("]")) continue;
-                var inner = rest.Substring(1, rest.Length - 2);
-                var values = inner.Split(',');
-                for (int i = 0; i < values.Length && i < nervure.Items.Count; i++)
-                    nervure.Items[i].IsChecked = values[i].Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
-                return;
+                // Items array
+                if (t.StartsWith(prefix) && !t.StartsWith(prefixAucun))
+                {
+                    var rest = t.Substring(prefix.Length).Trim();
+                    if (rest.StartsWith("[") && rest.EndsWith("]"))
+                    {
+                        var inner = rest.Substring(1, rest.Length - 2);
+                        var values = inner.Split(',');
+                        for (int i = 0; i < values.Length && i < nervure.Items.Count; i++)
+                            nervure.Items[i].IsChecked = values[i].Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+                    }
+                }
+                // AucunSigneNotable flag
+                else if (t.StartsWith(prefixAucun))
+                {
+                    var val = t.Substring(prefixAucun.Length).Trim();
+                    nervure.AucunSigneNotable = val.Equals("true", StringComparison.OrdinalIgnoreCase);
+                }
             }
         }
 

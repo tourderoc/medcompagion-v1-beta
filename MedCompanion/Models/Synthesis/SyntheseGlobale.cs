@@ -107,10 +107,13 @@ namespace MedCompanion.Models.Synthesis
         public SyntheseSection Conclusion    { get; }
         public SyntheseSection Evolution     { get; }
 
-        public IReadOnlyList<SyntheseSection> Sections => new[]
-        {
-            Hypotheses, Enfant, Environnement, Articulation, Conclusion, Evolution
-        };
+        /// <summary>
+        /// Sections affichées et sérialisées. "Évolution depuis la dernière synthèse" n'apparaît
+        /// qu'à partir de la v2 (elle est vide et inutile pour une synthèse initiale).
+        /// </summary>
+        public IReadOnlyList<SyntheseSection> Sections => Version > 1
+            ? new[] { Hypotheses, Enfant, Environnement, Articulation, Conclusion, Evolution }
+            : new[] { Hypotheses, Enfant, Environnement, Articulation, Conclusion };
 
         public SyntheseGlobale()
         {

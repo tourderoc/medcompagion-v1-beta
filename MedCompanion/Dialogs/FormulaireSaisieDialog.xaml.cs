@@ -60,9 +60,15 @@ namespace MedCompanion.Dialogs
             MereTel.Text     = d.MereTel;
             MereEmail.Text   = d.MereEmail;
 
-            Adresse.Text     = d.Adresse;
-            CodePostal.Text  = d.CodePostal;
-            Ville.Text       = d.Ville;
+            Adresse.Text    = d.Adresse;
+            CodePostal.Text = d.CodePostal;
+            Ville.Text      = d.Ville;
+            SetRadio(d.GardeAdresse1, ("mere", GardeAdr1Mere), ("pere", GardeAdr1Pere), ("autre", GardeAdr1Autre));
+
+            Adresse2.Text    = d.Adresse2;
+            CodePostal2.Text = d.CodePostal2;
+            Ville2.Text      = d.Ville2;
+            SetRadio(d.GardeAdresse2, ("mere", GardeAdr2Mere), ("pere", GardeAdr2Pere), ("autre", GardeAdr2Autre));
 
             SetRadio(d.SituationFamiliale, ("ensemble", SitEnsemble), ("separes", SitSepares),
                 ("divorces", SitDivorces), ("garde_alternee", SitGardeAlt),
@@ -79,6 +85,9 @@ namespace MedCompanion.Dialogs
             SetOuiNonNsp(d.Bipolarite,      BipoOui, BipoNon, BipoNsp);
             SetOuiNonNsp(d.Addictions,      AddOui, AddNon, AddNsp);
             SetOuiNonNsp(d.TentativeSuicide, TsOui, TsNon, TsNsp);
+
+            AntecedentsAutreLabel.Text = d.AntecedentsAutreLabel;
+            SetOuiNonNsp(d.AntecedentsAutre, AutreAtcdOui, AutreAtcdNon, AutreAtcdNsp);
 
             SetOuiNon(d.AutorCommunicationEcole, Autor1Oui, Autor1Non);
             SetOuiNon(d.AutorPartageConfreres,   Autor2Oui, Autor2Non);
@@ -97,9 +106,15 @@ namespace MedCompanion.Dialogs
             MereTel     = MereTel.Text.Trim(),
             MereEmail   = MereEmail.Text.Trim(),
 
-            Adresse     = Adresse.Text.Trim(),
-            CodePostal  = CodePostal.Text.Trim(),
-            Ville       = Ville.Text.Trim(),
+            Adresse       = Adresse.Text.Trim(),
+            CodePostal    = CodePostal.Text.Trim(),
+            Ville         = Ville.Text.Trim(),
+            GardeAdresse1 = GetRadio(("mere", GardeAdr1Mere), ("pere", GardeAdr1Pere), ("autre", GardeAdr1Autre)),
+
+            Adresse2      = Adresse2.Text.Trim(),
+            CodePostal2   = CodePostal2.Text.Trim(),
+            Ville2        = Ville2.Text.Trim(),
+            GardeAdresse2 = GetRadio(("mere", GardeAdr2Mere), ("pere", GardeAdr2Pere), ("autre", GardeAdr2Autre)),
 
             SituationFamiliale = GetRadio(("ensemble", SitEnsemble), ("separes", SitSepares),
                 ("divorces", SitDivorces), ("garde_alternee", SitGardeAlt),
@@ -115,7 +130,9 @@ namespace MedCompanion.Dialogs
             Depression       = GetOuiNonNsp(DepOui, DepNon, DepNsp),
             Bipolarite       = GetOuiNonNsp(BipoOui, BipoNon, BipoNsp),
             Addictions       = GetOuiNonNsp(AddOui, AddNon, AddNsp),
-            TentativeSuicide = GetOuiNonNsp(TsOui, TsNon, TsNsp),
+            TentativeSuicide       = GetOuiNonNsp(TsOui, TsNon, TsNsp),
+            AntecedentsAutreLabel  = AntecedentsAutreLabel.Text.Trim(),
+            AntecedentsAutre       = GetOuiNonNsp(AutreAtcdOui, AutreAtcdNon, AutreAtcdNsp),
 
             AutorCommunicationEcole = GetOuiNon(Autor1Oui, Autor1Non),
             AutorPartageConfreres   = GetOuiNon(Autor2Oui, Autor2Non),

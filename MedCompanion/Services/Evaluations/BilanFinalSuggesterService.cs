@@ -62,6 +62,7 @@ namespace MedCompanion.Services.Evaluations
             List<AxisInput> axes,
             CartographieEnfant? cartoEnfant,
             CartographieEnvironnement? cartoEnv,
+            string? nuanceGlobale = null,
             CancellationToken ct = default)
         {
             var explored = axes.Where(a => a.State >= 1 && !string.IsNullOrWhiteSpace(a.Label)).ToList();
@@ -76,7 +77,7 @@ namespace MedCompanion.Services.Evaluations
 
             try
             {
-                var prompt = BuildPrompt(age, motif, explored, cartoEnfant, cartoEnv);
+                var prompt = BuildPrompt(age, motif, explored, cartoEnfant, cartoEnv, nuanceGlobale);
                 var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
                 {
@@ -142,8 +143,9 @@ namespace MedCompanion.Services.Evaluations
 
         private static bool EnvFeuilleHasScore(FeuilleEnvironnement f)
         {
-            if (f.NervureCentrale.Score > 0) return true;
-            foreach (var s in f.NervuresSecondaires) if (s.Score > 0) return true;
+            if (f.NervureCentrale.Score > 0 || f.NervureCentrale.AucunSigneNotable) return true;
+            foreach (var s in f.NervuresSecondaires)
+                if (s.Score > 0 || s.AucunSigneNotable) return true;
             return false;
         }
 
@@ -151,7 +153,8 @@ namespace MedCompanion.Services.Evaluations
             int? age, string motif,
             List<AxisInput> explored,
             CartographieEnfant? cartoEnfant,
-            CartographieEnvironnement? cartoEnv)
+            CartographieEnvironnement? cartoEnv,
+            string? nuanceGlobale = null)
         {
             var ageInfo = age.HasValue ? $"{age.Value} ans" : "âge non confirmé";
 
@@ -230,6 +233,7 @@ CONTRAINTES STRICTES :
 - Pas de pistes thérapeutiques (réservé Projet Thérapeutique).
 - Synthèse intégrative : ton clinique direct, pas de métaphores poétiques.
 - Si rien ne peut être conclu, retourne des tableaux vides, synthèse_integrative vide, certitude=0.
+{(string.IsNullOrWhiteSpace(nuanceGlobale) ? "" : $@"- ⚠ NUANCE CLINIQUE DU MÉDECIN (PRIORITÉ ABSOLUE) : ""{nuanceGlobale.Trim()}"" — Cette nuance exprime le jugement clinique direct du praticien. Elle PRIME sur toute inférence automatique. Les diagnostics retenus, les éléments en faveur et la synthèse intégrative DOIVENT en tenir compte de façon déterminante.")}
 
 DONNÉES :
 
@@ -265,8 +269,11 @@ RÉPONDS UNIQUEMENT par un JSON valide :
 
         private static void AppendFeuille(StringBuilder sb, FeuilleEnvironnement f)
         {
+            var allNervures = new[] { f.NervureCentrale }.Concat(f.NervuresSecondaires);
+            bool anyRienDeNotable = allNervures.Any(n => n.AucunSigneNotable && n.Score == 0);
             var couleurFeuille = EnvironnementScoringService.CalculerFeuille(f);
-            sb.AppendLine($"- {f.Label} ({f.SousTitre}) : {couleurFeuille}");
+            var suffix = anyRienDeNotable ? " (certaines nervures évaluées sans signe notable)" : "";
+            sb.AppendLine($"- {f.Label} ({f.SousTitre}) : {couleurFeuille}{suffix}");
             if (!string.IsNullOrWhiteSpace(f.LectureMed))
                 sb.AppendLine($"  Lecture : {f.LectureMed.Replace("\r", "").Replace("\n", " ").Trim()}");
         }

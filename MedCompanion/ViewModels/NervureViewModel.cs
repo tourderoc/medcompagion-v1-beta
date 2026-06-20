@@ -38,9 +38,16 @@ namespace MedCompanion.ViewModels
                 OnPropertyChanged(nameof(DisplayColor));
                 ScoreChanged?.Invoke();
             }
+            else if (e.PropertyName == nameof(Nervure.AucunSigneNotable))
+            {
+                OnPropertyChanged(nameof(AucunSigneNotable));
+                OnPropertyChanged(nameof(DisplayLabel));
+                OnPropertyChanged(nameof(DisplayColor));
+                ScoreChanged?.Invoke();
+            }
         }
 
-        /// <summary>Notifié à chaque coche/décoche pour que la feuille parente recalcule.</summary>
+        /// <summary>Notifié à chaque coche/décoche ou changement AucunSigneNotable pour que la feuille parente recalcule.</summary>
         public event System.Action? ScoreChanged;
 
         // ── Passthrough ─────────────────────────────────────────────────────
@@ -49,6 +56,13 @@ namespace MedCompanion.ViewModels
         public bool   IsCentrale => Modele.IsCentrale;
         public int    Score      => Modele.Score;
         public int    MaxScore   => Modele.MaxScore;
+
+        /// <summary>Passthrough bindable pour la case "Rien de notable".</summary>
+        public bool AucunSigneNotable
+        {
+            get => Modele.AucunSigneNotable;
+            set => Modele.AucunSigneNotable = value;
+        }
 
         // ── Calculés ────────────────────────────────────────────────────────
 
@@ -59,10 +73,14 @@ namespace MedCompanion.ViewModels
         public string        NiveauLabel => CartographieEnvironnementContent.NiveauLabel(Niveau);
         public string        NiveauColor => CartographieEnvironnementContent.NiveauColor(Niveau);
 
-        /// <summary>Libellé affiché : neutre tant qu'aucun item n'est coché.</summary>
-        public string DisplayLabel => HasScore ? NiveauLabel : CartographieEnvironnementContent.NonEvalueLabel;
+        /// <summary>Libellé affiché : "Rien de notable" si coché, neutre si non évalué, sinon le niveau calculé.</summary>
+        public string DisplayLabel => Modele.AucunSigneNotable && !HasScore
+            ? "Rien de notable"
+            : HasScore ? NiveauLabel : CartographieEnvironnementContent.NonEvalueLabel;
 
-        /// <summary>Couleur affichée : grise tant qu'aucun item n'est coché.</summary>
-        public string DisplayColor => HasScore ? NiveauColor : CartographieEnvironnementContent.NonEvalueColor;
+        /// <summary>Couleur affichée : bleu clair si "Rien de notable", grise si non évalué, sinon la couleur du niveau.</summary>
+        public string DisplayColor => Modele.AucunSigneNotable && !HasScore
+            ? "#5DADE2"
+            : HasScore ? NiveauColor : CartographieEnvironnementContent.NonEvalueColor;
     }
 }

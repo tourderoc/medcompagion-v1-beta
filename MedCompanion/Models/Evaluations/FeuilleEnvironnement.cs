@@ -47,6 +47,28 @@ namespace MedCompanion.Models.Evaluations
         public int Score    => Items.Count(i => i.IsChecked);
         public int MaxScore => Items.Count;
 
+        private bool _aucunSigneNotable;
+        /// <summary>
+        /// Le clinicien a explicitement évalué cet axe et n'a trouvé aucun signe notable.
+        /// Distinct de Score==0 sans évaluation. Mutuellement exclusif avec les items cochés.
+        /// </summary>
+        public bool AucunSigneNotable
+        {
+            get => _aucunSigneNotable;
+            set
+            {
+                if (_aucunSigneNotable == value) return;
+                _aucunSigneNotable = value;
+                if (value)
+                {
+                    // Décocher tous les items quand on marque "Rien de notable"
+                    foreach (var item in Items) item.IsChecked = false;
+                }
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(Score));
+            }
+        }
+
         public Nervure(string key, string label, bool isCentrale, params string[] affirmations)
         {
             Key        = key;
@@ -62,8 +84,14 @@ namespace MedCompanion.Models.Evaluations
 
         private void OnItemChanged(object? sender, PropertyChangedEventArgs e)
         {
-            if (e.PropertyName == nameof(FeuilleItem.IsChecked))
-                OnPropertyChanged(nameof(Score));
+            if (e.PropertyName != nameof(FeuilleItem.IsChecked)) return;
+            // Cocher un item annule "Rien de notable"
+            if (Items.Any(i => i.IsChecked) && _aucunSigneNotable)
+            {
+                _aucunSigneNotable = false;
+                OnPropertyChanged(nameof(AucunSigneNotable));
+            }
+            OnPropertyChanged(nameof(Score));
         }
     }
 

@@ -2098,7 +2098,7 @@
                                 </StackPanel>
                             </Grid>
 
-                            <!-- MODE FORMULAIRE PARENTS — Générer / Scanner (OCR) -->
+                            <!-- MODE FORMULAIRE PARENTS — Générer -->
                             <Grid Grid.Row="1">
                                 <Grid.Style>
                                     <Style TargetType="Grid">
@@ -2113,7 +2113,6 @@
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
                                     <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="*"/>
                                     <RowDefinition Height="Auto"/>
                                 </Grid.RowDefinitions>
 
@@ -2143,11 +2142,9 @@
                                                VerticalAlignment="Center"/>
                                 </DockPanel>
 
-                                <!-- 2 cartes de choix -->
-                                <UniformGrid Grid.Row="1" Columns="2" Margin="0,0,0,12">
-
-                                    <!-- Carte Générer -->
-                                    <Border Margin="0,0,6,0" Padding="16,14" CornerRadius="8"
+                                <!-- Carte Générer (centrée) -->
+                                <Grid Grid.Row="1" Margin="0,0,0,12">
+                                    <Border HorizontalAlignment="Center" Width="320" Padding="16,14" CornerRadius="8"
                                             Background="#FDF2E9" BorderBrush="#E67E22" BorderThickness="1.5">
                                         <StackPanel>
                                             <TextBlock Text="📄 Générer formulaire"
@@ -2177,112 +2174,10 @@
                                         </StackPanel>
                                     </Border>
 
-                                    <!-- Carte Scanner OCR -->
-                                    <Border Margin="6,0,0,0" Padding="16,14" CornerRadius="8"
-                                            Background="#EAF4FB" BorderBrush="#3498DB" BorderThickness="1.5">
-                                        <StackPanel>
-                                            <TextBlock Text="📷 Scanner formulaire rempli"
-                                                       FontSize="13" FontWeight="SemiBold" Foreground="#3498DB" Margin="0,0,0,6"/>
-                                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,12"
-                                                       Text="Photographiez le formulaire rempli par les parents — le LLM extrait les informations cliniques."/>
-                                            <StackPanel Orientation="Horizontal">
-                                                <Button Command="{Binding ImportFormulaireImageCommand}"
-                                                        Content="📁 Importer"
-                                                        Padding="10,7" Cursor="Hand" FontSize="11" Margin="0,0,6,0"
-                                                        Background="#3498DB" Foreground="White" BorderThickness="0">
-                                                    <Button.Template>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
-                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#2E86C1"/></Trigger>
-                                                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Button.Template>
-                                                </Button>
-                                                <Button Command="{Binding CameraFormulaireCommand}"
-                                                        Content="📷 Caméra"
-                                                        Padding="10,7" Cursor="Hand" FontSize="11"
-                                                        Background="#2980B9" Foreground="White" BorderThickness="0">
-                                                    <Button.Template>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border Background="{TemplateBinding Background}" CornerRadius="5" Padding="{TemplateBinding Padding}">
-                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#1A6B9A"/></Trigger>
-                                                                <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.5"/></Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Button.Template>
-                                                </Button>
-                                            </StackPanel>
-                                        </StackPanel>
-                                    </Border>
-                                </UniformGrid>
-
-                                <!-- Zone résultat OCR -->
-                                <Border Grid.Row="2" CornerRadius="6" Padding="12"
-                                        Background="#FAFAFA" BorderBrush="#D5D8DC" BorderThickness="1">
-                                    <Grid>
-                                        <!-- Spinner en cours -->
-                                        <TextBlock Text="⏳ Analyse en cours…"
-                                                   FontSize="13" Foreground="#7F8C8D"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsFormulaireOcrProcessing}" Value="True">
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <!-- Texte d'accueil quand vide -->
-                                        <TextBlock Text="Le résultat de l'analyse OCR s'affichera ici."
-                                                   FontSize="12" Foreground="#BDC3C7" FontStyle="Italic"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                    <Style.Triggers>
-                                                        <MultiDataTrigger>
-                                                            <MultiDataTrigger.Conditions>
-                                                                <Condition Binding="{Binding IsFormulaireOcrProcessing}" Value="False"/>
-                                                                <Condition Binding="{Binding HasFormulaireOcrResult}" Value="False"/>
-                                                            </MultiDataTrigger.Conditions>
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                        </MultiDataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <!-- Résultat -->
-                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                            <TextBlock Text="{Binding FormulaireOcrResult}"
-                                                       TextWrapping="Wrap" FontSize="12" Foreground="#2C3E50"
-                                                       LineHeight="20">
-                                                <TextBlock.Style>
-                                                    <Style TargetType="TextBlock">
-                                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                                        <Style.Triggers>
-                                                            <DataTrigger Binding="{Binding HasFormulaireOcrResult}" Value="True">
-                                                                <Setter Property="Visibility" Value="Visible"/>
-                                                            </DataTrigger>
-                                                        </Style.Triggers>
-                                                    </Style>
-                                                </TextBlock.Style>
-                                            </TextBlock>
-                                        </ScrollViewer>
-                                    </Grid>
-                                </Border>
+                                </Grid>
 
                                 <!-- Barre de statut -->
-                                <TextBlock Grid.Row="3" Text="{Binding FormulaireStatusMessage}"
+                                <TextBlock Grid.Row="2" Text="{Binding FormulaireStatusMessage}"
                                            FontSize="11" Foreground="#7F8C8D" Margin="0,8,0,0"
                                            TextWrapping="Wrap"/>
                             </Grid>
@@ -2426,18 +2321,26 @@
 
                                 <!-- SECTION 2: Synthèse Preview -->
                                 <Border Grid.Row="1" Background="White" Padding="12" BorderThickness="1" BorderBrush="#DDD" CornerRadius="6" Margin="0,0,0,12">
-                                    <StackPanel>
-                                        <TextBlock Text="✅ Synthèse Initiale" FontWeight="Bold" FontSize="13" Margin="0,0,0,8"/>
+                                    <Grid>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto"/>
+                                            <RowDefinition Height="*"/>
+                                            <RowDefinition Height="Auto"/>
+                                        </Grid.RowDefinitions>
 
-                                        <TextBox Name="SynthesisPreview"
+                                        <TextBlock Grid.Row="0" Text="✅ Synthèse Initiale" FontWeight="Bold" FontSize="13" Margin="0,0,0,8"/>
+
+                                        <TextBox Grid.Row="1"
+                                                Name="SynthesisPreview"
                                                 Text="{Binding SynthesisContent, Mode=OneWay}"
-                                                IsReadOnly="True" Height="280"
+                                                IsReadOnly="True"
                                                 Padding="12" BorderThickness="1" BorderBrush="#E0E0E0"
                                                 Foreground="#2C3E50" FontFamily="Segoe UI" FontSize="11"
-                                                VerticalScrollBarVisibility="Auto" TextWrapping="Wrap"/>
+                                                VerticalScrollBarVisibility="Visible" TextWrapping="Wrap"
+                                                VerticalAlignment="Stretch" HorizontalAlignment="Stretch"/>
 
-                                        <TextBlock Text="{Binding SynthesisStatusMessage}" Foreground="#3498DB" Margin="0,8,0,0" FontSize="11"/>
-                                    </StackPanel>
+                                        <TextBlock Grid.Row="2" Text="{Binding SynthesisStatusMessage}" Foreground="#3498DB" Margin="0,8,0,0" FontSize="11"/>
+                                    </Grid>
                                 </Border>
 
                                 <!-- SECTION 3: Action Buttons -->
@@ -4319,6 +4222,32 @@
                                                             <TextBlock Text="{Binding EcoleContactText}" FontSize="14" Foreground="#34495E" TextWrapping="Wrap" LineHeight="22"/>
                                                         </StackPanel>
                                                     </Border>
+                                                    <!-- Contacts parents -->
+                                                    <Border Margin="0,12,0,0" Background="#FEF9E7" BorderBrush="#F9CA3B" BorderThickness="1" CornerRadius="8" Padding="15"
+                                                            Visibility="{Binding HasParentsContact, Converter={StaticResource BoolToVis}}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                                <TextBlock Text="👨 Père" FontSize="13" FontWeight="SemiBold" Foreground="#7D6608" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="{Binding ContactParentsPereText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                                                <TextBlock Text="👩 Mère" FontSize="13" FontWeight="SemiBold" Foreground="#7D6608" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="{Binding ContactParentsMereText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                    <!-- Adresse lieu de vie -->
+                                                    <Border Margin="0,12,0,0" Background="#F4ECF7" BorderBrush="#C39BD3" BorderThickness="1" CornerRadius="8" Padding="15"
+                                                            Visibility="{Binding HasAdresseLieuVie, Converter={StaticResource BoolToVis}}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="🏠 Lieu de vie" FontSize="15" FontWeight="SemiBold" Foreground="#6C3483" Margin="0,0,0,8"/>
+                                                            <TextBlock Text="{Binding AdresseLieuVieText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
+                                                        </StackPanel>
+                                                    </Border>
                                                 </StackPanel>
                                             </ScrollViewer>
                                             <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
@@ -4375,6 +4304,32 @@
                                                         <StackPanel>
                                                             <TextBlock Text="🏫 Contact école" FontSize="15" FontWeight="SemiBold" Foreground="#2471A3" Margin="0,0,0,8"/>
                                                             <TextBlock Text="{Binding EcoleContactText}" FontSize="14" Foreground="#34495E" TextWrapping="Wrap" LineHeight="22"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- Contacts parents -->
+                                                    <Border Margin="0,12,0,0" Background="#FEF9E7" BorderBrush="#F9CA3B" BorderThickness="1" CornerRadius="8" Padding="15"
+                                                            Visibility="{Binding HasParentsContact, Converter={StaticResource BoolToVis}}">
+                                                        <Grid>
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                                                <TextBlock Text="👨 Père" FontSize="13" FontWeight="SemiBold" Foreground="#7D6608" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="{Binding ContactParentsPereText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
+                                                            </StackPanel>
+                                                            <StackPanel Grid.Column="1" Margin="8,0,0,0">
+                                                                <TextBlock Text="👩 Mère" FontSize="13" FontWeight="SemiBold" Foreground="#7D6608" Margin="0,0,0,4"/>
+                                                                <TextBlock Text="{Binding ContactParentsMereText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
+                                                            </StackPanel>
+                                                        </Grid>
+                                                    </Border>
+                                                    <!-- Adresse lieu de vie -->
+                                                    <Border Margin="0,12,0,0" Background="#F4ECF7" BorderBrush="#C39BD3" BorderThickness="1" CornerRadius="8" Padding="15"
+                                                            Visibility="{Binding HasAdresseLieuVie, Converter={StaticResource BoolToVis}}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="🏠 Lieu de vie" FontSize="15" FontWeight="SemiBold" Foreground="#6C3483" Margin="0,0,0,8"/>
+                                                            <TextBlock Text="{Binding AdresseLieuVieText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
                                                         </StackPanel>
                                                     </Border>
                                                      </StackPanel>
@@ -4443,6 +4398,14 @@
                                             <StackPanel Grid.Row="0" Margin="40,40,40,20">
                                                 <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
                                                 <TextBlock Text="Historique médical" FontSize="14" Foreground="#7F8C8D"/>
+                                                <!-- Antécédents familiaux -->
+                                                <Border Margin="0,12,0,0" Background="#EAFAF1" BorderBrush="#82E0AA" BorderThickness="1" CornerRadius="8" Padding="12,10"
+                                                        Visibility="{Binding HasAntecedentsFamiliaux, Converter={StaticResource BoolToVis}}">
+                                                    <StackPanel>
+                                                        <TextBlock Text="🧬 Antécédents familiaux" FontSize="13" FontWeight="SemiBold" Foreground="#1E8449" Margin="0,0,0,6"/>
+                                                        <TextBlock Text="{Binding AntecedentsFamiliauxText}" FontSize="12" Foreground="#1D4E29" TextWrapping="Wrap" LineHeight="18"/>
+                                                    </StackPanel>
+                                                </Border>
                                             </StackPanel>
 
                                             <!-- Note courante (page unique, sans scroll) -->

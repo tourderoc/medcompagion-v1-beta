@@ -62,8 +62,9 @@ namespace MedCompanion.ViewModels
 
         private static bool FeuilleHasScore(FeuilleEnvironnement f)
         {
-            if (f.NervureCentrale.Score > 0) return true;
-            foreach (var s in f.NervuresSecondaires) if (s.Score > 0) return true;
+            if (f.NervureCentrale.Score > 0 || f.NervureCentrale.AucunSigneNotable) return true;
+            foreach (var s in f.NervuresSecondaires)
+                if (s.Score > 0 || s.AucunSigneNotable) return true;
             return false;
         }
 

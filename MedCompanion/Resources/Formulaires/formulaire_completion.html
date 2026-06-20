@@ -651,33 +651,38 @@ body {
       </div>
     </div>
 
-    <!-- 3. ADRESSE DU MILIEU PRINCIPAL DE VIE -->
+    <!-- 3. ADRESSE DU MILIEU DE VIE -->
     <div class="section-card">
       <div class="section-header">
-        <span class="section-number">3</span> ADRESSE DU MILIEU PRINCIPAL DE VIE
+        <span class="section-number">3</span> ADRESSE DU MILIEU DE VIE
       </div>
       <div class="section-content">
-        <div class="field-row" style="align-items: flex-start;">
+        <div class="field-row" style="align-items: flex-start; gap: 8px;">
+
+          <!-- Adresse 1 -->
           <div class="field-item" style="width: 49%;">
-            <span class="field-label">Adresse <span class="field-label-detail">(pré-remplie si connue)</span> :</span>
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 2px;">
+              <span class="field-label">Adresse 1 <span class="field-label-detail">(pré-remplie si connue)</span> &nbsp;—&nbsp; Chez :</span>
+              <div class="checkbox-item"><span class="custom-checkbox"></span> Mère</div>
+              <div class="checkbox-item"><span class="custom-checkbox"></span> Père</div>
+              <div class="checkbox-item"><span class="custom-checkbox"></span> Autre</div>
+            </div>
             <div class="letter-boxes-row medium" data-boxes="{{adresse_rue}}" data-len="20"></div>
             <div class="letter-boxes-row medium" style="margin-top: 1.5px;" data-boxes="{{adresse_cp}} {{adresse_ville}}" data-len="20"></div>
-            
-            <div style="display: flex; gap: 15px; margin-top: 3.5px; border-top: 1px dashed #e1edf8; padding-top: 2.5px;">
-              <div class="checkbox-item">
-                <span class="custom-checkbox" id="addr_correct_oui"></span> Adresse correcte
-              </div>
-              <div class="checkbox-item">
-                <span class="custom-checkbox"></span> À modifier <span class="field-label-detail" style="margin-left: 2px;">(écrire à droite)</span>
-              </div>
-            </div>
           </div>
-          
-          <div class="field-item" style="width: 49%;">
-            <span class="field-label">Correction d'adresse :</span>
+
+          <!-- Adresse 2 (garde alternée) -->
+          <div class="field-item" style="width: 49%; border-left: 1px dashed #b3c9e0; padding-left: 8px;">
+            <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 2px;">
+              <span class="field-label">Adresse 2 <span class="field-label-detail">(si garde alternée)</span> &nbsp;—&nbsp; Chez :</span>
+              <div class="checkbox-item"><span class="custom-checkbox"></span> Mère</div>
+              <div class="checkbox-item"><span class="custom-checkbox"></span> Père</div>
+              <div class="checkbox-item"><span class="custom-checkbox"></span> Autre</div>
+            </div>
             <div class="letter-boxes-row medium" data-boxes="" data-len="20"></div>
             <div class="letter-boxes-row medium" style="margin-top: 1.5px;" data-boxes="" data-len="20"></div>
           </div>
+
         </div>
       </div>
     </div>
@@ -775,6 +780,14 @@ body {
             </tr>
             <tr>
               <td>Tentative de suicide</td>
+              <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
+              <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
+              <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
+            </tr>
+            <tr>
+              <td>Autre <span style="font-weight:normal; font-size:8px; color:#4f6d8a;">(préciser)</span> :
+                <span style="border-bottom:1px solid #7f9db9; display:inline-block; width:90px; height:9px; vertical-align:bottom; margin-left:3px;"></span>
+              </td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>

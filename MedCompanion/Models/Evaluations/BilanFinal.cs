@@ -75,6 +75,13 @@ namespace MedCompanion.Models.Evaluations
         public bool IsProbable            => Certitude == NiveauCertitude.Probable;
         public bool IsCertain             => Certitude == NiveauCertitude.Certain;
 
+        private string? _nuanceGlobale;
+        public string? NuanceGlobale
+        {
+            get => _nuanceGlobale;
+            set { if (_nuanceGlobale != value) { _nuanceGlobale = value; OnPropertyChanged(); } }
+        }
+
         private DateTime? _validationDate;
         public DateTime? ValidationDate
         {

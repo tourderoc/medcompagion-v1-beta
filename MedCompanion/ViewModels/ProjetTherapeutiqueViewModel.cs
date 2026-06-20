@@ -46,9 +46,10 @@ namespace MedCompanion.ViewModels
             _pilotage  = pilotage;
             _relecteur = relecteur;
 
-            ValiderCommand    = new RelayCommand(_ => Valider(),                _ => CanValider);
-            FermerCommand     = new RelayCommand(_ => FermerSansValider(),      _ => Projet != null);
-            ProposerCommand   = new RelayCommand(async _ => await ProposerAsync(), _ => CanProposer);
+            ValiderCommand      = new RelayCommand(_ => Valider(),                   _ => CanValider);
+            FermerCommand       = new RelayCommand(_ => FermerSansValider(),         _ => Projet != null);
+            RecommencerCommand  = new RelayCommand(_ => Recommencer(),               _ => Projet?.IsValidee == true);
+            ProposerCommand     = new RelayCommand(async _ => await ProposerAsync(), _ => CanProposer);
             PatchCommand      = new RelayCommand(async _ => await PatchAsync(),    _ => CanPatch);
             AccepterActionCommand = new RelayCommand(param => AccepterAction(param as ProjetAction),
                                                       param => param is ProjetAction a && a.HasDiff);
@@ -127,8 +128,9 @@ namespace MedCompanion.ViewModels
 
         // ── Commandes ────────────────────────────────────────────────────────
 
-        public ICommand ValiderCommand { get; }
-        public ICommand FermerCommand  { get; }
+        public ICommand ValiderCommand     { get; }
+        public ICommand FermerCommand      { get; }
+        public ICommand RecommencerCommand { get; }
 
         public ICommand AjouterActionMedicaleCommand         { get; }
         public ICommand AjouterActionPsychologiqueCommand    { get; }
@@ -352,7 +354,8 @@ namespace MedCompanion.ViewModels
             try
             {
                 var (ok, sug, error) = await _suggester.GenerateInitialAsync(
-                    Projet.PatientNomComplet, _patientDirectoryPath, CancellationToken.None);
+                    Projet.PatientNomComplet, _patientDirectoryPath,
+                    Projet.OrientationMedecin, CancellationToken.None);
                 if (!ok || sug == null)
                 {
                     StatusMessage = $"❌ Proposition impossible : {error ?? "réponse vide"}";
@@ -719,6 +722,33 @@ namespace MedCompanion.ViewModels
             DetachHandlers();
             Projet = null;
             Closed?.Invoke();
+        }
+
+        private void Recommencer()
+        {
+            if (Projet == null || !Projet.IsValidee) return;
+
+            var r = System.Windows.MessageBox.Show(
+                $"Supprimer définitivement le Projet Thérapeutique v{Projet.Version} (validé le {Projet.DateValidation:dd/MM/yyyy}) et tout son historique ?\n\n" +
+                "Un nouveau brouillon vierge (v1) sera créé à la place.\n\n" +
+                "⚠ Cette action est irréversible.",
+                "Recommencer depuis zéro",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            var patientNom  = Projet.PatientNomComplet;
+            var psychiatre  = Projet.Psychiatre;
+            var patientDir  = _patientDirectoryPath;
+
+            DetachHandlers();
+            Projet = null;
+
+            _service.DeleteAllProjects(patientNom);
+            BrouillonCreated?.Invoke();
+
+            // Crée et ouvre le nouveau brouillon v1 vierge
+            OuvrirBrouillonOuCreer(patientNom, psychiatre, patientDir);
         }
 
         // ── Actions structurées ──────────────────────────────────────────────

@@ -161,6 +161,23 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!-- Case "Rien de notable" : axe évalué mais sans signe particulier -->
+                    <Separator Margin="0,6,0,4" Background="#E5EAF0"/>
+                    <CheckBox Content="Rien de notable"
+                              IsChecked="{Binding AucunSigneNotable, Mode=TwoWay}"
+                              FontSize="11" Foreground="#1A6B9A" FontStyle="Italic"
+                              Margin="0,0,0,0" VerticalContentAlignment="Center">
+                        <CheckBox.Style>
+                            <Style TargetType="CheckBox">
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </CheckBox.Style>
+                    </CheckBox>
                 </StackPanel>
             </Border>
         </DataTemplate>
@@ -277,103 +294,10 @@
         <DataTemplate x:Key="AxisCardTemplate">
             <Border Background="#FBFCFD" BorderBrush="#D6E2EC" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
                 <StackPanel>
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="Auto"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
-                            <TextBlock Text="{Binding Justification}" FontSize="10" FontStyle="Italic" Foreground="#7F8C8D" TextWrapping="Wrap" Margin="0,2,0,0"/>
-                        </StackPanel>
-                        <!-- 3 pastilles colorées (Orange / Jaune / Vert) — désactivées en lecture seule -->
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
-                            <StackPanel.Style>
-                                <Style TargetType="StackPanel">
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding DataContext.IsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
-                                            <Setter Property="IsEnabled" Value="False"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </StackPanel.Style>
-                            <!-- Orange : Non abordé -->
-                            <Button Click="AxisState_Click" Tag="0"
-                                    ToolTip="Non abordé"
-                                    Width="22" Height="22" Margin="3,0,3,0"
-                                    Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="0">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border CornerRadius="11">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="#FDE3CF"/>
-                                                    <Setter Property="BorderBrush" Value="#FDE3CF"/>
-                                                    <Setter Property="BorderThickness" Value="2"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsNonAborde}" Value="True">
-                                                            <Setter Property="Background" Value="#E67E22"/>
-                                                            <Setter Property="BorderBrush" Value="#A04E0A"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Button.Template>
-                            </Button>
-                            <!-- Jaune : Partiel -->
-                            <Button Click="AxisState_Click" Tag="1"
-                                    ToolTip="Partiel"
-                                    Width="22" Height="22" Margin="3,0,3,0"
-                                    Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="0">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border CornerRadius="11">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="#FCF3CF"/>
-                                                    <Setter Property="BorderBrush" Value="#FCF3CF"/>
-                                                    <Setter Property="BorderThickness" Value="2"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsPartiel}" Value="True">
-                                                            <Setter Property="Background" Value="#F1C40F"/>
-                                                            <Setter Property="BorderBrush" Value="#9A7D0A"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Button.Template>
-                            </Button>
-                            <!-- Vert : Évoqué -->
-                            <Button Click="AxisState_Click" Tag="2"
-                                    ToolTip="Évoqué"
-                                    Width="22" Height="22" Margin="3,0,3,0"
-                                    Background="Transparent" BorderThickness="0" Cursor="Hand" Padding="0">
-                                <Button.Template>
-                                    <ControlTemplate TargetType="Button">
-                                        <Border CornerRadius="11">
-                                            <Border.Style>
-                                                <Style TargetType="Border">
-                                                    <Setter Property="Background" Value="#D5F5E3"/>
-                                                    <Setter Property="BorderBrush" Value="#D5F5E3"/>
-                                                    <Setter Property="BorderThickness" Value="2"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding IsEvoque}" Value="True">
-                                                            <Setter Property="Background" Value="#27AE60"/>
-                                                            <Setter Property="BorderBrush" Value="#145A32"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </Border.Style>
-                                        </Border>
-                                    </ControlTemplate>
-                                </Button.Template>
-                            </Button>
-                        </StackPanel>
-                    </Grid>
+                    <StackPanel>
+                        <TextBlock Text="{Binding Label}" FontSize="13" FontWeight="SemiBold" Foreground="#2C3E50"/>
+                        <TextBlock Text="{Binding Justification}" FontSize="10" FontStyle="Italic" Foreground="#7F8C8D" TextWrapping="Wrap" Margin="0,2,0,0"/>
+                    </StackPanel>
 
                     <!-- Questions ouvertes proposées (lecture seule, vide si pas de questions) -->
                     <ItemsControl ItemsSource="{Binding SuggestedQuestions}" Margin="0,8,0,0">
@@ -828,6 +752,33 @@
                             VerticalAlignment="Center"
                             Visibility="{Binding IsReadOnly, Converter={StaticResource InverseBoolToVis}}"/>
                 </Grid>
+
+                <!-- NUANCE CLINIQUE GLOBALE (saisie libre médecin) — À remplir AVANT de proposer le bilan -->
+                <Border Background="#FEF9E7" BorderBrush="#F0C040" BorderThickness="1" CornerRadius="6"
+                        Margin="0,0,0,12" Padding="10">
+                    <StackPanel>
+                        <TextBlock Text="✏ Nuance clinique du médecin" FontSize="12" FontWeight="SemiBold"
+                                   Foreground="#7D6608" Margin="0,0,0,6"/>
+                        <TextBox Text="{Binding NuanceGlobale, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                 FontSize="12" Foreground="#2C3E50" Background="White"
+                                 BorderBrush="#F0C040" BorderThickness="1"
+                                 TextWrapping="Wrap" AcceptsReturn="True"
+                                 MinHeight="70" Padding="8"
+                                 IsReadOnly="{Binding IsReadOnly}">
+                            <TextBox.Style>
+                                <Style TargetType="TextBox">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding NuanceGlobale}" Value="">
+                                            <Setter Property="Background" Value="#FFFDF0"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBox.Style>
+                        </TextBox>
+                        <TextBlock FontSize="10" Foreground="#8A7000" Margin="0,4,0,0" FontStyle="Italic"
+                                   Text="Nuance, réserve ou éclairage contextuel — à saisir avant de cliquer ✨ Proposer le bilan (Med)."/>
+                    </StackPanel>
+                </Border>
 
                 <!-- DIAGNOSTICS RETENUS -->
                 <StackPanel Margin="0,0,0,12">

@@ -229,7 +229,7 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(IsBilansActive));
                     OnPropertyChanged(nameof(IsDocumentsActive));
 
-                    if (value == DossierTab.Administratif)
+                    if (value == DossierTab.Administratif || value == DossierTab.Consultations)
                         RefreshAdminInfo();
                 }
             }
@@ -253,6 +253,26 @@ namespace MedCompanion.ViewModels
 
         private bool _hasEcoleContact;
         public bool HasEcoleContact { get => _hasEcoleContact; private set => SetProperty(ref _hasEcoleContact, value); }
+
+        // ── Contacts parents (formulaire_data.json) ──
+        private bool _hasParentsContact;
+        public bool HasParentsContact { get => _hasParentsContact; private set => SetProperty(ref _hasParentsContact, value); }
+        private string _contactParentsPereText = "";
+        public string ContactParentsPereText { get => _contactParentsPereText; private set => SetProperty(ref _contactParentsPereText, value); }
+        private string _contactParentsMereText = "";
+        public string ContactParentsMereText { get => _contactParentsMereText; private set => SetProperty(ref _contactParentsMereText, value); }
+
+        // ── Adresse lieu de vie (formulaire_data.json) ──
+        private bool _hasAdresseLieuVie;
+        public bool HasAdresseLieuVie { get => _hasAdresseLieuVie; private set => SetProperty(ref _hasAdresseLieuVie, value); }
+        private string _adresseLieuVieText = "";
+        public string AdresseLieuVieText { get => _adresseLieuVieText; private set => SetProperty(ref _adresseLieuVieText, value); }
+
+        // ── Antécédents familiaux (formulaire_data.json) ──
+        private bool _hasAntecedentsFamiliaux;
+        public bool HasAntecedentsFamiliaux { get => _hasAntecedentsFamiliaux; private set => SetProperty(ref _hasAntecedentsFamiliaux, value); }
+        private string _antecedentsFamiliauxText = "";
+        public string AntecedentsFamiliauxText { get => _antecedentsFamiliauxText; private set => SetProperty(ref _antecedentsFamiliauxText, value); }
 
         /// <summary>
         /// Recharge les infos de la page Administratif depuis patient.json
@@ -312,6 +332,91 @@ namespace MedCompanion.ViewModels
 
             EcoleContactText = esb.ToString().TrimEnd();
             HasEcoleContact = esb.Length > 0;
+
+            // ── Formulaire parents (formulaire_data.json) ──
+            var fds = new MedCompanion.Services.Consultation.FormulaireDataService();
+            var fd  = fds.Load(CurrentPatient.DirectoryPath);
+            bool hasFormData = fds.HasData(CurrentPatient.DirectoryPath);
+
+            // Contacts père
+            var pereNom = $"{fd.PerePrenom} {fd.PereNom}".Trim();
+            var pereLines = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrWhiteSpace(pereNom))  pereLines.Add(pereNom);
+            if (!string.IsNullOrWhiteSpace(fd.PereTel))   pereLines.Add($"📞 {fd.PereTel}");
+            if (!string.IsNullOrWhiteSpace(fd.PereEmail)) pereLines.Add($"✉ {fd.PereEmail}");
+            ContactParentsPereText = string.Join("\n", pereLines);
+
+            // Contacts mère
+            var mereNom = $"{fd.MerePrenom} {fd.MereNom}".Trim();
+            var mereLines = new System.Collections.Generic.List<string>();
+            if (!string.IsNullOrWhiteSpace(mereNom))  mereLines.Add(mereNom);
+            if (!string.IsNullOrWhiteSpace(fd.MereTel))   mereLines.Add($"📞 {fd.MereTel}");
+            if (!string.IsNullOrWhiteSpace(fd.MereEmail)) mereLines.Add($"✉ {fd.MereEmail}");
+            ContactParentsMereText = string.Join("\n", mereLines);
+
+            HasParentsContact = pereLines.Count > 0 || mereLines.Count > 0;
+
+            // Adresse lieu de vie
+            var adLignes = new System.Collections.Generic.List<string>();
+
+            static string GardeLabel(string g) => g switch {
+                "mere"  => "chez la mère",
+                "pere"  => "chez le père",
+                "autre" => "autre",
+                _       => "" };
+
+            var adr1 = string.Join(", ", new[] { fd.Adresse, $"{fd.CodePostal} {fd.Ville}".Trim() }
+                                         .Where(s => !string.IsNullOrWhiteSpace(s)));
+            if (!string.IsNullOrWhiteSpace(adr1))
+            {
+                var g1 = GardeLabel(fd.GardeAdresse1);
+                adLignes.Add("Adresse 1" + (g1.Length > 0 ? $" ({g1})" : "") + " : " + adr1);
+            }
+
+            var adr2 = string.Join(", ", new[] { fd.Adresse2, $"{fd.CodePostal2} {fd.Ville2}".Trim() }
+                                         .Where(s => !string.IsNullOrWhiteSpace(s)));
+            if (!string.IsNullOrWhiteSpace(adr2))
+            {
+                var g2 = GardeLabel(fd.GardeAdresse2);
+                adLignes.Add("Adresse 2" + (g2.Length > 0 ? $" ({g2})" : "") + " : " + adr2);
+            }
+
+            if (!string.IsNullOrWhiteSpace(fd.SituationFamiliale))
+                adLignes.Add("Situation : " + fd.SituationFamiliale switch {
+                    "ensemble"       => "Parents ensemble",
+                    "separes"        => "Séparés",
+                    "divorces"       => "Divorcés",
+                    "garde_alternee" => "Garde alternée",
+                    "recomposee"     => "Famille recomposée",
+                    _                => fd.SituationFamiliale });
+            if (!string.IsNullOrWhiteSpace(fd.GardePrincipale))
+                adLignes.Add("Garde principale : " + fd.GardePrincipale switch {
+                    "parents" => "Les deux parents",
+                    "mere"    => "Mère",
+                    "pere"    => "Père",
+                    _         => fd.GardePrincipale });
+            AdresseLieuVieText = string.Join("\n", adLignes);
+            HasAdresseLieuVie  = adLignes.Count > 0;
+
+            // Antécédents familiaux — on affiche seulement OUI et NSP
+            var antec = new System.Collections.Generic.List<string>();
+            void AddA(string label, string val)
+            {
+                if (val == "oui") antec.Add($"• {label} : OUI");
+                else if (val == "nsp") antec.Add($"• {label} : NSP");
+            }
+            AddA("TDAH / Troubles de l'attention", fd.Tdah);
+            AddA("Dyslexie / Troubles des apprentissages", fd.Dyslexie);
+            AddA("TSA", fd.Tsa);
+            AddA("Troubles anxieux", fd.TroublesAnxieux);
+            AddA("Dépression", fd.Depression);
+            AddA("Bipolarité", fd.Bipolarite);
+            AddA("Addictions", fd.Addictions);
+            AddA("Tentative de suicide", fd.TentativeSuicide);
+            AntecedentsFamiliauxText = antec.Count > 0
+                ? string.Join("\n", antec)
+                : hasFormData ? "Aucun antécédent familial signalé." : "";
+            HasAntecedentsFamiliaux = hasFormData;
         }
 
         private PatientIndexEntry? _currentPatient;
@@ -2054,7 +2159,7 @@ namespace MedCompanion.ViewModels
                 {
                     "Contact/Rapport", "Langage", "Compréhension", "Psychomotricité",
                     "Mimique & Regard", "Profil Cognitif estimé", "Humeur / Anxiété",
-                    "Imaginaire / Jeu", "Rapport au cadre", "Vigilance"
+                    "Imaginaire / Jeu", "Rapport au cadre", "Vigilance protection"
                 };
                 foreach (var title in standardBranches)
                 {
@@ -2986,8 +3091,8 @@ Texte :
                 }
             }
 
-            var outputDir = Path.Combine(
-                CurrentPatient.DirectoryPath, DateTime.Now.Year.ToString(), "documents", "formulaires");
+            // Formulaire vierge à remettre aux parents : généré en temp, pas dans le dossier patient
+            var outputDir = Path.Combine(Path.GetTempPath(), "MedCompanion", "formulaires");
 
             FormulaireStatusMessage = "⏳ Génération du formulaire...";
             var (ok, pdfPath, error) = await svc.GenerateAsync(meta, outputDir, perePrenom, merePrenom);
@@ -3241,8 +3346,8 @@ Texte :
             AddClinicalCard(ClinicalObservationBranch.RapportCadre, "Rapport au cadre",
                 new[] { "Respecté", "Opposition", "Désinhibé", "Passif" });
 
-            AddClinicalCard(ClinicalObservationBranch.Vigilance, "Vigilance",
-                new[] { "R.A.S", "Signes de négligence", "Signes de maltraitance" });
+            AddClinicalCard(ClinicalObservationBranch.Vigilance, "Vigilance protection",
+                new[] { "Pas de signe inquiétant", "Signes de négligence suspectés", "Suspicion maltraitance physique", "Suspicion maltraitance psychologique" });
 
             OnPropertyChanged(nameof(ClinicalObservations));
         }
@@ -3407,6 +3512,11 @@ Texte :
                 sb.AppendLine("Contact → [\"Bon contact\", \"Contact médiocre\", \"Retrait relationnel\", \"Contact adhésif\"]");
                 sb.AppendLine("Langage → [\"Adapté à l'âge\", \"Langage pauvre\", \"Mutisme relatif\", \"Logorrhée\"]");
                 sb.AppendLine("Psychomotricite → [\"Motricité harmonieuse\", \"Instabilité motrice\", \"Inhibition motrice\", \"Agitation constante\"]");
+                sb.AppendLine();
+                sb.AppendLine("⚠ RÈGLE SPÉCIALE — axe \"Vigilance\" :");
+                sb.AppendLine("Cet axe ne concerne PAS l'état d'éveil ou d'attention de l'enfant.");
+                sb.AppendLine("Il s'agit de la VIGILANCE DE PROTECTION DU CLINICIEN : y a-t-il des signes évocateurs de maltraitance physique, psychologique, négligence ou autre danger pour l'enfant ?");
+                sb.AppendLine("Vigilance → TOUJOURS utiliser exactement : [\"Pas de signe inquiétant\", \"Signes de négligence suspectés\", \"Suspicion maltraitance physique\", \"Suspicion maltraitance psychologique\"]");
                 sb.AppendLine();
                 sb.AppendLine("INTERROGATOIRE (contexte clinique uniquement) :");
                 sb.AppendLine(NoteContent.Trim());
@@ -5070,8 +5180,9 @@ source: ""MedCompanion""
 
             OpenFormulaireParentsCommand = new RelayCommand(_ =>
             {
+                ScheduleDraftSave();
+                ResetWorkspaceModes();
                 FormulaireStatusMessage = "";
-                FormulaireOcrResult = "";
                 IsFormulaireMode = true;
             }, _ => IsInterrogatoireMode && HasPatient);
 

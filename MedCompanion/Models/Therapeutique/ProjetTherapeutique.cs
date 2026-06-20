@@ -74,6 +74,19 @@ namespace MedCompanion.Models.Therapeutique
 
         public string FilePath { get; set; } = "";
 
+        // ── Orientation initiale du médecin (saisie avant proposition Med) ──────
+
+        private string _orientationMedecin = "";
+        /// <summary>
+        /// Notes d'orientation clinique du médecin, saisies AVANT de cliquer "Proposer (Med)".
+        /// Med en tient compte comme contrainte prioritaire absolue lors de la génération.
+        /// </summary>
+        public string OrientationMedecin
+        {
+            get => _orientationMedecin;
+            set { if (_orientationMedecin != value) { _orientationMedecin = value ?? ""; OnPropertyChanged(); OnPropertyChanged(nameof(HasAnyContenu)); } }
+        }
+
         // ── Sections texte libre (sections 1, 6, 7 + co-construction) ────────
 
         private string _objectifsPrioritaires = "";
@@ -121,7 +134,8 @@ namespace MedCompanion.Models.Therapeutique
 
         /// <summary>True si au moins une section a du contenu (action ou texte).</summary>
         public bool HasAnyContenu
-            => !string.IsNullOrWhiteSpace(_objectifsPrioritaires)
+            => !string.IsNullOrWhiteSpace(_orientationMedecin)
+            || !string.IsNullOrWhiteSpace(_objectifsPrioritaires)
             || !string.IsNullOrWhiteSpace(_ressourcesASoutenir)
             || !string.IsNullOrWhiteSpace(_reevaluationChecklist)
             || !string.IsNullOrWhiteSpace(_coConstructionFamille)

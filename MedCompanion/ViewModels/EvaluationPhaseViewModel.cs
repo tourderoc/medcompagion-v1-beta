@@ -1500,6 +1500,21 @@ namespace MedCompanion.ViewModels
 
         public ICommand EffacerSyntheseIntegrativeCommand
             => new RelayCommand(_ => { SyntheseIntegrative = null; }, _ => HasSyntheseIntegrative);
+
+        public string? NuanceGlobale
+        {
+            get => Phase?.BilanFinal.NuanceGlobale;
+            set
+            {
+                if (Phase == null) return;
+                if (Phase.BilanFinal.NuanceGlobale != value)
+                {
+                    Phase.BilanFinal.NuanceGlobale = value;
+                    OnPropertyChanged();
+                    try { _phaseService.Save(Phase); } catch { }
+                }
+            }
+        }
         public bool IsCertitudeProbable  => BilanFinalCertitude == NiveauCertitude.Probable;
         public bool IsCertitudeCertain   => BilanFinalCertitude == NiveauCertitude.Certain;
 
@@ -1556,7 +1571,8 @@ namespace MedCompanion.ViewModels
                 var motif = (await BuildContextAsync()).Motif;
                 var (ok, sug, err) = await _bilanFinalSuggester.SuggestAsync(
                     _patient?.Age, motif, axes,
-                    Phase.CartographieEnfant, Phase.CartographieEnvironnement);
+                    Phase.CartographieEnfant, Phase.CartographieEnvironnement,
+                    nuanceGlobale: Phase.BilanFinal.NuanceGlobale);
                 if (!ok || sug == null)
                 {
                     StatusMessage = $"Suggestion IA indisponible : {err}";

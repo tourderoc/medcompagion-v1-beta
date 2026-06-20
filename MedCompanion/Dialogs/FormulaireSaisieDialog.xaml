@@ -95,9 +95,16 @@
                     <Border Background="#F9F9F9" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
                         <StackPanel>
                             <TextBlock Text="3 — ADRESSE DU MILIEU DE VIE" FontWeight="Bold" FontSize="12" Foreground="#2C3E50" Margin="0,0,0,8"/>
-                            <TextBlock Text="Adresse" FontSize="11" Foreground="#555"/>
+
+                            <!-- Adresse 1 -->
+                            <TextBlock Text="Adresse 1 — Chez :" FontSize="11" Foreground="#555" Margin="0,0,0,2"/>
+                            <WrapPanel Margin="0,0,0,4">
+                                <RadioButton x:Name="GardeAdr1Mere" GroupName="GardeAdr1" Content="Mère"  Margin="0,0,10,0" FontSize="11"/>
+                                <RadioButton x:Name="GardeAdr1Pere" GroupName="GardeAdr1" Content="Père"  Margin="0,0,10,0" FontSize="11"/>
+                                <RadioButton x:Name="GardeAdr1Autre" GroupName="GardeAdr1" Content="Autre" FontSize="11"/>
+                            </WrapPanel>
                             <TextBox x:Name="Adresse" Padding="4,3" FontSize="12" Margin="0,0,0,4"/>
-                            <Grid>
+                            <Grid Margin="0,0,0,4">
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition/></Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Margin="0,0,4,0">
                                     <TextBlock Text="Code postal" FontSize="11" Foreground="#555"/>
@@ -106,6 +113,28 @@
                                 <StackPanel Grid.Column="1">
                                     <TextBlock Text="Ville" FontSize="11" Foreground="#555"/>
                                     <TextBox x:Name="Ville" Padding="4,3" FontSize="12"/>
+                                </StackPanel>
+                            </Grid>
+
+                            <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Margin="0,4,0,8"/>
+
+                            <!-- Adresse 2 (garde alternée) -->
+                            <TextBlock Text="Adresse 2 (garde alternée — facultatif) — Chez :" FontSize="11" Foreground="#555" Margin="0,0,0,2"/>
+                            <WrapPanel Margin="0,0,0,4">
+                                <RadioButton x:Name="GardeAdr2Mere" GroupName="GardeAdr2" Content="Mère"  Margin="0,0,10,0" FontSize="11"/>
+                                <RadioButton x:Name="GardeAdr2Pere" GroupName="GardeAdr2" Content="Père"  Margin="0,0,10,0" FontSize="11"/>
+                                <RadioButton x:Name="GardeAdr2Autre" GroupName="GardeAdr2" Content="Autre" FontSize="11"/>
+                            </WrapPanel>
+                            <TextBox x:Name="Adresse2" Padding="4,3" FontSize="12" Margin="0,0,0,4"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                    <TextBlock Text="Code postal" FontSize="11" Foreground="#555"/>
+                                    <TextBox x:Name="CodePostal2" Padding="4,3" FontSize="12"/>
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Ville" FontSize="11" Foreground="#555"/>
+                                    <TextBox x:Name="Ville2" Padding="4,3" FontSize="12"/>
                                 </StackPanel>
                             </Grid>
                         </StackPanel>
@@ -154,6 +183,7 @@
                                     <RowDefinition Height="22"/>
                                     <RowDefinition Height="22"/>
                                     <RowDefinition Height="22"/>
+                                    <RowDefinition Height="28"/>
                                 </Grid.RowDefinitions>
 
                                 <!-- Header -->
@@ -208,6 +238,26 @@
                                 <RadioButton Grid.Row="8" Grid.Column="1" x:Name="TsOui" GroupName="TS" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <RadioButton Grid.Row="8" Grid.Column="2" x:Name="TsNon" GroupName="TS" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <RadioButton Grid.Row="8" Grid.Column="3" x:Name="TsNsp" GroupName="TS" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                <!-- Autre (champ libre) -->
+                                <TextBox Grid.Row="9" Grid.Column="0" x:Name="AntecedentsAutreLabel"
+                                         FontSize="11" Padding="2,1" VerticalAlignment="Center"
+                                         BorderBrush="#BDC3C7" BorderThickness="0,0,0,1"
+                                         Background="Transparent"
+                                         Text="" Tag="Autre (préciser)...">
+                                    <TextBox.Style>
+                                        <Style TargetType="TextBox">
+                                            <Style.Triggers>
+                                                <Trigger Property="Text" Value="">
+                                                    <Setter Property="Background" Value="Transparent"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBox.Style>
+                                </TextBox>
+                                <RadioButton Grid.Row="9" Grid.Column="1" x:Name="AutreAtcdOui" GroupName="AtcdAutre" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="9" Grid.Column="2" x:Name="AutreAtcdNon" GroupName="AtcdAutre" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="9" Grid.Column="3" x:Name="AutreAtcdNsp" GroupName="AtcdAutre" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </StackPanel>
                     </Border>

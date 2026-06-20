@@ -114,6 +114,7 @@ namespace MedCompanion.Services.Therapeutique
         public async Task<(bool ok, ProjetSuggestion? suggestion, string? error)> GenerateInitialAsync(
             string patientNomComplet,
             string patientDirectoryPath,
+            string orientationMedecin = "",
             CancellationToken ct = default)
         {
             if (string.IsNullOrWhiteSpace(patientNomComplet))
@@ -145,7 +146,7 @@ namespace MedCompanion.Services.Therapeutique
                 if (synthese == null && evaluations.Count == 0 && string.IsNullOrWhiteSpace(clinicalContent))
                     return (false, null, "Aucune donnée clinique (synthèse, évaluation, notes) — proposition impossible.");
 
-                var prompt = BuildPrompt(patientNomComplet, bundle?.Metadata, synthese, evaluations, clinicalContent);
+                var prompt = BuildPrompt(patientNomComplet, bundle?.Metadata, synthese, evaluations, clinicalContent, orientationMedecin);
                 var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
                     return (false, null, err ?? "Réponse LLM vide.");
@@ -273,6 +274,7 @@ Pour chaque ACTION existante, choisis :
 Pour AJOUTER UNE NOUVELLE ACTION : statut ""nouvelle"" avec id vide.
 
 CONTRAINTES :
+{(string.IsNullOrWhiteSpace(projet.OrientationMedecin) ? "" : $"- ⚠ ORIENTATION DU MÉDECIN (PRIORITÉ ABSOLUE) : \"{projet.OrientationMedecin.Trim()}\" — Cette orientation PRIME sur toute inférence automatique. Le patch DOIT en tenir compte de façon déterminante.\n")}
 - Ton clinique direct, prudent.
 - Cite uniquement ce que la synthèse / les sources soutiennent.
 - Pas de prescription précise sans appui.
@@ -383,7 +385,8 @@ RÉPONDS UNIQUEMENT par un JSON valide (les listes d'actions DOIVENT inclure une
             Models.PatientMetadata? meta,
             SyntheseGlobale? synthese,
             List<EvaluationPhase> evaluations,
-            string clinicalContent)
+            string clinicalContent,
+            string orientationMedecin = "")
         {
             var ageInfo = !string.IsNullOrWhiteSpace(meta?.Dob)
                 ? $"né(e) le {meta!.Dob}"
@@ -442,6 +445,7 @@ ARCHITECTURE DU PROJET :
 - Section transverse : Co-construction avec la famille (texte libre 50-100 mots)
 
 CONTRAINTES STRICTES :
+{(string.IsNullOrWhiteSpace(orientationMedecin) ? "" : $"- ⚠ ORIENTATION DU MÉDECIN (PRIORITÉ ABSOLUE) : \"{orientationMedecin.Trim()}\" — Cette orientation exprime le jugement clinique direct du praticien. Elle PRIME sur toute inférence automatique. Les objectifs, sections et actions DOIVENT en tenir compte de façon déterminante.\n")}
 - Tu cites UNIQUEMENT ce que la synthèse ou les sources soutiennent. AUCUNE invention.
 - Pas de prescription médicamenteuse précise sans appui dans la synthèse. Préfère ""évaluer indication X"" plutôt que ""démarrer X mg""
 - 3-5 actions MAXIMUM par section actions (pas une liste exhaustive)

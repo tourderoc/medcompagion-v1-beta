@@ -40,6 +40,7 @@ namespace MedCompanion.Services.Restitutions
         private string? _medcompanionHeartBase64;
         private string? _signatureBase64;
         private string? _coverTemplateRaw;
+        private string? _annexeMethodologiqueRaw;
 
         private string? _iconPatientBase64;
         private string? _iconNaissanceBase64;
@@ -92,6 +93,8 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("</style></head><body>");
             sb.Append(coverHtml);
             sb.Append(blocsHtml);
+            if (!string.IsNullOrWhiteSpace(_annexeMethodologiqueRaw))
+                sb.Append(_annexeMethodologiqueRaw);
             sb.AppendLine("</body></html>");
             return sb.ToString();
         }
@@ -106,7 +109,8 @@ namespace MedCompanion.Services.Restitutions
             _caveatLatinExtBase64    ??= LoadBase64(Path.Combine(baseDir, "Resources", "Consultation", "Fonts", "Caveat-Regular-latin-ext.woff2"));
             _medcompanionHeartBase64 ??= LoadBase64(Path.Combine(baseDir, "Resources", "Consultation", "Icons", "medcompanion_heart.png"));
             _signatureBase64         ??= LoadBase64(Path.Combine(baseDir, "Assets", "signature.png"));
-            _coverTemplateRaw        ??= SafeReadAllText(Path.Combine(baseDir, "Resources", "Consultation", "restitution_clinique_template.html"));
+            _coverTemplateRaw           ??= SafeReadAllText(Path.Combine(baseDir, "Resources", "Consultation", "restitution_clinique_template.html"));
+            _annexeMethodologiqueRaw    ??= SafeReadAllText(Path.Combine(baseDir, "Resources", "Consultation", "annexe_methodologique.html"));
 
             var iconsDir = Path.Combine(baseDir, "Resources", "Consultation", "Icons");
             _iconPatientBase64         ??= LoadBase64(Path.Combine(iconsDir, "mc_patient.png"));

@@ -58,6 +58,20 @@ namespace MedCompanion.Services.Therapeutique
         public ProjetTherapeutiqueVersion? GetBrouillon(string patientNomComplet)
             => ListVersions(patientNomComplet).FirstOrDefault(v => v.IsBrouillon);
 
+        /// <summary>
+        /// Supprime définitivement tous les fichiers projet de ce patient (toutes versions,
+        /// brouillon inclus). Utilisé par "Recommencer depuis zéro".
+        /// </summary>
+        public void DeleteAllProjects(string patientNomComplet)
+        {
+            var dir = GetRootDirectory(patientNomComplet);
+            if (!Directory.Exists(dir)) return;
+            foreach (var path in Directory.GetFiles(dir, "projet_v*.md"))
+            {
+                try { File.Delete(path); } catch { }
+            }
+        }
+
         public ProjetTherapeutiqueVersion? GetDerniereValidee(string patientNomComplet)
             => ListVersions(patientNomComplet)
                 .Where(v => v.IsValidee)
@@ -170,6 +184,11 @@ namespace MedCompanion.Services.Therapeutique
             if (p.DateReevaluationPrevue.HasValue)
                 sb.AppendLine($"date_reevaluation_prevue: {p.DateReevaluationPrevue.Value:yyyy-MM-dd}");
             sb.AppendLine("---");
+            sb.AppendLine();
+
+            sb.AppendLine("## Orientation médecin");
+            sb.AppendLine();
+            sb.AppendLine(string.IsNullOrWhiteSpace(p.OrientationMedecin) ? "_(aucune orientation saisie)_" : p.OrientationMedecin.TrimEnd());
             sb.AppendLine();
 
             sb.AppendLine("## Objectifs prioritaires");
@@ -291,10 +310,12 @@ namespace MedCompanion.Services.Therapeutique
             {
                 var t = bufText.ToString().TrimEnd();
                 if (t == "_(à compléter)_") t = "";
+                if (t == "_(aucune orientation saisie)_") t = "";
                 if (t == "_(aucune action)_") t = "";
                 if (t == "_(checklist à compléter)_") t = "";
                 switch (section)
                 {
+                    case "Orientation médecin":              p.OrientationMedecin      = t; break;
                     case "Objectifs prioritaires":           p.ObjectifsPrioritaires   = t; break;
                     case "Ressources à soutenir":            p.RessourcesASoutenir     = t; break;
                     case "Réévaluation prévue":              p.ReevaluationChecklist   = ExtractChecklistText(t); break;
