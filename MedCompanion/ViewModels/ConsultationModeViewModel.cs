@@ -1471,6 +1471,7 @@ namespace MedCompanion.ViewModels
 
             InterrogatoireState = InterrogatoireState.Saisie;
             TranscriptionInput = "";
+            ManualNotes = "";
             NoteContent = "";
             _noteSaved = false;
             IsInClinicalMode = false;
@@ -3726,6 +3727,7 @@ justification: {SynthesisWeights.LLMJustification ?? ""}
 
                         // Nettoyer les données temporaires de la consultation
                         NoteContent = "";
+                        ManualNotes = "";
                         ObservationsNarrative = "";
                         TranscriptionInput = "";
                         InterrogatoireBlocks.Clear();
@@ -5828,6 +5830,7 @@ source: ""MedCompanion""
             _observationsNoteSaved = false;
             _premiereConsultationFilePath = null;
             TranscriptionInput = "";
+            ManualNotes = "";
             NoteContent = "";
             ObservationsNarrative = "";
             ExtractionStatus = "";

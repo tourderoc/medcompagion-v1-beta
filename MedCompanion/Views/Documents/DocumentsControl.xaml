@@ -137,6 +137,19 @@
                             <DataGridTextColumn Header="Catégorie" Binding="{Binding Category}" Width="*"/>
                             <DataGridTextColumn Header="Date" Binding="{Binding DateAddedDisplay}" Width="1.5*"/>
                             <DataGridTextColumn Header="Taille" Binding="{Binding FileSizeDisplay}" Width="*"/>
+                            <DataGridTemplateColumn Header="" Width="38">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Button Content="✏"
+                                                ToolTip="Saisir les données du formulaire (côte à côte)"
+                                                Click="SaisirFormulaireBtn_Click"
+                                                Tag="{Binding}"
+                                                Padding="4,2" FontSize="13"
+                                                Background="Transparent" BorderThickness="0"
+                                                Cursor="Hand" Foreground="#E67E22"/>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                         </DataGrid.Columns>
                     </DataGrid>
                 </Grid>

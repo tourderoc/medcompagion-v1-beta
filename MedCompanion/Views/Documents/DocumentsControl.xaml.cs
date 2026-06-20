@@ -440,6 +440,25 @@ namespace MedCompanion.Views.Documents
             }
         }
 
+        private void SaisirFormulaireBtn_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentPatient == null)
+            {
+                MessageBox.Show("Veuillez d'abord sélectionner un patient.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var document = (sender as System.Windows.Controls.Button)?.Tag as PatientDocument;
+            var pdfPath = document?.FilePath;
+
+            var dialog = new FormulaireSaisieDialog(pdfPath, _currentPatient.DirectoryPath)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            dialog.ShowDialog();
+        }
+
         private async void DeleteDocumentButton_Click(object sender, RoutedEventArgs e)
         {
             if (DocumentsDataGrid.SelectedItem is not PatientDocument document)
