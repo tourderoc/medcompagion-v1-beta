@@ -11,7 +11,7 @@ namespace MedCompanion.Services.Consultation
         private static readonly JsonSerializerOptions _opts = new() { WriteIndented = true };
 
         private static string DataPath(string patientDir)
-            => Path.Combine(patientDir, "notes", "formulaire_data.json");
+            => Path.Combine(patientDir, "info_patient", "formulaire_data.json");
 
         public bool HasData(string? patientDir)
             => !string.IsNullOrEmpty(patientDir) && File.Exists(DataPath(patientDir));
@@ -32,7 +32,7 @@ namespace MedCompanion.Services.Consultation
             try
             {
                 data.DateSaisie = DateTime.Now;
-                Directory.CreateDirectory(Path.Combine(patientDir, "notes"));
+                Directory.CreateDirectory(Path.Combine(patientDir, "info_patient"));
                 File.WriteAllText(DataPath(patientDir), JsonSerializer.Serialize(data, _opts), Encoding.UTF8);
             }
             catch { }
