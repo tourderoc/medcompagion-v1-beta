@@ -5267,6 +5267,26 @@
                                                                                 </ControlTemplate>
                                                                             </Button.Template>
                                                                         </Button>
+                                                                        <!-- Saisir formulaire parents -->
+                                                                        <Button Command="{Binding DataContext.SaisirFormulaireCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                CommandParameter="{Binding}"
+                                                                                ToolTip="Saisir les données du formulaire (côte à côte avec le PDF)"
+                                                                                Padding="6,3" Cursor="Hand"
+                                                                                Background="#E67E22" Foreground="White" FontSize="10" FontWeight="Bold"
+                                                                                BorderThickness="0" Margin="0,0,6,0">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border x:Name="SaisirBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                        <TextBlock Text="✏" Foreground="White" FontSize="10"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                                            <Setter TargetName="SaisirBd" Property="Background" Value="#CA6F1E"/>
+                                                                                        </Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                        </Button>
                                                                         <!-- Supprimer document -->
                                                                         <Button Command="{Binding DataContext.DeletePatientDocumentCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                                 CommandParameter="{Binding}"

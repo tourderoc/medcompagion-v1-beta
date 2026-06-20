@@ -5259,6 +5259,7 @@ source: ""MedCompanion""
             OpenDocumentDetailCommand        = new RelayCommand(OpenDocumentDetail);
             OpenPdfFileCommand               = new RelayCommand(OpenPdfFile);
             DeletePatientDocumentCommand     = new RelayCommand(DeletePatientDocument);
+            SaisirFormulaireCommand          = new RelayCommand(SaisirFormulaire);
 
             // Drawer "Patients récents" (bord gauche)
             ToggleRecentDrawerCommand  = new RelayCommand(_ => ToggleRecentDrawer());
@@ -6034,6 +6035,7 @@ source: ""MedCompanion""
         public ICommand OpenDocumentDetailCommand       { get; private set; } = null!;
         public ICommand OpenPdfFileCommand              { get; private set; } = null!;
         public ICommand DeletePatientDocumentCommand    { get; private set; } = null!;
+        public ICommand SaisirFormulaireCommand         { get; private set; } = null!;
 
         private void OpenDocumentDetail(object? param)
         {
@@ -6220,6 +6222,15 @@ source: ""MedCompanion""
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
             }
+        }
+
+        private void SaisirFormulaire(object? param)
+        {
+            if (param is not PatientDocumentItem item) return;
+            var dialog = new MedCompanion.Dialogs.FormulaireSaisieDialog(
+                item.FilePath,
+                _currentPatient?.DirectoryPath);
+            dialog.ShowDialog();
         }
 
         // ── BILANS du dossier bleu (cartes cliquables, une par bilan) ──
