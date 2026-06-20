@@ -1332,7 +1332,23 @@ namespace MedCompanion.ViewModels
             }
         }
 
-        public bool CanExtract => IsInSaisieMode && !string.IsNullOrWhiteSpace(TranscriptionInput) && _llmService != null;
+        private string _manualNotes = "";
+        public string ManualNotes
+        {
+            get => _manualNotes;
+            set
+            {
+                if (SetProperty(ref _manualNotes, value))
+                {
+                    OnPropertyChanged(nameof(CanExtract));
+                    ScheduleDraftSave();
+                }
+            }
+        }
+
+        public bool CanExtract => IsInSaisieMode
+            && (!string.IsNullOrWhiteSpace(TranscriptionInput) || !string.IsNullOrWhiteSpace(ManualNotes))
+            && _llmService != null;
 
         // Mode de dictée (Batch recommandé pour consultation, Streaming en option pour test)
         private bool _useBatchMode = true;
@@ -1514,6 +1530,7 @@ namespace MedCompanion.ViewModels
             InterrogatoireState = _interrogatoireState.ToString(),
             EtapeActive       = IsInClinicalMode ? "clinical" : IsSynthesisMode ? "synthesis" : "saisie",
             TranscriptionInput    = TranscriptionInput,
+            ManualNotes           = ManualNotes,
             NoteContent           = NoteContent,
             ObservationsNarrative = ObservationsNarrative,
             SynthesisContent      = SynthesisContent,
@@ -1566,6 +1583,7 @@ namespace MedCompanion.ViewModels
 
             // Restaurer textes
             TranscriptionInput    = draft.TranscriptionInput    ?? "";
+            ManualNotes           = draft.ManualNotes           ?? "";
             NoteContent           = draft.NoteContent           ?? "";
             ObservationsNarrative = draft.ObservationsNarrative ?? "";
             SynthesisContent      = draft.SynthesisContent      ?? "";
@@ -2408,13 +2426,13 @@ clinical_observations_json: |
 
         private async Task ExtractInterrogatoireAsync()
         {
-            if (_llmService == null || string.IsNullOrWhiteSpace(TranscriptionInput))
+            if (_llmService == null || (string.IsNullOrWhiteSpace(TranscriptionInput) && string.IsNullOrWhiteSpace(ManualNotes)))
                 return;
 
             InterrogatoireState = InterrogatoireState.Extraction;
             ExtractionStatus = "Extraction en cours...";
 
-            var (ok, result, err) = await _extractor.ExtractAsync(_llmService, TranscriptionInput);
+            var (ok, result, err) = await _extractor.ExtractAsync(_llmService, TranscriptionInput, ManualNotes);
 
             if (!ok || result == null)
             {

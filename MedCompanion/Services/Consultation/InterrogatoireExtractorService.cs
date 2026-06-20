@@ -17,7 +17,7 @@ namespace MedCompanion.Services.Consultation
             AppDomain.CurrentDomain.BaseDirectory,
             "Resources", "Consultation", "prompt_system.txt");
 
-        private string BuildPrompt(string transcription)
+        private string BuildPrompt(string transcription, string? manualNotes)
         {
             string template;
             try
@@ -31,17 +31,35 @@ namespace MedCompanion.Services.Consultation
                 template = GetFallbackPrompt();
             }
 
-            return template.Replace("{TRANSCRIPTION}", transcription);
+            // Injecter les notes manuelles en tête de la zone transcription si présentes
+            string content;
+            if (!string.IsNullOrWhiteSpace(manualNotes))
+            {
+                content =
+                    "=== NOTES CERTIFIÉES (saisies par le médecin — PRIORITÉ ABSOLUE) ===\n" +
+                    "Prénoms, noms d'école, villes, fratrie : reprendre TELS QUELS.\n" +
+                    "La transcription ci-dessous complète ces données mais ne les remplace pas.\n\n" +
+                    manualNotes.Trim() +
+                    "\n\n=== TRANSCRIPTION (contexte narratif) ===\n" +
+                    transcription;
+            }
+            else
+            {
+                content = transcription;
+            }
+
+            return template.Replace("{TRANSCRIPTION}", content);
         }
 
         public async Task<(bool success, ExtractionResult? result, string? error)> ExtractAsync(
             ILLMService llmService,
-            string transcription)
+            string transcription,
+            string? manualNotes = null)
         {
-            if (string.IsNullOrWhiteSpace(transcription))
-                return (false, null, "Transcription vide.");
+            if (string.IsNullOrWhiteSpace(transcription) && string.IsNullOrWhiteSpace(manualNotes))
+                return (false, null, "Transcription et notes vides.");
 
-            var prompt = BuildPrompt(transcription);
+            var prompt = BuildPrompt(transcription, manualNotes);
 
             var (ok, raw, err) = await llmService.GenerateTextAsync(prompt, maxTokens: 3000);
             if (!ok)

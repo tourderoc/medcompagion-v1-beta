@@ -22,6 +22,7 @@ namespace MedCompanion.Models
         public string EtapeActive { get; set; } = "saisie";
 
         public string? TranscriptionInput     { get; set; }
+        public string? ManualNotes            { get; set; }
         public string? NoteContent            { get; set; }
         public string? ObservationsNarrative  { get; set; }
         public string? SynthesisContent       { get; set; }

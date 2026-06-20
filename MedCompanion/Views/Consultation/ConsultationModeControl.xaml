@@ -1482,40 +1482,42 @@
                                              ToolTip="Tapez ou dictez votre transcription. Cliquez sur 'Extraire avec IA' pour la traiter."/>
                                 </Border>
 
-                                <!-- Blocs complétés — tags compacts (migrent depuis la zone Med à droite) -->
-                                <Border Grid.Row="2" Background="Transparent" BorderThickness="0" Padding="0" Margin="0,6,0,0">
-                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                        <ItemsControl ItemsSource="{Binding CompletedBlocks}">
-                                            <ItemsControl.ItemsPanel>
-                                                <ItemsPanelTemplate>
-                                                    <WrapPanel/>
-                                                </ItemsPanelTemplate>
-                                            </ItemsControl.ItemsPanel>
-                                            <ItemsControl.ItemTemplate>
-                                                <DataTemplate>
-                                                    <Border Background="#E8F5E9" BorderBrush="#27AE60" BorderThickness="1"
-                                                            CornerRadius="12" Padding="8,3" Margin="0,0,5,5"
-                                                            Cursor="Hand" ToolTip="{Binding CompactPreview}">
-                                                        <StackPanel Orientation="Horizontal">
-                                                            <TextBlock Text="✓" FontSize="10" FontWeight="Bold"
-                                                                       Foreground="#27AE60" Margin="0,0,4,0"
-                                                                       VerticalAlignment="Center"/>
-                                                            <TextBlock Text="{Binding Title}" FontSize="10"
-                                                                       FontWeight="SemiBold" Foreground="#1B5E20"
-                                                                       VerticalAlignment="Center" Margin="0,0,5,0"/>
-                                                            <TextBlock Text="{Binding CompactPreview}" FontSize="10"
-                                                                       Foreground="#558B2F" TextTrimming="CharacterEllipsis"
-                                                                       MaxWidth="180" VerticalAlignment="Center"/>
-                                                        </StackPanel>
-                                                    </Border>
-                                                </DataTemplate>
-                                            </ItemsControl.ItemTemplate>
-                                        </ItemsControl>
-                                    </ScrollViewer>
+                                <!-- Notes manuelles certifiées (Row 2+3 fusionnés via rowspan) -->
+                                <Border Grid.Row="2" Grid.RowSpan="2"
+                                        Background="#FFFBF0" BorderThickness="1" BorderBrush="#F0C040"
+                                        CornerRadius="6" Padding="2" Margin="0,6,0,0">
+                                    <Grid>
+                                        <TextBox Text="{Binding ManualNotes, UpdateSourceTrigger=PropertyChanged}"
+                                                 TextWrapping="Wrap"
+                                                 AcceptsReturn="True"
+                                                 FontSize="11"
+                                                 Foreground="#2C3E50"
+                                                 FontFamily="Segoe UI"
+                                                 Background="Transparent"
+                                                 BorderThickness="0"
+                                                 Padding="8"
+                                                 VerticalScrollBarVisibility="Auto"
+                                                 ToolTip="Notes certifiées : prénoms, école, ville, fratrie — priorité absolue à l'extraction"/>
+                                        <!-- Placeholder visible quand vide -->
+                                        <TextBlock IsHitTestVisible="False"
+                                                   Foreground="#C8A800"
+                                                   FontSize="11" FontStyle="Italic"
+                                                   Margin="10,8,8,8"
+                                                   TextWrapping="Wrap">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding ManualNotes}" Value="">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                            ✏ Notes rapides — prénoms parents, école + ville, fratrie (prénom + âge), autres données précises...
+                                        </TextBlock>
+                                    </Grid>
                                 </Border>
-
-                                <!-- Grid.Row=3 vide : les blocs actifs sont affichés à droite (panneau Med) -->
-                                <Border Grid.Row="3" Background="Transparent" BorderThickness="0"/>
 
                                 <StackPanel Grid.Row="4" Orientation="Horizontal"
                                             HorizontalAlignment="Right" Margin="0,8,0,0">
