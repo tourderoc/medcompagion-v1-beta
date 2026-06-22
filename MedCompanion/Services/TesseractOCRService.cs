@@ -176,6 +176,31 @@ namespace MedCompanion.Services
                 };
             }
 
+            // === Médecin traitant — ADELI ===
+            // Format: ADELI 831079199 ou ADELI: 831079199
+            var adeliMatch = Regex.Match(text2, @"ADELI\s*:?\s*(\d{9})", RegexOptions.IgnoreCase);
+            if (adeliMatch.Success)
+            {
+                result["MTAdeli"] = new DoctolibField
+                {
+                    Value = adeliMatch.Groups[1].Value,
+                    Confidence = ConfidenceLevel.High,
+                    Source = "OCR Tesseract"
+                };
+            }
+
+            // === Médecin traitant — PSAM ===
+            var psamMatch = Regex.Match(text2, @"PSAM\s*:?\s*(\d{9})", RegexOptions.IgnoreCase);
+            if (psamMatch.Success)
+            {
+                result["MTPSAM"] = new DoctolibField
+                {
+                    Value = psamMatch.Groups[1].Value,
+                    Confidence = ConfidenceLevel.High,
+                    Source = "OCR Tesseract"
+                };
+            }
+
             return result;
         }
 

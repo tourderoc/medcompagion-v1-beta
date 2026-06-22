@@ -439,6 +439,34 @@ public partial class MainWindow : Window
         BureauMedContent.AnalyzeTool();
     }
 
+    private void BureauImporterBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null)
+        {
+            MessageBox.Show(
+                "Sélectionnez un patient avant d'importer depuis Doctolib.",
+                "Import Doctolib",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var llm = _llmFactory.GetCurrentProvider();
+
+        var dialog = new Dialogs.DoctolibImportDialog(
+            () => BureauMedContent.CaptureZone(),
+            _selectedPatient,
+            _pathService,
+            llm);
+
+        dialog.Owner = this;
+        if (dialog.ShowDialog() == true)
+        {
+            // Recharger le patient pour mettre à jour l'UI
+            LoadPatientAsync(_selectedPatient);
+        }
+    }
+
     private void BureauToolsCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         // Ignorer pendant l'initialisation ou si pas en mode Bureau

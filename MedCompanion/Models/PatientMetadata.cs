@@ -57,7 +57,12 @@ namespace MedCompanion.Models
         // === Médecins / Professionnels ===
         public string? MedecinTraitantNom { get; set; }
         public string? MedecinTraitantPrenom { get; set; }
-        
+        public string? MedecinTraitantAdresse { get; set; }
+        public string? MedecinTraitantCodePostal { get; set; }
+        public string? MedecinTraitantVille { get; set; }
+        public string? MedecinTraitantTelephone { get; set; }
+        public string? MedecinTraitantAdeli { get; set; }
+
         public string? MedecinReferentNom { get; set; }
         public string? MedecinReferentPrenom { get; set; }
         public string? MedecinReferentSpecialite { get; set; }

@@ -153,6 +153,18 @@ namespace MedCompanion.Views.Consultation
             AnalyzeButton_Click(this, new RoutedEventArgs());
         }
 
+        /// <summary>
+        /// Capture la zone centrale (fenêtre embarquée) et retourne les bytes PNG.
+        /// Utilisé par le dialog d'import Doctolib.
+        /// </summary>
+        public byte[] CaptureZone()
+        {
+            var captureService = new ScreenCaptureService();
+            var point = CentralHostZone.PointToScreen(new Point(0, 0));
+            var rect = new Rect(point.X, point.Y, CentralHostZone.ActualWidth, CentralHostZone.ActualHeight);
+            return captureService.CaptureRegion(rect);
+        }
+
         private void EmbedToolInternal(string toolName)
         {
             string searchTitle = toolName;
