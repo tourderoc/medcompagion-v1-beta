@@ -2673,11 +2673,21 @@ namespace MedCompanion.Services.Restitutions
 
         {
 
-            var niveauFeuille = EnvironnementScoringService.CalculerFeuille(feuille);
-
-            var couleur       = CartographieEnvironnementContent.NiveauColor(niveauFeuille);
-
-            var niveauLabel   = CartographieEnvironnementContent.NiveauLabel(niveauFeuille);
+            // Priorité : niveau produit par le LLM dans le bloc restitution (plus riche car basé
+            // sur le dossier complet + synthèse). Fallback sur le scoring évaluation (checkboxes)
+            // si le bloc n'a pas encore été généré.
+            var llmNiveau = TryExtractNiveauClinicFromBloc(contenu);
+            string couleur, niveauLabel;
+            if (llmNiveau.HasValue)
+            {
+                (couleur, niveauLabel) = llmNiveau.Value;
+            }
+            else
+            {
+                var niveauFeuille = EnvironnementScoringService.CalculerFeuille(feuille);
+                couleur     = CartographieEnvironnementContent.NiveauColor(niveauFeuille);
+                niveauLabel = CartographieEnvironnementContent.NiveauLabel(niveauFeuille);
+            }
 
             var svg           = BuildAxesSvg(feuille);
 
@@ -2724,15 +2734,31 @@ namespace MedCompanion.Services.Restitutions
         }
 
         /// <summary>
-        /// Parse le contenu LLM d'une feuille. Reconnaît **Observations**, **Niveau clinique**,
-        /// **Profil global**, **Points d'appui**, **Points d'attention**.
+        /// Parse le contenu LLM d'une feuille. Reconnaît **Observations**, **Profil global**,
+        /// **Points d'appui**, **Points d'attention**. Supprime **Niveau clinique** et sa ligne
+        /// de contenu : ce niveau est extrait dans le badge de l'en-tête, pas répété dans le corps.
         /// </summary>
         private static string ParseEnvFeuilleHtml(string md)
         {
             var sb = new StringBuilder();
+            bool skipNextContentLine = false;
             foreach (var line in md.Split('\n'))
             {
                 var l = line.TrimEnd('\r').Trim();
+
+                // Ignorer la section **Niveau clinique** et son contenu (déjà dans le badge)
+                if (l.Equals("**Niveau clinique**", StringComparison.OrdinalIgnoreCase) ||
+                    l.StartsWith("**Niveau clinique**", StringComparison.OrdinalIgnoreCase))
+                {
+                    skipNextContentLine = true;
+                    continue;
+                }
+                if (skipNextContentLine)
+                {
+                    if (!string.IsNullOrEmpty(l)) { skipNextContentLine = false; continue; }
+                    continue;
+                }
+
                 if (l.StartsWith("**") && l.EndsWith("**"))
                 {
                     var title = l.Trim('*');
@@ -2752,6 +2778,56 @@ namespace MedCompanion.Services.Restitutions
                 }
             }
             return sb.ToString();
+        }
+
+        /// <summary>
+        /// Extrait le niveau clinique et sa couleur depuis le texte LLM d'un bloc env.
+        /// Format attendu : une ligne "**Niveau clinique**" suivie de "Mot-clé (qualifier)."
+        /// ou sur la même ligne "**Niveau clinique** : Mot-clé (qualifier).".
+        /// Retourne null si aucun niveau LLM valide n'est trouvé.
+        /// </summary>
+        private static (string couleur, string label)? TryExtractNiveauClinicFromBloc(string? contenu)
+        {
+            if (string.IsNullOrWhiteSpace(contenu)) return null;
+
+            bool nextIsNiveau = false;
+            foreach (var rawLine in contenu.Split('\n'))
+            {
+                var l = rawLine.TrimEnd('\r').Trim();
+
+                if (l.StartsWith("**Niveau clinique**", StringComparison.OrdinalIgnoreCase))
+                {
+                    // Niveau sur la même ligne ?
+                    var rest = l.Substring("**Niveau clinique**".Length).TrimStart(':', ' ');
+                    if (!string.IsNullOrWhiteSpace(rest))
+                        return MapNiveauKeyword(rest);
+                    nextIsNiveau = true;
+                    continue;
+                }
+
+                if (nextIsNiveau && !string.IsNullOrEmpty(l))
+                    return MapNiveauKeyword(l);
+            }
+            return null;
+        }
+
+        private static (string couleur, string label)? MapNiveauKeyword(string text)
+        {
+            // Format : "Fluide (Contexte porteur)." ou "`Fluide (qualifier).`"
+            var clean = text.Trim('`', ' ', '.').Split('(')[0].Trim();
+
+            // Normalisation pour comparaison sans accents/casse
+            var key = clean.ToLowerInvariant()
+                           .Replace("é", "e").Replace("è", "e").Replace("ê", "e")
+                           .Replace("à", "a").Replace("â", "a");
+
+            if (key.Contains("fluide"))             return ("#1E8449", clean);
+            if (key.Contains("globalement"))        return ("#58D68D", clean);
+            if (key.Contains("mitig"))              return ("#F1C40F", clean);
+            if (key.Contains("fragil"))             return ("#E67E22", clean);
+            if (key.Contains("bloqu") || key.Contains("alerte") || key.Contains("tres fragilist")) return ("#C0392B", clean);
+
+            return string.IsNullOrWhiteSpace(clean) ? null : ("#95A5A6", clean);
         }
 
         private static string BuildEnvEduLegend()
