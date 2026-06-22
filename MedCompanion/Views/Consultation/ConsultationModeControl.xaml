@@ -965,8 +965,20 @@
                                             
                                             <StackPanel Grid.Column="0">
                                                 <TextBlock Text="{Binding SelectedPastConsultation.Title}" FontSize="18" FontWeight="Bold" Foreground="#2C3E50"/>
-                                                <TextBlock Text="Mode Lecture Seule — Étape par étape" FontSize="11" Foreground="#95A5A6" Margin="0,2,0,0"/>
-                                                
+                                                <TextBlock FontSize="11" Foreground="#95A5A6" Margin="0,2,0,0">
+                                                    <TextBlock.Style>
+                                                        <Style TargetType="TextBlock">
+                                                            <Setter Property="Text" Value="Mode Lecture Seule — Étape par étape"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                    <Setter Property="Text" Value="✏️ Mode Édition — modifications en cours"/>
+                                                                    <Setter Property="Foreground" Value="#E67E22"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </TextBlock.Style>
+                                                </TextBlock>
+
                                                 <!-- Steps bar (like evaluation) -->
                                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                                     <!-- Button Step 1 -->
@@ -1094,23 +1106,123 @@
                                                 </StackPanel>
                                             </StackPanel>
 
-                                            <!-- Actions (Supprimer) -->
-                                            <Button Grid.Column="1" Content="🗑 Supprimer" 
-                                                    Command="{Binding DeleteSelectedPastConsultationCommand}"
-                                                    Padding="12,6" Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Top">
-                                                <Button.Template>
-                                                    <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                        </Border>
-                                                        <ControlTemplate.Triggers>
-                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                <Setter Property="Background" Value="#C0392B"/>
-                                                            </Trigger>
-                                                        </ControlTemplate.Triggers>
-                                                    </ControlTemplate>
-                                                </Button.Template>
-                                            </Button>
+                                            <!-- Actions header -->
+                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+
+                                                <!-- Bouton Modifier (visible en lecture seule) -->
+                                                <Button Content="✏️ Modifier"
+                                                        Command="{Binding EditPastPremiereCommand}"
+                                                        Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="#2980B9"/>
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter Property="Background" Value="#2471A3"/>
+                                                                            </Trigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- Bouton Enregistrer (visible en mode édition) -->
+                                                <Button Content="💾 Enregistrer"
+                                                        Command="{Binding SavePastPremiereCommand}"
+                                                        Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="#27AE60"/>
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter Property="Background" Value="#219A52"/>
+                                                                            </Trigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- Bouton Annuler (visible en mode édition) -->
+                                                <Button Content="Annuler"
+                                                        Command="{Binding CancelPastPremiereEditCommand}"
+                                                        Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="#95A5A6"/>
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter Property="Background" Value="#7F8C8D"/>
+                                                                            </Trigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- Bouton Supprimer -->
+                                                <Button Content="🗑 Supprimer"
+                                                        Command="{Binding DeleteSelectedPastConsultationCommand}"
+                                                        Padding="12,6" Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="11" FontWeight="SemiBold">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#C0392B"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </StackPanel>
                                         </Grid>
 
                                         <!-- Content area -->
@@ -1127,11 +1239,45 @@
                                                                             <Style TargetType="Border">
                                                                                 <Setter Property="BorderThickness" Value="3,1,1,1"/>
                                                                                 <Setter Property="BorderBrush" Value="#3498DB"/>
+                                                                                <Style.Triggers>
+                                                                                    <DataTrigger Binding="{Binding DataContext.IsEditingPastPremiere, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                                        <Setter Property="Background" Value="#FDFEFE"/>
+                                                                                        <Setter Property="BorderBrush" Value="#2980B9"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
                                                                             </Style>
                                                                         </Border.Style>
                                                                         <StackPanel>
                                                                             <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,6"/>
-                                                                            <TextBlock Text="{Binding FreeText}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18"/>
+                                                                            <!-- Lecture seule -->
+                                                                            <TextBlock Text="{Binding FreeText}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18">
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding DataContext.IsEditingPastPremiere, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+                                                                            <!-- Édition -->
+                                                                            <TextBox Text="{Binding FreeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                     FontSize="12" Foreground="#34495E" TextWrapping="Wrap" AcceptsReturn="True"
+                                                                                     BorderBrush="#BDC3C7" BorderThickness="1" Padding="6" MinHeight="60"
+                                                                                     VerticalScrollBarVisibility="Auto">
+                                                                                <TextBox.Style>
+                                                                                    <Style TargetType="TextBox">
+                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding DataContext.IsEditingPastPremiere, RelativeSource={RelativeSource AncestorType=UserControl}}" Value="True">
+                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBox.Style>
+                                                                            </TextBox>
                                                                         </StackPanel>
                                                                     </Border>
                                                                 </DataTemplate>
@@ -1234,12 +1380,40 @@
                                                 
                                                 <!-- Synthèse rédigée -->
                                                 <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Padding="15">
-                                                    <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                                        <StackPanel>
-                                                            <TextBlock Text="📄 Synthèse Clinique :" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,8"/>
-                                                            <TextBlock Text="{Binding PastSynthesisContent}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18"/>
-                                                        </StackPanel>
-                                                    </ScrollViewer>
+                                                    <StackPanel>
+                                                        <TextBlock Text="📄 Synthèse Clinique :" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,8"/>
+                                                        <!-- Lecture -->
+                                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                            <TextBlock Text="{Binding PastSynthesisContent}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18">
+                                                                <TextBlock.Style>
+                                                                    <Style TargetType="TextBlock">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                        <Style.Triggers>
+                                                                            <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            </DataTrigger>
+                                                                        </Style.Triggers>
+                                                                    </Style>
+                                                                </TextBlock.Style>
+                                                            </TextBlock>
+                                                        </ScrollViewer>
+                                                        <!-- Édition -->
+                                                        <TextBox Text="{Binding PastSynthesisContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                 FontSize="12" Foreground="#34495E" TextWrapping="Wrap" AcceptsReturn="True"
+                                                                 BorderBrush="#BDC3C7" BorderThickness="1" Padding="8" MinHeight="120"
+                                                                 VerticalScrollBarVisibility="Auto">
+                                                            <TextBox.Style>
+                                                                <Style TargetType="TextBox">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBox.Style>
+                                                        </TextBox>
+                                                    </StackPanel>
                                                 </Border>
                                             </Grid>
                                         </Grid>

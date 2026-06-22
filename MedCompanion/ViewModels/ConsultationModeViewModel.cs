@@ -691,6 +691,16 @@ namespace MedCompanion.ViewModels
             set => SetProperty(ref _isReadingPastPremiereConsultationMode, value);
         }
 
+        private string? _pastPremiereFilePath;
+
+        private bool _isEditingPastPremiere;
+        /// <summary>True quand l'utilisateur modifie le contenu d'une 1ère consultation passée.</summary>
+        public bool IsEditingPastPremiere
+        {
+            get => _isEditingPastPremiere;
+            set => SetProperty(ref _isEditingPastPremiere, value);
+        }
+
         private int _pastPremiereStep = 1;
         public int PastPremiereStep
         {
@@ -2043,6 +2053,9 @@ namespace MedCompanion.ViewModels
 
         private void LoadPastPremiereConsultationData(string yaml, string body, string filePath)
         {
+            _pastPremiereFilePath = filePath;
+            IsEditingPastPremiere = false;
+
             string interrogatoireText = "";
             string observationsText = "";
 
@@ -2198,6 +2211,77 @@ namespace MedCompanion.ViewModels
                 {
                     PastSynthesisContent = "";
                 }
+            }
+        }
+
+        private async System.Threading.Tasks.Task SavePastPremiereAsync()
+        {
+            if (string.IsNullOrEmpty(_pastPremiereFilePath) || !File.Exists(_pastPremiereFilePath))
+            {
+                System.Windows.MessageBox.Show("Fichier de consultation introuvable.", "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Warning);
+                return;
+            }
+
+            try
+            {
+                // Lire le fichier original pour récupérer le YAML existant
+                var originalContent = File.ReadAllText(_pastPremiereFilePath, System.Text.Encoding.UTF8);
+                var origYaml = ExtractYamlHeader(originalContent) ?? "";
+
+                var patientField = ParseYamlField(origYaml, "patient") ?? (CurrentPatient?.NomComplet ?? "");
+                var dateField    = ParseYamlField(origYaml, "date")    ?? "";
+                var titleField   = ParseYamlField(origYaml, "title")   ?? "1ère consultation";
+
+                // Sérialiser les blocs interrogatoire édités
+                var blocksDto = PastInterrogatoireBlocks.Select(b => new { key = b.Title, title = b.Title, freeText = b.FreeText }).ToList();
+                var jsonBlocks = System.Text.Json.JsonSerializer.Serialize(blocksDto, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                var jsonBlocksIndented = string.Join("\n  ", jsonBlocks.Split('\n'));
+
+                // Sérialiser les cartes d'observations éditées
+                var obsDto = PastClinicalCards.Select(c => new { title = c.Title, branch = c.Title, selectedOptions = c.SelectedOptions, freeText = c.FreeText }).ToList();
+                var jsonObs = System.Text.Json.JsonSerializer.Serialize(obsDto, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                var jsonObsIndented = string.Join("\n  ", jsonObs.Split('\n'));
+
+                // Reconstruire le body markdown
+                var body = new StringBuilder();
+                body.AppendLine("## Interrogatoire");
+                foreach (var b in PastInterrogatoireBlocks)
+                {
+                    if (!string.IsNullOrWhiteSpace(b.FreeText))
+                    {
+                        body.AppendLine($"### {b.Title}");
+                        body.AppendLine(b.FreeText);
+                        body.AppendLine();
+                    }
+                }
+                body.AppendLine();
+                body.AppendLine("## Observations cliniques");
+                if (!string.IsNullOrWhiteSpace(PastObservationsNarrative))
+                    body.AppendLine(PastObservationsNarrative);
+
+                var newContent = $"---\npatient: \"{patientField}\"\ndate: \"{dateField}\"\ntype: \"consultation-premiere\"\nsource: \"MedCompanion\"\ntitle: \"{titleField}\"\ninterrogatoire_blocks_json: |\n  {jsonBlocksIndented}\nclinical_observations_json: |\n  {jsonObsIndented}\n---\n\n{body.ToString().TrimEnd()}\n";
+
+                await File.WriteAllTextAsync(_pastPremiereFilePath, newContent, System.Text.Encoding.UTF8);
+
+                // Sauvegarder la synthèse si modifiée
+                if (CurrentPatient != null && !string.IsNullOrEmpty(PastSynthesisContent))
+                {
+                    var synthesePath = Path.Combine(CurrentPatient.DirectoryPath, "synthese", "synthese.md");
+                    if (File.Exists(synthesePath))
+                    {
+                        var synContent = File.ReadAllText(synthesePath, System.Text.Encoding.UTF8);
+                        var (synYaml, _) = SplitFrontmatter(synContent);
+                        var newSynContent = $"---\n{synYaml.Trim()}\n---\n\n{PastSynthesisContent.Trim()}\n";
+                        await File.WriteAllTextAsync(synthesePath, newSynContent, System.Text.Encoding.UTF8);
+                    }
+                }
+
+                IsEditingPastPremiere = false;
+                System.Windows.MessageBox.Show("Consultation sauvegardée.", "Enregistrement", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+            }
+            catch (Exception ex)
+            {
+                System.Windows.MessageBox.Show($"Erreur lors de la sauvegarde : {ex.Message}", "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
             }
         }
 
@@ -4874,6 +4958,9 @@ source: ""MedCompanion""
         public ICommand DeleteSelectedPastConsultationCommand { get; }
         public ICommand ViewPastPremiereStepCommand { get; }
         public ICommand ClosePastPremiereConsultationCommand { get; }
+        public ICommand EditPastPremiereCommand { get; private set; } = null!;
+        public ICommand SavePastPremiereCommand { get; private set; } = null!;
+        public ICommand CancelPastPremiereEditCommand { get; private set; } = null!;
         public ICommand OpenEvaluationCardCommand { get; }    // param : EvaluationCardViewModel
         public ICommand DeleteEvaluationCardCommand { get; }  // param : EvaluationCardViewModel
         public ICommand OpenSyntheseGlobaleCardCommand { get; private set; } = null!;  // param : SyntheseGlobaleCardViewModel
@@ -5090,7 +5177,28 @@ source: ""MedCompanion""
             ClosePastPremiereConsultationCommand = new RelayCommand(_ =>
             {
                 IsReadingPastPremiereConsultationMode = false;
+                IsEditingPastPremiere = false;
                 ResetWorkspaceModes();
+            });
+
+            EditPastPremiereCommand = new RelayCommand(_ =>
+            {
+                IsEditingPastPremiere = true;
+            });
+
+            SavePastPremiereCommand = new RelayCommand(async _ => await SavePastPremiereAsync());
+
+            CancelPastPremiereEditCommand = new RelayCommand(_ =>
+            {
+                // Recharger depuis le fichier pour annuler les modifications
+                if (!string.IsNullOrEmpty(_pastPremiereFilePath) && File.Exists(_pastPremiereFilePath))
+                {
+                    var content = File.ReadAllText(_pastPremiereFilePath, System.Text.Encoding.UTF8);
+                    var yamlHeader = ExtractYamlHeader(content) ?? "";
+                    var (_, body) = SplitFrontmatter(content);
+                    LoadPastPremiereConsultationData(yamlHeader, body, _pastPremiereFilePath);
+                }
+                IsEditingPastPremiere = false;
             });
 
             // Hub : ouvrir une card évaluation (active → Resume, clôturée → ReadOnly + tab SYNTHESE)
