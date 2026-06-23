@@ -99,7 +99,9 @@ namespace MedCompanion.Services
                                     Dob = metadata.Dob,
                                     Sexe = metadata.Sexe,
                                     DirectoryPath = patientDir,
-                                    SearchKey = BuildSearchKey(metadata.Nom, metadata.Prenom)
+                                    SearchKey = BuildSearchKey(metadata.Nom, metadata.Prenom),
+                                    NormNomParts = BuildNormParts(metadata.Nom),
+                                    NormPrenomParts = BuildNormParts(metadata.Prenom)
                                 });
                             }
                         }
@@ -118,7 +120,9 @@ namespace MedCompanion.Services
                                     Nom = nom,
                                     Prenom = prenom,
                                     DirectoryPath = patientDir,
-                                    SearchKey = BuildSearchKey(nom, prenom)
+                                    SearchKey = BuildSearchKey(nom, prenom),
+                                    NormNomParts = BuildNormParts(nom),
+                                    NormPrenomParts = BuildNormParts(prenom)
                                 });
                             }
                         }
@@ -258,7 +262,9 @@ namespace MedCompanion.Services
                     Dob = metadata.Dob,
                     Sexe = metadata.Sexe,
                     DirectoryPath = patientDir,
-                    SearchKey = BuildSearchKey(metadata.Nom, metadata.Prenom)
+                    SearchKey = BuildSearchKey(metadata.Nom, metadata.Prenom),
+                    NormNomParts = BuildNormParts(metadata.Nom),
+                    NormPrenomParts = BuildNormParts(metadata.Prenom)
                 });
 
                 return (true, "Patient créé/mis à jour avec succès", id, patientDir);
@@ -277,50 +283,33 @@ namespace MedCompanion.Services
         {
             var bestMatch = (isDuplicate: false, patient: (PatientIndexEntry?)null, score: 0);
 
+            // Pré-calculer les parts normalisées du nouveau patient (une seule fois hors boucle)
+            var newNomParts    = BuildNormParts(newPatient.Nom);
+            var newPrenomParts = BuildNormParts(newPatient.Prenom);
+
             foreach (var existingPatient in _index.Where(p => p.Id != newId))
             {
                 int score = 0;
-                var existingMetadata = GetMetadata(existingPatient.Id);
 
-                // 1. Comparer les dates de naissance (si identiques = +50 points)
+                // 1. DOB depuis l'index en mémoire → 0 lecture fichier
                 if (!string.IsNullOrEmpty(newPatient.Dob) &&
-                    !string.IsNullOrEmpty(existingMetadata?.Dob) &&
-                    newPatient.Dob == existingMetadata.Dob)
+                    !string.IsNullOrEmpty(existingPatient.Dob) &&
+                    newPatient.Dob == existingPatient.Dob)
                 {
                     score += 50;
                 }
 
-                // 2. Comparer les noms mot-à-mot (noms composés)
-                var newNomParts = newPatient.Nom.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => Normalize(p)).ToList();
-                var existingNomParts = existingPatient.Nom.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => Normalize(p)).ToList();
+                // 2. Nom mot-à-mot — parties pré-normalisées dans l'entrée d'index
+                int commonNomWords = newNomParts.Count(w => existingPatient.NormNomParts.Contains(w));
+                if (commonNomWords > 0) score += commonNomWords * 20;
 
-                // Compter les mots en commun dans le nom
-                int commonNomWords = newNomParts.Count(w => existingNomParts.Contains(w));
-                if (commonNomWords > 0)
-                {
-                    score += (commonNomWords * 20); // +20 points par mot commun
-                }
+                // 3. Prénom mot-à-mot — idem
+                int commonPrenomWords = newPrenomParts.Count(w => existingPatient.NormPrenomParts.Contains(w));
+                if (commonPrenomWords > 0) score += commonPrenomWords * 15;
 
-                // 3. Comparer les prénoms mot-à-mot (prénoms composés)
-                var newPrenomParts = newPatient.Prenom.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => Normalize(p)).ToList();
-                var existingPrenomParts = existingPatient.Prenom.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
-                    .Select(p => Normalize(p)).ToList();
-
-                // Compter les mots en commun dans le prénom
-                int commonPrenomWords = newPrenomParts.Count(w => existingPrenomParts.Contains(w));
-                if (commonPrenomWords > 0)
-                {
-                    score += (commonPrenomWords * 15); // +15 points par mot commun
-                }
-
-                // 4. Si le score dépasse 80 → Doublon très probable
+                // 4. Score ≥ 80 → doublon très probable
                 if (score >= 80 && score > bestMatch.score)
-                {
                     bestMatch = (true, existingPatient, score);
-                }
             }
 
             return bestMatch;
@@ -422,6 +411,11 @@ namespace MedCompanion.Services
             // "nom prenom" + espace + "prenom nom" pour matcher les deux ordres avec un seul Contains()
             return $"{n} {p} {p} {n}";
         }
+
+        private string[] BuildNormParts(string name)
+            => name.Split(new[] { ' ', '-' }, StringSplitOptions.RemoveEmptyEntries)
+                   .Select(Normalize)
+                   .ToArray();
 
         private string Normalize(string text)
         {

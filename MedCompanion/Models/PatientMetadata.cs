@@ -132,6 +132,16 @@ namespace MedCompanion.Models
         /// </summary>
         public string SearchKey { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Mots du nom pré-normalisés pour la détection de doublons (sans Normalize() à la volée).
+        /// </summary>
+        public string[] NormNomParts { get; set; } = Array.Empty<string>();
+
+        /// <summary>
+        /// Mots du prénom pré-normalisés pour la détection de doublons.
+        /// </summary>
+        public string[] NormPrenomParts { get; set; } = Array.Empty<string>();
+
         public string NomComplet => $"{Prenom} {Nom}";
         
         public int? Age
