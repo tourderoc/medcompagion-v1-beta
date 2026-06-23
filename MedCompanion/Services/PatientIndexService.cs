@@ -98,7 +98,8 @@ namespace MedCompanion.Services
                                     Nom = metadata.Nom,
                                     Dob = metadata.Dob,
                                     Sexe = metadata.Sexe,
-                                    DirectoryPath = patientDir
+                                    DirectoryPath = patientDir,
+                                    SearchKey = BuildSearchKey(metadata.Nom, metadata.Prenom)
                                 });
                             }
                         }
@@ -109,12 +110,15 @@ namespace MedCompanion.Services
                             
                             if (parts.Length >= 2)
                             {
+                                var nom = parts[0];
+                                var prenom = string.Join(" ", parts.Skip(1));
                                 newIndex.Add(new PatientIndexEntry
                                 {
                                     Id = dirName,
-                                    Nom = parts[0],
-                                    Prenom = string.Join(" ", parts.Skip(1)),
-                                    DirectoryPath = patientDir
+                                    Nom = nom,
+                                    Prenom = prenom,
+                                    DirectoryPath = patientDir,
+                                    SearchKey = BuildSearchKey(nom, prenom)
                                 });
                             }
                         }
@@ -138,29 +142,17 @@ namespace MedCompanion.Services
                 return new List<PatientIndexEntry>();
 
             var normalizedQuery = Normalize(query.Trim());
-            
+
+            // Utilise SearchKey pré-calculé → 1 seul string.Contains() par patient au lieu de 6× Normalize()
             var results = _index
-                .Where(p =>
-                {
-                    var normalizedNom = Normalize(p.Nom);
-                    var normalizedPrenom = Normalize(p.Prenom);
-                    var normalizedComplet = Normalize(p.NomComplet); // Format: "NOM Prenom"
-                    var normalizedInverse = Normalize($"{p.Prenom} {p.Nom}"); // Format: "Prenom NOM" (Doctolib)
-                    
-                    return normalizedNom.Contains(normalizedQuery) ||
-                           normalizedPrenom.Contains(normalizedQuery) ||
-                           normalizedComplet.Contains(normalizedQuery) ||
-                           normalizedInverse.Contains(normalizedQuery); // Supporter les deux ordres !
-                })
+                .Where(p => p.SearchKey.Contains(normalizedQuery))
                 .OrderBy(p =>
                 {
-                    // Priorité: match exact sur nom > prénom > nom complet
-                    var normalizedNom = Normalize(p.Nom);
-                    var normalizedPrenom = Normalize(p.Prenom);
-                    
-                    if (normalizedNom.StartsWith(normalizedQuery))
+                    // Priorité: match en début de nom > prénom > autre
+                    if (p.SearchKey.StartsWith(normalizedQuery))
                         return 0;
-                    if (normalizedPrenom.StartsWith(normalizedQuery))
+                    var spaceIdx = p.SearchKey.IndexOf(' ');
+                    if (spaceIdx >= 0 && p.SearchKey.Substring(spaceIdx + 1).StartsWith(normalizedQuery))
                         return 1;
                     return 2;
                 })
@@ -265,7 +257,8 @@ namespace MedCompanion.Services
                     Nom = metadata.Nom,
                     Dob = metadata.Dob,
                     Sexe = metadata.Sexe,
-                    DirectoryPath = patientDir
+                    DirectoryPath = patientDir,
+                    SearchKey = BuildSearchKey(metadata.Nom, metadata.Prenom)
                 });
 
                 return (true, "Patient créé/mis à jour avec succès", id, patientDir);
@@ -422,6 +415,14 @@ namespace MedCompanion.Services
         /// <summary>
         /// Normalise une chaîne pour la recherche (supprime les accents et met en minuscules)
         /// </summary>
+        private string BuildSearchKey(string nom, string prenom)
+        {
+            var n = Normalize(nom);
+            var p = Normalize(prenom);
+            // "nom prenom" + espace + "prenom nom" pour matcher les deux ordres avec un seul Contains()
+            return $"{n} {p} {p} {n}";
+        }
+
         private string Normalize(string text)
         {
             if (string.IsNullOrEmpty(text))

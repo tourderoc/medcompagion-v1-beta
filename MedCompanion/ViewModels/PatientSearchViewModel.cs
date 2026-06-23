@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using System.Windows.Threading;
 using MedCompanion.Commands;
 using MedCompanion.Models;
 using MedCompanion.Services;
@@ -13,6 +14,8 @@ namespace MedCompanion.ViewModels;
 public class PatientSearchViewModel : ViewModelBase
 {
     private readonly PatientIndexService _patientIndex;
+    private readonly DispatcherTimer _debounceTimer;
+    private string _pendingSearchText = string.Empty;
     private string _searchText = string.Empty;
     private bool _isPopupOpen;
     private PatientIndexEntry? _selectedPatient;
@@ -21,6 +24,11 @@ public class PatientSearchViewModel : ViewModelBase
     private bool _showingRecentPatients;
     private int _unreadMessageCount;
     private bool _hasUnreadMessages;
+
+    // Regex compilée — partagée entre instances, initialisation unique
+    private static readonly System.Text.RegularExpressions.Regex _invisibleCharsRegex =
+        new(@"[\s ​‌‍﻿]+",
+            System.Text.RegularExpressions.RegexOptions.Compiled);
 
     /// <summary>
     /// Texte de recherche saisi par l'utilisateur
@@ -194,6 +202,14 @@ public class PatientSearchViewModel : ViewModelBase
     {
         _patientIndex = patientIndex;
 
+        // Debounce 150ms : attend que l'utilisateur s'arrête de taper avant de chercher
+        _debounceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(150) };
+        _debounceTimer.Tick += (_, _) =>
+        {
+            _debounceTimer.Stop();
+            ExecuteSearch(_pendingSearchText);
+        };
+
         ValidateCommand = new RelayCommand(
             execute: () => ValidateSelection(),
             canExecute: () => Suggestions.Count > 0 || ShowCreateOption
@@ -232,81 +248,78 @@ public class PatientSearchViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// Appelé quand le texte de recherche change
+    /// Appelé quand le texte de recherche change — démarre/remet à zéro le debounce 150ms
     /// </summary>
     private void OnSearchTextChanged()
     {
-        // Nettoyage agressif du texte : supprimer caractères invisibles, espaces insécables, etc.
         var cleanedText = string.IsNullOrWhiteSpace(SearchText)
             ? string.Empty
-            : System.Text.RegularExpressions.Regex.Replace(SearchText, @"[\s\u00A0\u200B\u200C\u200D\uFEFF]+", " ").Trim();
+            : _invisibleCharsRegex.Replace(SearchText, " ").Trim();
 
-        // Si texte vide → Afficher patients récents
+        // Texte vide → patients récents immédiatement, sans délai
         if (string.IsNullOrWhiteSpace(cleanedText))
         {
+            _debounceTimer.Stop();
             ShowRecentPatients();
             return;
         }
 
-        // Sinon, mode recherche normale
-        ShowingRecentPatients = false;
-
-        // Moins de 3 caractères → Fermer le popup
+        // Moins de 3 caractères → fermer popup immédiatement, sans délai
         if (cleanedText.Length < 3)
         {
+            _debounceTimer.Stop();
+            ShowingRecentPatients = false;
             IsPopupOpen = false;
             Suggestions.Clear();
             ShowCreateOption = false;
             return;
         }
 
-        // Si le texte ressemble à un bloc Doctolib, extraire uniquement le nom/prénom pour la recherche
+        // Sinon, attendre 150ms d'inactivité avant de lancer la recherche
+        ShowingRecentPatients = false;
+        _pendingSearchText = cleanedText;
+        _debounceTimer.Stop();
+        _debounceTimer.Start();
+    }
+
+    /// <summary>
+    /// Exécute la recherche effective (appelé par le debounce timer après 150ms d'inactivité).
+    /// Utilise les SearchKey pré-calculés → aucun Normalize() à la volée.
+    /// </summary>
+    private void ExecuteSearch(string cleanedText)
+    {
         var searchQuery = ExtractSearchQueryFromDoctolibFormat(cleanedText);
 
-        // DEBUG: Afficher dans la console pour diagnostic
-        System.Diagnostics.Debug.WriteLine($"[PatientSearch] Original: '{cleanedText}'");
-        System.Diagnostics.Debug.WriteLine($"[PatientSearch] Query extracted: '{searchQuery}'");
+        System.Diagnostics.Debug.WriteLine($"[PatientSearch] Query: '{searchQuery}'");
 
-        // Rechercher avec le texte nettoyé (ou le nom/prénom extrait)
         var results = _patientIndex.Search(searchQuery, 10);
 
-        // Si aucun résultat et que le query contient 2 mots, essayer l'ordre inversé
-        // Ex: "ABDELKADER Zakaria" → "Zakaria ABDELKADER"
+        // Si aucun résultat et query contient 2 mots, essayer l'ordre inversé
         if (results.Count == 0 && searchQuery.Contains(' '))
         {
             var parts = searchQuery.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length == 2)
-            {
-                var invertedQuery = $"{parts[1]} {parts[0]}";
-                System.Diagnostics.Debug.WriteLine($"[PatientSearch] Trying inverted order: '{invertedQuery}'");
-                results = _patientIndex.Search(invertedQuery, 10);
-            }
+                results = _patientIndex.Search($"{parts[1]} {parts[0]}", 10);
         }
 
-        // DEBUG: Afficher les résultats
         System.Diagnostics.Debug.WriteLine($"[PatientSearch] Results found: {results.Count}");
 
         Suggestions.Clear();
         foreach (var patient in results)
-        {
             Suggestions.Add(patient);
-        }
 
-        // Si aucun résultat → Afficher option "Créer patient"
         if (Suggestions.Count == 0)
         {
             ShowCreateOption = true;
-            IsPopupOpen = true; // Garder le popup ouvert
+            IsPopupOpen = true;
         }
         else
         {
             ShowCreateOption = false;
-            IsPopupOpen = true; // Ouvrir le popup si des résultats
+            IsPopupOpen = true;
         }
 
         SelectedSuggestionIndex = -1;
-        
-        // IMPORTANT : Notifier ValidateCommand que Suggestions a changé
         (ValidateCommand as RelayCommand)?.RaiseCanExecuteChanged();
     }
 
@@ -375,12 +388,13 @@ public class PatientSearchViewModel : ViewModelBase
     /// </summary>
     public void ClearSearch()
     {
+        _debounceTimer.Stop();
         SearchText = string.Empty;
         IsPopupOpen = false;
         Suggestions.Clear();
         ShowCreateOption = false;
         SelectedSuggestionIndex = -1;
-        
+
         // Notifier ValidateCommand que les conditions ont changé
         (ValidateCommand as RelayCommand)?.RaiseCanExecuteChanged();
     }
@@ -410,7 +424,7 @@ public class PatientSearchViewModel : ViewModelBase
 
         ShowingRecentPatients = true;
         ShowCreateOption = false;
-        
+
         if (Suggestions.Count > 0)
         {
             IsPopupOpen = true;

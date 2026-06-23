@@ -124,7 +124,14 @@ namespace MedCompanion.Models
         public string? Dob { get; set; }
         public string? Sexe { get; set; }
         public string DirectoryPath { get; set; } = string.Empty;
-        
+
+        /// <summary>
+        /// Clé de recherche pré-normalisée (sans accents, minuscules).
+        /// Contient "nom prenom prenom nom" pour matcher dans les deux ordres.
+        /// Calculé une seule fois par PatientIndexService à la construction de l'index.
+        /// </summary>
+        public string SearchKey { get; set; } = string.Empty;
+
         public string NomComplet => $"{Prenom} {Nom}";
         
         public int? Age
