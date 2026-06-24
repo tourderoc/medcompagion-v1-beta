@@ -99,8 +99,12 @@ namespace MedCompanion.ViewModels.Restitutions
         public bool IsContexteFamilial => Model.Key == "patient_contexte_familial";
         public bool IsAntecedents       => Model.Key == "patient_antecedents";
         public bool IsSituationActuelle => Model.Key == "patient_situation_actuelle";
-        public bool IsCartoSphere       => Model.Key.StartsWith("carto_s", System.StringComparison.Ordinal);
-        public bool HasReformuleButton  => !IsCouverture && !IsIdentification && !IsRestitutionParents && !IsContexteFamilial && !IsAntecedents && !IsSituationActuelle && !IsCartoSphere;
+        public bool IsCartoSphere  => Model.Key.StartsWith("carto_s", System.StringComparison.Ordinal);
+        public bool IsEnvFeuille   => Model.Key.StartsWith("env_edu_f", System.StringComparison.Ordinal)
+                                   && !Model.Key.Equals("env_edu_global", System.StringComparison.Ordinal);
+        public bool HasReformuleButton => !IsCouverture && !IsIdentification && !IsRestitutionParents
+                                       && !IsContexteFamilial && !IsAntecedents && !IsSituationActuelle
+                                       && !IsCartoSphere && !IsEnvFeuille;
 
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
@@ -711,12 +715,19 @@ namespace MedCompanion.ViewModels.Restitutions
         public ICommand ToggleReformulePanelCommand { get; private set; } = null!;
         public ICommand RegenerateCommand           { get; private set; } = null!;
         public ICommand CancelReformulePanelCommand { get; private set; } = null!;
-        public ICommand EditSphereCommand           { get; private set; } = new RelayCommand(_ => { }, _ => false);
+        public ICommand EditSphereCommand  { get; private set; } = new RelayCommand(_ => { }, _ => false);
+        public ICommand EditFeuilleCommand { get; private set; } = new RelayCommand(_ => { }, _ => false);
 
         public void InitEditSphereCommand(Func<Task> editAction)
         {
             EditSphereCommand = new RelayCommand(async _ => await editAction(), _ => !IsGenerating);
             OnPropertyChanged(nameof(EditSphereCommand));
+        }
+
+        public void InitEditFeuilleCommand(Func<Task> editAction)
+        {
+            EditFeuilleCommand = new RelayCommand(async _ => await editAction(), _ => !IsGenerating);
+            OnPropertyChanged(nameof(EditFeuilleCommand));
         }
 
         private bool _isGenerating;
@@ -732,7 +743,8 @@ namespace MedCompanion.ViewModels.Restitutions
                     (GenerateCommand as RelayCommand)?.RaiseCanExecuteChanged();
                     (ToggleReformulePanelCommand as RelayCommand)?.RaiseCanExecuteChanged();
                     (RegenerateCommand as RelayCommand)?.RaiseCanExecuteChanged();
-                    (EditSphereCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (EditSphereCommand  as RelayCommand)?.RaiseCanExecuteChanged();
+                    (EditFeuilleCommand as RelayCommand)?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -855,7 +867,8 @@ namespace MedCompanion.ViewModels.Restitutions
             RestitutionSuggesterService suggesterService,
             DossierReaderService dossierReader,
             RestitutionHtmlPreviewService? previewService = null,
-            Func<int, Task<bool>>? editSphereAsync = null)
+            Func<int, Task<bool>>? editSphereAsync = null,
+            Func<int, Task<bool>>? editFeuilleAsync = null)
         {
             _dossier            = dossier;
             _patientName        = patientName;
@@ -876,6 +889,21 @@ namespace MedCompanion.ViewModels.Restitutions
                     vm.InitEditSphereCommand(async () =>
                     {
                         bool changed = await editSphereAsync(sphereNum);
+                        if (changed)
+                        {
+                            _currentReading = null;
+                            _previewService?.InvalidateCartoCache();
+                            PreviewRefreshRequested?.Invoke();
+                        }
+                    });
+                }
+
+                if (vm.IsEnvFeuille && editFeuilleAsync != null)
+                {
+                    var feuilleIdx = int.Parse(vm.Model.Key.Substring("env_edu_f".Length));
+                    vm.InitEditFeuilleCommand(async () =>
+                    {
+                        bool changed = await editFeuilleAsync(feuilleIdx);
                         if (changed)
                         {
                             _currentReading = null;

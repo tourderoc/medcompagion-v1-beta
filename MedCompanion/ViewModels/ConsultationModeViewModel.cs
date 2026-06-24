@@ -4429,6 +4429,55 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                     return Task.FromResult(false);
                 };
 
+                Func<int, Task<bool>> editFeuilleAsync = (feuilleIdx) =>
+                {
+                    if (_currentPatient == null) return Task.FromResult(false);
+
+                    var phase = _evaluationPhaseService?.LoadActive(_currentPatient.DirectoryPath);
+                    if (phase == null)
+                    {
+                        var allPhases = _evaluationPhaseService?.LoadAll(_currentPatient.DirectoryPath)
+                                        ?? new System.Collections.Generic.List<MedCompanion.Models.Evaluations.EvaluationPhase>();
+                        phase = allPhases
+                            .Where(p => !p.IsActive)
+                            .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                            .FirstOrDefault();
+                    }
+
+                    if (phase == null)
+                    {
+                        System.Windows.MessageBox.Show(
+                            "Aucune évaluation trouvée pour ce patient.",
+                            "Feuille non disponible");
+                        return Task.FromResult(false);
+                    }
+
+                    MedCompanion.Models.Evaluations.FeuilleEnvironnement? feuille = feuilleIdx switch
+                    {
+                        1 => phase.CartographieEnvironnement.Famille,
+                        2 => phase.CartographieEnvironnement.EcolePairs,
+                        3 => phase.CartographieEnvironnement.EcransMedias,
+                        4 => phase.CartographieEnvironnement.ValeursSocietales,
+                        5 => phase.CartographieEnvironnement.CadreEducatif,
+                        _ => null
+                    };
+
+                    if (feuille == null) return Task.FromResult(false);
+
+                    var feuilleVm = new FeuilleEvaluationViewModel(feuille);
+                    var feuilleDialog = new MedCompanion.Dialogs.FeuilleEvaluationDialog(feuilleVm)
+                    {
+                        Owner = System.Windows.Application.Current?.MainWindow
+                    };
+                    bool? feuilleResult = feuilleDialog.ShowDialog();
+                    if (feuilleResult == true)
+                    {
+                        _evaluationPhaseService?.Save(phase);
+                        return Task.FromResult(true);
+                    }
+                    return Task.FromResult(false);
+                };
+
                 var editorVm = new ViewModels.Restitutions.RestitutionEditorViewModel(
                     dossier,
                     CurrentPatient?.NomComplet ?? "Inconnu",
@@ -4436,7 +4485,8 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                     suggesterService,
                     dossierReader,
                     previewService,
-                    editSphereAsync
+                    editSphereAsync,
+                    editFeuilleAsync
                 );
 
                 // Ouverture dans une fenêtre indépendante redimensionnable. L'utilisateur peut

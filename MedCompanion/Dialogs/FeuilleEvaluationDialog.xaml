@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window x:Class="MedCompanion.Dialogs.FeuilleEvaluationDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Compléter la feuille"
+        Width="560" Height="680"
+        WindowStartupLocation="CenterOwner"
+        Background="#F5F6FA"
+        ResizeMode="CanResizeWithGrip">
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- En-tête -->
+        <Border Grid.Row="0" Background="#2C3E50" Padding="16,12">
+            <TextBlock Text="{Binding Title}"
+                       Foreground="White" FontSize="15" FontWeight="SemiBold"
+                       FontFamily="Segoe UI"/>
+        </Border>
+
+        <!-- Nervures (scrollable) -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="16,12,16,0">
+            <ItemsControl ItemsSource="{Binding AllNervures}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate>
+                        <Border Margin="0,0,0,10" BorderThickness="1" CornerRadius="6">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="BorderBrush" Value="#CCD0D5"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsCentrale}" Value="True">
+                                            <Setter Property="BorderBrush" Value="#2C3E50"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+
+                            <StackPanel>
+                                <!-- En-tête nervure -->
+                                <Border CornerRadius="5,5,0,0" Padding="12,8">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#ECF0F1"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding IsCentrale}" Value="True">
+                                                    <Setter Property="Background" Value="#2C3E50"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock FontSize="11" Margin="0,0,8,0" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value=""/>
+                                                    <Setter Property="Foreground" Value="#7F8C8D"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCentrale}" Value="True">
+                                                            <Setter Property="Text" Value="★ Centrale"/>
+                                                            <Setter Property="Foreground" Value="#F39C12"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Text="{Binding Label}" FontWeight="SemiBold" FontSize="12"
+                                                   FontFamily="Segoe UI" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Foreground" Value="#2C3E50"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCentrale}" Value="True">
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Items (checkboxes) -->
+                                <StackPanel Margin="12,8,12,4">
+                                    <ItemsControl ItemsSource="{Binding Items}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <CheckBox IsChecked="{Binding IsChecked, Mode=TwoWay}"
+                                                          Margin="0,4,0,4" Cursor="Hand"
+                                                          FontFamily="Segoe UI" FontSize="12">
+                                                    <TextBlock Text="{Binding Affirmation}"
+                                                               TextWrapping="Wrap" FontSize="12"/>
+                                                </CheckBox>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+
+                                    <!-- Aucun signe notable -->
+                                    <Border Margin="0,6,0,6" Padding="8,5"
+                                            Background="#FFF9E6" CornerRadius="4"
+                                            BorderBrush="#F0D080" BorderThickness="1">
+                                        <CheckBox IsChecked="{Binding AucunSigneNotable, Mode=TwoWay}"
+                                                  Cursor="Hand" FontFamily="Segoe UI" FontSize="11"
+                                                  FontStyle="Italic">
+                                            <TextBlock Text="Aucun signe notable (axe évalué, rien de significatif)"
+                                                       FontSize="11" FontStyle="Italic" Foreground="#7D6608"/>
+                                        </CheckBox>
+                                    </Border>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </ScrollViewer>
+
+        <!-- Boutons -->
+        <Border Grid.Row="2" Background="#ECEFF1" Padding="16,10">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Annuler" Click="Annuler_Click"
+                        Padding="14,7" Background="White" Foreground="#555"
+                        BorderBrush="#CCC" BorderThickness="1"
+                        FontSize="12" FontFamily="Segoe UI" Cursor="Hand" Margin="0,0,10,0">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                    CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#F0F0F0"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+                <Button Content="✓ Sauvegarder et fermer" Click="Sauvegarder_Click"
+                        Padding="14,7" Background="#27AE60" Foreground="White" BorderThickness="0"
+                        FontSize="12" FontFamily="Segoe UI" Cursor="Hand">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}"
+                                    CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#229954"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
