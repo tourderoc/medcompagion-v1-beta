@@ -99,7 +99,8 @@ namespace MedCompanion.ViewModels.Restitutions
         public bool IsContexteFamilial => Model.Key == "patient_contexte_familial";
         public bool IsAntecedents       => Model.Key == "patient_antecedents";
         public bool IsSituationActuelle => Model.Key == "patient_situation_actuelle";
-        public bool HasReformuleButton  => !IsCouverture && !IsIdentification && !IsRestitutionParents && !IsContexteFamilial && !IsAntecedents && !IsSituationActuelle;
+        public bool IsCartoSphere       => Model.Key.StartsWith("carto_s", System.StringComparison.Ordinal);
+        public bool HasReformuleButton  => !IsCouverture && !IsIdentification && !IsRestitutionParents && !IsContexteFamilial && !IsAntecedents && !IsSituationActuelle && !IsCartoSphere;
 
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
@@ -710,6 +711,13 @@ namespace MedCompanion.ViewModels.Restitutions
         public ICommand ToggleReformulePanelCommand { get; private set; } = null!;
         public ICommand RegenerateCommand           { get; private set; } = null!;
         public ICommand CancelReformulePanelCommand { get; private set; } = null!;
+        public ICommand EditSphereCommand           { get; private set; } = new RelayCommand(_ => { }, _ => false);
+
+        public void InitEditSphereCommand(Func<Task> editAction)
+        {
+            EditSphereCommand = new RelayCommand(async _ => await editAction(), _ => !IsGenerating);
+            OnPropertyChanged(nameof(EditSphereCommand));
+        }
 
         private bool _isGenerating;
         public bool IsGenerating
@@ -724,6 +732,7 @@ namespace MedCompanion.ViewModels.Restitutions
                     (GenerateCommand as RelayCommand)?.RaiseCanExecuteChanged();
                     (ToggleReformulePanelCommand as RelayCommand)?.RaiseCanExecuteChanged();
                     (RegenerateCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (EditSphereCommand as RelayCommand)?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -845,7 +854,8 @@ namespace MedCompanion.ViewModels.Restitutions
             RestitutionService restitutionService,
             RestitutionSuggesterService suggesterService,
             DossierReaderService dossierReader,
-            RestitutionHtmlPreviewService? previewService = null)
+            RestitutionHtmlPreviewService? previewService = null,
+            Func<int, Task<bool>>? editSphereAsync = null)
         {
             _dossier            = dossier;
             _patientName        = patientName;
@@ -859,6 +869,17 @@ namespace MedCompanion.ViewModels.Restitutions
                 var vm = new RestitutionBlocViewModel(bloc, GenerateBlocAsync, GenerateSectionBlocAsync, ReformulateBlocAsync);
                 // Quand le médecin tape dans un bloc, on déclenche un refresh de l'aperçu (debounce).
                 vm.PropertyChanged += OnBlocPropertyChanged;
+
+                if (vm.IsCartoSphere && editSphereAsync != null)
+                {
+                    var sphereNum = int.Parse(vm.Model.Key.Substring("carto_s".Length));
+                    vm.InitEditSphereCommand(async () =>
+                    {
+                        bool changed = await editSphereAsync(sphereNum);
+                        if (changed) _currentReading = null;
+                    });
+                }
+
                 Blocs.Add(vm);
             }
 

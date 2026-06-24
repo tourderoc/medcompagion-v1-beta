@@ -4296,13 +4296,60 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                 );
                 
                 var previewService = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(pathService, _evaluationPhaseService);
+
+                Func<int, Task<bool>> editSphereAsync = (sphereNum) =>
+                {
+                    if (_currentPatient == null) return Task.FromResult(false);
+                    var phase = _evaluationPhaseService?.LoadActive(_currentPatient.DirectoryPath);
+                    if (phase == null)
+                    {
+                        System.Windows.MessageBox.Show(
+                            "Aucune évaluation active pour ce patient.",
+                            "Sphère non disponible");
+                        return Task.FromResult(false);
+                    }
+
+                    MedCompanion.Models.Evaluations.ChenilleSegment? segment = sphereNum switch
+                    {
+                        1 => phase.CartographieEnfant.Attachement,
+                        2 => phase.CartographieEnfant.Emotions,
+                        3 => phase.CartographieEnfant.Langage,
+                        6 => phase.CartographieEnfant.Imaginaire,
+                        7 => phase.CartographieEnfant.Pensee,
+                        _ => null
+                    };
+
+                    if (segment == null)
+                    {
+                        System.Windows.MessageBox.Show(
+                            $"La sphère {sphereNum} utilise un profil spécifique (Tempérament, Psychomotricité ou Attention).\nOuvrez l'onglet Évaluation pour la compléter.",
+                            "Sphère non éditable ici");
+                        return Task.FromResult(false);
+                    }
+
+                    int? age = _currentPatient.Age;
+                    var segVm = new CartographieSegmentViewModel(segment, () => age);
+                    var dlg = new MedCompanion.Dialogs.SphereEvaluationDialog(segVm)
+                    {
+                        Owner = System.Windows.Application.Current?.MainWindow
+                    };
+                    bool? result = dlg.ShowDialog();
+                    if (result == true)
+                    {
+                        _evaluationPhaseService?.Save(phase);
+                        return Task.FromResult(true);
+                    }
+                    return Task.FromResult(false);
+                };
+
                 var editorVm = new ViewModels.Restitutions.RestitutionEditorViewModel(
                     dossier,
                     CurrentPatient?.NomComplet ?? "Inconnu",
                     new RestitutionService(pathService),
                     suggesterService,
                     dossierReader,
-                    previewService
+                    previewService,
+                    editSphereAsync
                 );
 
                 // Ouverture dans une fenêtre indépendante redimensionnable. L'utilisateur peut
