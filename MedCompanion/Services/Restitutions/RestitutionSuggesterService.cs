@@ -994,18 +994,35 @@ namespace MedCompanion.Services.Restitutions
             Action<string> onSectionReady,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
-
-            var blocCe = new RestitutionBloc("carto_enfant", "Cartographie de l'enfant", 8, "clinique");
-            var systemPrompt = BuildSystemPrompt(blocCe);
             var carto = reading.LatestCartographieEnfant;
 
-            var instruction = BuildCartoSphereInstruction(sphereNum, carto);
-            var userPrompt  = BuildSubsectionPrompt(context, instruction, blocCe.VoixCible);
-            var messages    = new List<(string role, string content)> { ("user", userPrompt) };
-            var result      = await _llmService.ChatAsync(systemPrompt, messages, 450, ct);
+            // Sphères ChenilleSegment (1/2/3/6/7) : si non explorée → texte statique, pas de LLM.
+            MedCompanion.Models.Evaluations.ChenilleSegment? seg = sphereNum switch
+            {
+                1 when carto != null => carto.Attachement,
+                2 when carto != null => carto.Emotions,
+                3 when carto != null => carto.Langage,
+                6 when carto != null => carto.Imaginaire,
+                7 when carto != null => carto.Pensee,
+                _ => null
+            };
+            if (seg != null && !seg.IsEvaluated)
+            {
+                onSectionReady("**Observations** : Sphère non explorée.\n\n**Niveau clinique** : Non évalué.");
+                return;
+            }
 
+            // LLM appelé avec UNIQUEMENT les données d'évaluation — pas le dossier complet.
+            var instruction  = BuildCartoSphereInstruction(sphereNum, carto);
+            var blocCe       = new RestitutionBloc("carto_enfant", "Cartographie de l'enfant", 8, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocCe);
+            var userPrompt   = "INSTRUCTION STRICTE — génère UNIQUEMENT ce qui est demandé ci-dessous, " +
+                               "sans introduction, sans commentaire, sans titre supplémentaire :\n" +
+                               instruction + "\n\n" +
+                               "RAPPEL TON OBLIGATOIRE : Voix clinique. Utilise la terminologie pédopsychiatrique précise. " +
+                               "Rigueur et concision clinique. Réponds directement en Markdown.";
+            var messages     = new List<(string role, string content)> { ("user", userPrompt) };
+            var result       = await _llmService.ChatAsync(systemPrompt, messages, 450, ct);
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 

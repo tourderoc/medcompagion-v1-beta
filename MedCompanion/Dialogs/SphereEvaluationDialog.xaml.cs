@@ -13,6 +13,12 @@ namespace MedCompanion.Dialogs
         }
 
         private void Annuler_Click(object sender, RoutedEventArgs e) => DialogResult = false;
-        private void Sauvegarder_Click(object sender, RoutedEventArgs e) => DialogResult = true;
+
+        private void Sauvegarder_Click(object sender, RoutedEventArgs e)
+        {
+            if (DataContext is CartographieSegmentViewModel vm)
+                vm.Segment.IsEvaluated = true;
+            DialogResult = true;
+        }
     }
 }

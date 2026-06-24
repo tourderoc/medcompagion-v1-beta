@@ -507,6 +507,7 @@ namespace MedCompanion.Services.Evaluations
                 sb.Append(segment.Items[i].IsChecked ? "true" : "false");
             }
             sb.AppendLine("]");
+            sb.AppendLine($"    is_evaluated: {(segment.IsEvaluated ? "true" : "false")}");
         }
 
         private static void AppendChenilleSegmentMd(StringBuilder sb, ChenilleSegment segment, int? age)
@@ -996,21 +997,27 @@ namespace MedCompanion.Services.Evaluations
             var block = ExtractNamedSubBlock(yaml, segmentKey + ":");
             if (block == null) return;
 
-            // Chercher la ligne items: [true, false, ...]
+            // Chercher les lignes items: [...] et is_evaluated: dans le bloc
             var lines = block.Replace("\r\n", "\n").Split('\n');
             foreach (var line in lines)
             {
                 var t = line.TrimStart();
-                if (!t.StartsWith("items:")) continue;
-                var rest = t.Substring("items:".Length).Trim();
-                if (!rest.StartsWith("[") || !rest.EndsWith("]")) continue;
-                var inner = rest.Substring(1, rest.Length - 2);
-                var values = inner.Split(',');
-                for (int i = 0; i < values.Length && i < segment.Items.Count; i++)
+                if (t.StartsWith("items:"))
                 {
-                    segment.Items[i].IsChecked = values[i].Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+                    var rest = t.Substring("items:".Length).Trim();
+                    if (rest.StartsWith("[") && rest.EndsWith("]"))
+                    {
+                        var inner = rest.Substring(1, rest.Length - 2);
+                        var values = inner.Split(',');
+                        for (int i = 0; i < values.Length && i < segment.Items.Count; i++)
+                            segment.Items[i].IsChecked = values[i].Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+                    }
                 }
-                break;
+                else if (t.StartsWith("is_evaluated:"))
+                {
+                    segment.IsEvaluated = t.Substring("is_evaluated:".Length).Trim()
+                        .Equals("true", StringComparison.OrdinalIgnoreCase);
+                }
             }
         }
 

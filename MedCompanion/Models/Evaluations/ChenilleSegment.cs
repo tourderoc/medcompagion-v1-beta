@@ -25,6 +25,12 @@ namespace MedCompanion.Models.Evaluations
 
         public int Score => Items.Count(i => i.IsChecked);
 
+        /// <summary>
+        /// True si le médecin a explicitement évalué ce segment (même à 0/6).
+        /// Distingue "non touché" (false) de "évalué à zéro" (true + Score=0).
+        /// </summary>
+        public bool IsEvaluated { get; set; }
+
         public ChenilleSegment(string key, string label, string phraseBoussole, params string[] affirmations)
         {
             Key            = key;

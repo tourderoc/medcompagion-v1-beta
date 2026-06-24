@@ -4300,11 +4300,23 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                 Func<int, Task<bool>> editSphereAsync = (sphereNum) =>
                 {
                     if (_currentPatient == null) return Task.FromResult(false);
+
                     var phase = _evaluationPhaseService?.LoadActive(_currentPatient.DirectoryPath);
                     if (phase == null)
                     {
+                        // Fallback : dernière phase clôturée (modification directe du fichier)
+                        var allPhases = _evaluationPhaseService?.LoadAll(_currentPatient.DirectoryPath)
+                                        ?? new System.Collections.Generic.List<MedCompanion.Models.Evaluations.EvaluationPhase>();
+                        phase = allPhases
+                            .Where(p => !p.IsActive)
+                            .OrderByDescending(p => p.DateCloture ?? p.DateDerniereModif)
+                            .FirstOrDefault();
+                    }
+
+                    if (phase == null)
+                    {
                         System.Windows.MessageBox.Show(
-                            "Aucune évaluation active pour ce patient.",
+                            "Aucune évaluation trouvée pour ce patient.",
                             "Sphère non disponible");
                         return Task.FromResult(false);
                     }
