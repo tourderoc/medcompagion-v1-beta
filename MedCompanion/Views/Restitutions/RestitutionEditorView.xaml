@@ -442,6 +442,114 @@
                                             </StackPanel>
                                         </Border>
 
+                                        <!-- IDENTIFICATION : formulaire structuré 5 champs -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsIdentification}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <StackPanel.Resources>
+                                                    <Style x:Key="IdLabelChip" TargetType="Border">
+                                                        <Setter Property="Background" Value="#EBF5FB"/>
+                                                        <Setter Property="BorderBrush" Value="#AED6F1"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="CornerRadius" Value="4"/>
+                                                        <Setter Property="Padding" Value="8,5"/>
+                                                        <Setter Property="VerticalAlignment" Value="Top"/>
+                                                        <Setter Property="MinWidth" Value="155"/>
+                                                    </Style>
+                                                    <Style x:Key="IdLabelText" TargetType="TextBlock">
+                                                        <Setter Property="FontSize" Value="11"/>
+                                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                                        <Setter Property="Foreground" Value="#1B4F72"/>
+                                                    </Style>
+                                                    <Style x:Key="IdFieldBox" TargetType="TextBox">
+                                                        <Setter Property="FontSize" Value="12"/>
+                                                        <Setter Property="FontFamily" Value="Segoe UI"/>
+                                                        <Setter Property="Padding" Value="7,5"/>
+                                                        <Setter Property="BorderBrush" Value="#D6DBDF"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="Background" Value="White"/>
+                                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                                        <Setter Property="VerticalAlignment" Value="Top"/>
+                                                    </Style>
+                                                </StackPanel.Resources>
+
+                                                <!-- Présentation -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource IdLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Présentation" Style="{StaticResource IdLabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource IdFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="70"
+                                                             Text="{Binding IdPresentation, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Période d'évaluation -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource IdLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Période d'évaluation" Style="{StaticResource IdLabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource IdFieldBox}"
+                                                             Text="{Binding IdPeriodeEval, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Date de restitution -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource IdLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Date de restitution" Style="{StaticResource IdLabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource IdFieldBox}"
+                                                             Text="{Binding IdDateRestitution, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Évaluateur -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource IdLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Évaluateur" Style="{StaticResource IdLabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource IdFieldBox}"
+                                                             Text="{Binding IdEvaluateur, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Lieu -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource IdLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Lieu" Style="{StaticResource IdLabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource IdFieldBox}"
+                                                             Text="{Binding IdLieu, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
                                         <!-- RESTITUTION PARENTS : 6 sections avec titre + textarea + reformuler -->
                                         <Border>
                                             <Border.Style>
@@ -611,6 +719,9 @@
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsRestitutionParents}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsIdentification}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>

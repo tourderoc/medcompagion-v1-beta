@@ -95,6 +95,7 @@ namespace MedCompanion.ViewModels.Restitutions
         public string SectionType => Model.Key;
         public bool IsCouverture => Model.Key == "couverture";
         public bool IsRestitutionParents => Model.Key == "restitution_1page";
+        public bool IsIdentification => Model.Key == "patient_identification";
 
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
@@ -288,6 +289,95 @@ namespace MedCompanion.ViewModels.Restitutions
             finally { _syncingParents = false; }
         }
 
+        // ── Champs structurés du bloc identification ──────────────────────────
+
+        private bool _syncingIdentification;
+
+        private string _idPresentation    = "";
+        private string _idPeriodeEval     = "";
+        private string _idDateRestitution = "";
+        private string _idEvaluateur      = "";
+        private string _idLieu            = "";
+
+        public string IdPresentation    { get => _idPresentation;    set { if (SetId(ref _idPresentation,    value)) FlushIdentificationToContenu(); } }
+        public string IdPeriodeEval     { get => _idPeriodeEval;     set { if (SetId(ref _idPeriodeEval,     value)) FlushIdentificationToContenu(); } }
+        public string IdDateRestitution { get => _idDateRestitution; set { if (SetId(ref _idDateRestitution, value)) FlushIdentificationToContenu(); } }
+        public string IdEvaluateur      { get => _idEvaluateur;      set { if (SetId(ref _idEvaluateur,      value)) FlushIdentificationToContenu(); } }
+        public string IdLieu            { get => _idLieu;            set { if (SetId(ref _idLieu,            value)) FlushIdentificationToContenu(); } }
+
+        private bool SetId(ref string field, string value)
+        {
+            if (field == value) return false;
+            field = value ?? "";
+            return true;
+        }
+
+        private void ParseContenuToIdentificationFields()
+        {
+            if (_syncingIdentification) return;
+            _syncingIdentification = true;
+            try
+            {
+                var contenu = Model.ContenuValide ?? "";
+
+                // Extrait la valeur (monoligne ou multiligne) entre **Label** : et le prochain **Label** ou fin
+                string PickBlock(string label, params string[] nextLabels)
+                {
+                    var marker   = $"**{label}**";
+                    var startIdx = contenu.IndexOf(marker, StringComparison.Ordinal);
+                    if (startIdx < 0) return "";
+                    var colonIdx = contenu.IndexOf(':', startIdx + marker.Length);
+                    if (colonIdx < 0) return "";
+                    var after = colonIdx + 1;
+                    while (after < contenu.Length && contenu[after] == ' ') after++;
+                    var end = contenu.Length;
+                    foreach (var nl in nextLabels)
+                    {
+                        var ni = contenu.IndexOf($"**{nl}**", after, StringComparison.Ordinal);
+                        if (ni >= 0 && ni < end) end = ni;
+                    }
+                    return contenu.Substring(after, end - after).TrimEnd();
+                }
+
+                _idPresentation    = PickBlock("Présentation", "Période d'évaluation", "Evaluateur", "Lieu");
+                _idPeriodeEval     = PickBlock("Période d'évaluation", "Date de restitution", "Évaluateur", "Evaluateur", "Lieu");
+                _idDateRestitution = PickBlock("Date de restitution", "Évaluateur", "Evaluateur", "Lieu");
+                _idEvaluateur      = PickBlock("Évaluateur", "Evaluateur", "Lieu");
+                if (string.IsNullOrEmpty(_idEvaluateur)) _idEvaluateur = PickBlock("Evaluateur", "Lieu");
+                _idLieu            = PickBlock("Lieu");
+
+                OnPropertyChanged(nameof(IdPresentation));
+                OnPropertyChanged(nameof(IdPeriodeEval));
+                OnPropertyChanged(nameof(IdDateRestitution));
+                OnPropertyChanged(nameof(IdEvaluateur));
+                OnPropertyChanged(nameof(IdLieu));
+            }
+            finally { _syncingIdentification = false; }
+        }
+
+        private void FlushIdentificationToContenu()
+        {
+            if (_syncingIdentification) return;
+            _syncingIdentification = true;
+            try
+            {
+                var sb = new StringBuilder();
+                void Line(string label, string val)
+                    => sb.AppendLine($"**{label}** : {(string.IsNullOrWhiteSpace(val) ? "Non renseigné(e)" : val.Trim())}");
+
+                sb.AppendLine($"**Présentation** : {(string.IsNullOrWhiteSpace(_idPresentation) ? "Non renseigné(e)" : _idPresentation.Trim())}");
+                sb.AppendLine();
+                Line("Période d'évaluation", _idPeriodeEval);
+                Line("Date de restitution",  _idDateRestitution);
+                Line("Évaluateur",           _idEvaluateur);
+                Line("Lieu",                 _idLieu);
+
+                Model.ContenuValide = sb.ToString().TrimEnd();
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingIdentification = false; }
+        }
+
         // ── Contenu brut (TextBox pour les autres blocs) ──────────────────────
 
         public string Contenu
@@ -301,6 +391,7 @@ namespace MedCompanion.ViewModels.Restitutions
                     OnPropertyChanged();
                     if (IsCouverture) ParseContenuToCouvertureFields();
                     if (IsRestitutionParents) ParseContenuToParentsFields();
+                    if (IsIdentification) ParseContenuToIdentificationFields();
                 }
             }
         }
@@ -329,6 +420,7 @@ namespace MedCompanion.ViewModels.Restitutions
             Model = model;
             GenerateCommand = new RelayCommand(async _ => await generateAction(this), _ => !IsGenerating);
             if (IsCouverture) ParseContenuToCouvertureFields();
+            if (IsIdentification) ParseContenuToIdentificationFields();
             if (IsRestitutionParents) InitRpSections(generateSectionAction);
         }
 
