@@ -3,6 +3,8 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -18,6 +20,107 @@ namespace MedCompanion.ViewModels.Restitutions
 
         public string Title => Model.Titre;
         public string SectionType => Model.Key;
+        public bool IsCouverture => Model.Key == "couverture";
+
+        // ── Champs structurés du bloc couverture ──────────────────────────────
+        // Synchronisés avec Contenu (parse ↔ sérialise le markdown **Label** : valeur).
+
+        private bool _syncingCouverture; // anti-boucle parse ↔ serialize
+
+        private string _cvNomPrenom    = "";
+        private string _cvDateNaissance= "";
+        private string _cvAge          = "";
+        private string _cvEcole        = "";
+        private string _cvClasse       = "";
+        private string _cvAnneeScolaire= "";
+        private string _cvMotif        = "";
+        private string _cvDatesEval    = "";
+
+        public string CvNomPrenom     { get => _cvNomPrenom;     set { if (SetCv(ref _cvNomPrenom,     value)) FlushCouvertureToContenu(); } }
+        public string CvDateNaissance { get => _cvDateNaissance; set { if (SetCv(ref _cvDateNaissance, value)) FlushCouvertureToContenu(); } }
+        public string CvAge           { get => _cvAge;           set { if (SetCv(ref _cvAge,           value)) FlushCouvertureToContenu(); } }
+        public string CvEcole         { get => _cvEcole;         set { if (SetCv(ref _cvEcole,         value)) FlushCouvertureToContenu(); } }
+        public string CvClasse        { get => _cvClasse;        set { if (SetCv(ref _cvClasse,        value)) FlushCouvertureToContenu(); } }
+        public string CvAnneeScolaire { get => _cvAnneeScolaire; set { if (SetCv(ref _cvAnneeScolaire, value)) FlushCouvertureToContenu(); } }
+        public string CvMotif         { get => _cvMotif;         set { if (SetCv(ref _cvMotif,         value)) FlushCouvertureToContenu(); } }
+        public string CvDatesEval     { get => _cvDatesEval;     set { if (SetCv(ref _cvDatesEval,     value)) FlushCouvertureToContenu(); } }
+
+        private bool SetCv(ref string field, string value)
+        {
+            if (field == value) return false;
+            field = value ?? "";
+            return true;
+        }
+
+        private void ParseContenuToCouvertureFields()
+        {
+            if (_syncingCouverture) return;
+            _syncingCouverture = true;
+            try
+            {
+                string Pick(params string[] labels)
+                {
+                    foreach (var lbl in labels)
+                    {
+                        var m = Regex.Match(Model.ContenuValide ?? "",
+                            $@"\*\*\s*{Regex.Escape(lbl)}\s*\*\*\s*:\s*(.+?)(?:\r?\n|$)",
+                            RegexOptions.IgnoreCase);
+                        if (m.Success)
+                        {
+                            var v = m.Groups[1].Value.Trim();
+                            if (!string.IsNullOrWhiteSpace(v)) return v;
+                        }
+                    }
+                    return "";
+                }
+
+                _cvNomPrenom     = Pick("Nom et prénom", "Nom", "Prénom et nom");
+                _cvDateNaissance = Pick("Date de naissance", "Naissance");
+                _cvAge           = Pick("Âge", "Age");
+                _cvEcole         = Pick("Établissement", "Etablissement", "École", "Ecole");
+                _cvClasse        = Pick("Classe", "Niveau scolaire");
+                _cvAnneeScolaire = Pick("Année scolaire", "Annee scolaire");
+                _cvMotif         = Pick("Motif de consultation", "Motif");
+                _cvDatesEval     = Pick("Dates d'évaluation", "Date d'évaluation", "Dates d'evaluation", "Évaluations");
+
+                OnPropertyChanged(nameof(CvNomPrenom));
+                OnPropertyChanged(nameof(CvDateNaissance));
+                OnPropertyChanged(nameof(CvAge));
+                OnPropertyChanged(nameof(CvEcole));
+                OnPropertyChanged(nameof(CvClasse));
+                OnPropertyChanged(nameof(CvAnneeScolaire));
+                OnPropertyChanged(nameof(CvMotif));
+                OnPropertyChanged(nameof(CvDatesEval));
+            }
+            finally { _syncingCouverture = false; }
+        }
+
+        private void FlushCouvertureToContenu()
+        {
+            if (_syncingCouverture) return;
+            _syncingCouverture = true;
+            try
+            {
+                var sb = new StringBuilder();
+                void Line(string label, string val)
+                    => sb.AppendLine($"**{label}** : {(string.IsNullOrWhiteSpace(val) ? "Non renseigné" : val.Trim())}");
+
+                Line("Nom et prénom",        _cvNomPrenom);
+                Line("Date de naissance",    _cvDateNaissance);
+                Line("Âge",                  _cvAge);
+                Line("Établissement",        _cvEcole);
+                Line("Classe",               _cvClasse);
+                Line("Année scolaire",       _cvAnneeScolaire);
+                Line("Motif de consultation",_cvMotif);
+                Line("Dates d'évaluation",   _cvDatesEval);
+
+                Model.ContenuValide = sb.ToString().TrimEnd();
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingCouverture = false; }
+        }
+
+        // ── Contenu brut (TextBox pour les autres blocs) ──────────────────────
 
         public string Contenu
         {
@@ -28,6 +131,7 @@ namespace MedCompanion.ViewModels.Restitutions
                 {
                     Model.ContenuValide = value;
                     OnPropertyChanged();
+                    if (IsCouverture) ParseContenuToCouvertureFields();
                 }
             }
         }
@@ -53,6 +157,7 @@ namespace MedCompanion.ViewModels.Restitutions
         {
             Model = model;
             GenerateCommand = new RelayCommand(async _ => await generateAction(this), _ => !IsGenerating);
+            if (IsCouverture) ParseContenuToCouvertureFields();
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;

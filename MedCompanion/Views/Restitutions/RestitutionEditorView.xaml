@@ -291,10 +291,174 @@
                                         </StackPanel>
                                     </Grid>
                                     
-                                    <TextBox Grid.Row="1" Text="{Binding Contenu, UpdateSourceTrigger=PropertyChanged}" 
-                                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100"
-                                             FontSize="13" FontFamily="Segoe UI" Padding="8"
-                                             BorderBrush="#D6DBDF" BorderThickness="1"/>
+                                    <!-- Éditeur structuré pour le bloc couverture (cartouches label + champ) -->
+                                    <Grid Grid.Row="1">
+                                        <!-- COUVERTURE : formulaire structuré champ par champ -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCouverture}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <StackPanel.Resources>
+                                                    <Style x:Key="FieldRow" TargetType="Grid">
+                                                        <Setter Property="Margin" Value="0,0,0,7"/>
+                                                    </Style>
+                                                    <Style x:Key="LabelChip" TargetType="Border">
+                                                        <Setter Property="Background" Value="#EBF5FB"/>
+                                                        <Setter Property="BorderBrush" Value="#AED6F1"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="CornerRadius" Value="4"/>
+                                                        <Setter Property="Padding" Value="8,5"/>
+                                                        <Setter Property="VerticalAlignment" Value="Center"/>
+                                                        <Setter Property="MinWidth" Value="150"/>
+                                                    </Style>
+                                                    <Style x:Key="LabelText" TargetType="TextBlock">
+                                                        <Setter Property="FontSize" Value="11"/>
+                                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                                        <Setter Property="Foreground" Value="#1B4F72"/>
+                                                    </Style>
+                                                    <Style x:Key="FieldBox" TargetType="TextBox">
+                                                        <Setter Property="FontSize" Value="12"/>
+                                                        <Setter Property="FontFamily" Value="Segoe UI"/>
+                                                        <Setter Property="Padding" Value="7,5"/>
+                                                        <Setter Property="BorderBrush" Value="#D6DBDF"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="VerticalAlignment" Value="Center"/>
+                                                        <Setter Property="Background" Value="White"/>
+                                                    </Style>
+                                                </StackPanel.Resources>
+
+                                                <!-- Nom et prénom -->
+                                                <Grid Style="{StaticResource FieldRow}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource LabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Nom et prénom" Style="{StaticResource LabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                                             Text="{Binding CvNomPrenom, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Date de naissance -->
+                                                <Grid Style="{StaticResource FieldRow}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource LabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Date de naissance" Style="{StaticResource LabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                                             Text="{Binding CvDateNaissance, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Âge -->
+                                                <Grid Style="{StaticResource FieldRow}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource LabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Âge" Style="{StaticResource LabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                                             Text="{Binding CvAge, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Établissement -->
+                                                <Grid Style="{StaticResource FieldRow}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource LabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Établissement" Style="{StaticResource LabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                                             Text="{Binding CvEcole, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Classe -->
+                                                <Grid Style="{StaticResource FieldRow}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource LabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Classe" Style="{StaticResource LabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                                             Text="{Binding CvClasse, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Année scolaire -->
+                                                <Grid Style="{StaticResource FieldRow}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource LabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Année scolaire" Style="{StaticResource LabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                                             Text="{Binding CvAnneeScolaire, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Motif de consultation -->
+                                                <Grid Style="{StaticResource FieldRow}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource LabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Motif de consultation" Style="{StaticResource LabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="52"
+                                                             Text="{Binding CvMotif, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Dates d'évaluation -->
+                                                <Grid Style="{StaticResource FieldRow}">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="155"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource LabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Dates d'évaluation" Style="{StaticResource LabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource FieldBox}"
+                                                             Text="{Binding CvDatesEval, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- AUTRES BLOCS : TextBox libre classique -->
+                                        <TextBox Text="{Binding Contenu, UpdateSourceTrigger=PropertyChanged}"
+                                                 AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100"
+                                                 FontSize="13" FontFamily="Segoe UI" Padding="8"
+                                                 BorderBrush="#D6DBDF" BorderThickness="1">
+                                            <TextBox.Style>
+                                                <Style TargetType="TextBox">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCouverture}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBox.Style>
+                                        </TextBox>
+                                    </Grid>
                                 </Grid>
                             </Border>
                         </StackPanel>
