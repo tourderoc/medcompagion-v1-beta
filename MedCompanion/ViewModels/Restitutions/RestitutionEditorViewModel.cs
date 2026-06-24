@@ -97,8 +97,9 @@ namespace MedCompanion.ViewModels.Restitutions
         public bool IsRestitutionParents => Model.Key == "restitution_1page";
         public bool IsIdentification   => Model.Key == "patient_identification";
         public bool IsContexteFamilial => Model.Key == "patient_contexte_familial";
-        public bool IsAntecedents      => Model.Key == "patient_antecedents";
-        public bool HasReformuleButton => !IsCouverture && !IsIdentification && !IsRestitutionParents && !IsContexteFamilial && !IsAntecedents;
+        public bool IsAntecedents       => Model.Key == "patient_antecedents";
+        public bool IsSituationActuelle => Model.Key == "patient_situation_actuelle";
+        public bool HasReformuleButton  => !IsCouverture && !IsIdentification && !IsRestitutionParents && !IsContexteFamilial && !IsAntecedents && !IsSituationActuelle;
 
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
@@ -221,6 +222,96 @@ namespace MedCompanion.ViewModels.Restitutions
                 OnPropertyChanged(nameof(Contenu));
             }
             finally { _syncingCouverture = false; }
+        }
+
+        // ── Champs structurés du bloc situation actuelle ─────────────────────
+
+        public ObservableCollection<RpSectionViewModel> SaSections { get; } = new();
+        private bool _syncingSa;
+
+        private static readonly string[] SaMarkdownTitles =
+        {
+            "**À l'école**",
+            "**À la maison**",
+            "**Avec les autres**",
+            "**Forces observées**",
+            "**Activités et intérêts**"
+        };
+
+        public static readonly string[] SaDisplayTitles =
+        {
+            "À l'école",
+            "À la maison",
+            "Avec les autres",
+            "Forces observées",
+            "Activités et intérêts"
+        };
+
+        private void InitSaSections(Func<RestitutionBlocViewModel, int, RpSectionViewModel, Task>? sectionAction)
+        {
+            for (int i = 0; i < SaDisplayTitles.Length; i++)
+            {
+                var idx     = i;
+                var section = new RpSectionViewModel(SaDisplayTitles[i]);
+                var secRef  = section;
+                Func<Task> regenerate = sectionAction != null
+                    ? () => sectionAction(this, idx, secRef)
+                    : () => Task.CompletedTask;
+                section.InitActions(regenerate);
+                section.ContentChanged += (_, __) => FlushSaToContenu();
+                SaSections.Add(section);
+            }
+            ParseContenuToSaFields();
+        }
+
+        private void ParseContenuToSaFields()
+        {
+            if (_syncingSa || SaSections.Count == 0) return;
+            _syncingSa = true;
+            try
+            {
+                var contenu = Model.ContenuValide ?? "";
+                for (int i = 0; i < SaMarkdownTitles.Length && i < SaSections.Count; i++)
+                {
+                    var startTitle = SaMarkdownTitles[i];
+                    var startIdx   = contenu.IndexOf(startTitle, StringComparison.OrdinalIgnoreCase);
+                    if (startIdx < 0) { SaSections[i].Content = ""; continue; }
+
+                    var afterTitle = startIdx + startTitle.Length;
+                    while (afterTitle < contenu.Length && (contenu[afterTitle] == '\r' || contenu[afterTitle] == '\n'))
+                        afterTitle++;
+
+                    var endIdx = contenu.Length;
+                    for (int j = i + 1; j < SaMarkdownTitles.Length; j++)
+                    {
+                        var nextIdx = contenu.IndexOf(SaMarkdownTitles[j], afterTitle, StringComparison.OrdinalIgnoreCase);
+                        if (nextIdx >= 0 && nextIdx < endIdx) { endIdx = nextIdx; break; }
+                    }
+
+                    SaSections[i].Content = contenu.Substring(afterTitle, endIdx - afterTitle).TrimEnd();
+                }
+            }
+            finally { _syncingSa = false; }
+        }
+
+        private void FlushSaToContenu()
+        {
+            if (_syncingSa) return;
+            _syncingSa = true;
+            try
+            {
+                var sb = new StringBuilder();
+                for (int i = 0; i < SaSections.Count; i++)
+                {
+                    if (i > 0) sb.AppendLine();
+                    sb.AppendLine(SaMarkdownTitles[i]);
+                    sb.AppendLine();
+                    sb.AppendLine(SaSections[i].Content);
+                }
+                Model.ContenuValide = sb.ToString().TrimEnd();
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingSa = false; }
         }
 
         // ── Init / Parse / Flush du bloc restitution parents ─────────────────
@@ -595,6 +686,7 @@ namespace MedCompanion.ViewModels.Restitutions
                     if (IsIdentification) ParseContenuToIdentificationFields();
                     if (IsContexteFamilial) ParseContenuToContexteFamilialFields();
                     if (IsAntecedents) ParseContenuToAntecedentsFields();
+                    if (IsSituationActuelle) ParseContenuToSaFields();
                 }
             }
         }
@@ -662,6 +754,7 @@ namespace MedCompanion.ViewModels.Restitutions
             if (IsIdentification) ParseContenuToIdentificationFields();
             if (IsContexteFamilial) ParseContenuToContexteFamilialFields();
             if (IsAntecedents) ParseContenuToAntecedentsFields();
+            if (IsSituationActuelle) InitSaSections(generateSectionAction);
             if (IsRestitutionParents) InitRpSections(generateSectionAction);
         }
 
@@ -846,14 +939,19 @@ namespace MedCompanion.ViewModels.Restitutions
                 StatusMessage   = $"✍ Reformulation — {RestitutionBlocViewModel.RpDisplayTitles[sectionIndex]}...";
 
                 string newContent;
-                if (string.IsNullOrWhiteSpace(instruction))
+                if (blocVm.Model.Key == "patient_situation_actuelle")
                 {
-                    newContent = await _suggesterService.SuggestRestitution1PageSectionAsync(sectionIndex, _currentReading!, ct);
+                    newContent = string.IsNullOrWhiteSpace(instruction)
+                        ? await _suggesterService.SuggestSituationActuelleSectionAsync(sectionIndex, _currentReading!, ct)
+                        : await _suggesterService.SuggestSituationActuelleSectionWithInstructionAsync(
+                            sectionIndex, section.Content, instruction, _currentReading!, ct);
                 }
-                else
+                else // restitution_1page (défaut)
                 {
-                    newContent = await _suggesterService.SuggestRestitution1PageSectionWithInstructionAsync(
-                        sectionIndex, section.Content, instruction, _currentReading!, ct);
+                    newContent = string.IsNullOrWhiteSpace(instruction)
+                        ? await _suggesterService.SuggestRestitution1PageSectionAsync(sectionIndex, _currentReading!, ct)
+                        : await _suggesterService.SuggestRestitution1PageSectionWithInstructionAsync(
+                            sectionIndex, section.Content, instruction, _currentReading!, ct);
                 }
 
                 if (!string.IsNullOrWhiteSpace(newContent) && !ct.IsCancellationRequested)

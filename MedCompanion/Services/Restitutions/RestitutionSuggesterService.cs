@@ -460,36 +460,93 @@ namespace MedCompanion.Services.Restitutions
             var blocSa = new RestitutionBloc("patient_situation_actuelle", "Situation actuelle", 7, "clinique");
             var systemPrompt = BuildSystemPrompt(blocSa);
 
-            var subsections = new (string Title, string Instruction)[]
-            {
-                ("**À l'école**",
-                 "Rédige UNIQUEMENT une liste à puces de 3-5 items sur le fonctionnement scolaire : " +
-                 "intégration au groupe classe, agressivité envers maîtresse/camarades, difficultés " +
-                 "d'apprentissage, besoin de cadre et de repères renforcés. Format : `- Phrase courte.`"),
-
-                ("**À la maison**",
-                 "Rédige UNIQUEMENT une liste à puces de 3-5 items sur le fonctionnement au domicile : " +
-                 "crises de colère, oppositions, hyperactivité, surconsommation d'écrans, troubles du " +
-                 "sommeil… Format : `- Phrase courte.`"),
-
-                ("**Avec les autres**",
-                 "Rédige UNIQUEMENT une liste à puces de 2-4 items sur la sphère relationnelle " +
-                 "au-delà de l'école : difficultés relationnelles, tolérance à la frustration, " +
-                 "réactions impulsives en cas de conflit. Format : `- Phrase courte.`"),
-
-                ("**Forces observées**",
-                 "Rédige UNIQUEMENT une liste à puces de 4-6 items sur les ressources et compétences " +
-                 "positives de l'enfant : curiosité, attachement à ses proches, bonne capacité " +
-                 "d'apprentissage, imagination, créativité, envie de bien faire et de réussir. " +
-                 "Format : `- Phrase courte.`"),
-
-                ("**Activités et intérêts**",
-                 "Rédige UNIQUEMENT une liste à puces de 1-3 items sur les activités extra-scolaires, " +
-                 "hobbies, sports, centres d'intérêt particuliers. Format : `- Activité : description courte.` " +
-                 "Si aucune activité documentée, écrire `- Aucune activité extra-scolaire documentée à ce jour.`")
-            };
+            var subsections = GetSituationActuelleSubsections();
 
             await RunProgressiveSubsectionsAsync(systemPrompt, context, blocSa.VoixCible, subsections, onSectionReady, 400, ct);
+        }
+
+        private static (string Title, string Instruction)[] GetSituationActuelleSubsections() => new[]
+        {
+            ("**À l'école**",
+             "Rédige UNIQUEMENT une liste à puces de 3-5 items sur le fonctionnement scolaire : " +
+             "intégration au groupe classe, agressivité envers maîtresse/camarades, difficultés " +
+             "d'apprentissage, besoin de cadre et de repères renforcés. Format : `- Phrase courte.`"),
+
+            ("**À la maison**",
+             "Rédige UNIQUEMENT une liste à puces de 3-5 items sur le fonctionnement au domicile : " +
+             "crises de colère, oppositions, hyperactivité, surconsommation d'écrans, troubles du " +
+             "sommeil… Format : `- Phrase courte.`"),
+
+            ("**Avec les autres**",
+             "Rédige UNIQUEMENT une liste à puces de 2-4 items sur la sphère relationnelle " +
+             "au-delà de l'école : difficultés relationnelles, tolérance à la frustration, " +
+             "réactions impulsives en cas de conflit. Format : `- Phrase courte.`"),
+
+            ("**Forces observées**",
+             "Rédige UNIQUEMENT une liste à puces de 4-6 items sur les ressources et compétences " +
+             "positives de l'enfant : curiosité, attachement à ses proches, bonne capacité " +
+             "d'apprentissage, imagination, créativité, envie de bien faire et de réussir. " +
+             "Format : `- Phrase courte.`"),
+
+            ("**Activités et intérêts**",
+             "Rédige UNIQUEMENT une liste à puces de 1-3 items sur les activités extra-scolaires, " +
+             "hobbies, sports, centres d'intérêt particuliers. Format : `- Activité : description courte.` " +
+             "Si aucune activité documentée, écrire `- Aucune activité extra-scolaire documentée à ce jour.`")
+        };
+
+        /// <summary>Génère une seule section de la Situation actuelle (index 0-4).</summary>
+        public async Task<string> SuggestSituationActuelleSectionAsync(
+            int sectionIndex,
+            DossierReading reading,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) return "(Aucun contenu source disponible.)";
+
+            var subsections = GetSituationActuelleSubsections();
+            if (sectionIndex < 0 || sectionIndex >= subsections.Length)
+                return $"(Index {sectionIndex} invalide)";
+
+            var blocSa       = new RestitutionBloc("patient_situation_actuelle", "Situation actuelle", 7, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocSa);
+            var (_, instruction) = subsections[sectionIndex];
+            var userPrompt   = BuildSubsectionPrompt(context, instruction, blocSa.VoixCible);
+            var messages     = new List<(string role, string content)> { ("user", userPrompt) };
+            var result       = await _llmService.ChatAsync(systemPrompt, messages, 600, ct);
+            return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
+        }
+
+        /// <summary>Reformule une section de la Situation actuelle en appliquant l'instruction du médecin.</summary>
+        public async Task<string> SuggestSituationActuelleSectionWithInstructionAsync(
+            int sectionIndex,
+            string currentContent,
+            string userInstruction,
+            DossierReading reading,
+            CancellationToken ct = default)
+        {
+            var subsections = GetSituationActuelleSubsections();
+            if (sectionIndex < 0 || sectionIndex >= subsections.Length)
+                return $"(Index {sectionIndex} invalide)";
+
+            var (title, _) = subsections[sectionIndex];
+            var blocSa     = new RestitutionBloc("patient_situation_actuelle", "Situation actuelle", 7, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocSa);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Voici le contenu actuel de la section {title} :");
+            sb.AppendLine();
+            sb.AppendLine(string.IsNullOrWhiteSpace(currentContent) ? "(section vide)" : currentContent.Trim());
+            sb.AppendLine();
+            sb.AppendLine("=================");
+            sb.AppendLine($"INSTRUCTION DE MODIFICATION : {userInstruction.Trim()}");
+            sb.AppendLine();
+            sb.AppendLine("Produis une NOUVELLE VERSION de cette section EN APPLIQUANT STRICTEMENT l'instruction ci-dessus. " +
+                          "Même ton clinique, listes à puces courtes. " +
+                          "Commence directement par le contenu, sans titre ni commentaire introductif.");
+
+            var messages = new List<(string role, string content)> { ("user", sb.ToString()) };
+            var result   = await _llmService.ChatAsync(systemPrompt, messages, 600, ct);
+            return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
         }
 
         // ── Génération progressive Cartographie de l'enfant ─────────────────
