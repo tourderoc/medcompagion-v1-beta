@@ -32,6 +32,16 @@ namespace MedCompanion.Services.Restitutions
         private string? _cachedEvalPatient;
         private EvaluationPhase? _cachedEvalPhase;
 
+        /// <summary>
+        /// Invalide le cache cartographie (à appeler après modification d'une sphère via popup).
+        /// Le prochain BuildPreviewHtml relit depuis le disque.
+        /// </summary>
+        public void InvalidateCartoCache()
+        {
+            _cachedEvalPatient = null;
+            _cachedEvalPhase   = null;
+        }
+
         // Cache des assets binaires lus une fois (fonts + image arbre + logo) — économise des
         // Mo de lecture disque à chaque refresh de la preview live.
         private string? _treeBase64;

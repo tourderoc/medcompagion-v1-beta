@@ -876,7 +876,12 @@ namespace MedCompanion.ViewModels.Restitutions
                     vm.InitEditSphereCommand(async () =>
                     {
                         bool changed = await editSphereAsync(sphereNum);
-                        if (changed) _currentReading = null;
+                        if (changed)
+                        {
+                            _currentReading = null;
+                            _previewService?.InvalidateCartoCache();
+                            PreviewRefreshRequested?.Invoke();
+                        }
                     });
                 }
 
