@@ -1012,6 +1012,26 @@ namespace MedCompanion.Services.Restitutions
                 return;
             }
 
+            // Sphères profil (4/5/8) : si non renseigné → texte statique, pas de LLM.
+            if (carto != null)
+            {
+                if (sphereNum == 4 && !carto.Temperament.IsRenseigne)
+                {
+                    onSectionReady("**Observations** : non disponibles (profil tempérament non renseigné).\n\n**Niveau clinique** : Non évalué.");
+                    return;
+                }
+                if (sphereNum == 5 && !carto.Psychomotricite.IsRenseigne)
+                {
+                    onSectionReady("**Observations** : non disponibles (profil psychomoteur non renseigné).\n\n**Niveau clinique** : Non évalué.");
+                    return;
+                }
+                if (sphereNum == 8 && !carto.Attention.IsRenseigne)
+                {
+                    onSectionReady("**Observations** : non disponibles (profil attentionnel non renseigné).\n\n**Niveau clinique** : Non évalué.");
+                    return;
+                }
+            }
+
             // LLM appelé avec UNIQUEMENT les données d'évaluation — pas le dossier complet.
             var instruction  = BuildCartoSphereInstruction(sphereNum, carto);
             var blocCe       = new RestitutionBloc("carto_enfant", "Cartographie de l'enfant", 8, "clinique");

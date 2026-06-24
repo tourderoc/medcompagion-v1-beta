@@ -4333,9 +4333,84 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
 
                     if (segment == null)
                     {
-                        System.Windows.MessageBox.Show(
-                            $"La sphère {sphereNum} utilise un profil spécifique (Tempérament, Psychomotricité ou Attention).\nOuvrez l'onglet Évaluation pour la compléter.",
-                            "Sphère non éditable ici");
+                        // Profils (4=Tempérament, 5=Psychomotricité, 8=Attention) — sliders 0-5
+                        ProfileEvaluationViewModel? profileVm = sphereNum switch
+                        {
+                            4 => new ProfileEvaluationViewModel(
+                                "🌡️ Tempérament",
+                                new System.Collections.Generic.List<(string, int)>
+                                {
+                                    ("Niveau d'activité",        phase.CartographieEnfant.Temperament.NiveauActivite),
+                                    ("Régularité",               phase.CartographieEnfant.Temperament.Regularite),
+                                    ("Réactivité sensorielle",   phase.CartographieEnfant.Temperament.ReactiviteSensorielle),
+                                    ("Intensité émotionnelle",   phase.CartographieEnfant.Temperament.IntensiteEmotionnelle),
+                                    ("Adaptabilité",             phase.CartographieEnfant.Temperament.Adaptabilite),
+                                    ("Temps de réaction",        phase.CartographieEnfant.Temperament.TempsDeReaction),
+                                },
+                                values =>
+                                {
+                                    phase.CartographieEnfant.Temperament.NiveauActivite        = values[0];
+                                    phase.CartographieEnfant.Temperament.Regularite            = values[1];
+                                    phase.CartographieEnfant.Temperament.ReactiviteSensorielle = values[2];
+                                    phase.CartographieEnfant.Temperament.IntensiteEmotionnelle = values[3];
+                                    phase.CartographieEnfant.Temperament.Adaptabilite          = values[4];
+                                    phase.CartographieEnfant.Temperament.TempsDeReaction       = values[5];
+                                }),
+                            5 => new ProfileEvaluationViewModel(
+                                "🏃 Psychomotricité",
+                                new System.Collections.Generic.List<(string, int)>
+                                {
+                                    ("Motricité globale",    phase.CartographieEnfant.Psychomotricite.MotriciteGlobale),
+                                    ("Motricité fine",       phase.CartographieEnfant.Psychomotricite.MotriciteFine),
+                                    ("Tonus",                phase.CartographieEnfant.Psychomotricite.Tonus),
+                                    ("Dextérité",            phase.CartographieEnfant.Psychomotricite.Dexterite),
+                                    ("Coordination",         phase.CartographieEnfant.Psychomotricite.Coordination),
+                                    ("Impulsivité motrice",  phase.CartographieEnfant.Psychomotricite.ImpulsiviteMotrice),
+                                },
+                                values =>
+                                {
+                                    phase.CartographieEnfant.Psychomotricite.MotriciteGlobale   = values[0];
+                                    phase.CartographieEnfant.Psychomotricite.MotriciteFine      = values[1];
+                                    phase.CartographieEnfant.Psychomotricite.Tonus              = values[2];
+                                    phase.CartographieEnfant.Psychomotricite.Dexterite          = values[3];
+                                    phase.CartographieEnfant.Psychomotricite.Coordination       = values[4];
+                                    phase.CartographieEnfant.Psychomotricite.ImpulsiviteMotrice = values[5];
+                                }),
+                            8 => new ProfileEvaluationViewModel(
+                                "🧠 Attention & Fonctions exécutives",
+                                new System.Collections.Generic.List<(string, int)>
+                                {
+                                    ("Attention soutenue",          phase.CartographieEnfant.Attention.AttentionSoutenue),
+                                    ("Attention sélective",         phase.CartographieEnfant.Attention.AttentionSelective),
+                                    ("Attention divisée",           phase.CartographieEnfant.Attention.AttentionDivisee),
+                                    ("Inhibition",                  phase.CartographieEnfant.Attention.Inhibition),
+                                    ("Planification",               phase.CartographieEnfant.Attention.Planification),
+                                    ("Flexibilité attentionnelle",  phase.CartographieEnfant.Attention.FlexibiliteAttentionnelle),
+                                },
+                                values =>
+                                {
+                                    phase.CartographieEnfant.Attention.AttentionSoutenue          = values[0];
+                                    phase.CartographieEnfant.Attention.AttentionSelective         = values[1];
+                                    phase.CartographieEnfant.Attention.AttentionDivisee           = values[2];
+                                    phase.CartographieEnfant.Attention.Inhibition                 = values[3];
+                                    phase.CartographieEnfant.Attention.Planification              = values[4];
+                                    phase.CartographieEnfant.Attention.FlexibiliteAttentionnelle  = values[5];
+                                }),
+                            _ => null
+                        };
+
+                        if (profileVm == null) return Task.FromResult(false);
+
+                        var profileDlg = new MedCompanion.Dialogs.ProfileEvaluationDialog(profileVm)
+                        {
+                            Owner = System.Windows.Application.Current?.MainWindow
+                        };
+                        bool? profileResult = profileDlg.ShowDialog();
+                        if (profileResult == true)
+                        {
+                            _evaluationPhaseService?.Save(phase);
+                            return Task.FromResult(true);
+                        }
                         return Task.FromResult(false);
                     }
 
