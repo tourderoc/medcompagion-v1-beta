@@ -96,6 +96,7 @@ namespace MedCompanion.ViewModels.Restitutions
         public bool IsCouverture => Model.Key == "couverture";
         public bool IsRestitutionParents => Model.Key == "restitution_1page";
         public bool IsIdentification => Model.Key == "patient_identification";
+        public bool HasReformuleButton => !IsCouverture && !IsIdentification && !IsRestitutionParents;
 
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
@@ -396,6 +397,26 @@ namespace MedCompanion.ViewModels.Restitutions
             }
         }
 
+        // ── Reformulation avec instruction (blocs texte libre) ───────────────
+
+        private bool _isReformulePanelVisible;
+        public bool IsReformulePanelVisible
+        {
+            get => _isReformulePanelVisible;
+            set { if (_isReformulePanelVisible == value) return; _isReformulePanelVisible = value; OnPropertyChanged(); }
+        }
+
+        private string _reformuleInstruction = "";
+        public string ReformuleInstruction
+        {
+            get => _reformuleInstruction;
+            set { if (_reformuleInstruction == value) return; _reformuleInstruction = value ?? ""; OnPropertyChanged(); }
+        }
+
+        public ICommand ToggleReformulePanelCommand { get; private set; } = null!;
+        public ICommand RegenerateCommand           { get; private set; } = null!;
+        public ICommand CancelReformulePanelCommand { get; private set; } = null!;
+
         private bool _isGenerating;
         public bool IsGenerating
         {
@@ -407,6 +428,8 @@ namespace MedCompanion.ViewModels.Restitutions
                     _isGenerating = value;
                     OnPropertyChanged();
                     (GenerateCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (ToggleReformulePanelCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                    (RegenerateCommand as RelayCommand)?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -415,10 +438,24 @@ namespace MedCompanion.ViewModels.Restitutions
 
         public RestitutionBlocViewModel(RestitutionBloc model,
             Func<RestitutionBlocViewModel, Task> generateAction,
-            Func<RestitutionBlocViewModel, int, RpSectionViewModel, Task>? generateSectionAction = null)
+            Func<RestitutionBlocViewModel, int, RpSectionViewModel, Task>? generateSectionAction = null,
+            Func<RestitutionBlocViewModel, Task>? reformulateAction = null)
         {
             Model = model;
             GenerateCommand = new RelayCommand(async _ => await generateAction(this), _ => !IsGenerating);
+
+            ToggleReformulePanelCommand = new RelayCommand(
+                _ => IsReformulePanelVisible = !IsReformulePanelVisible,
+                _ => !IsGenerating);
+            RegenerateCommand = reformulateAction != null
+                ? new RelayCommand(async _ => await reformulateAction(this), _ => !IsGenerating)
+                : new RelayCommand(_ => { }, _ => false);
+            CancelReformulePanelCommand = new RelayCommand(_ =>
+            {
+                IsReformulePanelVisible = false;
+                ReformuleInstruction    = "";
+            });
+
             if (IsCouverture) ParseContenuToCouvertureFields();
             if (IsIdentification) ParseContenuToIdentificationFields();
             if (IsRestitutionParents) InitRpSections(generateSectionAction);
@@ -522,7 +559,7 @@ namespace MedCompanion.ViewModels.Restitutions
 
             foreach (var bloc in _dossier.Blocs)
             {
-                var vm = new RestitutionBlocViewModel(bloc, GenerateBlocAsync, GenerateSectionBlocAsync);
+                var vm = new RestitutionBlocViewModel(bloc, GenerateBlocAsync, GenerateSectionBlocAsync, ReformulateBlocAsync);
                 // Quand le médecin tape dans un bloc, on déclenche un refresh de l'aperçu (debounce).
                 vm.PropertyChanged += OnBlocPropertyChanged;
                 Blocs.Add(vm);
@@ -560,6 +597,35 @@ namespace MedCompanion.ViewModels.Restitutions
             }
             _previewDebounceTimer.Stop();
             _previewDebounceTimer.Start();
+        }
+
+        // ── Reformulation d'un bloc texte libre avec instruction ─────────────────
+
+        private async Task ReformulateBlocAsync(RestitutionBlocViewModel blocVm)
+        {
+            blocVm.IsGenerating = true;
+            try
+            {
+                _currentReading ??= await _dossierReader.ReadAsync(_patientName);
+                var ct          = _generationCts?.Token ?? CancellationToken.None;
+                var instruction = blocVm.ReformuleInstruction.Trim();
+                StatusMessage   = $"✍ Reformulation — {blocVm.Title}...";
+
+                var newContent = await _suggesterService.ReformuleBlocWithInstructionAsync(
+                    blocVm.Model, blocVm.Contenu, instruction, _currentReading!, ct);
+
+                if (!string.IsNullOrWhiteSpace(newContent) && !ct.IsCancellationRequested)
+                {
+                    blocVm.Contenu                  = newContent;
+                    blocVm.IsReformulePanelVisible  = false;
+                    blocVm.ReformuleInstruction     = "";
+                    await SaveAsync();
+                    StatusMessage = "✓ Bloc reformulé.";
+                }
+            }
+            catch (OperationCanceledException) { StatusMessage = "⏸ Reformulation annulée."; }
+            catch (Exception ex)               { StatusMessage = $"❌ Erreur reformulation : {ex.Message}"; }
+            finally { blocVm.IsGenerating = false; }
         }
 
         // ── Génération d'une seule section du bloc restitution parents ──────────

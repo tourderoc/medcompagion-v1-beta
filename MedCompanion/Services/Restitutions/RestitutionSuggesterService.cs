@@ -124,6 +124,55 @@ namespace MedCompanion.Services.Restitutions
             }
         }
 
+        /// <summary>
+        /// Reformule le contenu d'un bloc texte libre selon l'instruction du médecin.
+        /// Si l'instruction est vide, régénère depuis le dossier.
+        /// </summary>
+        public async Task<string> ReformuleBlocWithInstructionAsync(
+            RestitutionBloc bloc,
+            string currentContent,
+            string userInstruction,
+            DossierReading reading,
+            CancellationToken ct = default)
+        {
+            var systemPrompt = BuildSystemPrompt(bloc);
+            var sb           = new System.Text.StringBuilder();
+
+            if (string.IsNullOrWhiteSpace(userInstruction))
+            {
+                // Pas d'instruction → régénère depuis le dossier
+                var ctx = reading.RenderForLlm();
+                if (!string.IsNullOrWhiteSpace(ctx))
+                {
+                    sb.AppendLine(ctx);
+                    sb.AppendLine();
+                    sb.AppendLine("=================");
+                }
+                sb.AppendLine($"Régénère le contenu de la section « {bloc.Titre} » en utilisant le dossier ci-dessus. " +
+                              "Commence directement par le contenu, sans titre ni commentaire introductif.");
+            }
+            else
+            {
+                // Avec instruction → modifie le texte existant
+                if (!string.IsNullOrWhiteSpace(currentContent))
+                {
+                    sb.AppendLine("Voici le contenu actuel de la section :");
+                    sb.AppendLine();
+                    sb.AppendLine(currentContent.Trim());
+                    sb.AppendLine();
+                    sb.AppendLine("=================");
+                }
+                sb.AppendLine($"INSTRUCTION DE MODIFICATION : {userInstruction}");
+                sb.AppendLine();
+                sb.AppendLine("Produis une NOUVELLE VERSION EN APPLIQUANT STRICTEMENT l'instruction ci-dessus. " +
+                              "Commence directement par le contenu, sans titre ni commentaire introductif.");
+            }
+
+            var messages = new List<(string role, string content)> { ("user", sb.ToString()) };
+            var result   = await _llmService.ChatAsync(systemPrompt, messages, 1200, ct);
+            return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
+        }
+
         private static (string Title, string Instruction)[] GetRestitution1PageSubsections() => new[]
         {
             ("**Ce que nous avons compris**",
