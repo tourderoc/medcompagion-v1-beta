@@ -591,6 +591,132 @@
                                             </StackPanel>
                                         </Border>
 
+                                        <!-- CONTEXTE FAMILIAL : formulaire structuré 6 champs -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsContexteFamilial}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <StackPanel.Resources>
+                                                    <Style x:Key="CfLabelChip" TargetType="Border">
+                                                        <Setter Property="Background" Value="#EBF5FB"/>
+                                                        <Setter Property="BorderBrush" Value="#AED6F1"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="CornerRadius" Value="4"/>
+                                                        <Setter Property="Padding" Value="8,5"/>
+                                                        <Setter Property="VerticalAlignment" Value="Top"/>
+                                                        <Setter Property="MinWidth" Value="120"/>
+                                                    </Style>
+                                                    <Style x:Key="CfLabelText" TargetType="TextBlock">
+                                                        <Setter Property="FontSize" Value="11"/>
+                                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                                        <Setter Property="Foreground" Value="#1B4F72"/>
+                                                    </Style>
+                                                    <Style x:Key="CfFieldBox" TargetType="TextBox">
+                                                        <Setter Property="FontSize" Value="12"/>
+                                                        <Setter Property="FontFamily" Value="Segoe UI"/>
+                                                        <Setter Property="Padding" Value="7,5"/>
+                                                        <Setter Property="BorderBrush" Value="#D6DBDF"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="Background" Value="White"/>
+                                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                                        <Setter Property="VerticalAlignment" Value="Top"/>
+                                                    </Style>
+                                                </StackPanel.Resources>
+
+                                                <!-- Récit familial -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource CfLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Récit familial" Style="{StaticResource CfLabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource CfFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="70"
+                                                             Text="{Binding CfRecit, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Père -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource CfLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Père" Style="{StaticResource CfLabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource CfFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="60"
+                                                             Text="{Binding CfPere, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Mère -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource CfLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Mère" Style="{StaticResource CfLabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource CfFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="60"
+                                                             Text="{Binding CfMere, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Fratrie -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource CfLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Fratrie" Style="{StaticResource CfLabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource CfFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="50"
+                                                             Text="{Binding CfFratrie, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Autres figures -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource CfLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Autres figures" Style="{StaticResource CfLabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource CfFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="50"
+                                                             Text="{Binding CfAutresFigures, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Points à retenir -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="120"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource CfLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Points à retenir" Style="{StaticResource CfLabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource CfFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="60"
+                                                             Text="{Binding CfPointsRetenir, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
                                         <!-- RESTITUTION PARENTS : 6 sections avec titre + textarea + reformuler -->
                                         <Border>
                                             <Border.Style>
@@ -760,6 +886,9 @@
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsIdentification}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsContexteFamilial}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>

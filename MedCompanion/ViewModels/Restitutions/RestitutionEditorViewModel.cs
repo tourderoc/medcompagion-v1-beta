@@ -95,8 +95,9 @@ namespace MedCompanion.ViewModels.Restitutions
         public string SectionType => Model.Key;
         public bool IsCouverture => Model.Key == "couverture";
         public bool IsRestitutionParents => Model.Key == "restitution_1page";
-        public bool IsIdentification => Model.Key == "patient_identification";
-        public bool HasReformuleButton => !IsCouverture && !IsIdentification && !IsRestitutionParents;
+        public bool IsIdentification   => Model.Key == "patient_identification";
+        public bool IsContexteFamilial => Model.Key == "patient_contexte_familial";
+        public bool HasReformuleButton => !IsCouverture && !IsIdentification && !IsRestitutionParents && !IsContexteFamilial;
 
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
@@ -379,6 +380,105 @@ namespace MedCompanion.ViewModels.Restitutions
             finally { _syncingIdentification = false; }
         }
 
+        // ── Champs structurés du bloc contexte familial ──────────────────────
+
+        private bool _syncingContexteFamilial;
+
+        private string _cfRecit         = "";
+        private string _cfPere          = "";
+        private string _cfMere          = "";
+        private string _cfFratrie       = "";
+        private string _cfAutresFigures = "";
+        private string _cfPointsRetenir = "";
+
+        public string CfRecit         { get => _cfRecit;         set { if (SetCf(ref _cfRecit,         value)) FlushContexteFamilialToContenu(); } }
+        public string CfPere          { get => _cfPere;          set { if (SetCf(ref _cfPere,          value)) FlushContexteFamilialToContenu(); } }
+        public string CfMere          { get => _cfMere;          set { if (SetCf(ref _cfMere,          value)) FlushContexteFamilialToContenu(); } }
+        public string CfFratrie       { get => _cfFratrie;       set { if (SetCf(ref _cfFratrie,       value)) FlushContexteFamilialToContenu(); } }
+        public string CfAutresFigures { get => _cfAutresFigures; set { if (SetCf(ref _cfAutresFigures, value)) FlushContexteFamilialToContenu(); } }
+        public string CfPointsRetenir { get => _cfPointsRetenir; set { if (SetCf(ref _cfPointsRetenir, value)) FlushContexteFamilialToContenu(); } }
+
+        private bool SetCf(ref string field, string value)
+        {
+            if (field == value) return false;
+            field = value ?? "";
+            return true;
+        }
+
+        private void ParseContenuToContexteFamilialFields()
+        {
+            if (_syncingContexteFamilial) return;
+            _syncingContexteFamilial = true;
+            try
+            {
+                var contenu = Model.ContenuValide ?? "";
+
+                string PickCf(string label, params string[] nextLabels)
+                {
+                    var marker   = $"**{label}**";
+                    var startIdx = contenu.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                    if (startIdx < 0) return "";
+                    var after = startIdx + marker.Length;
+                    // skip optional " :" suffix
+                    if (after < contenu.Length && contenu[after] == ' ') after++;
+                    if (after < contenu.Length && contenu[after] == ':') after++;
+                    while (after < contenu.Length && (contenu[after] == ' ' || contenu[after] == '\r' || contenu[after] == '\n')) after++;
+                    var end = contenu.Length;
+                    foreach (var nl in nextLabels)
+                    {
+                        var ni = contenu.IndexOf($"**{nl}**", after, StringComparison.OrdinalIgnoreCase);
+                        if (ni >= 0 && ni < end) end = ni;
+                    }
+                    return contenu.Substring(after, end - after).TrimEnd();
+                }
+
+                _cfRecit         = PickCf("Récit familial",  "Père", "Mère", "Fratrie", "Autres figures", "Points à retenir");
+                _cfPere          = PickCf("Père",             "Mère", "Fratrie", "Autres figures", "Points à retenir");
+                _cfMere          = PickCf("Mère",             "Fratrie", "Autres figures", "Points à retenir");
+                _cfFratrie       = PickCf("Fratrie",          "Autres figures", "Points à retenir");
+                _cfAutresFigures = PickCf("Autres figures",   "Points à retenir");
+                _cfPointsRetenir = PickCf("Points à retenir");
+
+                OnPropertyChanged(nameof(CfRecit));
+                OnPropertyChanged(nameof(CfPere));
+                OnPropertyChanged(nameof(CfMere));
+                OnPropertyChanged(nameof(CfFratrie));
+                OnPropertyChanged(nameof(CfAutresFigures));
+                OnPropertyChanged(nameof(CfPointsRetenir));
+            }
+            finally { _syncingContexteFamilial = false; }
+        }
+
+        private void FlushContexteFamilialToContenu()
+        {
+            if (_syncingContexteFamilial) return;
+            _syncingContexteFamilial = true;
+            try
+            {
+                var sb = new StringBuilder();
+                void Block(string label, string val)
+                {
+                    sb.AppendLine($"**{label}**");
+                    sb.AppendLine();
+                    if (!string.IsNullOrWhiteSpace(val)) sb.AppendLine(val.Trim());
+                    sb.AppendLine();
+                }
+
+                Block("Récit familial",  _cfRecit);
+                Block("Père",            _cfPere);
+                Block("Mère",            _cfMere);
+                Block("Fratrie",         _cfFratrie);
+                Block("Autres figures",  _cfAutresFigures);
+                sb.AppendLine("**Points à retenir**");
+                sb.AppendLine();
+                if (!string.IsNullOrWhiteSpace(_cfPointsRetenir)) sb.Append(_cfPointsRetenir.Trim());
+
+                Model.ContenuValide = sb.ToString().TrimEnd();
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingContexteFamilial = false; }
+        }
+
         // ── Contenu brut (TextBox pour les autres blocs) ──────────────────────
 
         public string Contenu
@@ -393,6 +493,7 @@ namespace MedCompanion.ViewModels.Restitutions
                     if (IsCouverture) ParseContenuToCouvertureFields();
                     if (IsRestitutionParents) ParseContenuToParentsFields();
                     if (IsIdentification) ParseContenuToIdentificationFields();
+                    if (IsContexteFamilial) ParseContenuToContexteFamilialFields();
                 }
             }
         }
@@ -458,6 +559,7 @@ namespace MedCompanion.ViewModels.Restitutions
 
             if (IsCouverture) ParseContenuToCouvertureFields();
             if (IsIdentification) ParseContenuToIdentificationFields();
+            if (IsContexteFamilial) ParseContenuToContexteFamilialFields();
             if (IsRestitutionParents) InitRpSections(generateSectionAction);
         }
 
