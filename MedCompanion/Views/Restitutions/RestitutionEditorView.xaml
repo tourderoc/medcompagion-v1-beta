@@ -591,6 +591,135 @@
                                             </StackPanel>
                                         </Border>
 
+                                        <!-- ANTÉCÉDENTS : formulaire structuré 6 champs -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsAntecedents}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <StackPanel.Resources>
+                                                    <Style x:Key="AtLabelChip" TargetType="Border">
+                                                        <Setter Property="Background" Value="#EBF5FB"/>
+                                                        <Setter Property="BorderBrush" Value="#AED6F1"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="CornerRadius" Value="4"/>
+                                                        <Setter Property="Padding" Value="8,5"/>
+                                                        <Setter Property="VerticalAlignment" Value="Top"/>
+                                                        <Setter Property="MinWidth" Value="140"/>
+                                                    </Style>
+                                                    <Style x:Key="AtLabelText" TargetType="TextBlock">
+                                                        <Setter Property="FontSize" Value="11"/>
+                                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                                        <Setter Property="Foreground" Value="#1B4F72"/>
+                                                    </Style>
+                                                    <Style x:Key="AtFieldBox" TargetType="TextBox">
+                                                        <Setter Property="FontSize" Value="12"/>
+                                                        <Setter Property="FontFamily" Value="Segoe UI"/>
+                                                        <Setter Property="Padding" Value="7,5"/>
+                                                        <Setter Property="BorderBrush" Value="#D6DBDF"/>
+                                                        <Setter Property="BorderThickness" Value="1"/>
+                                                        <Setter Property="Background" Value="White"/>
+                                                        <Setter Property="TextWrapping" Value="Wrap"/>
+                                                        <Setter Property="VerticalAlignment" Value="Top"/>
+                                                    </Style>
+                                                </StackPanel.Resources>
+
+                                                <!-- Antécédents médicaux -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="140"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource AtLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Médicaux" Style="{StaticResource AtLabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource AtFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="70"
+                                                             Text="{Binding AtMedicaux, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Développementaux -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="140"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource AtLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Développementaux" Style="{StaticResource AtLabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource AtFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="60"
+                                                             Text="{Binding AtDeveloppement, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Familiaux -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="140"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource AtLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Familiaux" Style="{StaticResource AtLabelText}"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource AtFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="50"
+                                                             Text="{Binding AtFamiliaux, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Suivi résumé -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="140"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource AtLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Suivi résumé" Style="{StaticResource AtLabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource AtFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="50"
+                                                             Text="{Binding AtSuiviResume, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Bilans résumé -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="140"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource AtLabelChip}" Margin="0,0,8,0">
+                                                        <TextBlock Text="Bilans résumé" Style="{StaticResource AtLabelText}" TextWrapping="Wrap"/>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource AtFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="50"
+                                                             Text="{Binding AtBilansResume, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+
+                                                <!-- Parcours — détail (déclenche l'annexe PDF si renseigné) -->
+                                                <Grid Margin="0,0,0,7">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="140"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Border Grid.Column="0" Style="{StaticResource AtLabelChip}" Margin="0,0,8,0">
+                                                        <StackPanel>
+                                                            <TextBlock Text="Parcours — détail" Style="{StaticResource AtLabelText}" TextWrapping="Wrap"/>
+                                                            <TextBlock Text="📄 → annexe" FontSize="9" Foreground="#2980B9" Margin="0,2,0,0"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <TextBox Grid.Column="1" Style="{StaticResource AtFieldBox}"
+                                                             AcceptsReturn="True" MinHeight="80"
+                                                             Text="{Binding AtParcoursDetail, UpdateSourceTrigger=PropertyChanged}"/>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
                                         <!-- CONTEXTE FAMILIAL : formulaire structuré 6 champs -->
                                         <Border>
                                             <Border.Style>
@@ -889,6 +1018,9 @@
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsContexteFamilial}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsAntecedents}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>

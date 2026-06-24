@@ -97,7 +97,8 @@ namespace MedCompanion.ViewModels.Restitutions
         public bool IsRestitutionParents => Model.Key == "restitution_1page";
         public bool IsIdentification   => Model.Key == "patient_identification";
         public bool IsContexteFamilial => Model.Key == "patient_contexte_familial";
-        public bool HasReformuleButton => !IsCouverture && !IsIdentification && !IsRestitutionParents && !IsContexteFamilial;
+        public bool IsAntecedents      => Model.Key == "patient_antecedents";
+        public bool HasReformuleButton => !IsCouverture && !IsIdentification && !IsRestitutionParents && !IsContexteFamilial && !IsAntecedents;
 
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
@@ -289,6 +290,105 @@ namespace MedCompanion.ViewModels.Restitutions
                 OnPropertyChanged(nameof(Contenu));
             }
             finally { _syncingParents = false; }
+        }
+
+        // ── Champs structurés du bloc antécédents ────────────────────────
+
+        private bool _syncingAntecedents;
+
+        private string _atMedicaux       = "";
+        private string _atDeveloppement  = "";
+        private string _atFamiliaux      = "";
+        private string _atSuiviResume    = "";
+        private string _atBilansResume   = "";
+        private string _atParcoursDetail = "";
+
+        public string AtMedicaux       { get => _atMedicaux;       set { if (SetAt(ref _atMedicaux,       value)) FlushAntecedentsToContenu(); } }
+        public string AtDeveloppement  { get => _atDeveloppement;  set { if (SetAt(ref _atDeveloppement,  value)) FlushAntecedentsToContenu(); } }
+        public string AtFamiliaux      { get => _atFamiliaux;      set { if (SetAt(ref _atFamiliaux,      value)) FlushAntecedentsToContenu(); } }
+        public string AtSuiviResume    { get => _atSuiviResume;    set { if (SetAt(ref _atSuiviResume,    value)) FlushAntecedentsToContenu(); } }
+        public string AtBilansResume   { get => _atBilansResume;   set { if (SetAt(ref _atBilansResume,   value)) FlushAntecedentsToContenu(); } }
+        public string AtParcoursDetail { get => _atParcoursDetail; set { if (SetAt(ref _atParcoursDetail, value)) FlushAntecedentsToContenu(); } }
+
+        private bool SetAt(ref string field, string value)
+        {
+            if (field == value) return false;
+            field = value ?? "";
+            return true;
+        }
+
+        private void ParseContenuToAntecedentsFields()
+        {
+            if (_syncingAntecedents) return;
+            _syncingAntecedents = true;
+            try
+            {
+                var contenu = Model.ContenuValide ?? "";
+
+                string PickAt(string label, params string[] nextLabels)
+                {
+                    var marker   = $"**{label}**";
+                    var startIdx = contenu.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+                    if (startIdx < 0) return "";
+                    var after = startIdx + marker.Length;
+                    if (after < contenu.Length && contenu[after] == ' ')  after++;
+                    if (after < contenu.Length && contenu[after] == ':')  after++;
+                    while (after < contenu.Length && (contenu[after] == ' ' || contenu[after] == '\r' || contenu[after] == '\n')) after++;
+                    var end = contenu.Length;
+                    foreach (var nl in nextLabels)
+                    {
+                        var ni = contenu.IndexOf($"**{nl}**", after, StringComparison.OrdinalIgnoreCase);
+                        if (ni >= 0 && ni < end) end = ni;
+                    }
+                    return contenu.Substring(after, end - after).TrimEnd();
+                }
+
+                _atMedicaux       = PickAt("Antécédents médicaux",       "Antécédents développementaux", "Antécédents familiaux", "Suivi résumé", "Bilans résumé", "Parcours");
+                _atDeveloppement  = PickAt("Antécédents développementaux","Antécédents familiaux", "Suivi résumé", "Bilans résumé", "Parcours");
+                _atFamiliaux      = PickAt("Antécédents familiaux",       "Suivi résumé", "Bilans résumé", "Parcours");
+                _atSuiviResume    = PickAt("Suivi résumé",                "Bilans résumé", "Parcours");
+                _atBilansResume   = PickAt("Bilans résumé",               "Parcours");
+                _atParcoursDetail = PickAt("Parcours");
+
+                OnPropertyChanged(nameof(AtMedicaux));
+                OnPropertyChanged(nameof(AtDeveloppement));
+                OnPropertyChanged(nameof(AtFamiliaux));
+                OnPropertyChanged(nameof(AtSuiviResume));
+                OnPropertyChanged(nameof(AtBilansResume));
+                OnPropertyChanged(nameof(AtParcoursDetail));
+            }
+            finally { _syncingAntecedents = false; }
+        }
+
+        private void FlushAntecedentsToContenu()
+        {
+            if (_syncingAntecedents) return;
+            _syncingAntecedents = true;
+            try
+            {
+                var sb = new StringBuilder();
+                void Block(string label, string val)
+                {
+                    sb.AppendLine($"**{label}**");
+                    sb.AppendLine();
+                    if (!string.IsNullOrWhiteSpace(val)) sb.AppendLine(val.Trim());
+                    sb.AppendLine();
+                }
+
+                Block("Antécédents médicaux",        _atMedicaux);
+                Block("Antécédents développementaux", _atDeveloppement);
+                Block("Antécédents familiaux",        _atFamiliaux);
+                Block("Suivi résumé",                 _atSuiviResume);
+                Block("Bilans résumé",                _atBilansResume);
+                // "Parcours — détail" : ce marqueur déclenche la page annexe dans le HTML preview
+                sb.AppendLine("**Parcours — détail**");
+                sb.AppendLine();
+                if (!string.IsNullOrWhiteSpace(_atParcoursDetail)) sb.Append(_atParcoursDetail.Trim());
+
+                Model.ContenuValide = sb.ToString().TrimEnd();
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingAntecedents = false; }
         }
 
         // ── Champs structurés du bloc identification ──────────────────────────
@@ -494,6 +594,7 @@ namespace MedCompanion.ViewModels.Restitutions
                     if (IsRestitutionParents) ParseContenuToParentsFields();
                     if (IsIdentification) ParseContenuToIdentificationFields();
                     if (IsContexteFamilial) ParseContenuToContexteFamilialFields();
+                    if (IsAntecedents) ParseContenuToAntecedentsFields();
                 }
             }
         }
@@ -560,6 +661,7 @@ namespace MedCompanion.ViewModels.Restitutions
             if (IsCouverture) ParseContenuToCouvertureFields();
             if (IsIdentification) ParseContenuToIdentificationFields();
             if (IsContexteFamilial) ParseContenuToContexteFamilialFields();
+            if (IsAntecedents) ParseContenuToAntecedentsFields();
             if (IsRestitutionParents) InitRpSections(generateSectionAction);
         }
 
