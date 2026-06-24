@@ -442,6 +442,90 @@
                                             </StackPanel>
                                         </Border>
 
+                                        <!-- RESTITUTION PARENTS : 6 sections avec titre + textarea + reformuler -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsRestitutionParents}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <ItemsControl ItemsSource="{Binding RpSections}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Margin="0,0,0,8" BorderBrush="#D6DBDF" BorderThickness="1" CornerRadius="4">
+                                                            <Grid>
+                                                                <Grid.RowDefinitions>
+                                                                    <RowDefinition Height="Auto"/>
+                                                                    <RowDefinition Height="Auto"/>
+                                                                </Grid.RowDefinitions>
+
+                                                                <!-- En-tête de section : titre + bouton Reformuler -->
+                                                                <Border Grid.Row="0" Background="#EBF5FB" BorderBrush="#AED6F1"
+                                                                        BorderThickness="0,0,0,1" CornerRadius="4,4,0,0" Padding="10,5">
+                                                                    <DockPanel>
+                                                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                            <TextBlock Text="..." Foreground="#F39C12" FontSize="11" FontStyle="Italic"
+                                                                                       VerticalAlignment="Center" Margin="0,0,6,0">
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding IsGenerating}" Value="True">
+                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+                                                                            <Button Command="{Binding ReformuleCommand}" Content="↺ Reformuler"
+                                                                                    Padding="7,3" FontSize="10" Cursor="Hand"
+                                                                                    Background="#D6EAF8" BorderBrush="#AED6F1" BorderThickness="1">
+                                                                                <Button.Template>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <Border Background="{TemplateBinding Background}"
+                                                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                                CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                        </Border>
+                                                                                        <ControlTemplate.Triggers>
+                                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                                <Setter Property="Background" Value="#AED6F1"/>
+                                                                                            </Trigger>
+                                                                                            <Trigger Property="IsEnabled" Value="False">
+                                                                                                <Setter Property="Background" Value="#F2F3F4"/>
+                                                                                                <Setter Property="BorderBrush" Value="#CCD1D1"/>
+                                                                                            </Trigger>
+                                                                                        </ControlTemplate.Triggers>
+                                                                                    </ControlTemplate>
+                                                                                </Button.Template>
+                                                                            </Button>
+                                                                        </StackPanel>
+                                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                                                   FontSize="12" Foreground="#1A5276" VerticalAlignment="Center"/>
+                                                                    </DockPanel>
+                                                                </Border>
+
+                                                                <!-- Zone texte éditable -->
+                                                                <TextBox Grid.Row="1"
+                                                                         Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                                                         AcceptsReturn="True" TextWrapping="Wrap"
+                                                                         MinHeight="70" MaxHeight="220"
+                                                                         VerticalScrollBarVisibility="Auto"
+                                                                         Padding="8,6" BorderThickness="0"
+                                                                         FontFamily="Segoe UI" FontSize="12"/>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Border>
+
                                         <!-- AUTRES BLOCS : TextBox libre classique -->
                                         <TextBox Text="{Binding Contenu, UpdateSourceTrigger=PropertyChanged}"
                                                  AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100"
@@ -452,6 +536,9 @@
                                                     <Setter Property="Visibility" Value="Visible"/>
                                                     <Style.Triggers>
                                                         <DataTrigger Binding="{Binding IsCouverture}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsRestitutionParents}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>

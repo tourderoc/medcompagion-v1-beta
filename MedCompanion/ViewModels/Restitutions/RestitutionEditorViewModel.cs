@@ -14,6 +14,50 @@ using MedCompanion.Services.Restitutions;
 
 namespace MedCompanion.ViewModels.Restitutions
 {
+    public class RpSectionViewModel : INotifyPropertyChanged
+    {
+        public string Title { get; }
+
+        private string _content = "";
+        public string Content
+        {
+            get => _content;
+            set
+            {
+                if (_content == value) return;
+                _content = value ?? "";
+                OnPropertyChanged();
+                ContentChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        private bool _isGenerating;
+        public bool IsGenerating
+        {
+            get => _isGenerating;
+            set
+            {
+                if (_isGenerating == value) return;
+                _isGenerating = value;
+                OnPropertyChanged();
+                (ReformuleCommand as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+        }
+
+        public ICommand ReformuleCommand { get; }
+        public event EventHandler? ContentChanged;
+
+        public RpSectionViewModel(string title, Func<Task> reformuleAction)
+        {
+            Title = title;
+            ReformuleCommand = new RelayCommand(async _ => await reformuleAction(), _ => !IsGenerating);
+        }
+
+        public event PropertyChangedEventHandler? PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string? propertyName = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
     public class RestitutionBlocViewModel : INotifyPropertyChanged
     {
         public RestitutionBloc Model { get; }
@@ -21,6 +65,32 @@ namespace MedCompanion.ViewModels.Restitutions
         public string Title => Model.Titre;
         public string SectionType => Model.Key;
         public bool IsCouverture => Model.Key == "couverture";
+        public bool IsRestitutionParents => Model.Key == "restitution_1page";
+
+        // ── Champs structurés du bloc restitution parents ─────────────────────
+
+        public ObservableCollection<RpSectionViewModel> RpSections { get; } = new();
+        private bool _syncingParents;
+
+        private static readonly string[] RpMarkdownTitles =
+        {
+            "**Ce que nous avons compris**",
+            "**Ses forces et ses réussites**",
+            "**Les difficultés actuellement observées**",
+            "**Ce qui peut aider**",
+            "**Notre feuille de route**",
+            "**Son environnement : points clés**"
+        };
+
+        public static readonly string[] RpDisplayTitles =
+        {
+            "Ce que nous avons compris",
+            "Ses forces et ses réussites",
+            "Les difficultés actuellement observées",
+            "Ce qui peut aider",
+            "Notre feuille de route",
+            "Son environnement : points clés"
+        };
 
         // ── Champs structurés du bloc couverture ──────────────────────────────
         // Synchronisés avec Contenu (parse ↔ sérialise le markdown **Label** : valeur).
@@ -120,6 +190,73 @@ namespace MedCompanion.ViewModels.Restitutions
             finally { _syncingCouverture = false; }
         }
 
+        // ── Init / Parse / Flush du bloc restitution parents ─────────────────
+
+        private void InitRpSections(Func<RestitutionBlocViewModel, int, Task>? sectionAction)
+        {
+            for (int i = 0; i < RpDisplayTitles.Length; i++)
+            {
+                var idx = i;
+                Func<Task> reformule = sectionAction != null
+                    ? () => sectionAction(this, idx)
+                    : () => Task.CompletedTask;
+                var section = new RpSectionViewModel(RpDisplayTitles[i], reformule);
+                section.ContentChanged += (_, __) => FlushParentsToContenu();
+                RpSections.Add(section);
+            }
+            ParseContenuToParentsFields();
+        }
+
+        private void ParseContenuToParentsFields()
+        {
+            if (_syncingParents || RpSections.Count == 0) return;
+            _syncingParents = true;
+            try
+            {
+                var contenu = Model.ContenuValide ?? "";
+                for (int i = 0; i < RpMarkdownTitles.Length && i < RpSections.Count; i++)
+                {
+                    var startTitle = RpMarkdownTitles[i];
+                    var startIdx = contenu.IndexOf(startTitle, StringComparison.OrdinalIgnoreCase);
+                    if (startIdx < 0) { RpSections[i].Content = ""; continue; }
+
+                    var afterTitle = startIdx + startTitle.Length;
+                    while (afterTitle < contenu.Length && (contenu[afterTitle] == '\r' || contenu[afterTitle] == '\n'))
+                        afterTitle++;
+
+                    var endIdx = contenu.Length;
+                    for (int j = i + 1; j < RpMarkdownTitles.Length; j++)
+                    {
+                        var nextIdx = contenu.IndexOf(RpMarkdownTitles[j], afterTitle, StringComparison.OrdinalIgnoreCase);
+                        if (nextIdx >= 0 && nextIdx < endIdx) { endIdx = nextIdx; break; }
+                    }
+
+                    RpSections[i].Content = contenu.Substring(afterTitle, endIdx - afterTitle).TrimEnd();
+                }
+            }
+            finally { _syncingParents = false; }
+        }
+
+        private void FlushParentsToContenu()
+        {
+            if (_syncingParents) return;
+            _syncingParents = true;
+            try
+            {
+                var sb = new StringBuilder();
+                for (int i = 0; i < RpSections.Count; i++)
+                {
+                    if (i > 0) sb.AppendLine();
+                    sb.AppendLine(RpMarkdownTitles[i]);
+                    sb.AppendLine();
+                    sb.AppendLine(RpSections[i].Content);
+                }
+                Model.ContenuValide = sb.ToString().TrimEnd();
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingParents = false; }
+        }
+
         // ── Contenu brut (TextBox pour les autres blocs) ──────────────────────
 
         public string Contenu
@@ -132,6 +269,7 @@ namespace MedCompanion.ViewModels.Restitutions
                     Model.ContenuValide = value;
                     OnPropertyChanged();
                     if (IsCouverture) ParseContenuToCouvertureFields();
+                    if (IsRestitutionParents) ParseContenuToParentsFields();
                 }
             }
         }
@@ -153,11 +291,14 @@ namespace MedCompanion.ViewModels.Restitutions
 
         public ICommand GenerateCommand { get; }
 
-        public RestitutionBlocViewModel(RestitutionBloc model, Func<RestitutionBlocViewModel, Task> generateAction)
+        public RestitutionBlocViewModel(RestitutionBloc model,
+            Func<RestitutionBlocViewModel, Task> generateAction,
+            Func<RestitutionBlocViewModel, int, Task>? generateSectionAction = null)
         {
             Model = model;
             GenerateCommand = new RelayCommand(async _ => await generateAction(this), _ => !IsGenerating);
             if (IsCouverture) ParseContenuToCouvertureFields();
+            if (IsRestitutionParents) InitRpSections(generateSectionAction);
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -258,7 +399,7 @@ namespace MedCompanion.ViewModels.Restitutions
 
             foreach (var bloc in _dossier.Blocs)
             {
-                var vm = new RestitutionBlocViewModel(bloc, GenerateBlocAsync);
+                var vm = new RestitutionBlocViewModel(bloc, GenerateBlocAsync, GenerateSectionBlocAsync);
                 // Quand le médecin tape dans un bloc, on déclenche un refresh de l'aperçu (debounce).
                 vm.PropertyChanged += OnBlocPropertyChanged;
                 Blocs.Add(vm);
@@ -296,6 +437,36 @@ namespace MedCompanion.ViewModels.Restitutions
             }
             _previewDebounceTimer.Stop();
             _previewDebounceTimer.Start();
+        }
+
+        // ── Génération d'une seule section du bloc restitution parents ──────────
+
+        private async Task GenerateSectionBlocAsync(RestitutionBlocViewModel blocVm, int sectionIndex)
+        {
+            if (sectionIndex < 0 || sectionIndex >= blocVm.RpSections.Count) return;
+            var section = blocVm.RpSections[sectionIndex];
+            section.IsGenerating = true;
+            blocVm.IsGenerating  = true;
+            try
+            {
+                _currentReading ??= await _dossierReader.ReadAsync(_patientName);
+                var ct = _generationCts?.Token ?? CancellationToken.None;
+                StatusMessage = $"✍ Reformulation — {RestitutionBlocViewModel.RpDisplayTitles[sectionIndex]}...";
+                var newContent = await _suggesterService.SuggestRestitution1PageSectionAsync(sectionIndex, _currentReading!, ct);
+                if (!string.IsNullOrWhiteSpace(newContent) && !ct.IsCancellationRequested)
+                {
+                    section.Content = newContent;
+                    await SaveAsync();
+                    StatusMessage = "✓ Section reformulée.";
+                }
+            }
+            catch (OperationCanceledException) { StatusMessage = "⏸ Reformulation annulée."; }
+            catch (Exception ex)               { StatusMessage = $"❌ Erreur reformulation : {ex.Message}"; }
+            finally
+            {
+                section.IsGenerating = false;
+                blocVm.IsGenerating  = false;
+            }
         }
 
         // ── Génération d'un seul bloc (déclenchée par le bouton Suggérer du bloc) ──

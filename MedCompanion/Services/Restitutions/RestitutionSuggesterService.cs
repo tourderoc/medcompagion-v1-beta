@@ -101,55 +101,7 @@ namespace MedCompanion.Services.Restitutions
             var blocp2 = new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre");
             var systemPrompt = BuildSystemPrompt(blocp2);
 
-            // Les 6 sous-sections : (marqueur Markdown, instruction LLM)
-            // TON OBLIGATOIRE pour toutes les sections : chaleureux, accessible aux parents,
-            // sans jargon médical. Parler directement aux parents ("Votre enfant", "Nous avons…").
-            var subsections = new (string Title, string Instruction)[]
-            {
-                ("**Ce que nous avons compris**",
-                 "Rédige UNIQUEMENT le contenu de la section « Ce que nous avons compris » en t'adressant directement aux parents, " +
-                 "avec un ton chaleureux et rassurant — comme un médecin qui explique avec bienveillance, pas un rapport clinique. " +
-                 "Structure : 1 paragraphe d'introduction accessible (2-3 phrases commençant par « Nous avons… » ou « Votre enfant… »), " +
-                 "puis une liste de 3-4 points-clés reformulés sans jargon médical (- **Mot simple :** explication courte). " +
-                 "Interdiction d'utiliser des expressions comme « tableau clinique », « comorbidité », « nosologique ». " +
-                 "Commence directement par le paragraphe, sans titre."),
-
-                ("**Ses forces et ses réussites**",
-                 "Rédige UNIQUEMENT le contenu de la section « Ses forces et ses réussites » : " +
-                 "liste de 4-5 points positifs CONCRETS observés chez cet enfant, en valorisant ses atouts avec chaleur " +
-                 "(- **Qualité :** description courte en 1 ligne). " +
-                 "Parle de l'enfant à la 3e personne (« Il/Elle… »). Pas de jargon. " +
-                 "Commence directement par la liste, sans titre."),
-
-                ("**Les difficultés actuellement observées**",
-                 "Rédige UNIQUEMENT le contenu de la section « Les difficultés actuellement observées » : " +
-                 "liste de 3-4 défis principaux formulés simplement, sans culpabiliser les parents et sans termes cliniques " +
-                 "(- **Difficulté en mots simples :** impact concret au quotidien en 1 ligne). " +
-                 "Ex. : '**Fatigue le matin :** Il a du mal à se lever et à aller en classe.' " +
-                 "Commence directement par la liste, sans titre."),
-
-                ("**Ce qui peut aider**",
-                 "Rédige UNIQUEMENT le contenu de la section « Ce qui peut aider » : " +
-                 "liste de 3-4 actions pratiques et concrètes que les parents peuvent faire à la maison " +
-                 "(- **Action :** description courte et actionnable en 1-2 lignes). " +
-                 "Ton encourageant, positif. Pas de jargon. " +
-                 "Commence directement par la liste, sans titre."),
-
-                ("**Notre feuille de route**",
-                 "Rédige UNIQUEMENT le contenu de la section « Notre feuille de route » : " +
-                 "liste numérotée de 3-5 prochaines étapes concrètes du suivi " +
-                 "(1. **Étape :** description courte en 1-2 lignes). " +
-                 "Ton collaboratif (« Nous allons… », « Ensemble nous… »). Sans jargon. " +
-                 "Commence directement par la liste numérotée, sans titre."),
-
-                ("**Son environnement : points clés**",
-                 "Rédige UNIQUEMENT le contenu de la section « Son environnement : points clés » : " +
-                 "1-2 phrases sur les soutiens positifs de l'entourage (famille, école…), " +
-                 "puis une liste de 2-3 points d'attention à garder en tête " +
-                 "(- **Point :** description courte). " +
-                 "Ton bienveillant, sans alarmisme. " +
-                 "Commence directement par le texte, sans titre.")
-            };
+            var subsections = GetRestitution1PageSubsections();
 
             var accumulated = new System.Text.StringBuilder();
 
@@ -170,6 +122,75 @@ namespace MedCompanion.Services.Restitutions
 
                 onSectionReady(accumulated.ToString());
             }
+        }
+
+        private static (string Title, string Instruction)[] GetRestitution1PageSubsections() => new[]
+        {
+            ("**Ce que nous avons compris**",
+             "Rédige UNIQUEMENT le contenu de la section « Ce que nous avons compris » en t'adressant directement aux parents, " +
+             "avec un ton chaleureux et rassurant — comme un médecin qui explique avec bienveillance, pas un rapport clinique. " +
+             "Structure : 1 paragraphe d'introduction accessible (2-3 phrases commençant par « Nous avons… » ou « Votre enfant… »), " +
+             "puis une liste de 3-4 points-clés reformulés sans jargon médical (- **Mot simple :** explication courte). " +
+             "Interdiction d'utiliser des expressions comme « tableau clinique », « comorbidité », « nosologique ». " +
+             "Commence directement par le paragraphe, sans titre."),
+
+            ("**Ses forces et ses réussites**",
+             "Rédige UNIQUEMENT le contenu de la section « Ses forces et ses réussites » : " +
+             "liste de 4-5 points positifs CONCRETS observés chez cet enfant, en valorisant ses atouts avec chaleur " +
+             "(- **Qualité :** description courte en 1 ligne). " +
+             "Parle de l'enfant à la 3e personne (« Il/Elle… »). Pas de jargon. " +
+             "Commence directement par la liste, sans titre."),
+
+            ("**Les difficultés actuellement observées**",
+             "Rédige UNIQUEMENT le contenu de la section « Les difficultés actuellement observées » : " +
+             "liste de 3-4 défis principaux formulés simplement, sans culpabiliser les parents et sans termes cliniques " +
+             "(- **Difficulté en mots simples :** impact concret au quotidien en 1 ligne). " +
+             "Ex. : '**Fatigue le matin :** Il a du mal à se lever et à aller en classe.' " +
+             "Commence directement par la liste, sans titre."),
+
+            ("**Ce qui peut aider**",
+             "Rédige UNIQUEMENT le contenu de la section « Ce qui peut aider » : " +
+             "liste de 3-4 actions pratiques et concrètes que les parents peuvent faire à la maison " +
+             "(- **Action :** description courte et actionnable en 1-2 lignes). " +
+             "Ton encourageant, positif. Pas de jargon. " +
+             "Commence directement par la liste, sans titre."),
+
+            ("**Notre feuille de route**",
+             "Rédige UNIQUEMENT le contenu de la section « Notre feuille de route » : " +
+             "liste numérotée de 3-5 prochaines étapes concrètes du suivi " +
+             "(1. **Étape :** description courte en 1-2 lignes). " +
+             "Ton collaboratif (« Nous allons… », « Ensemble nous… »). Sans jargon. " +
+             "Commence directement par la liste numérotée, sans titre."),
+
+            ("**Son environnement : points clés**",
+             "Rédige UNIQUEMENT le contenu de la section « Son environnement : points clés » : " +
+             "1-2 phrases sur les soutiens positifs de l'entourage (famille, école…), " +
+             "puis une liste de 2-3 points d'attention à garder en tête " +
+             "(- **Point :** description courte). " +
+             "Ton bienveillant, sans alarmisme. " +
+             "Commence directement par le texte, sans titre.")
+        };
+
+        /// <summary>Génère une seule section de la Restitution 1-page parents (index 0-5).</summary>
+        public async Task<string> SuggestRestitution1PageSectionAsync(
+            int sectionIndex,
+            DossierReading reading,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) return "(Aucun contenu source disponible.)";
+
+            var subsections = GetRestitution1PageSubsections();
+            if (sectionIndex < 0 || sectionIndex >= subsections.Length)
+                return $"(Index {sectionIndex} invalide)";
+
+            var blocp2 = new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre");
+            var systemPrompt = BuildSystemPrompt(blocp2);
+            var (_, instruction) = subsections[sectionIndex];
+            var userPrompt = BuildSubsectionPrompt(context, instruction, blocp2.VoixCible);
+            var messages   = new List<(string role, string content)> { ("user", userPrompt) };
+            var result     = await _llmService.ChatAsync(systemPrompt, messages, 800, ct);
+            return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
         }
 
         private static string BuildSubsectionPrompt(string dossierContext, string instruction, string voixCible)
