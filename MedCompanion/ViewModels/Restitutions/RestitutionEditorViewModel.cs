@@ -31,6 +31,20 @@ namespace MedCompanion.ViewModels.Restitutions
             }
         }
 
+        private bool _isInstructionPanelVisible;
+        public bool IsInstructionPanelVisible
+        {
+            get => _isInstructionPanelVisible;
+            set { if (_isInstructionPanelVisible == value) return; _isInstructionPanelVisible = value; OnPropertyChanged(); }
+        }
+
+        private string _userInstruction = "";
+        public string UserInstruction
+        {
+            get => _userInstruction;
+            set { if (_userInstruction == value) return; _userInstruction = value ?? ""; OnPropertyChanged(); }
+        }
+
         private bool _isGenerating;
         public bool IsGenerating
         {
@@ -40,17 +54,32 @@ namespace MedCompanion.ViewModels.Restitutions
                 if (_isGenerating == value) return;
                 _isGenerating = value;
                 OnPropertyChanged();
-                (ReformuleCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                (ToggleInstructionCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                (RegenerateCommand as RelayCommand)?.RaiseCanExecuteChanged();
             }
         }
 
-        public ICommand ReformuleCommand { get; }
+        public ICommand ToggleInstructionCommand { get; private set; } = null!;
+        public ICommand RegenerateCommand        { get; private set; } = null!;
+        public ICommand CancelInstructionCommand { get; private set; } = null!;
+
         public event EventHandler? ContentChanged;
 
-        public RpSectionViewModel(string title, Func<Task> reformuleAction)
+        public RpSectionViewModel(string title) { Title = title; }
+
+        public void InitActions(Func<Task> regenerateAction)
         {
-            Title = title;
-            ReformuleCommand = new RelayCommand(async _ => await reformuleAction(), _ => !IsGenerating);
+            ToggleInstructionCommand = new RelayCommand(
+                _ => IsInstructionPanelVisible = !IsInstructionPanelVisible,
+                _ => !IsGenerating);
+            RegenerateCommand = new RelayCommand(
+                async _ => await regenerateAction(),
+                _ => !IsGenerating);
+            CancelInstructionCommand = new RelayCommand(_ =>
+            {
+                IsInstructionPanelVisible = false;
+                UserInstruction = "";
+            });
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -192,15 +221,17 @@ namespace MedCompanion.ViewModels.Restitutions
 
         // ── Init / Parse / Flush du bloc restitution parents ─────────────────
 
-        private void InitRpSections(Func<RestitutionBlocViewModel, int, Task>? sectionAction)
+        private void InitRpSections(Func<RestitutionBlocViewModel, int, RpSectionViewModel, Task>? sectionAction)
         {
             for (int i = 0; i < RpDisplayTitles.Length; i++)
             {
-                var idx = i;
-                Func<Task> reformule = sectionAction != null
-                    ? () => sectionAction(this, idx)
+                var idx     = i;
+                var section = new RpSectionViewModel(RpDisplayTitles[i]);
+                var secRef  = section;
+                Func<Task> regenerate = sectionAction != null
+                    ? () => sectionAction(this, idx, secRef)
                     : () => Task.CompletedTask;
-                var section = new RpSectionViewModel(RpDisplayTitles[i], reformule);
+                section.InitActions(regenerate);
                 section.ContentChanged += (_, __) => FlushParentsToContenu();
                 RpSections.Add(section);
             }
@@ -293,7 +324,7 @@ namespace MedCompanion.ViewModels.Restitutions
 
         public RestitutionBlocViewModel(RestitutionBloc model,
             Func<RestitutionBlocViewModel, Task> generateAction,
-            Func<RestitutionBlocViewModel, int, Task>? generateSectionAction = null)
+            Func<RestitutionBlocViewModel, int, RpSectionViewModel, Task>? generateSectionAction = null)
         {
             Model = model;
             GenerateCommand = new RelayCommand(async _ => await generateAction(this), _ => !IsGenerating);
@@ -441,21 +472,33 @@ namespace MedCompanion.ViewModels.Restitutions
 
         // ── Génération d'une seule section du bloc restitution parents ──────────
 
-        private async Task GenerateSectionBlocAsync(RestitutionBlocViewModel blocVm, int sectionIndex)
+        private async Task GenerateSectionBlocAsync(RestitutionBlocViewModel blocVm, int sectionIndex, RpSectionViewModel section)
         {
-            if (sectionIndex < 0 || sectionIndex >= blocVm.RpSections.Count) return;
-            var section = blocVm.RpSections[sectionIndex];
             section.IsGenerating = true;
             blocVm.IsGenerating  = true;
             try
             {
                 _currentReading ??= await _dossierReader.ReadAsync(_patientName);
-                var ct = _generationCts?.Token ?? CancellationToken.None;
-                StatusMessage = $"✍ Reformulation — {RestitutionBlocViewModel.RpDisplayTitles[sectionIndex]}...";
-                var newContent = await _suggesterService.SuggestRestitution1PageSectionAsync(sectionIndex, _currentReading!, ct);
+                var ct          = _generationCts?.Token ?? CancellationToken.None;
+                var instruction = section.UserInstruction.Trim();
+                StatusMessage   = $"✍ Reformulation — {RestitutionBlocViewModel.RpDisplayTitles[sectionIndex]}...";
+
+                string newContent;
+                if (string.IsNullOrWhiteSpace(instruction))
+                {
+                    newContent = await _suggesterService.SuggestRestitution1PageSectionAsync(sectionIndex, _currentReading!, ct);
+                }
+                else
+                {
+                    newContent = await _suggesterService.SuggestRestitution1PageSectionWithInstructionAsync(
+                        sectionIndex, section.Content, instruction, _currentReading!, ct);
+                }
+
                 if (!string.IsNullOrWhiteSpace(newContent) && !ct.IsCancellationRequested)
                 {
                     section.Content = newContent;
+                    section.IsInstructionPanelVisible = false;
+                    section.UserInstruction = "";
                     await SaveAsync();
                     StatusMessage = "✓ Section reformulée.";
                 }

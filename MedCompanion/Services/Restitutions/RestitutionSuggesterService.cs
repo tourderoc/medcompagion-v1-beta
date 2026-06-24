@@ -193,6 +193,42 @@ namespace MedCompanion.Services.Restitutions
             return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
         }
 
+        /// <summary>
+        /// Reformule une section de la Restitution 1-page parents en appliquant l'instruction du médecin
+        /// sur le contenu existant (ex : "raccourcis", "insiste sur la timidité", "ton plus doux").
+        /// </summary>
+        public async Task<string> SuggestRestitution1PageSectionWithInstructionAsync(
+            int sectionIndex,
+            string currentContent,
+            string userInstruction,
+            DossierReading reading,
+            CancellationToken ct = default)
+        {
+            var subsections = GetRestitution1PageSubsections();
+            if (sectionIndex < 0 || sectionIndex >= subsections.Length)
+                return $"(Index {sectionIndex} invalide)";
+
+            var (title, _) = subsections[sectionIndex];
+            var blocp2     = new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre");
+            var systemPrompt = BuildSystemPrompt(blocp2);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Voici le contenu actuel de la section {title} :");
+            sb.AppendLine();
+            sb.AppendLine(string.IsNullOrWhiteSpace(currentContent) ? "(section vide)" : currentContent.Trim());
+            sb.AppendLine();
+            sb.AppendLine("=================");
+            sb.AppendLine($"INSTRUCTION DE MODIFICATION : {userInstruction.Trim()}");
+            sb.AppendLine();
+            sb.AppendLine("Produis une NOUVELLE VERSION de cette section EN APPLIQUANT STRICTEMENT l'instruction ci-dessus. " +
+                          "Même ton chaleureux et accessible pour les parents (pas de jargon médical). " +
+                          "Commence directement par le contenu, sans titre ni commentaire introductif.");
+
+            var messages = new List<(string role, string content)> { ("user", sb.ToString()) };
+            var result   = await _llmService.ChatAsync(systemPrompt, messages, 800, ct);
+            return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
+        }
+
         private static string BuildSubsectionPrompt(string dossierContext, string instruction, string voixCible)
         {
             var sb = new System.Text.StringBuilder();
