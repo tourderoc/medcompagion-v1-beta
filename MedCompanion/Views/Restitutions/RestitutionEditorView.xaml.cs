@@ -98,6 +98,8 @@ namespace MedCompanion.Views.Restitutions
 
                 if (ok)
                 {
+                    // Persiste le chemin PDF dans le .md et notifie le hub pour qu'il affiche le bouton PDF.
+                    await _boundVm.OnPdfExportedAsync(dialog.FileName);
                     Process.Start(new ProcessStartInfo { FileName = dialog.FileName, UseShellExecute = true });
                 }
                 else

@@ -3440,6 +3440,7 @@
                                     Margin="0,15,0,0">
                             <StackPanel.Style>
                                 <Style TargetType="StackPanel">
+                                    <Setter Property="Visibility" Value="Collapsed"/>
                                     <Style.Triggers>
                                         <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed"/>
@@ -3469,6 +3470,9 @@
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsRestitutionReviewMode}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsViewingPastNote}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
                                     </Style.Triggers>
@@ -5453,6 +5457,48 @@
                                                     <TextBlock Text="Aucun document importé pour ce patient. Utilisez 📄 Documents dans la zone Med pour en ajouter (courriers, attestations, ordonnances, etc.)."
                                                                FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
                                                                Visibility="{Binding HasNoPatientDocuments, Converter={StaticResource BoolToVis}}"/>
+
+                                                    <!-- Dossiers de Restitution -->
+                                                    <TextBlock Text="Dossiers de Restitution" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,25,0,10"/>
+                                                    <ItemsControl ItemsSource="{Binding RestitutionsHub.Restitutions}"
+                                                                  Visibility="{Binding RestitutionsHub.HasRestitutions, Converter={StaticResource BoolToVis}}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Background="White" BorderBrush="#D1F2EB" BorderThickness="1" CornerRadius="8" Padding="14" Margin="0,0,0,10">
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="Auto"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <TextBlock Grid.Column="0" Text="📄" FontSize="18" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                            <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="SemiBold" Foreground="#117A65"/>
+                                                                            <TextBlock Text="{Binding DateText}" FontSize="11" Foreground="#7F8C8D"/>
+                                                                        </StackPanel>
+                                                                        <Button Grid.Column="2" Command="{Binding OpenPdfCommand}"
+                                                                                Padding="10,4" Background="#E74C3C" Foreground="White" FontSize="11" FontWeight="Bold"
+                                                                                BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
+                                                                                Visibility="{Binding HasPdf, Converter={StaticResource BoolToVis}}">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                        <TextBlock Text="📕 PDF" Foreground="White" FontSize="11" FontWeight="Bold"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#C0392B"/></Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                        </Button>
+                                                                    </Grid>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                    <TextBlock Text="Aucun dossier de restitution généré pour ce patient."
+                                                               FontSize="14" Foreground="#7F8C8D" TextWrapping="Wrap" FontStyle="Italic"
+                                                               Visibility="{Binding RestitutionsHub.HasNoRestitutions, Converter={StaticResource BoolToVis}}"/>
                                                 </StackPanel>
                                             </ScrollViewer>
                                             <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
@@ -5503,7 +5549,50 @@
                                                  <ScrollViewer Grid.Row="0" Margin="40" VerticalScrollBarVisibility="Hidden">
                                                      <StackPanel>
                                                          <TextBlock Text="Documents" FontSize="18" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,15"/>
-                                                         <TextBlock Text="Courriers, attestations, ordonnances..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap"/>
+                                                         <TextBlock Text="Courriers, attestations, ordonnances..." FontSize="14" Foreground="#34495E" TextWrapping="Wrap" Margin="0,0,0,20"/>
+                                                         <!-- Dossiers de Restitution -->
+                                                         <TextBlock Text="Dossiers de Restitution" FontSize="16" FontWeight="SemiBold" Foreground="#2C3E50" Margin="0,0,0,8"/>
+                                                         <ItemsControl ItemsSource="{Binding RestitutionsHub.Restitutions}"
+                                                                       Visibility="{Binding RestitutionsHub.HasRestitutions, Converter={StaticResource BoolToVis}}">
+                                                             <ItemsControl.ItemTemplate>
+                                                                 <DataTemplate>
+                                                                     <Border Background="White" BorderBrush="#D1F2EB" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                                                                         <Grid>
+                                                                             <Grid.ColumnDefinitions>
+                                                                                 <ColumnDefinition Width="Auto"/>
+                                                                                 <ColumnDefinition Width="*"/>
+                                                                                 <ColumnDefinition Width="Auto"/>
+                                                                             </Grid.ColumnDefinitions>
+                                                                             <TextBlock Grid.Column="0" Text="📄" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                                             <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                                 <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" Foreground="#117A65"/>
+                                                                                 <TextBlock Text="{Binding DateText}" FontSize="10" Foreground="#7F8C8D"/>
+                                                                             </StackPanel>
+                                                                             <Button Grid.Column="2" Command="{Binding OpenPdfCommand}"
+                                                                                     Padding="6,2" Background="#E74C3C" Foreground="White" FontSize="10" FontWeight="Bold"
+                                                                                     BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
+                                                                                     Visibility="{Binding HasPdf, Converter={StaticResource BoolToVis}}">
+                                                                                 <Button.Template>
+                                                                                     <ControlTemplate TargetType="Button">
+                                                                                         <Border x:Name="PdfBd2" Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                                                             <TextBlock Text="📕 PDF" Foreground="White" FontSize="10" FontWeight="Bold"/>
+                                                                                         </Border>
+                                                                                         <ControlTemplate.Triggers>
+                                                                                             <Trigger Property="IsMouseOver" Value="True">
+                                                                                                 <Setter TargetName="PdfBd2" Property="Background" Value="#C0392B"/>
+                                                                                             </Trigger>
+                                                                                         </ControlTemplate.Triggers>
+                                                                                     </ControlTemplate>
+                                                                                 </Button.Template>
+                                                                             </Button>
+                                                                         </Grid>
+                                                                     </Border>
+                                                                 </DataTemplate>
+                                                             </ItemsControl.ItemTemplate>
+                                                         </ItemsControl>
+                                                         <TextBlock Text="Aucun dossier de restitution."
+                                                                    FontSize="12" Foreground="#7F8C8D" FontStyle="Italic"
+                                                                    Visibility="{Binding RestitutionsHub.HasNoRestitutions, Converter={StaticResource BoolToVis}}"/>
                                                      </StackPanel>
                                                  </ScrollViewer>
                                                  <Button Grid.Row="1" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"

@@ -99,12 +99,24 @@ namespace MedCompanion.ViewModels.Restitutions
         public bool IsContexteFamilial => Model.Key == "patient_contexte_familial";
         public bool IsAntecedents       => Model.Key == "patient_antecedents";
         public bool IsSituationActuelle => Model.Key == "patient_situation_actuelle";
-        public bool IsCartoSphere  => Model.Key.StartsWith("carto_s", System.StringComparison.Ordinal);
-        public bool IsEnvFeuille   => Model.Key.StartsWith("env_edu_f", System.StringComparison.Ordinal)
-                                   && !Model.Key.Equals("env_edu_global", System.StringComparison.Ordinal);
+        public bool IsCartoSphere     => Model.Key.StartsWith("carto_s", System.StringComparison.Ordinal);
+        public bool IsEnvFeuille      => Model.Key.StartsWith("env_edu_f", System.StringComparison.Ordinal)
+                                      && !Model.Key.Equals("env_edu_global", System.StringComparison.Ordinal);
+        public bool IsSyntheseDiagS2  => Model.Key == "synthese_diag_s2";
+        public bool IsSyntheseDiagS3  => Model.Key == "synthese_diag_s3";
+        public bool IsSyntheseDiagS4  => Model.Key == "synthese_diag_s4";
+        public bool IsPtS1        => Model.Key == "pt_s1";
+        public bool IsPtS2        => Model.Key == "pt_s2";
+        public bool IsPtS3        => Model.Key == "pt_s3";
+        public bool IsPtS4        => Model.Key == "pt_s4";
+        public bool IsPtS5        => Model.Key == "pt_s5";
+        public bool IsConclusion  => Model.Key == "conclusion";
+        public bool IsPtBloc      => IsPtS1 || IsPtS2 || IsPtS3 || IsPtS4 || IsPtS5 || IsConclusion;
         public bool HasReformuleButton => !IsCouverture && !IsIdentification && !IsRestitutionParents
                                        && !IsContexteFamilial && !IsAntecedents && !IsSituationActuelle
-                                       && !IsCartoSphere && !IsEnvFeuille;
+                                       && !IsCartoSphere && !IsEnvFeuille
+                                       && !IsSyntheseDiagS2 && !IsSyntheseDiagS3 && !IsSyntheseDiagS4
+                                       && !IsPtBloc;
 
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
@@ -675,6 +687,447 @@ namespace MedCompanion.ViewModels.Restitutions
             finally { _syncingContexteFamilial = false; }
         }
 
+        // ── Blocs PT structurés (pt_s1..pt_s5) ───────────────────────────────────
+
+        private readonly Func<RestitutionBlocViewModel, Task>? _reformulateAction;
+
+        public ObservableCollection<PtFieldViewModel> PtFields { get; } = new();
+
+        private bool _syncingPt;
+
+        private static System.Collections.Generic.IReadOnlyList<PtFieldDef> GetPtFieldDefs(string key) => key switch
+        {
+            "pt_s1" => new PtFieldDef[]
+            {
+                new("intro",                        "Intro",                           false),
+                new("objectifs",                    "Objectifs",                       true),
+                new("traitement.situationActuelle", "Traitement — Situation actuelle", false),
+                new("traitement.propositions",      "Traitement — Propositions",       true),
+                new("bilans.realises",              "Bilans — Réalisés",               true),
+                new("bilans.aEnvisager",            "Bilans — À envisager",            true),
+                new("surveillance",                 "Surveillance",                    true),
+                new("suivi",                        "Suivi",                           true),
+                new("engagement",                   "Engagement",                      false),
+            },
+            "pt_s2" => new PtFieldDef[]
+            {
+                new("intro",               "Intro",                  false),
+                new("objectifs",           "Objectifs",              true),
+                new("resultatsAttendus",   "Résultats attendus",     true),
+                new("modalites",           "Modalités",              true),
+                new("pointsTravail",       "Points de travail",      true),
+                new("outilsUtilises",      "Outils utilisés",        true),
+                new("surveillance",        "Surveillance",           true),
+                new("indicateursPositifs", "Indicateurs positifs",   true),
+                new("suivi",               "Suivi",                  true),
+                new("engagement",          "Engagement",             false),
+            },
+            "pt_s3" => new PtFieldDef[]
+            {
+                new("intro",                "Intro",                   false),
+                new("objectifs",            "Objectifs",               true),
+                new("interventions",        "Interventions",           true),
+                new("axesPrioritaires",     "Axes prioritaires",       true),
+                new("ressourcesEnfant",     "Ressources de l'enfant",  true),
+                new("indicateursEvolution", "Indicateurs d'évolution", true),
+                new("reevaluation",         "Réévaluation",            true),
+                new("engagement",           "Engagement",              false),
+            },
+            "pt_s4" => new PtFieldDef[]
+            {
+                new("intro",               "Intro",                 false),
+                new("objectifs",           "Objectifs",             true),
+                new("axesPrioritaires",    "Axes prioritaires",     true),
+                new("outils",              "Outils",                true),
+                new("forcesFamiliales",    "Forces familiales",     true),
+                new("objectifsCourtTerme", "Objectifs court terme", true),
+                new("modalites",           "Modalités",             true),
+                new("engagement",          "Engagement",            false),
+            },
+            "pt_s5" => new PtFieldDef[]
+            {
+                new("intro",                "Intro",                   false),
+                new("objectifs",            "Objectifs",               true),
+                new("amenagements",         "Aménagements",            true),
+                new("coordination",         "Coordination",            true),
+                new("pointsAppui",          "Points d'appui",          true),
+                new("indicateursEvolution", "Indicateurs d'évolution", true),
+                new("reevaluation",         "Réévaluation",            true),
+                new("engagement",           "Engagement",              false),
+            },
+            "conclusion" => new PtFieldDef[]
+            {
+                new("intro",          "Intro",               false),
+                new("forces",         "Forces",              true),
+                new("feuilleDeRoute", "Feuille de route",    true),
+                new("messageParents", "Message aux parents", true),
+                new("prochainsRdv",   "Prochains RDV",       true),
+                new("engagement",     "Engagement",          false),
+            },
+            _ => System.Array.Empty<PtFieldDef>()
+        };
+
+        private void InitPtBloc(Func<RestitutionBlocViewModel, Task>? reformulateAction)
+        {
+            if (!IsPtBloc) return;
+            foreach (var def in GetPtFieldDefs(Model.Key))
+            {
+                var field = new PtFieldViewModel(def.JsonPath, def.Label, def.IsList);
+                field.Flush = FlushPtToContenu;
+                if (reformulateAction != null)
+                {
+                    field.InitRegenerateCommand(async f =>
+                    {
+                        if (string.IsNullOrWhiteSpace(f.UserInstruction)) return;
+                        ReformuleInstruction = $"Pour la section \"{f.Title}\" uniquement : {f.UserInstruction.Trim()}";
+                        f.IsGenerating = true;
+                        try { await reformulateAction(this); }
+                        finally
+                        {
+                            f.IsGenerating = false;
+                            f.IsReformulePanelVisible = false;
+                            f.UserInstruction = "";
+                        }
+                    });
+                }
+                PtFields.Add(field);
+            }
+        }
+
+        private PtFieldViewModel? FindPtField(string jsonPath)
+        {
+            foreach (var f in PtFields) if (f.JsonPath == jsonPath) return f;
+            return null;
+        }
+
+        private void ParsePtFromContenu()
+        {
+            if (_syncingPt || !IsPtBloc) return;
+            _syncingPt = true;
+            try
+            {
+                var json = StripMarkdownFence(Model.ContenuValide ?? "");
+                if (string.IsNullOrWhiteSpace(json) || json == "{}") return;
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                foreach (var field in PtFields)
+                {
+                    var el = GetNestedElement(root, field.JsonPath);
+                    if (!el.HasValue) continue;
+                    if (!field.IsList)
+                    {
+                        field.Content = el.Value.GetString() ?? "";
+                    }
+                    else if (el.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        field.Items.Clear();
+                        foreach (var item in el.Value.EnumerateArray())
+                        {
+                            var es = new Models.Evaluations.EditableString(item.GetString() ?? "");
+                            es.PropertyChanged += (s, _) => FlushPtToContenu();
+                            field.Items.Add(es);
+                        }
+                    }
+                }
+            }
+            catch { }
+            finally { _syncingPt = false; }
+        }
+
+        private static System.Text.Json.JsonElement? GetNestedElement(
+            System.Text.Json.JsonElement root, string path)
+        {
+            var parts = path.Split('.');
+            var current = root;
+            foreach (var part in parts)
+            {
+                if (!current.TryGetProperty(part, out var next)) return null;
+                current = next;
+            }
+            return current;
+        }
+
+        private void FlushPtToContenu()
+        {
+            if (_syncingPt || !IsPtBloc) return;
+            _syncingPt = true;
+            try
+            {
+                var dict = BuildNestedDict();
+                Model.ContenuValide = System.Text.Json.JsonSerializer.Serialize(dict,
+                    new System.Text.Json.JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                    });
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingPt = false; }
+        }
+
+        private System.Collections.Generic.Dictionary<string, object?> BuildNestedDict()
+        {
+            var root = new System.Collections.Generic.Dictionary<string, object?>();
+            foreach (var field in PtFields)
+            {
+                var parts = field.JsonPath.Split('.');
+                var current = root;
+                for (int i = 0; i < parts.Length - 1; i++)
+                {
+                    if (!current.ContainsKey(parts[i]))
+                        current[parts[i]] = new System.Collections.Generic.Dictionary<string, object?>();
+                    current = (System.Collections.Generic.Dictionary<string, object?>)current[parts[i]]!;
+                }
+                current[parts[^1]] = field.IsList
+                    ? (object?)field.Items.Select(e => e.Value).ToArray()
+                    : field.Content;
+            }
+            return root;
+        }
+
+        // ── Blocs JSON structurés (synthese_diag_s2 / s3 / s4) ──────────────────
+
+        private bool _syncingS2;
+        private bool _syncingS3;
+        private bool _syncingS4;
+
+        public ObservableCollection<DiagRetenuVm>  DiagS2Items { get; } = new();
+        public ObservableCollection<DiagEcarteVm>  DiagS3Items { get; } = new();
+        public S4IntegrationVm S4Vm { get; } = new();
+
+        public ICommand AddDiagS2Command { get; private set; } = null!;
+        public ICommand AddDiagS3Command { get; private set; } = null!;
+
+        private void InitStructuredBlocs()
+        {
+            AddDiagS2Command = new RelayCommand(_ =>
+            {
+                var vm = CreateDiagRetenuVm();
+                DiagS2Items.Add(vm);
+                FlushS2ToContenu();
+            });
+
+            AddDiagS3Command = new RelayCommand(_ =>
+            {
+                var vm = CreateDiagEcarteVm();
+                DiagS3Items.Add(vm);
+                FlushS3ToContenu();
+            });
+
+            S4Vm.Flush = FlushS4ToContenu;
+        }
+
+        private DiagRetenuVm CreateDiagRetenuVm()
+        {
+            var vm = new DiagRetenuVm();
+            vm.Flush     = FlushS2ToContenu;
+            vm.RemoveSelf = () => { DiagS2Items.Remove(vm); FlushS2ToContenu(); };
+            return vm;
+        }
+
+        private DiagEcarteVm CreateDiagEcarteVm()
+        {
+            var vm = new DiagEcarteVm();
+            vm.Flush     = FlushS3ToContenu;
+            vm.RemoveSelf = () => { DiagS3Items.Remove(vm); FlushS3ToContenu(); };
+            return vm;
+        }
+
+        private void ParseS2FromContenu()
+        {
+            if (_syncingS2) return;
+            _syncingS2 = true;
+            try
+            {
+                DiagS2Items.Clear();
+                var json = StripMarkdownFence(Model.ContenuValide ?? "");
+                if (string.IsNullOrWhiteSpace(json) || json == "[]") return;
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+                foreach (var el in root.EnumerateArray())
+                {
+                    var vm = CreateDiagRetenuVm();
+                    if (el.TryGetProperty("label",     out var lb))   vm.Label     = lb.GetString()   ?? "";
+                    if (el.TryGetProperty("certitude", out var cert)) vm.Certitude = cert.GetString() ?? "Modérée";
+                    if (el.TryGetProperty("elements",  out var elems)
+                        && elems.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var e in elems.EnumerateArray())
+                        {
+                            var item = new Models.Evaluations.EditableString(e.GetString() ?? "");
+                            item.PropertyChanged += (s, _) => FlushS2ToContenu();
+                            vm.Elements.Add(item);
+                        }
+                    }
+                    DiagS2Items.Add(vm);
+                }
+            }
+            catch { }
+            finally { _syncingS2 = false; }
+        }
+
+        private void FlushS2ToContenu()
+        {
+            if (_syncingS2) return;
+            _syncingS2 = true;
+            try
+            {
+                var items = DiagS2Items.Select(d => new
+                {
+                    label     = d.Label,
+                    certitude = d.Certitude,
+                    elements  = d.Elements.Select(e => e.Value).ToArray()
+                });
+                Model.ContenuValide = System.Text.Json.JsonSerializer.Serialize(items,
+                    new System.Text.Json.JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                    });
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingS2 = false; }
+        }
+
+        private void ParseS3FromContenu()
+        {
+            if (_syncingS3) return;
+            _syncingS3 = true;
+            try
+            {
+                DiagS3Items.Clear();
+                var json = StripMarkdownFence(Model.ContenuValide ?? "");
+                if (string.IsNullOrWhiteSpace(json) || json == "[]") return;
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+                foreach (var el in root.EnumerateArray())
+                {
+                    var vm = CreateDiagEcarteVm();
+                    if (el.TryGetProperty("label",      out var lb))   vm.Label      = lb.GetString()   ?? "";
+                    if (el.TryGetProperty("conclusion", out var conc)) vm.Conclusion = conc.GetString() ?? "";
+                    if (el.TryGetProperty("arguments",  out var args)
+                        && args.ValueKind == System.Text.Json.JsonValueKind.Array)
+                    {
+                        foreach (var a in args.EnumerateArray())
+                        {
+                            var item = new Models.Evaluations.EditableString(a.GetString() ?? "");
+                            item.PropertyChanged += (s, _) => FlushS3ToContenu();
+                            vm.Arguments.Add(item);
+                        }
+                    }
+                    DiagS3Items.Add(vm);
+                }
+            }
+            catch { }
+            finally { _syncingS3 = false; }
+        }
+
+        private void FlushS3ToContenu()
+        {
+            if (_syncingS3) return;
+            _syncingS3 = true;
+            try
+            {
+                var items = DiagS3Items.Select(d => new
+                {
+                    label      = d.Label,
+                    conclusion = d.Conclusion,
+                    arguments  = d.Arguments.Select(a => a.Value).ToArray()
+                });
+                Model.ContenuValide = System.Text.Json.JsonSerializer.Serialize(items,
+                    new System.Text.Json.JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                    });
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingS3 = false; }
+        }
+
+        private void ParseS4FromContenu()
+        {
+            if (_syncingS4) return;
+            _syncingS4 = true;
+            try
+            {
+                S4Vm.Forces.Clear(); S4Vm.Fragilites.Clear();
+                S4Vm.Protecteurs.Clear(); S4Vm.Aggravants.Clear();
+                var json = StripMarkdownFence(Model.ContenuValide ?? "");
+                if (string.IsNullOrWhiteSpace(json) || json == "{}") return;
+                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("enfant", out var enfant))
+                {
+                    LoadJsonList(S4Vm.Forces,     enfant, "forces",     FlushS4ToContenu);
+                    LoadJsonList(S4Vm.Fragilites, enfant, "fragilites", FlushS4ToContenu);
+                }
+                if (root.TryGetProperty("environnement", out var env))
+                {
+                    LoadJsonList(S4Vm.Protecteurs, env, "protecteurs", FlushS4ToContenu);
+                    LoadJsonList(S4Vm.Aggravants,  env, "aggravants",  FlushS4ToContenu);
+                }
+            }
+            catch { }
+            finally { _syncingS4 = false; }
+        }
+
+        private static void LoadJsonList(
+            ObservableCollection<Models.Evaluations.EditableString> list,
+            System.Text.Json.JsonElement parent, string key, Action flush)
+        {
+            if (!parent.TryGetProperty(key, out var arr) || arr.ValueKind != System.Text.Json.JsonValueKind.Array) return;
+            foreach (var el in arr.EnumerateArray())
+            {
+                var item = new Models.Evaluations.EditableString(el.GetString() ?? "");
+                item.PropertyChanged += (s, _) => flush();
+                list.Add(item);
+            }
+        }
+
+        private void FlushS4ToContenu()
+        {
+            if (_syncingS4) return;
+            _syncingS4 = true;
+            try
+            {
+                var data = new
+                {
+                    enfant = new
+                    {
+                        forces     = S4Vm.Forces.Select(f => f.Value).ToArray(),
+                        fragilites = S4Vm.Fragilites.Select(f => f.Value).ToArray()
+                    },
+                    environnement = new
+                    {
+                        protecteurs = S4Vm.Protecteurs.Select(p => p.Value).ToArray(),
+                        aggravants  = S4Vm.Aggravants.Select(a => a.Value).ToArray()
+                    }
+                };
+                Model.ContenuValide = System.Text.Json.JsonSerializer.Serialize(data,
+                    new System.Text.Json.JsonSerializerOptions
+                    {
+                        WriteIndented = true,
+                        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+                    });
+                OnPropertyChanged(nameof(Contenu));
+            }
+            finally { _syncingS4 = false; }
+        }
+
+        private static string StripMarkdownFence(string s)
+        {
+            var t = s.Trim();
+            if (!t.StartsWith("```")) return t;
+            var nl = t.IndexOf('\n');
+            if (nl < 0) return t;
+            t = t.Substring(nl + 1);
+            if (t.EndsWith("```")) t = t.Substring(0, t.Length - 3).TrimEnd();
+            return t.Trim();
+        }
+
         // ── Contenu brut (TextBox pour les autres blocs) ──────────────────────
 
         public string Contenu
@@ -692,6 +1145,10 @@ namespace MedCompanion.ViewModels.Restitutions
                     if (IsContexteFamilial) ParseContenuToContexteFamilialFields();
                     if (IsAntecedents) ParseContenuToAntecedentsFields();
                     if (IsSituationActuelle) ParseContenuToSaFields();
+                    if (IsSyntheseDiagS2) ParseS2FromContenu();
+                    if (IsSyntheseDiagS3) ParseS3FromContenu();
+                    if (IsSyntheseDiagS4) ParseS4FromContenu();
+                    if (IsPtBloc) ParsePtFromContenu();
                 }
             }
         }
@@ -762,6 +1219,7 @@ namespace MedCompanion.ViewModels.Restitutions
             ToggleReformulePanelCommand = new RelayCommand(
                 _ => IsReformulePanelVisible = !IsReformulePanelVisible,
                 _ => !IsGenerating);
+            _reformulateAction = reformulateAction;
             RegenerateCommand = reformulateAction != null
                 ? new RelayCommand(async _ => await reformulateAction(this), _ => !IsGenerating)
                 : new RelayCommand(_ => { }, _ => false);
@@ -777,6 +1235,14 @@ namespace MedCompanion.ViewModels.Restitutions
             if (IsAntecedents) ParseContenuToAntecedentsFields();
             if (IsSituationActuelle) InitSaSections(generateSectionAction);
             if (IsRestitutionParents) InitRpSections(generateSectionAction);
+
+            InitStructuredBlocs();
+            if (IsSyntheseDiagS2 && !string.IsNullOrWhiteSpace(Model.ContenuValide)) ParseS2FromContenu();
+            if (IsSyntheseDiagS3 && !string.IsNullOrWhiteSpace(Model.ContenuValide)) ParseS3FromContenu();
+            if (IsSyntheseDiagS4 && !string.IsNullOrWhiteSpace(Model.ContenuValide)) ParseS4FromContenu();
+
+            InitPtBloc(reformulateAction);
+            if (IsPtBloc && !string.IsNullOrWhiteSpace(Model.ContenuValide)) ParsePtFromContenu();
         }
 
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -1416,11 +1882,23 @@ namespace MedCompanion.ViewModels.Restitutions
 
         // ── Sauvegarde brouillon ────────────────────────────────────────────
 
+        /// <summary>Déclenché après un export PDF réussi. Paramètre = chemin du PDF.</summary>
+        public event Action<string>? PdfExported;
+
+        /// <summary>Appelé par la vue après un export PDF réussi : enregistre le chemin dans le .md et notifie le hub.</summary>
+        public async Task OnPdfExportedAsync(string pdfPath)
+        {
+            _dossier.GeneratedPdfPath = pdfPath;
+            await SaveAsync();
+            PdfExported?.Invoke(pdfPath);
+        }
+
         private async Task SaveAsync()
         {
             try
             {
                 await Task.Run(() => _restitutionService.SaveBrouillon(_dossier));
+                StatusMessage = "✅ Sauvegardé";
             }
             catch (Exception ex)
             {

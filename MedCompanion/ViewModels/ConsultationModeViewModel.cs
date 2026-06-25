@@ -777,8 +777,10 @@ namespace MedCompanion.ViewModels
         public ConsultationNoteViewModel? SelectedPastConsultation
         {
             get => _selectedPastConsultation;
-            set => SetProperty(ref _selectedPastConsultation, value);
+            set { if (SetProperty(ref _selectedPastConsultation, value)) OnPropertyChanged(nameof(IsViewingPastNote)); }
         }
+
+        public bool IsViewingPastNote => SelectedPastConsultation != null;
 
         private ProjetTherapeutiqueViewModel? _projetTherapeutiqueVM;
         public ProjetTherapeutiqueViewModel? ProjetTherapeutiqueVM
@@ -4499,6 +4501,13 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
 
                 RestitutionEditor = editorVm;
                 editorVm.RequestClose += () => { RestitutionEditor = null; };
+                editorVm.PdfExported += pdfPath =>
+                {
+                    var patient = CurrentPatient;
+                    if (patient != null)
+                        System.Windows.Application.Current?.Dispatcher.InvokeAsync(
+                            async () => await RestitutionsHub.LoadForPatientAsync(patient));
+                };
             }
         }
 

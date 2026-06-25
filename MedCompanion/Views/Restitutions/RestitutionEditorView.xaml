@@ -1217,6 +1217,526 @@
                                             </ItemsControl>
                                         </Border>
 
+                                        <!-- SYNTHESE DIAG S2 : Diagnostics retenus -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSyntheseDiagS2}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <ItemsControl ItemsSource="{Binding DiagS2Items}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,0,10" BorderBrush="#AED6F1" BorderThickness="1" CornerRadius="6" Background="White">
+                                                                <StackPanel>
+                                                                    <!-- En-tête carte diag -->
+                                                                    <Border Background="#D6EAF8" CornerRadius="5,5,0,0" Padding="10,7">
+                                                                        <Grid>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="Auto"/>
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <TextBox Grid.Column="0" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
+                                                                                     FontWeight="SemiBold" FontSize="12" FontFamily="Segoe UI"
+                                                                                     BorderThickness="0" Background="Transparent" Padding="0"
+                                                                                     VerticalAlignment="Center"
+                                                                                     Tag="Nom du diagnostic (ex : TDAH, TSA…)"/>
+                                                                            <Button Grid.Column="1" Command="{Binding RemoveSelfCommand}"
+                                                                                    Content="✕" Padding="5,2" FontSize="11" Cursor="Hand"
+                                                                                    Background="Transparent" BorderThickness="0" Foreground="#E74C3C"
+                                                                                    ToolTip="Supprimer ce diagnostic"/>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                    <StackPanel Margin="10,8,10,6">
+                                                                        <!-- Certitude -->
+                                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,6">
+                                                                            <TextBlock Text="Certitude :" FontSize="11" FontWeight="SemiBold"
+                                                                                       Foreground="#555" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                                            <ComboBox SelectedItem="{Binding Certitude, Mode=TwoWay}"
+                                                                                      ItemsSource="{x:Static vm:DiagRetenuVm.CertitudeOptions}"
+                                                                                      FontSize="11" MinWidth="120" Padding="4,2"/>
+                                                                        </StackPanel>
+                                                                        <!-- Éléments cliniques -->
+                                                                        <TextBlock Text="Éléments cliniques :" FontSize="11" FontWeight="SemiBold"
+                                                                                   Foreground="#555" Margin="0,0,0,4"/>
+                                                                        <ItemsControl ItemsSource="{Binding Elements}">
+                                                                            <ItemsControl.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                    <Grid Margin="0,2,0,2">
+                                                                                        <Grid.ColumnDefinitions>
+                                                                                            <ColumnDefinition Width="*"/>
+                                                                                            <ColumnDefinition Width="Auto"/>
+                                                                                        </Grid.ColumnDefinitions>
+                                                                                        <TextBox Grid.Column="0"
+                                                                                                 Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                                                 FontSize="12" FontFamily="Segoe UI"
+                                                                                                 Padding="5,3" BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                                                 AcceptsReturn="False" TextWrapping="Wrap"/>
+                                                                                        <Button Grid.Column="1" Margin="4,0,0,0"
+                                                                                                Command="{Binding DataContext.RemoveElementCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                                CommandParameter="{Binding}"
+                                                                                                Content="−" Padding="5,2" FontSize="12" Cursor="Hand"
+                                                                                                Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1"
+                                                                                                Foreground="#C0392B" ToolTip="Supprimer"/>
+                                                                                    </Grid>
+                                                                                </DataTemplate>
+                                                                            </ItemsControl.ItemTemplate>
+                                                                        </ItemsControl>
+                                                                        <Button Command="{Binding AddElementCommand}" Content="+ Ajouter un élément"
+                                                                                HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                                                Padding="7,3" FontSize="11" Cursor="Hand"
+                                                                                Background="#EBF5FB" BorderBrush="#AED6F1" BorderThickness="1"
+                                                                                Foreground="#1B4F72"/>
+                                                                    </StackPanel>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <Button Command="{Binding AddDiagS2Command}" Content="＋ Ajouter un diagnostic retenu"
+                                                        HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                        Padding="10,5" FontSize="12" Cursor="Hand"
+                                                        Background="#D5F5E3" BorderBrush="#82E0AA" BorderThickness="1" Foreground="#1E8449"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- SYNTHESE DIAG S3 : Diagnostics écartés -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSyntheseDiagS3}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <ItemsControl ItemsSource="{Binding DiagS3Items}">
+                                                    <ItemsControl.ItemTemplate>
+                                                        <DataTemplate>
+                                                            <Border Margin="0,0,0,10" BorderBrush="#F1948A" BorderThickness="1" CornerRadius="6" Background="White">
+                                                                <StackPanel>
+                                                                    <Border Background="#FADBD8" CornerRadius="5,5,0,0" Padding="10,7">
+                                                                        <Grid>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="Auto"/>
+                                                                            </Grid.ColumnDefinitions>
+                                                                            <TextBox Grid.Column="0" Text="{Binding Label, UpdateSourceTrigger=PropertyChanged}"
+                                                                                     FontWeight="SemiBold" FontSize="12" FontFamily="Segoe UI"
+                                                                                     BorderThickness="0" Background="Transparent" Padding="0"
+                                                                                     VerticalAlignment="Center"
+                                                                                     Tag="Nom du diagnostic écarté"/>
+                                                                            <Button Grid.Column="1" Command="{Binding RemoveSelfCommand}"
+                                                                                    Content="✕" Padding="5,2" FontSize="11" Cursor="Hand"
+                                                                                    Background="Transparent" BorderThickness="0" Foreground="#C0392B"/>
+                                                                        </Grid>
+                                                                    </Border>
+                                                                    <StackPanel Margin="10,8,10,6">
+                                                                        <TextBlock Text="Conclusion :" FontSize="11" FontWeight="SemiBold"
+                                                                                   Foreground="#555" Margin="0,0,0,3"/>
+                                                                        <TextBox Text="{Binding Conclusion, UpdateSourceTrigger=PropertyChanged}"
+                                                                                 FontSize="12" FontFamily="Segoe UI" Padding="5,3"
+                                                                                 BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                                 AcceptsReturn="False" TextWrapping="Wrap" Margin="0,0,0,6"
+                                                                                 Tag="Ex : écarté — pas de critères suffisants"/>
+                                                                        <TextBlock Text="Arguments :" FontSize="11" FontWeight="SemiBold"
+                                                                                   Foreground="#555" Margin="0,0,0,4"/>
+                                                                        <ItemsControl ItemsSource="{Binding Arguments}">
+                                                                            <ItemsControl.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                    <Grid Margin="0,2,0,2">
+                                                                                        <Grid.ColumnDefinitions>
+                                                                                            <ColumnDefinition Width="*"/>
+                                                                                            <ColumnDefinition Width="Auto"/>
+                                                                                        </Grid.ColumnDefinitions>
+                                                                                        <TextBox Grid.Column="0"
+                                                                                                 Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                                                 FontSize="12" FontFamily="Segoe UI"
+                                                                                                 Padding="5,3" BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                                                 AcceptsReturn="False" TextWrapping="Wrap"/>
+                                                                                        <Button Grid.Column="1" Margin="4,0,0,0"
+                                                                                                Command="{Binding DataContext.RemoveArgumentCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                                CommandParameter="{Binding}"
+                                                                                                Content="−" Padding="5,2" FontSize="12" Cursor="Hand"
+                                                                                                Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1"
+                                                                                                Foreground="#C0392B"/>
+                                                                                    </Grid>
+                                                                                </DataTemplate>
+                                                                            </ItemsControl.ItemTemplate>
+                                                                        </ItemsControl>
+                                                                        <Button Command="{Binding AddArgumentCommand}" Content="+ Ajouter un argument"
+                                                                                HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                                                Padding="7,3" FontSize="11" Cursor="Hand"
+                                                                                Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1"
+                                                                                Foreground="#922B21"/>
+                                                                    </StackPanel>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </DataTemplate>
+                                                    </ItemsControl.ItemTemplate>
+                                                </ItemsControl>
+                                                <Button Command="{Binding AddDiagS3Command}" Content="＋ Ajouter un diagnostic écarté"
+                                                        HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                        Padding="10,5" FontSize="12" Cursor="Hand"
+                                                        Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1" Foreground="#922B21"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- SYNTHESE DIAG S4 : Intégration cartographies -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsSyntheseDiagS4}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <StackPanel>
+                                                <!-- Enfant -->
+                                                <TextBlock Text="👶 Enfant" FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="#1B4F72" Margin="0,0,0,6"/>
+                                                <Grid Margin="0,0,0,10">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="8"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <!-- Forces -->
+                                                    <Border Grid.Column="0" BorderBrush="#82E0AA" BorderThickness="1" CornerRadius="6" Background="White">
+                                                        <StackPanel>
+                                                            <Border Background="#D5F5E3" CornerRadius="5,5,0,0" Padding="8,6">
+                                                                <TextBlock Text="✅ Forces" FontWeight="SemiBold" FontSize="11" Foreground="#1E8449"/>
+                                                            </Border>
+                                                            <StackPanel Margin="8,6,8,6">
+                                                                <ItemsControl ItemsSource="{Binding S4Vm.Forces}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Grid Margin="0,2,0,2">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="*"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBox Grid.Column="0" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         FontSize="11" Padding="4,2" BorderBrush="#D6DBDF" BorderThickness="1" TextWrapping="Wrap"/>
+                                                                                <Button Grid.Column="1" Margin="3,0,0,0"
+                                                                                        Command="{Binding DataContext.S4Vm.RemoveForceCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                        CommandParameter="{Binding}"
+                                                                                        Content="−" Padding="4,1" FontSize="11" Cursor="Hand"
+                                                                                        Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1" Foreground="#C0392B"/>
+                                                                            </Grid>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                                <Button Command="{Binding S4Vm.AddForceCommand}" Content="+ Ajouter"
+                                                                        HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                                        Padding="6,2" FontSize="10" Cursor="Hand"
+                                                                        Background="#D5F5E3" BorderBrush="#82E0AA" BorderThickness="1" Foreground="#1E8449"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- Fragilités -->
+                                                    <Border Grid.Column="2" BorderBrush="#F1948A" BorderThickness="1" CornerRadius="6" Background="White">
+                                                        <StackPanel>
+                                                            <Border Background="#FADBD8" CornerRadius="5,5,0,0" Padding="8,6">
+                                                                <TextBlock Text="⚠ Fragilités" FontWeight="SemiBold" FontSize="11" Foreground="#922B21"/>
+                                                            </Border>
+                                                            <StackPanel Margin="8,6,8,6">
+                                                                <ItemsControl ItemsSource="{Binding S4Vm.Fragilites}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Grid Margin="0,2,0,2">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="*"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBox Grid.Column="0" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         FontSize="11" Padding="4,2" BorderBrush="#D6DBDF" BorderThickness="1" TextWrapping="Wrap"/>
+                                                                                <Button Grid.Column="1" Margin="3,0,0,0"
+                                                                                        Command="{Binding DataContext.S4Vm.RemoveFragiliteCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                        CommandParameter="{Binding}"
+                                                                                        Content="−" Padding="4,1" FontSize="11" Cursor="Hand"
+                                                                                        Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1" Foreground="#C0392B"/>
+                                                                            </Grid>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                                <Button Command="{Binding S4Vm.AddFragiliteCommand}" Content="+ Ajouter"
+                                                                        HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                                        Padding="6,2" FontSize="10" Cursor="Hand"
+                                                                        Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1" Foreground="#922B21"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                                <!-- Environnement -->
+                                                <TextBlock Text="🏠 Environnement" FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="#6E2FBF" Margin="0,4,0,6"/>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="8"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <!-- Protecteurs -->
+                                                    <Border Grid.Column="0" BorderBrush="#A9CCE3" BorderThickness="1" CornerRadius="6" Background="White">
+                                                        <StackPanel>
+                                                            <Border Background="#D6EAF8" CornerRadius="5,5,0,0" Padding="8,6">
+                                                                <TextBlock Text="🛡 Protecteurs" FontWeight="SemiBold" FontSize="11" Foreground="#1B4F72"/>
+                                                            </Border>
+                                                            <StackPanel Margin="8,6,8,6">
+                                                                <ItemsControl ItemsSource="{Binding S4Vm.Protecteurs}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Grid Margin="0,2,0,2">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="*"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBox Grid.Column="0" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         FontSize="11" Padding="4,2" BorderBrush="#D6DBDF" BorderThickness="1" TextWrapping="Wrap"/>
+                                                                                <Button Grid.Column="1" Margin="3,0,0,0"
+                                                                                        Command="{Binding DataContext.S4Vm.RemoveProtecteurCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                        CommandParameter="{Binding}"
+                                                                                        Content="−" Padding="4,1" FontSize="11" Cursor="Hand"
+                                                                                        Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1" Foreground="#C0392B"/>
+                                                                            </Grid>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                                <Button Command="{Binding S4Vm.AddProtecteurCommand}" Content="+ Ajouter"
+                                                                        HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                                        Padding="6,2" FontSize="10" Cursor="Hand"
+                                                                        Background="#D6EAF8" BorderBrush="#A9CCE3" BorderThickness="1" Foreground="#1B4F72"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- Aggravants -->
+                                                    <Border Grid.Column="2" BorderBrush="#F0B27A" BorderThickness="1" CornerRadius="6" Background="White">
+                                                        <StackPanel>
+                                                            <Border Background="#FDEBD0" CornerRadius="5,5,0,0" Padding="8,6">
+                                                                <TextBlock Text="🔥 Aggravants" FontWeight="SemiBold" FontSize="11" Foreground="#784212"/>
+                                                            </Border>
+                                                            <StackPanel Margin="8,6,8,6">
+                                                                <ItemsControl ItemsSource="{Binding S4Vm.Aggravants}">
+                                                                    <ItemsControl.ItemTemplate>
+                                                                        <DataTemplate>
+                                                                            <Grid Margin="0,2,0,2">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="*"/>
+                                                                                    <ColumnDefinition Width="Auto"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBox Grid.Column="0" Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                                         FontSize="11" Padding="4,2" BorderBrush="#D6DBDF" BorderThickness="1" TextWrapping="Wrap"/>
+                                                                                <Button Grid.Column="1" Margin="3,0,0,0"
+                                                                                        Command="{Binding DataContext.S4Vm.RemoveAggravantCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                        CommandParameter="{Binding}"
+                                                                                        Content="−" Padding="4,1" FontSize="11" Cursor="Hand"
+                                                                                        Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1" Foreground="#C0392B"/>
+                                                                            </Grid>
+                                                                        </DataTemplate>
+                                                                    </ItemsControl.ItemTemplate>
+                                                                </ItemsControl>
+                                                                <Button Command="{Binding S4Vm.AddAggravantCommand}" Content="+ Ajouter"
+                                                                        HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                                        Padding="6,2" FontSize="10" Cursor="Hand"
+                                                                        Background="#FDEBD0" BorderBrush="#F0B27A" BorderThickness="1" Foreground="#784212"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- BLOCS PT : éditeur champ-par-champ avec reformulation par section -->
+                                        <Border>
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsPtBloc}" Value="True">
+                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <ItemsControl ItemsSource="{Binding PtFields}">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate DataType="{x:Type vm:PtFieldViewModel}">
+                                                        <Border Margin="0,0,0,8" BorderBrush="#D0D7DE" BorderThickness="1" CornerRadius="6" Background="White">
+                                                            <StackPanel>
+                                                                <!-- En-tête section : titre + bouton Reformuler -->
+                                                                <Border Background="#EBF5FB" CornerRadius="5,5,0,0" Padding="10,7">
+                                                                    <DockPanel>
+                                                                        <Button DockPanel.Dock="Right"
+                                                                                Command="{Binding ToggleReformulePanelCommand}"
+                                                                                Padding="7,3" FontSize="10" Cursor="Hand"
+                                                                                Background="#D6EAF8" BorderBrush="#AED6F1" BorderThickness="1">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border Background="{TemplateBinding Background}"
+                                                                                            BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                            BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                            CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#AED6F1"/></Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                            <TextBlock>
+                                                                                <TextBlock.Style>
+                                                                                    <Style TargetType="TextBlock">
+                                                                                        <Setter Property="Text" Value="↺ Reformuler"/>
+                                                                                        <Style.Triggers>
+                                                                                            <DataTrigger Binding="{Binding IsReformulePanelVisible}" Value="True">
+                                                                                                <Setter Property="Text" Value="✕ Fermer"/>
+                                                                                            </DataTrigger>
+                                                                                        </Style.Triggers>
+                                                                                    </Style>
+                                                                                </TextBlock.Style>
+                                                                            </TextBlock>
+                                                                        </Button>
+                                                                        <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                                                   FontSize="12" FontFamily="Segoe UI"
+                                                                                   Foreground="#1B4F72" VerticalAlignment="Center"/>
+                                                                    </DockPanel>
+                                                                </Border>
+
+                                                                <!-- Contenu texte (champ non-liste) -->
+                                                                <TextBox Margin="8,6,8,6"
+                                                                         Text="{Binding Content, UpdateSourceTrigger=PropertyChanged}"
+                                                                         AcceptsReturn="True" TextWrapping="Wrap" MinHeight="36"
+                                                                         FontSize="12" FontFamily="Segoe UI" Padding="5,3"
+                                                                         BorderBrush="#D6DBDF" BorderThickness="1">
+                                                                    <TextBox.Style>
+                                                                        <Style TargetType="TextBox">
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsList}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </TextBox.Style>
+                                                                </TextBox>
+
+                                                                <!-- Contenu liste (champ liste) -->
+                                                                <StackPanel Margin="8,6,8,6">
+                                                                    <StackPanel.Style>
+                                                                        <Style TargetType="StackPanel">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsList}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </StackPanel.Style>
+                                                                    <ItemsControl ItemsSource="{Binding Items}">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <Grid Margin="0,2,0,2">
+                                                                                    <Grid.ColumnDefinitions>
+                                                                                        <ColumnDefinition Width="*"/>
+                                                                                        <ColumnDefinition Width="Auto"/>
+                                                                                    </Grid.ColumnDefinitions>
+                                                                                    <TextBox Grid.Column="0"
+                                                                                             Text="{Binding Value, UpdateSourceTrigger=PropertyChanged}"
+                                                                                             FontSize="12" FontFamily="Segoe UI"
+                                                                                             Padding="5,3" BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                                             AcceptsReturn="False" TextWrapping="Wrap"/>
+                                                                                    <Button Grid.Column="1" Margin="4,0,0,0"
+                                                                                            Command="{Binding DataContext.RemoveItemCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                            CommandParameter="{Binding}"
+                                                                                            Content="−" Padding="5,2" FontSize="12" Cursor="Hand"
+                                                                                            Background="#FADBD8" BorderBrush="#F1948A" BorderThickness="1"
+                                                                                            Foreground="#C0392B"/>
+                                                                                </Grid>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                    <Button Command="{Binding AddItemCommand}" Content="+ Ajouter"
+                                                                            HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                                            Padding="7,3" FontSize="11" Cursor="Hand"
+                                                                            Background="#EBF5FB" BorderBrush="#AED6F1" BorderThickness="1"
+                                                                            Foreground="#1B4F72"/>
+                                                                </StackPanel>
+
+                                                                <!-- Panneau reformulation (jaune, collapsible) -->
+                                                                <Border Background="#FEFDE7" BorderBrush="#F4D03F"
+                                                                        BorderThickness="1,0,1,1" CornerRadius="0,0,4,4" Padding="10,8">
+                                                                    <Border.Style>
+                                                                        <Style TargetType="Border">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsReformulePanelVisible}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </Border.Style>
+                                                                    <StackPanel>
+                                                                        <TextBlock Text="💡 Votre instruction de modification :"
+                                                                                   FontSize="11" FontWeight="SemiBold" Foreground="#7D6608" Margin="0,0,0,5"/>
+                                                                        <TextBox Text="{Binding UserInstruction, UpdateSourceTrigger=PropertyChanged}"
+                                                                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                                                                 MinHeight="44" MaxHeight="80" VerticalScrollBarVisibility="Auto"
+                                                                                 FontFamily="Segoe UI" FontSize="12"
+                                                                                 BorderBrush="#F4D03F" BorderThickness="1" Padding="6,4"/>
+                                                                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                                                                            <Button Command="{Binding CancelReformulePanelCommand}" Content="Annuler"
+                                                                                    Padding="10,4" FontSize="11" Cursor="Hand" Margin="0,0,8,0"
+                                                                                    Background="#F2F3F4" BorderBrush="#BDC3C7" BorderThickness="1">
+                                                                                <Button.Template>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                        </Border>
+                                                                                        <ControlTemplate.Triggers>
+                                                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#E5E8E8"/></Trigger>
+                                                                                        </ControlTemplate.Triggers>
+                                                                                    </ControlTemplate>
+                                                                                </Button.Template>
+                                                                            </Button>
+                                                                            <Button Command="{Binding RegenerateCommand}" Content="✨ Régénérer"
+                                                                                    Padding="10,4" FontSize="11" Cursor="Hand"
+                                                                                    Background="#1ABC9C" Foreground="White" BorderThickness="0">
+                                                                                <Button.Template>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                        </Border>
+                                                                                        <ControlTemplate.Triggers>
+                                                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#16A085"/></Trigger>
+                                                                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#BDC3C7"/></Trigger>
+                                                                                        </ControlTemplate.Triggers>
+                                                                                    </ControlTemplate>
+                                                                                </Button.Template>
+                                                                            </Button>
+                                                                        </StackPanel>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Border>
+
                                         <!-- AUTRES BLOCS : TextBox + panneau reformulation -->
                                         <Grid>
                                             <Grid.Style>
@@ -1239,6 +1759,18 @@
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                         <DataTrigger Binding="{Binding IsSituationActuelle}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsSyntheseDiagS2}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsSyntheseDiagS3}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsSyntheseDiagS4}" Value="True">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding IsPtBloc}" Value="True">
                                                             <Setter Property="Visibility" Value="Collapsed"/>
                                                         </DataTrigger>
                                                     </Style.Triggers>
