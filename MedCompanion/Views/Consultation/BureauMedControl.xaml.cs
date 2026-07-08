@@ -114,6 +114,17 @@ namespace MedCompanion.Views.Consultation
             _viewModel?.Initialize(medAgentService);
         }
 
+        /// <summary>Initialise l'Atelier d'écriture avec la factory LLM (Med).</summary>
+        public void InitializeAtelier(Services.LLM.LLMServiceFactory llmFactory)
+        {
+            AtelierContent.Initialize(llmFactory);
+        }
+
+        /// <summary>Vrai si l'outil demandé est l'Atelier d'écriture (natif, pas d'embedding Win32).</summary>
+        private static bool IsAtelierTool(string toolName)
+            => toolName.Contains("Écriture", StringComparison.OrdinalIgnoreCase)
+            || toolName.Contains("Ecriture", StringComparison.OrdinalIgnoreCase);
+
         // Methodes publiques appelees depuis le header principal
         public void EmbedTool(string toolName)
         {
@@ -121,11 +132,45 @@ namespace MedCompanion.Views.Consultation
             {
                 _viewModel.SelectedTool = toolName;
             }
+
+            if (IsAtelierTool(toolName))
+            {
+                ShowAtelier();
+                return;
+            }
+
+            HideAtelier();
             EmbedToolInternal(toolName);
+        }
+
+        private void ShowAtelier()
+        {
+            // Libérer une éventuelle app embarquée : les fenêtres Win32 embedées
+            // dessinent par-dessus le WPF et masqueraient l'atelier.
+            if (_embeddedWindowHandle != IntPtr.Zero)
+            {
+                var oldHandle = _embeddedWindowHandle;
+                ReleaseEmbeddedWindow();
+                ShowWindow(oldHandle, SW_MINIMIZE);
+            }
+
+            PlaceholderText.Visibility = Visibility.Collapsed;
+            AtelierContent.Visibility = Visibility.Visible;
+            if (_viewModel != null)
+                _viewModel.AnalysisResult = "Atelier d'écriture ouvert.";
+        }
+
+        private void HideAtelier()
+        {
+            if (AtelierContent.Visibility != Visibility.Visible) return;
+            AtelierContent.SaveAll();
+            AtelierContent.Visibility = Visibility.Collapsed;
+            PlaceholderText.Visibility = Visibility.Visible;
         }
 
         public void ReleaseTool()
         {
+            HideAtelier();
             ReleaseEmbeddedWindow();
             if (_viewModel != null)
             {
@@ -135,6 +180,7 @@ namespace MedCompanion.Views.Consultation
 
         public void ReleaseToolAndMinimize()
         {
+            HideAtelier();
             if (_embeddedWindowHandle != IntPtr.Zero)
             {
                 var handleToMinimize = _embeddedWindowHandle;
@@ -254,6 +300,9 @@ namespace MedCompanion.Views.Consultation
 
             // Liberer la fenetre embarquee quand le controle est decharge
             ReleaseEmbeddedWindow();
+
+            // Sauvegarder le chapitre en cours de l'atelier d'écriture
+            AtelierContent.SaveAll();
         }
 
         private void CentralHostZone_SizeChanged(object sender, SizeChangedEventArgs e)

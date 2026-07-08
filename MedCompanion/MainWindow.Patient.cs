@@ -417,6 +417,7 @@ public partial class MainWindow : Window
         {
             BureauMedContent.Initialize(_medAgentService);
         }
+        BureauMedContent.InitializeAtelier(_llmFactory);
     }
 
     // Gestionnaires des boutons Bureau (header)

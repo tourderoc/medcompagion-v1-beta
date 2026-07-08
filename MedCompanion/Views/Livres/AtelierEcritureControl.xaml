@@ -1,0 +1,293 @@
+<UserControl x:Class="MedCompanion.Views.Livres.AtelierEcritureControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+             mc:Ignorable="d"
+             d:DesignHeight="800" d:DesignWidth="1400"
+             Loaded="UserControl_Loaded"
+             Language="fr-FR"
+             Background="#F8F9FA">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisConverter"/>
+        <Style x:Key="ToolBtn" TargetType="Button">
+            <Setter Property="Background" Value="#3498DB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="MepLabel" TargetType="TextBlock">
+            <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#7F8C8D"/>
+            <Setter Property="Margin" Value="10,0,4,0"/>
+        </Style>
+        <Style x:Key="MepBox" TargetType="TextBox">
+            <Setter Property="Width" Value="42"/>
+            <Setter Property="Padding" Value="4,3"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="BorderBrush" Value="#D5DBDB"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="8">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" MinWidth="380"/>
+            <ColumnDefinition Width="6"/>
+            <ColumnDefinition Width="*" MinWidth="380"/>
+        </Grid.ColumnDefinitions>
+
+        <!-- ══ Colonne gauche : bibliothèque + éditeur + Med ══ -->
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>  <!-- Bibliothèque -->
+                <RowDefinition Height="*"/>     <!-- Éditeur -->
+                <RowDefinition Height="Auto"/>  <!-- Réponse Med -->
+                <RowDefinition Height="Auto"/>  <!-- Barre Med -->
+            </Grid.RowDefinitions>
+
+            <!-- Bibliothèque : livre + chapitre -->
+            <Border Grid.Row="0" Background="White" CornerRadius="6" Padding="10,8" Margin="0,0,0,8"
+                    BorderBrush="#E0E0E0" BorderThickness="1">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <ComboBox Grid.Column="0" ItemsSource="{Binding Livres}"
+                              SelectedItem="{Binding SelectedLivre}"
+                              DisplayMemberPath="Titre"
+                              FontSize="13" Padding="8,5"
+                              VerticalContentAlignment="Center"
+                              ToolTip="Livre en cours"/>
+                    <Button Grid.Column="1" Content="➕ Livre" Style="{StaticResource ToolBtn}"
+                            Margin="6,0,12,0" Click="NouveauLivre_Click"
+                            ToolTip="Créer un nouveau livre"/>
+
+                    <ComboBox Grid.Column="2" ItemsSource="{Binding Chapitres}"
+                              SelectedItem="{Binding SelectedChapitre}"
+                              DisplayMemberPath="Titre"
+                              FontSize="13" Padding="8,5"
+                              VerticalContentAlignment="Center"
+                              ToolTip="Chapitre en cours"/>
+                    <Button Grid.Column="3" Content="➕ Chap." Style="{StaticResource ToolBtn}"
+                            Margin="6,0,0,0" Click="NouveauChapitre_Click"
+                            ToolTip="Ajouter un chapitre"/>
+                    <Button Grid.Column="4" Content="📂 Importer" Style="{StaticResource ToolBtn}"
+                            Background="#8E44AD" Click="ImporterChapitre_Click"
+                            ToolTip="Importer un texte existant (odt, docx, txt, md, pdf) comme chapitre — un essai commencé sur LibreOffice ou Google Docs par exemple"/>
+                    <Button Grid.Column="5" Content="🗑" Style="{StaticResource ToolBtn}"
+                            Background="#E74C3C" Click="SupprimerChapitre_Click"
+                            ToolTip="Supprimer le chapitre courant"/>
+                </Grid>
+            </Border>
+
+            <!-- Éditeur du chapitre -->
+            <Border Grid.Row="1" Background="White" CornerRadius="6"
+                    BorderBrush="#E0E0E0" BorderThickness="1">
+                <TextBox x:Name="EditorBox"
+                         Text="{Binding ContenuChapitre, UpdateSourceTrigger=PropertyChanged}"
+                         AcceptsReturn="True" AcceptsTab="True"
+                         TextWrapping="Wrap"
+                         VerticalScrollBarVisibility="Auto"
+                         FontFamily="Georgia" FontSize="14"
+                         Padding="16,12"
+                         BorderThickness="0"
+                         SpellCheck.IsEnabled="True"
+                         Language="fr-FR"/>
+            </Border>
+
+            <!-- Réponse de Med (proposition à insérer) -->
+            <Border Grid.Row="2" Background="#FDFEFE" CornerRadius="6" Margin="0,8,0,0"
+                    BorderBrush="#AED6F1" BorderThickness="1" Padding="10,8">
+                <Border.Style>
+                    <Style TargetType="Border">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding MedReponse}" Value="">
+                                <Setter Property="Visibility" Value="Collapsed"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Border.Style>
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0" Margin="0,0,0,6">
+                        <TextBlock Text="💡 Proposition de Med" FontWeight="SemiBold"
+                                   FontSize="12" Foreground="#2980B9" VerticalAlignment="Center"/>
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                            <Button Content="➕ Insérer" Style="{StaticResource ToolBtn}"
+                                    Background="#27AE60" Click="InsererReponse_Click"
+                                    ToolTip="Insère au curseur, ou remplace la sélection s'il y en a une"/>
+                            <Button Content="✖" Style="{StaticResource ToolBtn}"
+                                    Background="#95A5A6" Margin="0" Click="FermerReponse_Click"/>
+                        </StackPanel>
+                    </Grid>
+                    <TextBox Grid.Row="1" Text="{Binding MedReponse, Mode=OneWay}"
+                             IsReadOnly="True" TextWrapping="Wrap"
+                             VerticalScrollBarVisibility="Auto"
+                             MaxHeight="160" BorderThickness="0"
+                             Background="Transparent"
+                             FontFamily="Georgia" FontSize="13"/>
+                </Grid>
+            </Border>
+
+            <!-- Barre d'interaction Med -->
+            <Border Grid.Row="3" Background="White" CornerRadius="6" Margin="0,8,0,0"
+                    BorderBrush="#E0E0E0" BorderThickness="1" Padding="10,8">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,6">
+                        <Button Content="✍ Continuer" Style="{StaticResource ToolBtn}"
+                                Click="Continuer_Click" IsEnabled="{Binding IsNotBusy}"
+                                ToolTip="Med écrit la suite du chapitre (le texte du champ ci-dessous sert de consigne)"/>
+                        <Button Content="🔁 Reformuler" Style="{StaticResource ToolBtn}"
+                                Click="Reformuler_Click" IsEnabled="{Binding IsNotBusy}"
+                                ToolTip="Med reformule le passage sélectionné dans l'éditeur"/>
+                        <Button Content="🧠 Mémoire" Style="{StaticResource ToolBtn}" Background="#8E44AD"
+                                Click="Memoire_Click" IsEnabled="{Binding IsNotBusy}"
+                                ToolTip="Med relit tout le livre et met à jour sa mémoire (personnages, intrigue, ton)"/>
+                        <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center"
+                                   FontSize="11" FontStyle="Italic" Foreground="#16A085" Margin="8,0,0,0"/>
+                    </StackPanel>
+
+                    <Grid Grid.Row="1">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="Med:" FontWeight="SemiBold"
+                                   Foreground="#3498DB" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                        <TextBox Grid.Column="1" x:Name="ChatBox"
+                                 Text="{Binding ChatInput, UpdateSourceTrigger=PropertyChanged}"
+                                 Padding="8,6" FontSize="13"
+                                 BorderBrush="#E0E0E0" BorderThickness="1"
+                                 VerticalAlignment="Center"
+                                 KeyDown="ChatBox_KeyDown"
+                                 ToolTip="Question libre, ou consigne pour Continuer / Reformuler"/>
+                        <Button Grid.Column="2" Content="Envoyer" Style="{StaticResource ToolBtn}"
+                                Margin="8,0,0,0" Click="Envoyer_Click"
+                                IsEnabled="{Binding IsNotBusy}"/>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <GridSplitter Grid.Column="1" HorizontalAlignment="Stretch" Background="Transparent"/>
+
+        <!-- ══ Colonne droite : mise en page + aperçu ══ -->
+        <Grid Grid.Column="2">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Grid.Row="0" Background="White" CornerRadius="6" Padding="10,6" Margin="0,0,0,8"
+                    BorderBrush="#E0E0E0" BorderThickness="1">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Grid Grid.Row="0">
+                        <Expander x:Name="MepExpander" Header="⚙ Mise en page" FontSize="12" Foreground="#2C3E50"
+                                  IsExpanded="False" HorizontalAlignment="Left"/>
+                        <Button Content="🖨 Exporter PDF" Style="{StaticResource ToolBtn}"
+                                Background="#27AE60" HorizontalAlignment="Right" Margin="0"
+                                Click="ExporterPdf_Click"/>
+                    </Grid>
+
+                    <!-- Panneau mise en page (visible quand l'expander est ouvert) -->
+                    <WrapPanel Grid.Row="1" Margin="0,8,0,2"
+                               Visibility="{Binding IsExpanded, ElementName=MepExpander, Converter={StaticResource BoolToVisConverter}}">
+                        <TextBlock Text="Format" Style="{StaticResource MepLabel}" Margin="0,0,4,0"/>
+                        <ComboBox Width="70" FontSize="11" SelectedValuePath="Content"
+                                  SelectedValue="{Binding FormatPage}">
+                            <ComboBoxItem Content="A4"/>
+                            <ComboBoxItem Content="A5"/>
+                            <ComboBoxItem Content="Poche"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Police" Style="{StaticResource MepLabel}"/>
+                        <ComboBox Width="130" FontSize="11" IsEditable="True" SelectedValuePath="Content"
+                                  Text="{Binding Police, UpdateSourceTrigger=LostFocus}">
+                            <ComboBoxItem Content="Georgia"/>
+                            <ComboBoxItem Content="Garamond"/>
+                            <ComboBoxItem Content="Times New Roman"/>
+                            <ComboBoxItem Content="Palatino Linotype"/>
+                            <ComboBoxItem Content="Book Antiqua"/>
+                            <ComboBoxItem Content="Cambria"/>
+                        </ComboBox>
+
+                        <TextBlock Text="Taille (pt)" Style="{StaticResource MepLabel}"/>
+                        <TextBox Style="{StaticResource MepBox}" Text="{Binding TaillePt, UpdateSourceTrigger=LostFocus}"/>
+
+                        <TextBlock Text="Interligne" Style="{StaticResource MepLabel}"/>
+                        <TextBox Style="{StaticResource MepBox}" Text="{Binding Interligne, UpdateSourceTrigger=LostFocus}"/>
+
+                        <TextBlock Text="Marges mm  H" Style="{StaticResource MepLabel}"/>
+                        <TextBox Style="{StaticResource MepBox}" Text="{Binding MargeHautMm, UpdateSourceTrigger=LostFocus}"/>
+                        <TextBlock Text="B" Style="{StaticResource MepLabel}" Margin="4,0,4,0"/>
+                        <TextBox Style="{StaticResource MepBox}" Text="{Binding MargeBasMm, UpdateSourceTrigger=LostFocus}"/>
+                        <TextBlock Text="G" Style="{StaticResource MepLabel}" Margin="4,0,4,0"/>
+                        <TextBox Style="{StaticResource MepBox}" Text="{Binding MargeGaucheMm, UpdateSourceTrigger=LostFocus}"/>
+                        <TextBlock Text="D" Style="{StaticResource MepLabel}" Margin="4,0,4,0"/>
+                        <TextBox Style="{StaticResource MepBox}" Text="{Binding MargeDroiteMm, UpdateSourceTrigger=LostFocus}"/>
+
+                        <CheckBox Content="Justifié" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                                  IsChecked="{Binding Justifie}"/>
+                        <CheckBox Content="Retrait 1re ligne" FontSize="11" VerticalAlignment="Center" Margin="10,0,0,0"
+                                  IsChecked="{Binding RetraitPremiereLigne}"/>
+                    </WrapPanel>
+                </Grid>
+            </Border>
+
+            <Border Grid.Row="1" Background="#DDD" CornerRadius="6"
+                    BorderBrush="#E0E0E0" BorderThickness="1">
+                <Grid>
+                    <wv2:WebView2 x:Name="PreviewWebView" Visibility="Collapsed"/>
+                    <TextBlock x:Name="PreviewFallback"
+                               Text="Chargement de l'aperçu..."
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               Foreground="#7F8C8D" FontSize="13"/>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

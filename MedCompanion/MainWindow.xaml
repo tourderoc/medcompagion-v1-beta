@@ -504,6 +504,7 @@
                         <ComboBoxItem Content="Doctolib"/>
                         <ComboBoxItem Content="Calculatrice"/>
                         <ComboBoxItem Content="Notes"/>
+                        <ComboBoxItem Content="✍ Écriture"/>
                     </ComboBox>
                     <!-- Boutons masqués - intégration automatique via SelectionChanged -->
                     <Button x:Name="BureauIntegrerBtn" Content="Integrer"
