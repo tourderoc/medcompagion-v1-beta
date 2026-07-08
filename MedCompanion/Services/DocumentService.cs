@@ -98,7 +98,7 @@ namespace MedCompanion.Services
                 
                 // ÉTAPE 3 : Analyser avec l'IA pour catégorisation et nommage (via Gateway pour anonymisation)
                 var analysis = await AnalyzeDocumentWithAIAsync(cleanedText, fileInfo.Name, nomComplet);
-                
+
                 // Créer l'objet document
                 var document = new PatientDocument
                 {
@@ -110,6 +110,16 @@ namespace MedCompanion.Services
                     FileExtension = extension,
                     DateAdded = DateTime.Now
                 };
+
+                // ÉTAPE 3bis : Si un praticien auteur a été identifié dans le document, l'enregistrer
+                // comme intervenant du patient (Admin du dossier bleu)
+                if (analysis.intervenant != null && !string.IsNullOrWhiteSpace(analysis.intervenant.Nom))
+                {
+                    analysis.intervenant.SourceDocument = document.FileName;
+                    analysis.intervenant.SourceCategory = document.Category;
+                    var infoPatientDir = _pathService.GetInfoPatientDirectory(nomComplet);
+                    new IntervenantService().Add(infoPatientDir, analysis.intervenant);
+                }
                 
                 // Copier le fichier dans le bon dossier
                 var documentsPath = _pathService.GetDocumentsDirectory(nomComplet);
@@ -317,8 +327,8 @@ Tâche : Nettoie et restructure ce texte pour le rendre parfaitement lisible.";
         /// <summary>
         /// Analyse un document avec l'IA pour déterminer catégorie, nom et synthèse
         /// </summary>
-        private async Task<(string category, string suggestedName, string summary)> AnalyzeDocumentWithAIAsync(
-            string documentText, 
+        private async Task<(string category, string suggestedName, string summary, Intervenant? intervenant)> AnalyzeDocumentWithAIAsync(
+            string documentText,
             string originalFileName,
             string patientName) // Ajout patientName pour Gateway
         {
@@ -328,6 +338,7 @@ Tâche : Nettoie et restructure ce texte pour le rendre parfaitement lisible.";
 1. CATÉGORIE (un seul mot parmi: bilans, courriers, ordonnances, attestations, radiologies, analyses, autres)
 2. NOM_FICHIER (format: AAAA-MM-JJ_type-description sans extension)
 3. SYNTHESE (résumé en 2-3 phrases du contenu)
+4. INTERVENANT : si le document est rédigé/signé par un professionnel identifiable (médecin, psychologue, orthophoniste, psychomotricien...), extrais ses coordonnées telles qu'elles apparaissent dans l'en-tête ou la signature. Sinon laisse les champs vides.
 
 Document:
 {documentText.Substring(0, Math.Min(documentText.Length, 2000))}
@@ -335,25 +346,33 @@ Document:
 Réponds uniquement au format:
 CATÉGORIE: [catégorie]
 NOM: [nom_fichier]
-SYNTHESE: [synthèse]";
+SYNTHESE: [synthèse]
+INTERVENANT_NOM: [prénom nom, ou vide]
+INTERVENANT_PROFESSION: [ex: Psychologue clinicienne, ou vide]
+INTERVENANT_ADRESSE: [adresse, ou vide]
+INTERVENANT_CP_VILLE: [code postal et ville, ou vide]
+INTERVENANT_TEL: [téléphone, ou vide]
+INTERVENANT_EMAIL: [email, ou vide]";
 
                 var messages = new List<(string role, string content)> { ("user", prompt) };
                 var (success, response, error) = await _llmGatewayService.ChatAsync("", messages, patientName);
-                
+
                 if (!success)
                 {
                     System.Diagnostics.Debug.WriteLine($"[DocumentService] Erreur analyse IA: {error}");
-                    return (DocumentCategories.Autres, 
-                            DateTime.Now.ToString("yyyy-MM-dd") + "_" + Path.GetFileNameWithoutExtension(originalFileName), 
-                            "Document médical");
+                    return (DocumentCategories.Autres,
+                            DateTime.Now.ToString("yyyy-MM-dd") + "_" + Path.GetFileNameWithoutExtension(originalFileName),
+                            "Document médical",
+                            null);
                 }
-                
+
                 // Parser la réponse
                 var lines = response.Split('\n');
                 string category = DocumentCategories.Autres;
                 string suggestedName = DateTime.Now.ToString("yyyy-MM-dd") + "_document";
                 string summary = "Document médical";
-                
+                var intervenant = new Intervenant();
+
                 foreach (var line in lines)
                 {
                     if (line.StartsWith("CATÉGORIE:", StringComparison.OrdinalIgnoreCase) ||
@@ -372,17 +391,68 @@ SYNTHESE: [synthèse]";
                     {
                         summary = line.Split(':', 2)[1].Trim();
                     }
+                    else if (line.StartsWith("INTERVENANT_NOM:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        intervenant.Nom = CleanIntervenantField(line) ?? "";
+                    }
+                    else if (line.StartsWith("INTERVENANT_PROFESSION:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        intervenant.Profession = CleanIntervenantField(line);
+                    }
+                    else if (line.StartsWith("INTERVENANT_ADRESSE:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        intervenant.Adresse = CleanIntervenantField(line);
+                    }
+                    else if (line.StartsWith("INTERVENANT_CP_VILLE:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var cpVille = CleanIntervenantField(line);
+                        var parts = cpVille?.Split(' ', 2);
+                        if (parts != null && parts.Length == 2)
+                        {
+                            intervenant.CodePostal = parts[0].Trim();
+                            intervenant.Ville = parts[1].Trim();
+                        }
+                        else
+                        {
+                            intervenant.Ville = cpVille;
+                        }
+                    }
+                    else if (line.StartsWith("INTERVENANT_TEL:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        intervenant.Telephone = CleanIntervenantField(line);
+                    }
+                    else if (line.StartsWith("INTERVENANT_EMAIL:", StringComparison.OrdinalIgnoreCase))
+                    {
+                        intervenant.Email = CleanIntervenantField(line);
+                    }
                 }
-                
-                return (category, suggestedName, summary);
+
+                return (category, suggestedName, summary, string.IsNullOrWhiteSpace(intervenant.Nom) ? null : intervenant);
             }
             catch
             {
                 // Fallback en cas d'erreur IA
-                return (DocumentCategories.Autres, 
-                        DateTime.Now.ToString("yyyy-MM-dd") + "_" + Path.GetFileNameWithoutExtension(originalFileName), 
-                        "Document médical");
+                return (DocumentCategories.Autres,
+                        DateTime.Now.ToString("yyyy-MM-dd") + "_" + Path.GetFileNameWithoutExtension(originalFileName),
+                        "Document médical",
+                        null);
             }
+        }
+
+        /// <summary>
+        /// Nettoie un champ INTERVENANT_* extrait de la réponse IA. Retourne null si vide
+        /// ou si l'IA a répondu par un placeholder ("vide", "aucun", "n/a"...).
+        /// </summary>
+        private static string? CleanIntervenantField(string line)
+        {
+            var value = line.Split(':', 2)[1].Trim();
+            if (string.IsNullOrWhiteSpace(value)) return null;
+
+            var placeholders = new[] { "vide", "aucun", "aucune", "n/a", "na", "non identifié", "non identifie", "-" };
+            if (placeholders.Contains(value.Trim('[', ']', '.').ToLowerInvariant()))
+                return null;
+
+            return value;
         }
         
         /// <summary>

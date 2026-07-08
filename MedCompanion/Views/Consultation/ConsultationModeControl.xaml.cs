@@ -372,11 +372,11 @@ namespace MedCompanion.Views.Consultation
         /// Format identique à celui du mode Console (documents/syntheses_documents/{nom}_synthese_{stamp}.md)
         /// pour que les deux modes voient la même donnée.
         /// </summary>
-        private static void SaveDocumentSynthesisToDisk(string nomComplet, MedCompanion.Models.PatientDocument document)
+        private static void SaveDocumentSynthesisToDisk(string nomComplet, MedCompanion.Models.PatientDocument document, string synthesisText)
         {
             try
             {
-                if (string.IsNullOrWhiteSpace(document.Summary)) return;
+                if (string.IsNullOrWhiteSpace(synthesisText)) return;
 
                 var pathService = new MedCompanion.Services.PathService();
                 var documentsDir = pathService.GetDocumentsDirectory(nomComplet);
@@ -395,15 +395,40 @@ patient: {nomComplet}
 categorie: {document.Category ?? "Documents"}
 ---
 
-# Synthèse — {document.FileName}
-
-{document.Summary}
+{synthesisText}
 ";
                 File.WriteAllText(synthesePath, syntheseContent, System.Text.Encoding.UTF8);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[MedDocSynthesis] Erreur sauvegarde synthèse: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Génère la synthèse détaillée d'un document (même méthode que le bouton "Générer synthèse"
+        /// du mode Console : GenerateSingleDocumentSynthesisAsync) afin que la synthèse produite
+        /// automatiquement en mode Consultation soit de la même qualité qu'en mode Console.
+        /// En cas d'échec, retombe sur le résumé court (document.Summary).
+        /// </summary>
+        private async Task<string> GenerateRichDocumentSynthesisAsync(MedCompanion.Models.PatientDocument document)
+        {
+            try
+            {
+                MedCompanion.Models.PatientMetadata? patientData = _viewModel?.CurrentPatient == null ? null
+                    : new MedCompanion.Models.PatientMetadata
+                    {
+                        Prenom = _viewModel.CurrentPatient.Prenom,
+                        Nom = _viewModel.CurrentPatient.Nom
+                    };
+
+                var (synthesis, _) = await _documentService!.GenerateSingleDocumentSynthesisAsync(document, patientData);
+                return string.IsNullOrWhiteSpace(synthesis) ? (document.Summary ?? "") : synthesis;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[MedDocSynthesis] Erreur génération synthèse détaillée: {ex.Message}");
+                return document.Summary ?? "";
             }
         }
 
@@ -435,15 +460,18 @@ categorie: {document.Category ?? "Documents"}
 
                 if (success && document != null)
                 {
+                    _viewModel.MedDocumentStatus = "⏳ Génération de la synthèse détaillée…";
+                    var richSynthesis = await GenerateRichDocumentSynthesisAsync(document);
+
                     // Auto-sauvegarde la synthèse du document (compatibilité Console)
-                    SaveDocumentSynthesisToDisk(_viewModel.CurrentPatient.NomComplet, document);
+                    SaveDocumentSynthesisToDisk(_viewModel.CurrentPatient.NomComplet, document, richSynthesis);
 
                     // Ajoute aussi à la liste in-memory utile si on entre en Synthèse Initiale après
                     _viewModel.ImportedDocuments.Add(new ImportedConsultationDocument
                     {
                         FileName = document.FileName,
                         FilePath = document.FilePath ?? dlg.FileName,
-                        DocumentSynthesis = document.Summary ?? "",
+                        DocumentSynthesis = richSynthesis,
                         Category = document.Category ?? "Documents",
                         Weight = 0.6
                     });
@@ -451,6 +479,7 @@ categorie: {document.Category ?? "Documents"}
                     // Rafraîchit les onglets BILANS et DOCS du dossier bleu
                     _viewModel.LoadPatientBilansFromDisk();
                     _viewModel.LoadPatientDocumentsFromDisk();
+                    _viewModel.RefreshAdminInfoPublic();
 
                     _viewModel.MedDocumentStatus = $"✅ {document.FileName} → {document.Category ?? "Documents"} (synthèse auto)";
                 }
@@ -492,14 +521,17 @@ categorie: {document.Category ?? "Documents"}
 
                 if (success && document != null)
                 {
+                    _viewModel.MedDocumentStatus = "⏳ Génération de la synthèse détaillée…";
+                    var richSynthesis = await GenerateRichDocumentSynthesisAsync(document);
+
                     // Auto-sauvegarde la synthèse du document (compatibilité Console)
-                    SaveDocumentSynthesisToDisk(_viewModel.CurrentPatient.NomComplet, document);
+                    SaveDocumentSynthesisToDisk(_viewModel.CurrentPatient.NomComplet, document, richSynthesis);
 
                     _viewModel.ImportedDocuments.Add(new ImportedConsultationDocument
                     {
                         FileName = document.FileName,
                         FilePath = document.FilePath ?? scanDialog.ScannedFilePath,
-                        DocumentSynthesis = document.Summary ?? "",
+                        DocumentSynthesis = richSynthesis,
                         Category = document.Category ?? "Documents",
                         Weight = 0.7
                     });
@@ -507,6 +539,7 @@ categorie: {document.Category ?? "Documents"}
                     // Rafraîchit les onglets BILANS et DOCS du dossier bleu
                     _viewModel.LoadPatientBilansFromDisk();
                     _viewModel.LoadPatientDocumentsFromDisk();
+                    _viewModel.RefreshAdminInfoPublic();
 
                     _viewModel.MedDocumentStatus = $"✅ {document.FileName} → {document.Category ?? "Documents"} (synthèse auto)";
 

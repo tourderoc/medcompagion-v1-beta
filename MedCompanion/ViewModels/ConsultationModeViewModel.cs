@@ -274,6 +274,18 @@ namespace MedCompanion.ViewModels
         private string _antecedentsFamiliauxText = "";
         public string AntecedentsFamiliauxText { get => _antecedentsFamiliauxText; private set => SetProperty(ref _antecedentsFamiliauxText, value); }
 
+        // ── Intervenants (praticiens auteurs de bilans/documents, extraits automatiquement) ──
+        private bool _hasIntervenants;
+        public bool HasIntervenants { get => _hasIntervenants; private set => SetProperty(ref _hasIntervenants, value); }
+        private string _intervenantsText = "";
+        public string IntervenantsText { get => _intervenantsText; private set => SetProperty(ref _intervenantsText, value); }
+
+        /// <summary>
+        /// Permet au code-behind (import/scan de document) de rafraîchir l'onglet Administratif
+        /// après extraction d'un nouvel intervenant, sans exposer RefreshAdminInfo() en interne.
+        /// </summary>
+        public void RefreshAdminInfoPublic() => RefreshAdminInfo();
+
         /// <summary>
         /// Recharge les infos de la page Administratif depuis patient.json
         /// (appelé à l'ouverture de l'intercalaire et après mise à jour des métadonnées).
@@ -417,6 +429,35 @@ namespace MedCompanion.ViewModels
                 ? string.Join("\n", antec)
                 : hasFormData ? "Aucun antécédent familial signalé." : "";
             HasAntecedentsFamiliaux = hasFormData;
+
+            // ── Intervenants (praticiens auteurs de bilans/documents importés ou scannés) ──
+            var infoPatientDir = System.IO.Path.Combine(CurrentPatient.DirectoryPath, "info_patient");
+            var intervenants = new MedCompanion.Services.IntervenantService().Load(infoPatientDir);
+            if (intervenants.Count > 0)
+            {
+                var isb = new System.Text.StringBuilder();
+                foreach (var iv in intervenants.OrderByDescending(i => i.DateAjout))
+                {
+                    var ligne = iv.Nom;
+                    if (!string.IsNullOrWhiteSpace(iv.Profession)) ligne += $" — {iv.Profession}";
+                    isb.AppendLine(ligne);
+
+                    var adr = string.Join(" ", new[] { iv.Adresse, iv.CodePostal, iv.Ville }
+                                                .Where(s => !string.IsNullOrWhiteSpace(s)));
+                    if (!string.IsNullOrWhiteSpace(adr)) isb.AppendLine(adr);
+                    if (!string.IsNullOrWhiteSpace(iv.Telephone)) isb.AppendLine($"📞 {iv.Telephone}");
+                    if (!string.IsNullOrWhiteSpace(iv.Email)) isb.AppendLine($"✉ {iv.Email}");
+                    if (!string.IsNullOrWhiteSpace(iv.SourceDocument)) isb.AppendLine($"(source : {iv.SourceDocument})");
+                    isb.AppendLine();
+                }
+                IntervenantsText = isb.ToString().TrimEnd();
+                HasIntervenants = true;
+            }
+            else
+            {
+                IntervenantsText = "";
+                HasIntervenants = false;
+            }
         }
 
         private PatientIndexEntry? _currentPatient;
