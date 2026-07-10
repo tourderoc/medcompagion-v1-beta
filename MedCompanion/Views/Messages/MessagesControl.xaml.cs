@@ -566,17 +566,22 @@ namespace MedCompanion.Views.Messages
                     if (_firebaseService != null && _firebaseService.IsConfigured)
                         await _firebaseService.WriteNotificationAsync(notification);
 
+                    // Réponse complète (titre + corps) pour que le parent voie tout le message
+                    var replyContent = string.IsNullOrWhiteSpace(dialog.SelectedBody)
+                        ? dialog.SelectedTitle
+                        : $"{dialog.SelectedTitle}\n\n{dialog.SelectedBody}";
+
                     // VPS bridge — marquer le message comme répondu
-                    await _vpsBridge.ReplyToMessageAsync(_selectedMessage.FirebaseMessageId, dialog.SelectedTitle, "Médecin");
+                    await _vpsBridge.ReplyToMessageAsync(_selectedMessage.FirebaseMessageId, replyContent, "Médecin");
 
                     // Firebase — marquer le message comme répondu (dual-write)
                     if (_firebaseService != null && _firebaseService.IsConfigured)
-                        await _firebaseService.UpdateMessageReplyAsync(_selectedMessage.FirebaseMessageId, dialog.SelectedTitle);
+                        await _firebaseService.UpdateMessageReplyAsync(_selectedMessage.FirebaseMessageId, replyContent);
 
                     if (vpsOk || (_firebaseService != null && _firebaseService.IsConfigured))
                     {
                         // Mettre à jour l'archive locale
-                        _messageService?.MarkAsReplied(_currentPatient.NomComplet, _selectedMessage.FirebaseMessageId, dialog.SelectedTitle);
+                        _messageService?.MarkAsReplied(_currentPatient.NomComplet, _selectedMessage.FirebaseMessageId, replyContent);
 
                         StatusChanged?.Invoke(this, $"✅ Notification envoyée à {recipientName}");
                         LoadMessages();
