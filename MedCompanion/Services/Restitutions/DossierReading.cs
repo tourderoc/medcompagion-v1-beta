@@ -97,11 +97,16 @@ namespace MedCompanion.Services.Restitutions
                 }
             }
 
-            if (Evaluations.Count > 0)
+            // La plus récente évaluation clôturée est celle qui sert de base à CE dossier de
+            // restitution (Cartographie, Bilan Final ci-dessous) — pas un antécédent. On ne
+            // la réinjecte pas ici pour éviter que le LLM ne se cite lui-même comme "bilan
+            // antérieur" dans la section Antécédents/Bilans réalisés.
+            var evaluationsAnterieures = Evaluations.Count > 1 ? Evaluations.Skip(1).ToList() : new List<EvaluationEntry>();
+            if (evaluationsAnterieures.Count > 0)
             {
-                sb.AppendLine("[ÉVALUATIONS] Bilan Final, Cartographies Enfant & Environnement");
+                sb.AppendLine("[ÉVALUATIONS ANTÉRIEURES] (hors évaluation courante, déjà couverte par [BILAN FINAL] ci-dessous)");
                 sb.AppendLine();
-                foreach (var e in Evaluations)
+                foreach (var e in evaluationsAnterieures)
                 {
                     sb.AppendLine($"--- Évaluation clôturée {(e.DateCloture.HasValue ? $"le {e.DateCloture.Value:dd/MM/yyyy}" : "")} ---");
                     sb.AppendLine(GetEvaluationBodyWithoutFrontmatter(e.Content).Trim());

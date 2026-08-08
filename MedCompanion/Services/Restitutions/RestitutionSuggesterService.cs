@@ -434,7 +434,8 @@ namespace MedCompanion.Services.Restitutions
                  "SECTION 1 — `**Suivi antérieur**` : pour chaque suivi : nom de la structure, " +
                  "période (dates début–fin ou 'en cours'), fréquence, motif de prise en charge, évolution observée.\n" +
                  "SECTION 2 — `**Bilans réalisés**` : pour chaque bilan : type, date, praticien/structure si connu, " +
-                 "résultats clés ou conclusions principales.\n" +
+                 "résultats clés ou conclusions principales. N'inclus JAMAIS l'évaluation en cours " +
+                 "(celle qui sert de base à ce dossier de restitution) : elle n'est pas un antécédent.\n" +
                  "Si aucun suivi ET aucun bilan dans le dossier, écrire UNIQUEMENT : " +
                  "`Aucun antécédent de suivi ou de bilan identifié dans le dossier.`")
             };

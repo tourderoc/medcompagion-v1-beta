@@ -3698,7 +3698,6 @@ namespace MedCompanion.Services.Restitutions
                 sb.AppendLine($"      <img src='data:image/png;base64,{_medcompanionHeartBase64}' class='pc-logo-img' alt='MedCompanion'/>");
             sb.AppendLine("      <div class='pc-brand'>");
             sb.AppendLine("        <strong>MedCompanion</strong>");
-            sb.AppendLine("        <span>L'INTELLIGENCE AU SERVICE DU SOIN</span>");
             sb.AppendLine("      </div>");
             sb.AppendLine($"      <div class='pc-page-num'>PAGE {pageNumber}/{totalPages}</div>");
             sb.AppendLine("    </div>");

@@ -4289,22 +4289,36 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
             set => SetProperty(ref _restitutionStatusMessage, value);
         }
 
+        /// <summary>Depuis le panneau latéral "Dossiers de Restitution" — seul choix restant : le dossier clinique complet.</summary>
         private void SwitchToRestitution()
         {
-            if (IsEditingConsultation && HasUnsavedConsultation())
-            {
-                var r = System.Windows.MessageBox.Show(
-                    "Une consultation est en cours et n'a pas été sauvegardée.\n\nAbandonner la consultation en cours pour créer la restitution ?",
-                    "Consultation en cours",
-                    System.Windows.MessageBoxButton.YesNo,
-                    System.Windows.MessageBoxImage.Warning);
-                if (r != System.Windows.MessageBoxResult.Yes) return;
-            }
-
+            if (!ConfirmAbandonConsultationEnCoursSiBesoin()) return;
             ConsultationType = ConsultationType.Normal;
             IsEditingConsultation = false;
             ResetWorkspaceModes();
-            IsSelectingRestitutionTypeMode = true; // Affiche la grille de sélection
+            StartRestitution("DossierClinique");
+        }
+
+        /// <summary>Depuis le fil de la 1ère consultation — bouton "Restitution 1er entretien" à côté de Synthèse Initiale.</summary>
+        private void SwitchToRestitutionPremiereConsultation()
+        {
+            if (!ConfirmAbandonConsultationEnCoursSiBesoin()) return;
+            ConsultationType = ConsultationType.Normal;
+            IsEditingConsultation = false;
+            ResetWorkspaceModes();
+            StartRestitution("PremiereConsultation");
+        }
+
+        private bool ConfirmAbandonConsultationEnCoursSiBesoin()
+        {
+            if (!IsEditingConsultation || !HasUnsavedConsultation()) return true;
+
+            var r = System.Windows.MessageBox.Show(
+                "Une consultation est en cours et n'a pas été sauvegardée.\n\nAbandonner la consultation en cours pour créer la restitution ?",
+                "Consultation en cours",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            return r == System.Windows.MessageBoxResult.Yes;
         }
 
         private void StartRestitution(string type)
@@ -4788,22 +4802,40 @@ pdf_path: ""{savedPdf.Replace("\\", "\\\\")}""
 
             var donnees = new System.Text.StringBuilder();
 
-            var interrogatoireRempli = InterrogatoireBlocks.Where(b => !string.IsNullOrWhiteSpace(b.FreeText)).ToList();
+            // Deux sources possibles : la consultation active en cours de saisie (InterrogatoireBlocks,
+            // _synthesisContent...), ou une 1ère consultation déjà clôturée rouverte en lecture seule
+            // (PastInterrogatoireBlocks, PastSynthesisContent...) via le bouton "Restitution 1er entretien"
+            // de l'écran "Mode Lecture Seule". On préfère la source active si elle est renseignée.
+            var interrogatoireRempli = InterrogatoireBlocks
+                .Where(b => !string.IsNullOrWhiteSpace(b.FreeText))
+                .Select(b => (b.Title, b.FreeText))
+                .ToList();
+            if (interrogatoireRempli.Count == 0)
+                interrogatoireRempli = PastInterrogatoireBlocks
+                    .Where(b => !string.IsNullOrWhiteSpace(b.FreeText))
+                    .Select(b => (b.Title, b.FreeText))
+                    .ToList();
             if (interrogatoireRempli.Count > 0)
             {
                 donnees.AppendLine("=== INTERROGATOIRE ===");
                 foreach (var block in interrogatoireRempli)
                     donnees.AppendLine($"[{block.Title}] {block.FreeText}");
             }
-            if (!string.IsNullOrWhiteSpace(_clinicalObservations.GeneratedClinicalNarrative))
+
+            var observationsNarrative = !string.IsNullOrWhiteSpace(_clinicalObservations.GeneratedClinicalNarrative)
+                ? _clinicalObservations.GeneratedClinicalNarrative
+                : PastObservationsNarrative;
+            if (!string.IsNullOrWhiteSpace(observationsNarrative))
             {
                 donnees.AppendLine("=== OBSERVATIONS CLINIQUES ===");
-                donnees.AppendLine(_clinicalObservations.GeneratedClinicalNarrative);
+                donnees.AppendLine(observationsNarrative);
             }
-            if (!string.IsNullOrWhiteSpace(_synthesisContent))
+
+            var syntheseSource = !string.IsNullOrWhiteSpace(_synthesisContent) ? _synthesisContent : PastSynthesisContent;
+            if (!string.IsNullOrWhiteSpace(syntheseSource))
             {
                 donnees.AppendLine("=== SYNTHÈSE ===");
-                donnees.AppendLine(_synthesisContent);
+                donnees.AppendLine(syntheseSource);
             }
             foreach (var d in ImportedDocuments.Where(d => !string.IsNullOrWhiteSpace(d.DocumentSynthesis)))
             {
@@ -5238,6 +5270,7 @@ source: ""MedCompanion""
         // V0e : Commandes Restitution
         public ICommand StartRestitutionCommand { get; }
         public ICommand SwitchToRestitutionCommand { get; }
+        public ICommand SwitchToRestitutionPremiereConsultationCommand { get; }
         public ICommand GenerateRestitutionCommand { get; }
         public ICommand ConfirmRestitutionCommand { get; }
         public ICommand BackToRestitutionFormCommand { get; }
@@ -5669,6 +5702,10 @@ source: ""MedCompanion""
             // V0e : Commands Restitution
             SwitchToRestitutionCommand = new RelayCommand(
                 _ => SwitchToRestitution(),
+                _ => CurrentPatient != null);
+
+            SwitchToRestitutionPremiereConsultationCommand = new RelayCommand(
+                _ => SwitchToRestitutionPremiereConsultation(),
                 _ => CurrentPatient != null);
 
             StartRestitutionCommand = new RelayCommand(

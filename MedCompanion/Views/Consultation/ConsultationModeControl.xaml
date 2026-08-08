@@ -958,156 +958,68 @@
 
                                         <!-- Header & Steps Navigation -->
                                         <Grid Grid.Row="0" Margin="0,0,0,15">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            
-                                            <StackPanel Grid.Column="0">
-                                                <TextBlock Text="{Binding SelectedPastConsultation.Title}" FontSize="18" FontWeight="Bold" Foreground="#2C3E50"/>
-                                                <TextBlock FontSize="11" Foreground="#95A5A6" Margin="0,2,0,0">
-                                                    <TextBlock.Style>
-                                                        <Style TargetType="TextBlock">
-                                                            <Setter Property="Text" Value="Mode Lecture Seule — Étape par étape"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
-                                                                    <Setter Property="Text" Value="✏️ Mode Édition — modifications en cours"/>
-                                                                    <Setter Property="Foreground" Value="#E67E22"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </TextBlock.Style>
-                                                </TextBlock>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
 
-                                                <!-- Steps bar (like evaluation) -->
-                                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
-                                                    <!-- Button Step 1 -->
-                                                    <Button Content="Étape 1 — Interrogatoire" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
-                                                            Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="1">
-                                                        <Button.Style>
-                                                            <Style TargetType="Button">
-                                                                <Setter Property="Background" Value="White"/>
-                                                                <Setter Property="BorderBrush" Value="#3498DB"/>
-                                                                <Setter Property="BorderThickness" Value="1"/>
-                                                                <Setter Property="Foreground" Value="#3498DB"/>
-                                                                <Setter Property="Template">
-                                                                    <Setter.Value>
-                                                                        <ControlTemplate TargetType="Button">
-                                                                            <Border Background="{TemplateBinding Background}"
-                                                                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                                                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                                                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                            </Border>
-                                                                        </ControlTemplate>
-                                                                    </Setter.Value>
-                                                                </Setter>
+                                            <Grid Grid.Row="0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <StackPanel Grid.Column="0">
+                                                    <TextBlock Text="{Binding SelectedPastConsultation.Title}" FontSize="18" FontWeight="Bold" Foreground="#2C3E50"/>
+                                                    <TextBlock FontSize="11" Foreground="#95A5A6" Margin="0,2,0,0">
+                                                        <TextBlock.Style>
+                                                            <Style TargetType="TextBlock">
+                                                                <Setter Property="Text" Value="Mode Lecture Seule — Étape par étape"/>
                                                                 <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsPastPremiereStep1}" Value="True">
-                                                                        <Setter Property="Background" Value="#3498DB"/>
-                                                                        <Setter Property="Foreground" Value="White"/>
+                                                                    <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                        <Setter Property="Text" Value="✏️ Mode Édition — modifications en cours"/>
+                                                                        <Setter Property="Foreground" Value="#E67E22"/>
                                                                     </DataTrigger>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter Property="Background" Value="#EBF5FB"/>
-                                                                    </Trigger>
-                                                                    <MultiDataTrigger>
-                                                                        <MultiDataTrigger.Conditions>
-                                                                            <Condition Binding="{Binding IsPastPremiereStep1}" Value="True"/>
-                                                                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
-                                                                        </MultiDataTrigger.Conditions>
-                                                                        <Setter Property="Background" Value="#2980B9"/>
-                                                                    </MultiDataTrigger>
                                                                 </Style.Triggers>
                                                             </Style>
-                                                        </Button.Style>
-                                                    </Button>
-
-                                                    <!-- Button Step 2 -->
-                                                    <Button Content="Étape 2 — Observations Cliniques" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
-                                                            Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="2">
-                                                        <Button.Style>
-                                                            <Style TargetType="Button">
-                                                                <Setter Property="Background" Value="White"/>
-                                                                <Setter Property="BorderBrush" Value="#27AE60"/>
-                                                                <Setter Property="BorderThickness" Value="1"/>
-                                                                <Setter Property="Foreground" Value="#27AE60"/>
-                                                                <Setter Property="Template">
-                                                                    <Setter.Value>
-                                                                        <ControlTemplate TargetType="Button">
-                                                                            <Border Background="{TemplateBinding Background}"
-                                                                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                                                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                                                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                            </Border>
-                                                                        </ControlTemplate>
-                                                                    </Setter.Value>
-                                                                </Setter>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsPastPremiereStep2}" Value="True">
-                                                                        <Setter Property="Background" Value="#27AE60"/>
-                                                                        <Setter Property="Foreground" Value="White"/>
-                                                                    </DataTrigger>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter Property="Background" Value="#E8F8F5"/>
-                                                                    </Trigger>
-                                                                    <MultiDataTrigger>
-                                                                        <MultiDataTrigger.Conditions>
-                                                                            <Condition Binding="{Binding IsPastPremiereStep2}" Value="True"/>
-                                                                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
-                                                                        </MultiDataTrigger.Conditions>
-                                                                        <Setter Property="Background" Value="#219653"/>
-                                                                    </MultiDataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Button.Style>
-                                                    </Button>
-
-                                                    <!-- Button Step 3 -->
-                                                    <Button Content="Étape 3 — Synthèse Initiale" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
-                                                            Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="3">
-                                                        <Button.Style>
-                                                            <Style TargetType="Button">
-                                                                <Setter Property="Background" Value="White"/>
-                                                                <Setter Property="BorderBrush" Value="#9B59B6"/>
-                                                                <Setter Property="BorderThickness" Value="1"/>
-                                                                <Setter Property="Foreground" Value="#9B59B6"/>
-                                                                <Setter Property="Template">
-                                                                    <Setter.Value>
-                                                                        <ControlTemplate TargetType="Button">
-                                                                            <Border Background="{TemplateBinding Background}"
-                                                                                    BorderBrush="{TemplateBinding BorderBrush}"
-                                                                                    BorderThickness="{TemplateBinding BorderThickness}"
-                                                                                    CornerRadius="6" Padding="{TemplateBinding Padding}">
-                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                            </Border>
-                                                                        </ControlTemplate>
-                                                                    </Setter.Value>
-                                                                </Setter>
-                                                                <Style.Triggers>
-                                                                    <DataTrigger Binding="{Binding IsPastPremiereStep3}" Value="True">
-                                                                        <Setter Property="Background" Value="#9B59B6"/>
-                                                                        <Setter Property="Foreground" Value="White"/>
-                                                                    </DataTrigger>
-                                                                    <Trigger Property="IsMouseOver" Value="True">
-                                                                        <Setter Property="Background" Value="#F5EEF8"/>
-                                                                    </Trigger>
-                                                                    <MultiDataTrigger>
-                                                                        <MultiDataTrigger.Conditions>
-                                                                            <Condition Binding="{Binding IsPastPremiereStep3}" Value="True"/>
-                                                                            <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
-                                                                        </MultiDataTrigger.Conditions>
-                                                                        <Setter Property="Background" Value="#8E44AD"/>
-                                                                    </MultiDataTrigger>
-                                                                </Style.Triggers>
-                                                            </Style>
-                                                        </Button.Style>
-                                                    </Button>
+                                                        </TextBlock.Style>
+                                                    </TextBlock>
                                                 </StackPanel>
-                                            </StackPanel>
 
                                             <!-- Actions header -->
                                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+
+                                                <!-- Bouton Restitution 1er entretien (toujours disponible, y compris après clôture) -->
+                                                <Button Content="🤝 Restitution 1er entretien"
+                                                        Command="{Binding SwitchToRestitutionPremiereConsultationCommand}"
+                                                        Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
+                                                        ToolTip="Générer le résumé de restitution adressé aux parents après ce premier entretien">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="#16A085"/>
+                                                            <Setter Property="Foreground" Value="White"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                <Setter Property="Background" Value="#138D75"/>
+                                                                            </Trigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
 
                                                 <!-- Bouton Modifier (visible en lecture seule) -->
                                                 <Button Content="✏️ Modifier"
@@ -1221,6 +1133,133 @@
                                                             </ControlTemplate.Triggers>
                                                         </ControlTemplate>
                                                     </Button.Template>
+                                                </Button>
+                                            </StackPanel>
+                                            </Grid>
+
+                                            <!-- Steps bar (pleine largeur, sa propre ligne — ne rivalise plus avec les boutons d'action) -->
+                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                                                <!-- Button Step 1 -->
+                                                <Button Content="Étape 1 — Interrogatoire" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                        Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="1">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="White"/>
+                                                            <Setter Property="BorderBrush" Value="#3498DB"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                            <Setter Property="Foreground" Value="#3498DB"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}"
+                                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsPastPremiereStep1}" Value="True">
+                                                                    <Setter Property="Background" Value="#3498DB"/>
+                                                                    <Setter Property="Foreground" Value="White"/>
+                                                                </DataTrigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#EBF5FB"/>
+                                                                </Trigger>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsPastPremiereStep1}" Value="True"/>
+                                                                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Background" Value="#2980B9"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- Button Step 2 -->
+                                                <Button Content="Étape 2 — Observations Cliniques" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                        Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="2">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="White"/>
+                                                            <Setter Property="BorderBrush" Value="#27AE60"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                            <Setter Property="Foreground" Value="#27AE60"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}"
+                                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsPastPremiereStep2}" Value="True">
+                                                                    <Setter Property="Background" Value="#27AE60"/>
+                                                                    <Setter Property="Foreground" Value="White"/>
+                                                                </DataTrigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#E8F8F5"/>
+                                                                </Trigger>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsPastPremiereStep2}" Value="True"/>
+                                                                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Background" Value="#219653"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- Button Step 3 -->
+                                                <Button Content="Étape 3 — Synthèse Initiale" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                        Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="3">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="White"/>
+                                                            <Setter Property="BorderBrush" Value="#9B59B6"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                            <Setter Property="Foreground" Value="#9B59B6"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}"
+                                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsPastPremiereStep3}" Value="True">
+                                                                    <Setter Property="Background" Value="#9B59B6"/>
+                                                                    <Setter Property="Foreground" Value="White"/>
+                                                                </DataTrigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#F5EEF8"/>
+                                                                </Trigger>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsPastPremiereStep3}" Value="True"/>
+                                                                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Background" Value="#8E44AD"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
                                                 </Button>
                                             </StackPanel>
                                         </Grid>
@@ -1607,6 +1646,39 @@
                                             <Style.Triggers>
                                                 <Trigger Property="IsMouseOver" Value="True">
                                                     <Setter Property="Background" Value="#8E44AD"/>
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+
+                                <Button Content="🤝 Restitution 1er entretien"
+                                        Command="{Binding SwitchToRestitutionPremiereConsultationCommand}"
+                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
+                                        Margin="10,0,0,0" Height="40"
+                                        Background="#16A085" Foreground="White"
+                                        BorderThickness="0"
+                                        VerticalAlignment="Top"
+                                        ToolTip="Générer le résumé de restitution adressé aux parents après ce premier entretien">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="8"
+                                                                Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#138D75"/>
                                                 </Trigger>
                                                 <Trigger Property="IsEnabled" Value="False">
                                                     <Setter Property="Background" Value="#BDC3C7"/>
@@ -2629,20 +2701,11 @@
                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
                                     <TextBlock Text="Nouveau Dossier de Restitution" FontSize="24" FontWeight="SemiBold" Foreground="#2C3E50" HorizontalAlignment="Center" Margin="0,0,0,30"/>
                                     
-                                    <UniformGrid Columns="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <!-- Choix 1 -->
-                                        <Button Command="{Binding StartRestitutionCommand}" CommandParameter="PremiereConsultation" 
-                                                Background="White" BorderBrush="#E0E0E0" BorderThickness="1" 
-                                                Width="280" Height="180" Margin="10" Cursor="Hand">
-                                            <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10">
-                                                <TextBlock Text="🤝" FontSize="40" HorizontalAlignment="Center" Margin="0,0,0,15"/>
-                                                <TextBlock Text="Restitution 1er entretien" FontSize="18" FontWeight="SemiBold" Foreground="#34495E" TextWrapping="Wrap" TextAlignment="Center"/>
-                                                <TextBlock Text="Résumé adressé aux parents après la première rencontre." FontSize="13" Foreground="#7F8C8D" TextWrapping="Wrap" TextAlignment="Center" Margin="0,10,0,0"/>
-                                            </StackPanel>
-                                        </Button>
-
-                                        <!-- Choix 2 -->
-                                        <Button Command="{Binding StartRestitutionCommand}" CommandParameter="DossierClinique" 
+                                    <UniformGrid Columns="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <!-- "Restitution 1er entretien" est accessible directement depuis le fil de la 1ère
+                                             consultation (bouton dédié à côté de Synthèse Initiale) : seul le dossier clinique
+                                             complet reste proposé ici, depuis le panneau latéral. -->
+                                        <Button Command="{Binding StartRestitutionCommand}" CommandParameter="DossierClinique"
                                                 Background="White" BorderBrush="#E0E0E0" BorderThickness="1" 
                                                 Width="280" Height="180" Margin="10" Cursor="Hand">
                                             <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Margin="10">
