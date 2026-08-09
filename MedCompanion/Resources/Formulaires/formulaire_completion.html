@@ -34,9 +34,32 @@ body {
   flex-direction: column;
   justify-content: flex-start;
   gap: 6px;
+  position: relative; /* référentiel des repères de calage */
   -webkit-print-color-adjust: exact;
   print-color-adjust: exact;
 }
+
+/*
+  Repères de calage (fiducials) — lecture automatique du formulaire scanné.
+  Trois carrés de 4 mm (haut-gauche, haut-droit, bas-gauche) et un quatrième
+  volontairement plus petit en bas à droite : cette asymétrie permet de détecter
+  une numérisation à 180°. Placés à 3 mm du bord, dans la marge : le contenu
+  commence à 10 mm horizontalement, aucun recouvrement.
+*/
+.fiducial {
+  position: absolute;
+  background-color: #000000;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+.fiducial.tl,
+.fiducial.tr,
+.fiducial.bl { width: 4mm; height: 4mm; }
+.fiducial.br { width: 2.5mm; height: 2.5mm; }
+.fiducial.tl { top: 3mm; left: 3mm; }
+.fiducial.tr { top: 3mm; right: 3mm; }
+.fiducial.bl { bottom: 3mm; left: 3mm; }
+.fiducial.br { bottom: 3mm; right: 3mm; }
 
 /* Header */
 .header-container {
@@ -546,6 +569,13 @@ body {
 </head>
 <body>
 
+  <!-- Repères de calage : ne pas déplacer, la lecture automatique s'y réfère.
+       Le repère bas-droit est plus petit → détection de l'orientation. -->
+  <div class="fiducial tl" data-fiducial="tl"></div>
+  <div class="fiducial tr" data-fiducial="tr"></div>
+  <div class="fiducial bl" data-fiducial="bl"></div>
+  <div class="fiducial br" data-fiducial="br"></div>
+
   <!-- En-tête -->
   <div class="header-container">
     <div class="logo-container">
@@ -584,30 +614,30 @@ body {
         <div class="field-row">
           <div class="field-item" style="width: 40%;">
             <span class="field-label">Prénom <span class="field-label-detail">(pré-rempli)</span> :</span>
-            <div class="letter-boxes-row" data-boxes="{{pere_prenom}}" data-len="12"></div>
+            <div class="letter-boxes-row" data-field="pere_prenom" data-charset="alpha" data-boxes="{{pere_prenom}}" data-len="12"></div>
           </div>
           <div class="field-item" style="width: 58%;">
             <span class="field-label">Nom de famille :</span>
             <div style="display: flex; gap: 8px; margin-bottom: 2px;">
               <div class="checkbox-item">
-                <span class="custom-checkbox"></span> Même nom que l'enfant
+                <span class="custom-checkbox" data-field="pere_nom_meme"></span> Même nom que l'enfant
               </div>
               <div class="checkbox-item">
-                <span class="custom-checkbox"></span> Nom différent <span class="field-label-detail" style="margin-left: 2px;">(à renseigner)</span>
+                <span class="custom-checkbox" data-field="pere_nom_different"></span> Nom différent <span class="field-label-detail" style="margin-left: 2px;">(à renseigner)</span>
               </div>
             </div>
-            <div class="letter-boxes-row" data-boxes="" data-len="12"></div>
+            <div class="letter-boxes-row" data-field="pere_nom" data-charset="alpha" data-boxes="" data-len="12"></div>
           </div>
         </div>
-        
+
         <div class="field-row">
           <div class="field-item" style="width: 32%;">
             <span class="field-label">Téléphone portable :</span>
-            <div class="letter-boxes-row" data-boxes="" data-len="10"></div>
+            <div class="letter-boxes-row" data-field="pere_telephone" data-charset="numeric" data-boxes="" data-len="10"></div>
           </div>
           <div class="field-item" style="width: 66%;">
             <span class="field-label">Email :</span>
-            <div class="email-free-line"></div>
+            <div class="email-free-line" data-field="pere_email" data-charset="email"></div>
           </div>
         </div>
       </div>
@@ -622,30 +652,30 @@ body {
         <div class="field-row">
           <div class="field-item" style="width: 40%;">
             <span class="field-label">Prénom <span class="field-label-detail">(pré-rempli)</span> :</span>
-            <div class="letter-boxes-row" data-boxes="{{mere_prenom}}" data-len="12"></div>
+            <div class="letter-boxes-row" data-field="mere_prenom" data-charset="alpha" data-boxes="{{mere_prenom}}" data-len="12"></div>
           </div>
           <div class="field-item" style="width: 58%;">
             <span class="field-label">Nom de famille :</span>
             <div style="display: flex; gap: 8px; margin-bottom: 2px;">
               <div class="checkbox-item">
-                <span class="custom-checkbox"></span> Même nom que l'enfant
+                <span class="custom-checkbox" data-field="mere_nom_meme"></span> Même nom que l'enfant
               </div>
               <div class="checkbox-item">
-                <span class="custom-checkbox"></span> Nom différent <span class="field-label-detail" style="margin-left: 2px;">(à renseigner)</span>
+                <span class="custom-checkbox" data-field="mere_nom_different"></span> Nom différent <span class="field-label-detail" style="margin-left: 2px;">(à renseigner)</span>
               </div>
             </div>
-            <div class="letter-boxes-row" data-boxes="" data-len="12"></div>
+            <div class="letter-boxes-row" data-field="mere_nom" data-charset="alpha" data-boxes="" data-len="12"></div>
           </div>
         </div>
-        
+
         <div class="field-row">
           <div class="field-item" style="width: 32%;">
             <span class="field-label">Téléphone portable :</span>
-            <div class="letter-boxes-row" data-boxes="" data-len="10"></div>
+            <div class="letter-boxes-row" data-field="mere_telephone" data-charset="numeric" data-boxes="" data-len="10"></div>
           </div>
           <div class="field-item" style="width: 66%;">
             <span class="field-label">Email :</span>
-            <div class="email-free-line"></div>
+            <div class="email-free-line" data-field="mere_email" data-charset="email"></div>
           </div>
         </div>
       </div>
@@ -663,24 +693,24 @@ body {
           <div class="field-item" style="width: 49%;">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 2px;">
               <span class="field-label">Adresse 1 <span class="field-label-detail">(pré-remplie si connue)</span> &nbsp;—&nbsp; Chez :</span>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Mère</div>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Père</div>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Autre</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="adresse1_chez_mere"></span> Mère</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="adresse1_chez_pere"></span> Père</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="adresse1_chez_autre"></span> Autre</div>
             </div>
-            <div class="letter-boxes-row medium" data-boxes="{{adresse_rue}}" data-len="20"></div>
-            <div class="letter-boxes-row medium" style="margin-top: 1.5px;" data-boxes="{{adresse_cp}} {{adresse_ville}}" data-len="20"></div>
+            <div class="letter-boxes-row medium" data-field="adresse1_rue" data-charset="alphanum" data-boxes="{{adresse_rue}}" data-len="20"></div>
+            <div class="letter-boxes-row medium" style="margin-top: 1.5px;" data-field="adresse1_cp_ville" data-charset="alphanum" data-boxes="{{adresse_cp}} {{adresse_ville}}" data-len="20"></div>
           </div>
 
           <!-- Adresse 2 (garde alternée) -->
           <div class="field-item" style="width: 49%; border-left: 1px dashed #b3c9e0; padding-left: 8px;">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 2px;">
               <span class="field-label">Adresse 2 <span class="field-label-detail">(si garde alternée)</span> &nbsp;—&nbsp; Chez :</span>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Mère</div>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Père</div>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Autre</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="adresse2_chez_mere"></span> Mère</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="adresse2_chez_pere"></span> Père</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="adresse2_chez_autre"></span> Autre</div>
             </div>
-            <div class="letter-boxes-row medium" data-boxes="" data-len="20"></div>
-            <div class="letter-boxes-row medium" style="margin-top: 1.5px;" data-boxes="" data-len="20"></div>
+            <div class="letter-boxes-row medium" data-field="adresse2_rue" data-charset="alphanum" data-boxes="" data-len="20"></div>
+            <div class="letter-boxes-row medium" style="margin-top: 1.5px;" data-field="adresse2_cp_ville" data-charset="alphanum" data-boxes="" data-len="20"></div>
           </div>
 
         </div>
@@ -696,24 +726,24 @@ body {
         <div class="situation-grid">
           <!-- Col 1 -->
           <div class="situation-column">
-            <div class="checkbox-item"><span class="custom-checkbox"></span> Parents ensemble</div>
-            <div class="checkbox-item"><span class="custom-checkbox"></span> Parents séparés</div>
-            <div class="checkbox-item"><span class="custom-checkbox"></span> Divorcés</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_ensemble"></span> Parents ensemble</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_separes"></span> Parents séparés</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_divorces"></span> Divorcés</div>
           </div>
           <!-- Col 2 -->
           <div class="situation-column">
-            <div class="checkbox-item"><span class="custom-checkbox"></span> Garde alternée</div>
-            <div class="checkbox-item"><span class="custom-checkbox"></span> Famille recomposée</div>
-            <div class="checkbox-item"><span class="custom-checkbox"></span> Autre : <span class="line-input"></span></div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_garde_alternee"></span> Garde alternée</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_recomposee"></span> Famille recomposée</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_autre"></span> Autre : <span class="line-input" data-field="situation_autre_texte" data-charset="free"></span></div>
           </div>
           <!-- Col 3 -->
           <div class="situation-column" style="border-left: 1px dashed #b3c9e0; padding-left: 10px;">
             <div class="sub-section-title">Mode de garde principal de l'enfant</div>
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2.5px 5px;">
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Parents</div>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Mère</div>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Père</div>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Autre : <span class="line-input"></span></div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_parents"></span> Parents</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_mere"></span> Mère</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_pere"></span> Père</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_autre"></span> Autre : <span class="line-input" data-field="garde_autre_texte" data-charset="free"></span></div>
             </div>
           </div>
         </div>
@@ -735,58 +765,63 @@ body {
               <th style="width: 55px;">Ne sait pas</th>
             </tr>
           </thead>
+          <!--
+            data-atcd nomme la LIGNE ; le script en dérive les trois cases
+            (atcd_<ligne>_oui / _non / _nsp) selon l'ordre des colonnes.
+            Ajouter une ligne = ajouter un seul attribut, pas trois.
+          -->
           <tbody>
-            <tr>
+            <tr data-atcd="tdah">
               <td>TDAH / Troubles de l'attention</td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
-            <tr>
+            <tr data-atcd="dyslexie">
               <td>Dyslexie / Troubles des apprentissages</td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
-            <tr>
+            <tr data-atcd="tsa">
               <td>Troubles du spectre de l'autisme (TSA)</td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
-            <tr>
+            <tr data-atcd="anxiete">
               <td>Troubles anxieux</td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
-            <tr>
+            <tr data-atcd="depression">
               <td>Dépression</td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
-            <tr>
+            <tr data-atcd="bipolarite">
               <td>Bipolarité</td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
-            <tr>
+            <tr data-atcd="addictions">
               <td>Addictions <span style="font-weight: normal; font-size: 8px; color:#4f6d8a;">(alcool, etc.)</span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
-            <tr>
+            <tr data-atcd="suicide">
               <td>Tentative de suicide</td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
             </tr>
-            <tr>
+            <tr data-atcd="autre">
               <td>Autre <span style="font-weight:normal; font-size:8px; color:#4f6d8a;">(préciser)</span> :
-                <span style="border-bottom:1px solid #7f9db9; display:inline-block; width:90px; height:9px; vertical-align:bottom; margin-left:3px;"></span>
+                <span data-field="atcd_autre_texte" data-charset="free" style="border-bottom:1px solid #7f9db9; display:inline-block; width:90px; height:9px; vertical-align:bottom; margin-left:3px;"></span>
               </td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
               <td><span class="custom-checkbox" style="margin: 0 auto;"></span></td>
@@ -822,10 +857,10 @@ body {
               Une photographie de votre enfant peut être réalisée lors de la consultation pour faciliter l'identification dans son dossier.
             </div>
             <div class="photo-auth-checkboxes">
-              <div class="checkbox-item"><span class="custom-checkbox"></span> Autorise</div>
-              <div class="checkbox-item"><span class="custom-checkbox"></span> N'autorise pas</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="photo_autorise"></span> Autorise</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="photo_refuse"></span> N'autorise pas</div>
               <div class="signature-line" style="margin-left: 6px;">
-                Signature : <span class="signature-underline"></span>
+                Signature : <span class="signature-underline" data-field="photo_signature" data-charset="signature"></span>
               </div>
             </div>
           </div>
@@ -865,22 +900,22 @@ body {
         <div class="autorisation-row">
           <span class="autorisation-text">J'autorise le Dr Lassoued à utiliser les informations de ce formulaire pour le suivi de mon enfant.</span>
           <div class="autorisation-choices">
-            <div class="checkbox-item"><span class="custom-checkbox"></span> OUI</div>
-            <div class="checkbox-item"><span class="custom-checkbox"></span> NON</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="consent_infos_oui"></span> OUI</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="consent_infos_non"></span> NON</div>
           </div>
         </div>
         <div class="autorisation-row">
           <span class="autorisation-text">J'autorise l'envoi de SMS (rappels de rendez-vous, informations pratiques).</span>
           <div class="autorisation-choices">
-            <div class="checkbox-item"><span class="custom-checkbox"></span> OUI</div>
-            <div class="checkbox-item"><span class="custom-checkbox"></span> NON</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="consent_sms_oui"></span> OUI</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="consent_sms_non"></span> NON</div>
           </div>
         </div>
         <div class="autorisation-row">
           <span class="autorisation-text">J'autorise l'envoi d'emails.</span>
           <div class="autorisation-choices">
-            <div class="checkbox-item"><span class="custom-checkbox"></span> OUI</div>
-            <div class="checkbox-item"><span class="custom-checkbox"></span> NON</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="consent_email_oui"></span> OUI</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="consent_email_non"></span> NON</div>
           </div>
         </div>
       </div>
@@ -889,13 +924,13 @@ body {
     <!-- Cadre signature parent -->
     <div class="signature-box-container">
       <div class="signature-label">Signature du représentant légal ayant rempli ce formulaire :</div>
-      <div class="signature-canvas"></div>
+      <div class="signature-canvas" data-field="signature_representant" data-charset="signature"></div>
       <div class="signature-footer">
         <div class="confidentiality-notice">
           Les informations fournies sont confidentielles et intégrées uniquement au dossier médical.
         </div>
         <div class="date-input-field">
-          Date : <span class="date-underline"></span>
+          Date : <span class="date-underline" data-field="date_signature" data-charset="date"></span>
         </div>
       </div>
     </div>
@@ -910,6 +945,10 @@ body {
     </div>
     <div class="print-badge">A4 – Imprimable</div>
   </div>
+
+  <!-- Réceptacle de la carte de coordonnées : rempli par le script, jamais imprimé.
+       Lu côté C# via Edge headless --dump-dom. -->
+  <div id="coordmap" style="display: none;"></div>
 
   <!-- Script de rendu des cases de lettres et de date -->
   <script>
@@ -960,6 +999,73 @@ body {
           checkbox.classList.add('checked');
         }
       }
+
+      // ─────────────────────────────────────────────────────────────
+      //  Antécédents : dériver les 3 cases de chaque ligne nommée
+      // ─────────────────────────────────────────────────────────────
+      var COLONNES_ATCD = ['oui', 'non', 'nsp'];
+      document.querySelectorAll('tr[data-atcd]').forEach(function(tr) {
+        var cle = tr.getAttribute('data-atcd');
+        tr.querySelectorAll('.custom-checkbox').forEach(function(box, i) {
+          if (i < COLONNES_ATCD.length) {
+            box.setAttribute('data-field', 'atcd_' + cle + '_' + COLONNES_ATCD[i]);
+          }
+        });
+      });
+
+      // ─────────────────────────────────────────────────────────────
+      //  Carte de coordonnées (Phase 4b)
+      //  Position de chaque champ en millimètres page, calculée APRÈS le rendu
+      //  des cases de lettres — donc toujours en phase avec la maquette réelle.
+      //  Récupérée côté C# via Edge headless --dump-dom.
+      // ─────────────────────────────────────────────────────────────
+      var LARGEUR_PAGE_MM = 210, HAUTEUR_PAGE_MM = 297;
+      var pxParMm = document.body.getBoundingClientRect().width / LARGEUR_PAGE_MM;
+
+      function rectMm(el) {
+        var r = el.getBoundingClientRect();
+        var round2 = function(v) { return Math.round(v / pxParMm * 100) / 100; };
+        return { x: round2(r.left), y: round2(r.top), w: round2(r.width), h: round2(r.height) };
+      }
+
+      var carte = {
+        template: 'formulaire_completion',
+        version: 1,
+        page: { widthMm: LARGEUR_PAGE_MM, heightMm: HAUTEUR_PAGE_MM },
+        fiducials: {},
+        fields: []
+      };
+
+      document.querySelectorAll('[data-fiducial]').forEach(function(el) {
+        carte.fiducials[el.getAttribute('data-fiducial')] = rectMm(el);
+      });
+
+      document.querySelectorAll('[data-field]').forEach(function(el) {
+        var champ = {
+          name: el.getAttribute('data-field'),
+          rect: rectMm(el)
+        };
+
+        var charset = el.getAttribute('data-charset');
+        if (charset) champ.charset = charset;
+
+        if (el.classList.contains('custom-checkbox')) {
+          champ.type = 'checkbox';
+        } else if (el.classList.contains('letter-boxes-row')) {
+          champ.type = 'letters';
+          champ.len = parseInt(el.getAttribute('data-len') || '0', 10);
+          // Une entrée par case : permet la lecture caractère par caractère.
+          champ.cells = Array.prototype.map.call(
+            el.querySelectorAll('.letter-box'), rectMm);
+        } else {
+          champ.type = 'line';
+        }
+
+        carte.fields.push(champ);
+      });
+
+      var cible = document.getElementById('coordmap');
+      if (cible) cible.textContent = JSON.stringify(carte);
     };
   </script>
 </body>

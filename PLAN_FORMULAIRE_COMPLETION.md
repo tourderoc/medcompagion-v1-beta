@@ -121,24 +121,31 @@
 > Les cases à cocher ne sont **pas** un problème d'OCR mais de géométrie ; seul le manuscrit
 > justifie un modèle.
 
-#### 4a — Instrumentation du template (prérequis bloquant)
-- [ ] **Nommer chaque case** dans `formulaire_completion.html` : ajouter `data-field="..."` sur
-      chaque `.custom-checkbox` (≈40) et chaque `.letter-boxes-row` (8). La clé `data-field`
-      devient la clé du JSON de sortie (schéma §3.1) → une seule source de vérité.
-- [ ] Ajouter **4 repères de calage** aux coins (carrés noirs ~5 mm), dont **un asymétrique**
-      pour détecter une numérisation à 180°.
-- **Critère** : chaque champ du §3.1 a un `data-field` unique ; repères visibles sur le PDF.
+#### 4a — Instrumentation du template ✅ **FAIT**
+- [x] **Nommage** dans `formulaire_completion.html` : `data-field` + `data-charset` sur chaque
+      champ. La clé `data-field` est aussi la clé du JSON de sortie → une seule source de vérité.
+- [x] Table des antécédents : `data-atcd` nomme la **ligne**, le script dérive les 3 colonnes
+      (`atcd_<ligne>_oui|non|nsp`). Ajouter une ligne = un seul attribut, pas trois.
+- [x] **4 repères de calage** à 3 mm des bords : 4 mm en haut-gauche/haut-droit/bas-gauche,
+      **2,5 mm en bas-droite** — l'asymétrie détecte une numérisation à 180°. Placés dans la marge
+      (contenu à 10 mm) : aucun recouvrement.
+- **Mesuré** : 73 champs nommés — 55 cases à cocher (dont 27 antécédents), 10 rangées de lettres,
+  8 lignes libres. Aucun champ ne déborde de l'A4.
 
-#### 4b — Carte de coordonnées auto-générée
-- [ ] `<script>` inline dans le template : au chargement, parcourt tous les `[data-field]`,
-      calcule leur `getBoundingClientRect()` converti en **mm page**, et écrit le JSON dans un
-      `<div id="coordmap" hidden>`.
-- [ ] `EdgeHeadlessPdfService.ExtractCoordMapAsync()` : 2ᵉ invocation Edge avec `--dump-dom`
-      (+ `--virtual-time-budget` pour laisser tourner le JS) → parse le JSON.
-- [ ] Écrire la carte en sidecar à côté du PDF, **versionnée avec le template**.
-- **Pourquoi** : la carte se régénère seule à chaque évolution de la maquette. Aucune coordonnée
-  codée en dur à maintenir.
-- **Critère** : mode debug qui superpose les rects de la carte sur le PDF → alignement exact.
+#### 4b — Carte de coordonnées auto-générée ✅ **FAIT**
+- [x] `<script>` du template : après rendu des cases de lettres, parcourt tous les `[data-field]`,
+      convertit `getBoundingClientRect()` en **mm page** et écrit le JSON dans `<div id="coordmap">`.
+      Émet aussi **une entrée par cellule** des rangées de lettres (lecture caractère par caractère).
+- [x] `EdgeHeadlessPdfService.ExtractCoordMapAsync()` : invocation Edge `--dump-dom`
+      + `--virtual-time-budget=5000`. **Mesuré : 1,7 s.**
+- [ ] Écrire la carte en sidecar à côté du PDF, **versionnée avec le template** (Phase 2).
+- **Piège rencontré** : `msedge.exe` est une application GUI — sa sortie standard n'est pas
+  capturable par une redirection de shell (`>` donne un fichier vide). Il faut un tube explicite
+  (`RedirectStandardOutput`), ce que fait le service.
+- **Second piège** : sans `--user-data-dir` dédié, Edge headless partage le profil par défaut et la
+  génération peut échouer **sans message** quand le navigateur du médecin est ouvert. Corrigé sur
+  `ConvertAsync` **et** `ExtractCoordMapAsync`.
+- **Reste** : mode debug superposant les rects sur le PDF (confort de vérification, non bloquant).
 
 #### 4c — Redressement du scan
 - [ ] Détecter les 4 repères → **homographie** → image canonique 210×297 mm @ 300 dpi
@@ -231,12 +238,13 @@ Phase 4f), écran de relecture dédié (ou réutilisation de l'écran cartouches
 6. **Tablette** : hors périmètre V1 — papier d'abord, plus inclusif en salle d'attente.
 7. **Méthode d'extraction** : ✅ **Tranché** — hybride. Géométrie (densité d'encre à coordonnées
    connues) pour les cases à cocher, **GLM-OCR** sur bandes découpées pour le manuscrit. Voir §4 Phase 4.
-8. **Bibliothèque de traitement d'image** (homographie + seuillage, Phases 4c-4d) : à trancher.
-   Options : `OpenCvSharp4` (complet, +~50 Mo natifs), `ImageSharp` (100 % managé, homographie à
-   écrire soi-même), ou `System.Drawing` + calage manuel. **Seule vraie dépendance nouvelle du plan.**
-9. **QR code sur le formulaire** (suggestion) : encoder identifiant patient + version de template.
-   Élimine le risque d'associer un scan au mauvais dossier et sélectionne la bonne carte de
-   coordonnées si la maquette évolue. Quelques lignes dans le HTML.
+8. **Bibliothèque de traitement d'image** : ✅ **Tranché — aucune.** On ne redresse jamais l'image :
+   on calcule la transformation depuis les 4 repères, on projette les coins de chaque champ dans le
+   scan d'origine et on y échantillonne les pixels. Restent à écrire : détection des repères
+   (seuillage dans les zones d'angle, dont on connaît la position) et une homographie 4 points
+   (système 8×8). Les pixels bruts viennent de WPF (`CopyPixels`). **Zéro dépendance nouvelle**,
+   cohérent avec le choix d'Edge préinstallé.
+9. **QR code sur le formulaire** : ⏸️ **Reporté** — à revoir plus tard, hors périmètre immédiat.
 
 ---
 
