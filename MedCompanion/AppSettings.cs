@@ -26,6 +26,11 @@ namespace MedCompanion
         
         // Modèle dédié pour l'anonymisation (Local uniquement par sécurité)
         public string AnonymizationModel { get; set; } = "llama3.2:latest";
+
+        // Modèle dédié à l'OCR / vision (GlmOcrService).
+        // Épinglé pour que l'OCR ne dépende jamais du modèle de conversation sélectionné.
+        // Local obligatoire : le service refuse de démarrer sur un modèle -cloud.
+        public string OcrModel { get; set; } = "glm-ocr:latest";
         public bool EnableAutoWarmup { get; set; } = true;
         public int WarmupTimeoutSeconds { get; set; } = 10;
 

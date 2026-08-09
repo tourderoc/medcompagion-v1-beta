@@ -34,7 +34,13 @@
 | Génération PDF | **HTML/CSS → PDF via Edge headless** (`EdgeHeadlessPdfService`) | Moteur **Chromium** = rendu CSS fidèle au pixel ; **Edge préinstallé** Win10/11 → aucune dépendance ; itération rapide (le médecin a un bon retour sur HTML/CSS). Déjà utilisé par la restitution. |
 | Génération PDF — repli | Template AcroForm + PdfSharp (`PDFFormFillerService`) | **Dernier recours** uniquement. Très pénible à créer pour un formulaire « tout en cases » (cases à lettres). Pertinent surtout si on voulait des champs interactifs. |
 | ~~LibreOffice~~ | **Écarté** | `HtmlToPdfService` (LibreOffice) donne un rendu faible sur layout précis → **ne pas l'utiliser** ici. |
-| Extraction | **Modèle de vision local** via Ollama (`AnalyzeImageAsync`) | Lit cases à cocher + manuscrit + mise en page → JSON structuré. Tesseract seul insuffisant (aveugle aux cases, faible sur le manuscrit). |
+| Extraction | **Hybride géométrie + vision** (voir §4 Phase 4) | Le formulaire étant **généré par nous**, sa géométrie est connue au pixel près : inutile de la faire redécouvrir par un modèle. Cases à cocher = mesure de densité d'encre à coordonnées connues (déterministe). Manuscrit = **GLM-OCR** sur bandes découpées. |
+| ~~Extraction VLM page entière~~ | **Écarté** | Le tableau antécédents (8 lignes × 3 colonnes = 24 cases identiques) est le pire cas connu des VLM : décalage de ligne, confusion de colonnes, cochages hallucinés. Inacceptable sur des données de santé de tiers. |
+| Modèle manuscrit | **`glm-ocr:latest`** via Ollama (1.1B, F16, 2,07 Go, MIT) | #1 OmniDocBench V1.5 (94.62). Sur des **bandes découpées** (une lettre par case), la tâche est triviale. Précision mesurée sur français accentué : parfaite. |
+| Appel du modèle | **`GlmOcrService`** en streaming avec coupure au vol | ⚠️ **Défaut d'intégration mesuré** : le build Ollama de GLM-OCR n'émet jamais sa fin de séquence et réémet la transcription en boucle (jusqu'à 19 fois) jusqu'à épuiser `num_predict`. Constaté sur `/api/generate` **et** `/api/chat`, à température 0, avec toute consigne testée. Le service coupe donc le flux dès la première répétition : **31,5 s → 2 s** sur le même document. |
+| Contexte | `num_ctx = 8192` (au lieu de 32768 par défaut) | Le défaut sature la VRAM d'une carte 6 Go en cache KV sans bénéfice. Mesuré : ~100 tok/s sur RTX 3050. |
+| Forme des consignes | **Une seule ligne** | GLM-OCR est un modèle OCR, pas un modèle d'instruction : une consigne multi-lignes est recopiée telle quelle au milieu de la transcription. |
+| ~~`gemma3:12b`~~ | **Écarté pour l'extraction** | Modèle généraliste, plus faible qu'un OCR spécialisé sur les grilles de cases et le manuscrit contraint. |
 | Validation | Réutilise **cartouches éditables + niveaux de confiance** | Cohérent avec l'étape de relecture existante. |
 | Conservation | Le **scan original** est archivé dans le dossier | Preuve de consentement (signatures, photo, autorisations). |
 
@@ -109,15 +115,64 @@
 - [ ] Impression directe ou ouverture du PDF pour impression.
 - **Critère** : formulaire imprimable A4 lisible, cases à remplir vides correctes.
 
-### Phase 4 — Scan + extraction vision (local)
-- [ ] Réutiliser `ScannerService` / import d'image existant.
-- [ ] `FormulaireExtractionService` : envoie l'image du scan à **Ollama vision** (`gemma3:12b`)
-      via `AnalyzeImageAsync` avec un **prompt → JSON** strict (schéma = champs §3.1).
-- [ ] Parsing JSON tolérant (réutiliser `StripMarkdownFences`) + **niveau de confiance par champ**
-      (case cochée = haute ; manuscrit = à vérifier).
-- **Livrable** : JSON structuré depuis un scan.
-- **Critère** : sur un formulaire test rempli main, antécédents (cases) corrects ; champs manuscrits
-  marqués « à vérifier ».
+### Phase 4 — Scan + extraction **hybride** (local)
+
+> **Principe** : deux besoins de natures différentes → deux techniques différentes.
+> Les cases à cocher ne sont **pas** un problème d'OCR mais de géométrie ; seul le manuscrit
+> justifie un modèle.
+
+#### 4a — Instrumentation du template (prérequis bloquant)
+- [ ] **Nommer chaque case** dans `formulaire_completion.html` : ajouter `data-field="..."` sur
+      chaque `.custom-checkbox` (≈40) et chaque `.letter-boxes-row` (8). La clé `data-field`
+      devient la clé du JSON de sortie (schéma §3.1) → une seule source de vérité.
+- [ ] Ajouter **4 repères de calage** aux coins (carrés noirs ~5 mm), dont **un asymétrique**
+      pour détecter une numérisation à 180°.
+- **Critère** : chaque champ du §3.1 a un `data-field` unique ; repères visibles sur le PDF.
+
+#### 4b — Carte de coordonnées auto-générée
+- [ ] `<script>` inline dans le template : au chargement, parcourt tous les `[data-field]`,
+      calcule leur `getBoundingClientRect()` converti en **mm page**, et écrit le JSON dans un
+      `<div id="coordmap" hidden>`.
+- [ ] `EdgeHeadlessPdfService.ExtractCoordMapAsync()` : 2ᵉ invocation Edge avec `--dump-dom`
+      (+ `--virtual-time-budget` pour laisser tourner le JS) → parse le JSON.
+- [ ] Écrire la carte en sidecar à côté du PDF, **versionnée avec le template**.
+- **Pourquoi** : la carte se régénère seule à chaque évolution de la maquette. Aucune coordonnée
+  codée en dur à maintenir.
+- **Critère** : mode debug qui superpose les rects de la carte sur le PDF → alignement exact.
+
+#### 4c — Redressement du scan
+- [ ] Détecter les 4 repères → **homographie** → image canonique 210×297 mm @ 300 dpi
+      (2480×3508 px). Corrige inclinaison **et** perspective (photo smartphone acceptable).
+- **Critère** : un scan penché de 5° et une photo en biais donnent la même image canonique.
+
+#### 4d — Cases à cocher : densité d'encre (déterministe, sans IA)
+- [ ] Pour chaque case : cropper le rect **avec un inset de ~15 %** (exclure la bordure imprimée),
+      mesurer le taux de pixels sombres.
+- [ ] **Double seuil** → trois états : `cochée` / `vide` / **`incertaine`**. La bande grise
+      intermédiaire force la relecture au lieu de deviner.
+- [ ] Calibrer les seuils empiriquement sur des formulaires réels (une case vide n'est pas à 0 %).
+- **Critère** : sur 24 cases d'antécédents remplies main, **zéro faux positif/négatif silencieux** ;
+  tout doute remonte en `incertaine`.
+
+#### 4e — Cases à lettres : GLM-OCR sur bandes découpées
+- [ ] `ollama pull glm-ocr:latest`.
+- [ ] Ajouter `OcrModel` à `AppSettings` (défaut `glm-ocr:latest`) et instancier un provider dédié :
+      `new OllamaLLMProvider(_settings.OllamaBaseUrl, _settings.OcrModel)` — **même motif que
+      l'anonymisation** (`OpenAIService.cs:192`), pour ne pas perturber le modèle de conversation.
+- [ ] Cropper chaque `.letter-boxes-row` (le `data-len` donne le nombre de cellules) et envoyer la
+      bande à `AnalyzeImageAsync` avec **jeu de caractères contraint par champ** :
+      `A-Z` (noms), `0-9` (téléphone), `alphanum + @ . - _` (email).
+- [ ] Parsing tolérant (`StripMarkdownFences`) + longueur attendue = `data-len` (contrôle de cohérence).
+- **Point dur assumé** : l'**email** (chaîne arbitraire, casse significative, aucun dictionnaire de
+  rattrapage) → **toujours** marqué à vérifier, quel que soit le score.
+- **Critère** : noms et téléphones lus correctement en capitales d'imprimerie ; emails proposés
+  mais systématiquement en relecture.
+
+#### 4f — Fusion
+- [ ] `FormulaireExtractionService` assemble géométrie + OCR → JSON unique (schéma §3.1) avec
+      **niveau de confiance par champ** (case nette = haute ; case incertaine = basse ;
+      manuscrit = à vérifier ; email = toujours à vérifier).
+- **Livrable** : JSON structuré depuis un scan, prêt pour l'écran de relecture (Phase 5).
 
 ### Phase 5 — Relecture / validation → dossier
 - [ ] Écran de relecture (réutilise cartouches + code couleur confiance) : le médecin voit
@@ -138,16 +193,18 @@
 
 | Existant | Rôle dans ce plan |
 |---|---|
-| `EdgeHeadlessPdfService` (HTML → Edge headless / Chromium) | **Génération (Phase 2)** — moteur PDF principal |
+| `EdgeHeadlessPdfService` (HTML → Edge headless / Chromium) | **Génération (Phase 2)** + **carte de coordonnées (Phase 4b)** via `--dump-dom` |
 | `PDFFormFillerService` (PdfSharp AcroForm) | Repli uniquement (dernier recours) |
-| `ScannerService` / import image | Scan (Phase 4) |
-| `ILLMService.AnalyzeImageAsync` (Ollama vision) | Extraction (Phase 4) |
+| `ScannerService` / import image | Scan (Phase 4c) |
+| `ILLMService.AnalyzeImageAsync` (Ollama `/api/generate` + `images[]`) | **Manuscrit uniquement (Phase 4e)** — déjà au bon format pour GLM-OCR, aucune plomberie à changer |
+| Motif provider dédié (`OpenAIService.cs:192`) | Instancier `glm-ocr` sans toucher au modèle de conversation (Phase 4e) |
 | Cartouches éditables + `MergeVerifiedFactsIntoBlockAsync` + confiance couleur | Relecture/validation (Phase 5) |
 | `PatientIndexService` / patient.json | Persistance (Phases 0, 5) |
 | Page Administratif du dossier | Affichage des coordonnées (déjà fait) |
 
-À créer : `FormulaireCompletionService` (génération), `FormulaireExtractionService` (vision→JSON),
-écran de relecture dédié (ou réutilisation de l'écran cartouches).
+À créer : `FormulaireCompletionService` (génération), `FormulaireGeometryService` (calage +
+densité d'encre, Phases 4c-4d), `FormulaireExtractionService` (orchestration géométrie + OCR → JSON,
+Phase 4f), écran de relecture dédié (ou réutilisation de l'écran cartouches).
 
 ---
 
@@ -172,12 +229,25 @@
 4. **Fratrie / profession / tél fixe** : ✅ **Hors périmètre V1** — absents du template papier.
 5. **Écran de relecture** : réutiliser l'écran cartouches existant ou écran dédié formulaire ?
 6. **Tablette** : hors périmètre V1 — papier d'abord, plus inclusif en salle d'attente.
+7. **Méthode d'extraction** : ✅ **Tranché** — hybride. Géométrie (densité d'encre à coordonnées
+   connues) pour les cases à cocher, **GLM-OCR** sur bandes découpées pour le manuscrit. Voir §4 Phase 4.
+8. **Bibliothèque de traitement d'image** (homographie + seuillage, Phases 4c-4d) : à trancher.
+   Options : `OpenCvSharp4` (complet, +~50 Mo natifs), `ImageSharp` (100 % managé, homographie à
+   écrire soi-même), ou `System.Drawing` + calage manuel. **Seule vraie dépendance nouvelle du plan.**
+9. **QR code sur le formulaire** (suggestion) : encoder identifiant patient + version de template.
+   Élimine le risque d'associer un scan au mauvais dossier et sélectionne la bonne carte de
+   coordonnées si la maquette évolue. Quelques lignes dans le HTML.
 
 ---
 
 ## 8. Ordre de réalisation conseillé
 
-`Phase 0 (modèle)` → `Phase 1 (template)` → `Phase 2 (génération pré-remplie)` → **jalon démo : imprimer un formulaire pré-rempli** → `Phase 4 (extraction vision)` → `Phase 5 (relecture/validation)` → `Phase 6 (conservation/photo)`.
+`Phase 0 (modèle)` → `Phase 1 (template)` → `Phase 2 (génération pré-remplie)` → **jalon démo : imprimer un formulaire pré-rempli** → `Phase 4a→4f (extraction hybride)` → `Phase 5 (relecture/validation)` → `Phase 6 (conservation/photo)`.
 
 > Jalon de valeur le plus rapide : **Phases 0→2** (formulaire pré-rempli imprimable). L'extraction
 > (4-5) vient ensuite, une fois la chaîne papier validée en consultation réelle.
+
+> **Ordre imposé dans la Phase 4** : `4a` (nommage + repères) bloque tout le reste — sans
+> `data-field` ni repères, ni la carte de coordonnées ni le calage ne sont possibles.
+> `4d` (cases) est **indépendant de tout modèle** et couvre la majorité du formulaire : il peut être
+> livré et validé en consultation réelle **avant** que GLM-OCR soit installé.

@@ -338,6 +338,33 @@
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
                     </Button>
+
+                    <!-- Banc d'essai OCR (GLM-OCR local) -->
+                    <Button x:Name="OcrTestButton"
+                            Width="40" Height="40"
+                            Background="Transparent"
+                            BorderThickness="1"
+                            BorderBrush="#BDC3C7"
+                            Cursor="Hand"
+                            ToolTip="Banc d'essai OCR — tester GLM-OCR local sur une image (texte, JSON, cases à lettres)."
+                            Click="OcrTestButton_Click"
+                            Margin="0,0,10,0">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}"
+                                        BorderBrush="{TemplateBinding BorderBrush}"
+                                        BorderThickness="{TemplateBinding BorderThickness}"
+                                        CornerRadius="20">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                            </ControlTemplate>
+                        </Button.Template>
+                        <TextBlock x:Name="OcrTestIcon"
+                                   Text="🔍"
+                                   FontSize="18"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"/>
+                    </Button>
                 </StackPanel>
                 
                 <!-- Bouton Analyse des prompts -->

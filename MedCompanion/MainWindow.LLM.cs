@@ -101,27 +101,60 @@ public partial class MainWindow : Window
                 
                 if (ollamaModels.Any())
                 {
-                    // Ajouter header LOCAL
-                    var localHeader = new ComboBoxItem
+                    // Les modèles Ollama suffixés "-cloud" ne sont PAS locaux : aucun poids sur le
+                    // disque, l'inférence part sur les serveurs Ollama. Les afficher sous l'en-tête
+                    // "LOCAL" ferait croire à tort qu'ils respectent le secret médical.
+                    var localModels = ollamaModels.Where(m => !IsOllamaCloudModel(m)).ToList();
+                    var cloudModels = ollamaModels.Where(IsOllamaCloudModel).ToList();
+
+                    if (localModels.Any())
                     {
-                        Content = "🖥️ LOCAL (Ollama)",
-                        IsEnabled = false,
-                        FontWeight = FontWeights.Bold,
-                        Foreground = new SolidColorBrush(Color.FromRgb(76, 175, 80))
-                    };
-                    LLMModelCombo.Items.Add(localHeader);
-                    
-                    // Ajouter chaque modèle Ollama
-                    foreach (var model in ollamaModels)
-                    {
-                        var item = new ComboBoxItem
+                        // Ajouter header LOCAL
+                        var localHeader = new ComboBoxItem
                         {
-                            Content = $"  {model}",
-                            Tag = new { Provider = "Ollama", Model = model }
+                            Content = "🖥️ LOCAL (Ollama)",
+                            IsEnabled = false,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = new SolidColorBrush(Color.FromRgb(76, 175, 80))
                         };
-                        LLMModelCombo.Items.Add(item);
+                        LLMModelCombo.Items.Add(localHeader);
+
+                        foreach (var model in localModels)
+                        {
+                            var item = new ComboBoxItem
+                            {
+                                Content = $"  {model}",
+                                Tag = new { Provider = "Ollama", Model = model }
+                            };
+                            LLMModelCombo.Items.Add(item);
+                        }
                     }
-                    
+
+                    if (cloudModels.Any())
+                    {
+                        var ollamaCloudHeader = new ComboBoxItem
+                        {
+                            Content = "☁️ OLLAMA CLOUD — jamais de patient réel",
+                            IsEnabled = false,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = new SolidColorBrush(Color.FromRgb(255, 152, 0))
+                        };
+                        LLMModelCombo.Items.Add(ollamaCloudHeader);
+
+                        foreach (var model in cloudModels)
+                        {
+                            // Le préfixe ☁️ est porté par l'item lui-même : une fois le ComboBox
+                            // refermé, seul l'item sélectionné reste visible (pas son en-tête).
+                            var item = new ComboBoxItem
+                            {
+                                Content = $"  ☁️ {model}",
+                                Foreground = new SolidColorBrush(Color.FromRgb(255, 152, 0)),
+                                Tag = new { Provider = "Ollama", Model = model }
+                            };
+                            LLMModelCombo.Items.Add(item);
+                        }
+                    }
+
                     // Séparateur
                     var separator = new ComboBoxItem
                     {
@@ -142,10 +175,11 @@ public partial class MainWindow : Window
             };
             LLMModelCombo.Items.Add(cloudHeader);
             
-            // Ajouter OpenAI
+            // Ajouter OpenAI (même logique : le marqueur ☁️ doit rester visible ComboBox fermé)
             var openAIItem = new ComboBoxItem
             {
-                Content = $"  {_settings.OpenAIModel}",
+                Content = $"  ☁️ {_settings.OpenAIModel}",
+                Foreground = new SolidColorBrush(Color.FromRgb(52, 152, 219)),
                 Tag = new { Provider = "OpenAI", Model = _settings.OpenAIModel }
             };
             LLMModelCombo.Items.Add(openAIItem);
@@ -160,6 +194,24 @@ public partial class MainWindow : Window
         }
     }
     
+    /// <summary>
+    /// Ouvre le banc d'essai OCR (GLM-OCR local) : charger une image, comparer les trois modes
+    /// d'extraction et lire la sortie brute du modèle.
+    /// </summary>
+    private void OcrTestButton_Click(object sender, RoutedEventArgs e)
+    {
+        var dialog = new Dialogs.OcrTestDialog(_settings) { Owner = this };
+        dialog.ShowDialog();
+    }
+
+    /// <summary>
+    /// Vrai si le modèle Ollama est un modèle "cloud" (suffixe -cloud) : aucun poids local,
+    /// l'inférence est exécutée sur les serveurs Ollama. À ne jamais utiliser sur données patient.
+    /// Règle portée par <see cref="Services.LLM.OllamaModelInfo"/> (source unique, hors UI).
+    /// </summary>
+    internal static bool IsOllamaCloudModel(string modelName) =>
+        Services.LLM.OllamaModelInfo.IsCloudModel(modelName);
+
     private void SelectCurrentModel()
     {
         foreach (var item in LLMModelCombo.Items)
