@@ -30,11 +30,23 @@
         <!-- ── Droite : formulaire saisie ── -->
         <Grid Grid.Column="2">
             <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
 
-            <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto" Padding="14,10,14,8">
+            <!-- Barre remplissage automatique -->
+            <Border Grid.Row="0" Background="#F4F6F7" BorderBrush="#DEE2E6" BorderThickness="0,0,0,1" Padding="12,8">
+                <StackPanel Orientation="Horizontal">
+                    <Button x:Name="BtnAutoFill" Content="🪄 Remplissage automatique (OCR)" Click="BtnAutoFill_Click"
+                            Padding="10,6" FontSize="12" Background="#EBF5FB" BorderBrush="#85C1E9"
+                            BorderThickness="1" Cursor="Hand"/>
+                    <TextBlock x:Name="AutoFillStatus" VerticalAlignment="Center" FontSize="11"
+                               Foreground="#7F8C8D" Margin="12,0,0,0" TextWrapping="Wrap"/>
+                </StackPanel>
+            </Border>
+
+            <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="14,10,14,8">
                 <StackPanel>
 
                     <!-- Bloc 1 — Père -->
@@ -50,7 +62,9 @@
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Grid.Row="0" Margin="4,0,0,4">
                                     <TextBlock Text="Nom" FontSize="11" Foreground="#555"/>
-                                    <TextBox x:Name="PereNom" Padding="4,3" FontSize="12"/>
+                                    <TextBox x:Name="PereNom" Padding="4,3" FontSize="12" Margin="0,0,0,3"/>
+                                    <CheckBox x:Name="PereNomMemeCheckBox" Content="Même nom que l'enfant" FontSize="10"
+                                              Checked="PereNomMemeCheckBox_CheckedChanged" Unchecked="PereNomMemeCheckBox_CheckedChanged"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="0" Grid.Row="1" Margin="0,0,4,0">
                                     <TextBlock Text="Téléphone" FontSize="11" Foreground="#555"/>
@@ -77,7 +91,9 @@
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Grid.Row="0" Margin="4,0,0,4">
                                     <TextBlock Text="Nom" FontSize="11" Foreground="#555"/>
-                                    <TextBox x:Name="MereNom" Padding="4,3" FontSize="12"/>
+                                    <TextBox x:Name="MereNom" Padding="4,3" FontSize="12" Margin="0,0,0,3"/>
+                                    <CheckBox x:Name="MereNomMemeCheckBox" Content="Même nom que l'enfant" FontSize="10"
+                                              Checked="MereNomMemeCheckBox_CheckedChanged" Unchecked="MereNomMemeCheckBox_CheckedChanged"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="0" Grid.Row="1" Margin="0,0,4,0">
                                     <TextBlock Text="Téléphone" FontSize="11" Foreground="#555"/>
@@ -116,27 +132,32 @@
                                 </StackPanel>
                             </Grid>
 
-                            <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Margin="0,4,0,8"/>
+                            <StackPanel x:Name="Adresse2Panel">
+                                <Border BorderBrush="#E0E0E0" BorderThickness="0,1,0,0" Margin="0,4,0,8"/>
 
-                            <!-- Adresse 2 (garde alternée) -->
-                            <TextBlock Text="Adresse 2 (garde alternée — facultatif) — Chez :" FontSize="11" Foreground="#555" Margin="0,0,0,2"/>
-                            <WrapPanel Margin="0,0,0,4">
-                                <RadioButton x:Name="GardeAdr2Mere" GroupName="GardeAdr2" Content="Mère"  Margin="0,0,10,0" FontSize="11"/>
-                                <RadioButton x:Name="GardeAdr2Pere" GroupName="GardeAdr2" Content="Père"  Margin="0,0,10,0" FontSize="11"/>
-                                <RadioButton x:Name="GardeAdr2Autre" GroupName="GardeAdr2" Content="Autre" FontSize="11"/>
-                            </WrapPanel>
-                            <TextBox x:Name="Adresse2" Padding="4,3" FontSize="12" Margin="0,0,0,4"/>
-                            <Grid>
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition/></Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Margin="0,0,4,0">
-                                    <TextBlock Text="Code postal" FontSize="11" Foreground="#555"/>
-                                    <TextBox x:Name="CodePostal2" Padding="4,3" FontSize="12"/>
-                                </StackPanel>
-                                <StackPanel Grid.Column="1">
-                                    <TextBlock Text="Ville" FontSize="11" Foreground="#555"/>
-                                    <TextBox x:Name="Ville2" Padding="4,3" FontSize="12"/>
-                                </StackPanel>
-                            </Grid>
+                                <!-- Adresse 2 (parents séparés) -->
+                                <TextBlock Text="Adresse 2 (parents séparés — facultatif) — Chez :" FontSize="11" Foreground="#555" Margin="0,0,0,2"/>
+                                <WrapPanel Margin="0,0,0,4">
+                                    <RadioButton x:Name="GardeAdr2Mere" GroupName="GardeAdr2" Content="Mère"  Margin="0,0,10,0" FontSize="11"/>
+                                    <RadioButton x:Name="GardeAdr2Pere" GroupName="GardeAdr2" Content="Père"  Margin="0,0,10,0" FontSize="11"/>
+                                    <RadioButton x:Name="GardeAdr2Autre" GroupName="GardeAdr2" Content="Autre" FontSize="11"/>
+                                </WrapPanel>
+                                <TextBox x:Name="Adresse2" Padding="4,3" FontSize="12" Margin="0,0,0,4"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="80"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                        <TextBlock Text="Code postal" FontSize="11" Foreground="#555"/>
+                                        <TextBox x:Name="CodePostal2" Padding="4,3" FontSize="12"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock Text="Ville" FontSize="11" Foreground="#555"/>
+                                        <TextBox x:Name="Ville2" Padding="4,3" FontSize="12"/>
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                            <TextBlock x:Name="Adresse2Hint"
+                                       Text="Parents ensemble : une seule adresse suffit. Cochez la situation familiale (bloc 4) pour faire apparaître une 2e adresse si besoin."
+                                       FontSize="10" Foreground="#95A5A6" TextWrapping="Wrap" Margin="0,2,0,0" Visibility="Collapsed"/>
                         </StackPanel>
                     </Border>
 
@@ -282,17 +303,17 @@
                                 <TextBlock Grid.Row="0" Grid.Column="1" Text="OUI" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Row="0" Grid.Column="2" Text="NON" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Communication avec l'école" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                <RadioButton Grid.Row="1" Grid.Column="1" x:Name="Autor1Oui" GroupName="Autor1" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <RadioButton Grid.Row="1" Grid.Column="2" x:Name="Autor1Non" GroupName="Autor1" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="J'autorise le Dr Lassoued à utiliser les informations de ce formulaire pour le suivi de mon enfant." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <RadioButton Grid.Row="1" Grid.Column="1" x:Name="AutorInfosOui" GroupName="AutorInfos" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="1" Grid.Column="2" x:Name="AutorInfosNon" GroupName="AutorInfos" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="Partage avec confrères / spécialistes" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                <RadioButton Grid.Row="2" Grid.Column="1" x:Name="Autor2Oui" GroupName="Autor2" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <RadioButton Grid.Row="2" Grid.Column="2" x:Name="Autor2Non" GroupName="Autor2" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="J'autorise l'envoi de SMS (rappels de rendez-vous, informations pratiques)." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <RadioButton Grid.Row="2" Grid.Column="1" x:Name="AutorSmsOui" GroupName="AutorSms" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="2" Grid.Column="2" x:Name="AutorSmsNon" GroupName="AutorSms" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="Utilisation anonymisée pour recherche / études" FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                <RadioButton Grid.Row="3" Grid.Column="1" x:Name="Autor3Oui" GroupName="Autor3" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <RadioButton Grid.Row="3" Grid.Column="2" x:Name="Autor3Non" GroupName="Autor3" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="J'autorise l'envoi d'emails." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <RadioButton Grid.Row="3" Grid.Column="1" x:Name="AutorEmailOui" GroupName="AutorEmail" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="3" Grid.Column="2" x:Name="AutorEmailNon" GroupName="AutorEmail" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </StackPanel>
                     </Border>
@@ -301,7 +322,7 @@
             </ScrollViewer>
 
             <!-- Bouton Valider -->
-            <Border Grid.Row="1" Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="0,1,0,0" Padding="12,10">
+            <Border Grid.Row="2" Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="0,1,0,0" Padding="12,10">
                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                     <TextBlock x:Name="StatusLabel" VerticalAlignment="Center" FontSize="11"
                                Foreground="#27AE60" Margin="0,0,16,0"/>

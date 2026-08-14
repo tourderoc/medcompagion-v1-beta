@@ -124,6 +124,21 @@ public partial class PatientInfoDialog : Window
             }
         }
 
+        // === Parents ===
+        PerePrenomTextBox.Text = _metadata.PerePrenom ?? "";
+        PereNomTextBox.Text = _metadata.PereNom ?? "";
+        PereTelephoneTextBox.Text = _metadata.PereTelephone ?? "";
+        PereEmailTextBox.Text = _metadata.PereEmail ?? "";
+        MerePrenomTextBox.Text = _metadata.MerePrenom ?? "";
+        MereNomTextBox.Text = _metadata.MereNom ?? "";
+        MereTelephoneTextBox.Text = _metadata.MereTelephone ?? "";
+        MereEmailTextBox.Text = _metadata.MereEmail ?? "";
+
+        // === Autorisations ===
+        AutorUsageInfosCheckBox.IsChecked = _metadata.AutorisationUsageInfos;
+        AutorSmsCheckBox.IsChecked = _metadata.AutorisationSms;
+        AutorEmailCheckBox.IsChecked = _metadata.AutorisationEmail;
+
         // === Situation ===
         if (!string.IsNullOrEmpty(_metadata.SituationAccueil))
         {
@@ -164,6 +179,18 @@ public partial class PatientInfoDialog : Window
         SituationAccueilComboBox.SelectionChanged += (s, e) => _hasUnsavedChanges = true;
         EcoleTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
         ClasseTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+
+        PerePrenomTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        PereNomTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        PereTelephoneTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        PereEmailTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        MerePrenomTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        MereNomTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        MereTelephoneTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        MereEmailTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        AutorUsageInfosCheckBox.Click += (s, e) => _hasUnsavedChanges = true;
+        AutorSmsCheckBox.Click += (s, e) => _hasUnsavedChanges = true;
+        AutorEmailCheckBox.Click += (s, e) => _hasUnsavedChanges = true;
     }
 
     private void SaveButton_Click(object sender, RoutedEventArgs e)
@@ -239,6 +266,29 @@ public partial class PatientInfoDialog : Window
                 ? null : CleanPhoneNumber(AccompagnantTelephoneTextBox.Text);
             _metadata.AccompagnantEmail = string.IsNullOrWhiteSpace(AccompagnantEmailTextBox.Text)
                 ? null : AccompagnantEmailTextBox.Text.Trim();
+
+            // === Parents ===
+            _metadata.PerePrenom = string.IsNullOrWhiteSpace(PerePrenomTextBox.Text)
+                ? null : PerePrenomTextBox.Text.Trim();
+            _metadata.PereNom = string.IsNullOrWhiteSpace(PereNomTextBox.Text)
+                ? null : PereNomTextBox.Text.Trim();
+            _metadata.PereTelephone = string.IsNullOrWhiteSpace(PereTelephoneTextBox.Text)
+                ? null : CleanPhoneNumber(PereTelephoneTextBox.Text);
+            _metadata.PereEmail = string.IsNullOrWhiteSpace(PereEmailTextBox.Text)
+                ? null : PereEmailTextBox.Text.Trim();
+            _metadata.MerePrenom = string.IsNullOrWhiteSpace(MerePrenomTextBox.Text)
+                ? null : MerePrenomTextBox.Text.Trim();
+            _metadata.MereNom = string.IsNullOrWhiteSpace(MereNomTextBox.Text)
+                ? null : MereNomTextBox.Text.Trim();
+            _metadata.MereTelephone = string.IsNullOrWhiteSpace(MereTelephoneTextBox.Text)
+                ? null : CleanPhoneNumber(MereTelephoneTextBox.Text);
+            _metadata.MereEmail = string.IsNullOrWhiteSpace(MereEmailTextBox.Text)
+                ? null : MereEmailTextBox.Text.Trim();
+
+            // === Autorisations ===
+            _metadata.AutorisationUsageInfos = AutorUsageInfosCheckBox.IsChecked;
+            _metadata.AutorisationSms = AutorSmsCheckBox.IsChecked;
+            _metadata.AutorisationEmail = AutorEmailCheckBox.IsChecked;
 
             // === Situation ===
             _metadata.SituationAccueil = (SituationAccueilComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString();

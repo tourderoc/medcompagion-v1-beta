@@ -336,6 +336,84 @@
                     </StackPanel>
                 </GroupBox>
 
+                <!-- Parents -->
+                <GroupBox Header="👨‍👩‍👧 Parents" Style="{StaticResource GroupStyle}">
+                    <StackPanel>
+                        <TextBlock Text="Père" FontWeight="Bold" Foreground="#1A5276" Margin="0,0,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="Prénom" Style="{StaticResource LabelStyle}"/>
+                                <TextBox x:Name="PerePrenomTextBox" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Nom" Style="{StaticResource LabelStyle}"/>
+                                <TextBox x:Name="PereNomTextBox" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="Téléphone" Style="{StaticResource LabelStyle}"/>
+                                <TextBox x:Name="PereTelephoneTextBox" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Email" Style="{StaticResource LabelStyle}"/>
+                                <TextBox x:Name="PereEmailTextBox" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                        </Grid>
+
+                        <TextBlock Text="Mère" FontWeight="Bold" Foreground="#7D6608" Margin="0,6,0,6"/>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="Prénom" Style="{StaticResource LabelStyle}"/>
+                                <TextBox x:Name="MerePrenomTextBox" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Nom" Style="{StaticResource LabelStyle}"/>
+                                <TextBox x:Name="MereNomTextBox" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                        </Grid>
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,10,0">
+                                <TextBlock Text="Téléphone" Style="{StaticResource LabelStyle}"/>
+                                <TextBox x:Name="MereTelephoneTextBox" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Email" Style="{StaticResource LabelStyle}"/>
+                                <TextBox x:Name="MereEmailTextBox" Style="{StaticResource InputStyle}"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </GroupBox>
+
+                <!-- Autorisations -->
+                <GroupBox Header="✅ Autorisations" Style="{StaticResource GroupStyle}">
+                    <StackPanel>
+                        <CheckBox x:Name="AutorUsageInfosCheckBox" IsThreeState="True"
+                                  Content="Utiliser les informations du formulaire pour le suivi de l'enfant" FontSize="13" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="AutorSmsCheckBox" IsThreeState="True"
+                                  Content="Envoi de SMS (rappels de rendez-vous, informations pratiques)" FontSize="13" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="AutorEmailCheckBox" IsThreeState="True"
+                                  Content="Envoi d'emails" FontSize="13"/>
+                        <TextBlock Text="Case grisée = non renseigné" FontSize="10" Foreground="#95A5A6" Margin="0,8,0,0"/>
+                    </StackPanel>
+                </GroupBox>
+
                 <!-- Situation -->
                 <GroupBox Header="🏡 Situation d'Accueil" Style="{StaticResource GroupStyle}">
                     <StackPanel>

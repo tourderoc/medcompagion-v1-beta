@@ -51,6 +51,21 @@ namespace MedCompanion.Models
         public string? AccompagnantTelephone { get; set; }
         public string? AccompagnantEmail { get; set; }
 
+        // === Contacts parents (issus du formulaire de complétion) ===
+        public string? PerePrenom { get; set; }
+        public string? PereNom { get; set; }
+        public string? PereTelephone { get; set; }
+        public string? PereEmail { get; set; }
+        public string? MerePrenom { get; set; }
+        public string? MereNom { get; set; }
+        public string? MereTelephone { get; set; }
+        public string? MereEmail { get; set; }
+
+        // === Autorisations (formulaire de complétion) ===
+        public bool? AutorisationUsageInfos { get; set; } // Utiliser les infos du formulaire pour le suivi
+        public bool? AutorisationSms { get; set; }         // Envoi de SMS
+        public bool? AutorisationEmail { get; set; }        // Envoi d'emails
+
         // === Situation ===
         public string? SituationAccueil { get; set; }  // Domicile, Foyer, Famille d'accueil, Autre
 

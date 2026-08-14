@@ -7,12 +7,14 @@ namespace MedCompanion.Models
         // Bloc 1 — Père
         public string PerePrenom  { get; set; } = "";
         public string PereNom     { get; set; } = "";
+        public bool   PereNomMeme { get; set; } // Nom = celui de l'enfant (case cochée sur le papier)
         public string PereTel     { get; set; } = "";
         public string PereEmail   { get; set; } = "";
 
         // Bloc 2 — Mère
         public string MerePrenom  { get; set; } = "";
         public string MereNom     { get; set; } = "";
+        public bool   MereNomMeme { get; set; } // Nom = celui de l'enfant (case cochée sur le papier)
         public string MereTel     { get; set; } = "";
         public string MereEmail   { get; set; } = "";
 
@@ -49,9 +51,9 @@ namespace MedCompanion.Models
         public string AntecedentsAutre      { get; set; } = "";
 
         // Bloc 7 — Autorisations : "oui" | "non"
-        public string AutorCommunicationEcole { get; set; } = "";
-        public string AutorPartageConfreres   { get; set; } = "";
-        public string AutorRechercheEtudes    { get; set; } = "";
+        public string AutorUsageInfos { get; set; } = ""; // Utiliser les infos du formulaire pour le suivi
+        public string AutorSms        { get; set; } = ""; // Envoi de SMS
+        public string AutorEmail      { get; set; } = ""; // Envoi d'emails
 
         public DateTime DateSaisie        { get; set; } = DateTime.Now;
         public string?  LinkedDocumentPath { get; set; }
