@@ -268,6 +268,12 @@ namespace MedCompanion.ViewModels
         private string _adresseLieuVieText = "";
         public string AdresseLieuVieText { get => _adresseLieuVieText; private set => SetProperty(ref _adresseLieuVieText, value); }
 
+        // ── Autorisations (formulaire_data.json) ──
+        private bool _hasAutorisations;
+        public bool HasAutorisations { get => _hasAutorisations; private set => SetProperty(ref _hasAutorisations, value); }
+        private string _autorisationsText = "";
+        public string AutorisationsText { get => _autorisationsText; private set => SetProperty(ref _autorisationsText, value); }
+
         // ── Antécédents familiaux (formulaire_data.json) ──
         private bool _hasAntecedentsFamiliaux;
         public bool HasAntecedentsFamiliaux { get => _hasAntecedentsFamiliaux; private set => SetProperty(ref _hasAntecedentsFamiliaux, value); }
@@ -409,6 +415,20 @@ namespace MedCompanion.ViewModels
                     _         => fd.GardePrincipale });
             AdresseLieuVieText = string.Join("\n", adLignes);
             HasAdresseLieuVie  = adLignes.Count > 0;
+
+            // Autorisations (formulaire de complétion)
+            var autor = new System.Collections.Generic.List<string>();
+            void AddAutor(string label, string val)
+            {
+                if (val == "oui") autor.Add($"✅ {label}");
+                else if (val == "non") autor.Add($"❌ {label}");
+            }
+            AddAutor("Photographie clinique", fd.PhotoAutorise);
+            AddAutor("Utilisation des informations pour le suivi", fd.AutorUsageInfos);
+            AddAutor("Envoi de SMS", fd.AutorSms);
+            AddAutor("Envoi d'emails", fd.AutorEmail);
+            AutorisationsText = string.Join("\n", autor);
+            HasAutorisations  = autor.Count > 0;
 
             // Antécédents familiaux — on affiche seulement OUI et NSP
             var antec = new System.Collections.Generic.List<string>();
@@ -577,7 +597,6 @@ namespace MedCompanion.ViewModels
         private ILLMService? _llmService;
         private StorageService? _storageService;
         private readonly InterrogatoireExtractorService  _extractor            = new();
-        private readonly IncrementalExtractorService     _incrementalExtractor = new();
         private readonly QualityCheckService             _qualityChecker       = new();
         private WhisperStreamingService? _whisperService;
 
@@ -635,10 +654,6 @@ namespace MedCompanion.ViewModels
             get => _isStructureFrozen;
             set => SetProperty(ref _isStructureFrozen, value);
         }
-
-        // File d'extraction : jamais deux appels LLM simultanés
-        private readonly SemaphoreSlim _extractionLock    = new(1, 1);
-        private string                 _pendingSegment    = "";
 
         private PatientIndexService? _patientIndex;
 
@@ -1278,7 +1293,6 @@ namespace MedCompanion.ViewModels
                     if (IsSuiviMode) Suivi.Transcription += text;
                     else             TranscriptionInput  += text;
                 });
-                _whisperService.SegmentReady          += seg  => _ = EnqueueExtractionAsync(seg);
                 _whisperService.SessionResetRequested += ()   => Dispatch(ResetDictationSession);
                 _whisperService.AudioLevelChanged     += lvl  => Dispatch(() => MicLevelPct = Math.Min(100, (int)(lvl * 600)));
                 _whisperService.BatchProgressChanged  += pct  => Dispatch(() =>
@@ -1294,13 +1308,11 @@ namespace MedCompanion.ViewModels
         /// <summary>
         /// Réinitialise complètement la session de dictée :
         /// - vide la transcription
-        /// - vide le segment en attente d'extraction
         /// - réinitialise les blocs (texte + thèmes)
         /// </summary>
         private void ResetDictationSession()
         {
             TranscriptionInput = "";
-            _pendingSegment    = "";
 
             foreach (var block in InterrogatoireBlocks)
                 block.Reset();
@@ -1317,99 +1329,6 @@ namespace MedCompanion.ViewModels
             // Repasse en mode Saisie si on était dans un autre état
             if (IsInterrogatoireMode)
                 InterrogatoireState = InterrogatoireState.Saisie;
-        }
-
-        /// <summary>
-        /// Accumule les segments et déclenche une extraction incrémentale dès que le LLM est libre.
-        /// </summary>
-        private async Task EnqueueExtractionAsync(string newSegment)
-        {
-            _pendingSegment += " " + newSegment;
-
-            if (!await _extractionLock.WaitAsync(0)) return;
-
-            try
-            {
-                while (!string.IsNullOrWhiteSpace(_pendingSegment))
-                {
-                    var segment = _pendingSegment.Trim();
-                    _pendingSegment = "";
-                    await ExtractIncrementalAsync(segment);
-                }
-            }
-            finally
-            {
-                _extractionLock.Release();
-            }
-        }
-
-        private async Task ExtractIncrementalAsync(string segment)
-        {
-            if (_llmService == null || string.IsNullOrWhiteSpace(segment)) return;
-
-            Dispatch(() => ExtractionStatus = "⟳ Extraction en cours...");
-
-            var currentBlocks = InterrogatoireBlocks
-                .Select(vm => new ConsultationBlock
-                {
-                    Key           = vm.Key,
-                    Title         = vm.Title,
-                    FreeText      = vm.FreeText,
-                    ExpectedThemes = new List<string>(vm.ExpectedThemes),
-                    CoveredThemes = new List<string>(vm.CoveredThemes)
-                }).ToList();
-
-            var (ok, result, err) = await _incrementalExtractor.ExtractAsync(
-                _llmService, segment, currentBlocks);
-
-            if (!ok || result == null)
-            {
-                Dispatch(() => ExtractionStatus = $"Erreur extraction : {err}");
-                return;
-            }
-
-            Dispatch(() =>
-            {
-                foreach (var update in result.Updates)
-                {
-                    var blockVm = InterrogatoireBlocks.FirstOrDefault(b => b.Key == update.BlockKey);
-                    if (blockVm == null) continue;
-
-                    if (!string.IsNullOrWhiteSpace(update.AppendText))
-                        blockVm.AppendText(update.AppendText);
-
-                    foreach (var theme in update.NewThemes)
-                        blockVm.AddTheme(theme);
-                }
-                UpdateBlockCollections(); // V0c : mettre à jour Active/Completed
-
-                // Confirmation de l'âge via le bloc "age" dédié (thème "age" extrait par le LLM).
-                // Tant que ce n'est pas confirmé en consultation, les règles d'auto-masquage
-                // basées sur l'âge ne s'appliquent pas (la DOB du profil peut être erronée).
-                if (!_isAgeConfirmed)
-                {
-                    var ageBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "age");
-                    if (ageBlock != null && ageBlock.CoveredThemes.Contains("age"))
-                    {
-                        _isAgeConfirmed = true;
-
-                        // Extraire l'âge numérique mentionné ("10 ans", "âgé de 7 ans", etc.)
-                        var ageText = ageBlock.FreeText ?? "";
-                        var m = System.Text.RegularExpressions.Regex.Match(
-                            ageText, @"\b(\d+)\s*ans?\b",
-                            System.Text.RegularExpressions.RegexOptions.IgnoreCase);
-                        if (m.Success && int.TryParse(m.Groups[1].Value, out var ag))
-                            _ageFromInterrogatoire = ag;
-
-                        OnPropertyChanged(nameof(HasConfirmedAge));
-                        if (_confirmedAge.HasValue) ApplyAutoHideRules(_confirmedAge.Value);
-                        System.Diagnostics.Debug.WriteLine($"[Blocks] Âge confirmé via interrogatoire ({_ageFromInterrogatoire} ans mentionnés, {_confirmedAge} ans DDN).");
-                    }
-                }
-
-                // V0b : vérifier si le motif principal est détecté
-                _motifDetector.CheckForMotif(InterrogatoireBlocks);
-            });
         }
 
         private static void Dispatch(Action a)
@@ -1976,54 +1895,63 @@ namespace MedCompanion.ViewModels
             // Sort du mode édition pour revenir au hub
             IsEditingConsultation = false;
 
-            // Naviguer dans la pagination du dossier vers la note cliquée (sans passer en plein écran)
-            if (!string.IsNullOrEmpty(card.FilePath))
-            {
-                var idx = -1;
-                for (int i = 0; i < ConsultationNotes.Count; i++)
-                {
-                    if (string.Equals(ConsultationNotes[i].FilePath, card.FilePath, StringComparison.OrdinalIgnoreCase))
-                    {
-                        idx = i;
-                        break;
-                    }
-                }
-                if (idx >= 0)
-                {
-                    _singlePageIndex = idx;
-                    _spreadIndex     = idx / 2;
-                    NotifyPageChange();
-                    NotifySpreadChange();
-
-                    SelectedPastConsultation = ConsultationNotes[idx];
-
-                    // Check if this is a first consultation
-                    try
-                    {
-                        var content = File.ReadAllText(card.FilePath, System.Text.Encoding.UTF8);
-                        var yamlHeader = ExtractYamlHeader(content) ?? "";
-                        var yamlType = ParseYamlField(yamlHeader, "type");
-                        if (string.Equals(yamlType, "consultation-premiere", StringComparison.OrdinalIgnoreCase))
-                        {
-                            var (_, body) = SplitFrontmatter(content);
-                            IsReadingPastPremiereConsultationMode = true;
-                            PastPremiereStep = 1;
-                            LoadPastPremiereConsultationData(yamlHeader, body, card.FilePath);
-                        }
-                        else
-                        {
-                            IsReadingPastConsultationMode = true;
-                        }
-                    }
-                    catch
-                    {
-                        IsReadingPastConsultationMode = true;
-                    }
-                }
-            }
+            OpenConsultationFileForReading(card.FilePath);
 
             // Affiche le dossier sur l'onglet Consultations dans le panneau de droite
             ActiveDossierTab = DossierTab.Consultations;
+        }
+
+        /// <summary>
+        /// Positionne la pagination du dossier sur la note désignée et bascule en mode lecture
+        /// (1ère consultation ou consultation classique selon le type YAML). Facteur commun entre
+        /// <see cref="OpenPastConsultation"/> (clic sur la frise) et la clôture de la synthèse
+        /// (Étape 3), qui doit rouvrir directement la même vue lecture — avec le bouton
+        /// « Restitution 1er entretien » — au lieu de renvoyer sur un hub vide.
+        /// </summary>
+        private void OpenConsultationFileForReading(string? filePath)
+        {
+            if (string.IsNullOrEmpty(filePath)) return;
+
+            var idx = -1;
+            for (int i = 0; i < ConsultationNotes.Count; i++)
+            {
+                if (string.Equals(ConsultationNotes[i].FilePath, filePath, StringComparison.OrdinalIgnoreCase))
+                {
+                    idx = i;
+                    break;
+                }
+            }
+            if (idx < 0) return;
+
+            _singlePageIndex = idx;
+            _spreadIndex     = idx / 2;
+            NotifyPageChange();
+            NotifySpreadChange();
+
+            SelectedPastConsultation = ConsultationNotes[idx];
+
+            // Check if this is a first consultation
+            try
+            {
+                var content = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
+                var yamlHeader = ExtractYamlHeader(content) ?? "";
+                var yamlType = ParseYamlField(yamlHeader, "type");
+                if (string.Equals(yamlType, "consultation-premiere", StringComparison.OrdinalIgnoreCase))
+                {
+                    var (_, body) = SplitFrontmatter(content);
+                    IsReadingPastPremiereConsultationMode = true;
+                    PastPremiereStep = 1;
+                    LoadPastPremiereConsultationData(yamlHeader, body, filePath);
+                }
+                else
+                {
+                    IsReadingPastConsultationMode = true;
+                }
+            }
+            catch
+            {
+                IsReadingPastConsultationMode = true;
+            }
         }
 
         private static string? ExtractYamlHeader(string raw)
@@ -2674,8 +2602,7 @@ clinical_observations_json: |
                 return;
             }
 
-            // Reset complet des blocs avant d'appliquer : la passe LLM sur la transcription
-            // complète remplace les extractions incrémentales (évite les doublons).
+            // Reset complet des blocs avant d'appliquer.
             foreach (var block in InterrogatoireBlocks)
                 block.Reset();
 
@@ -2692,6 +2619,36 @@ clinical_observations_json: |
                     blockVm.AddTheme(theme);
             }
             UpdateBlockCollections(); // V0c : mettre à jour Active/Completed
+
+            // Confirmation de l'âge via le bloc "age" dédié (thème "age" extrait par le LLM).
+            // Tant que ce n'est pas confirmé, les règles d'auto-masquage basées sur l'âge ne
+            // s'appliquent pas (la DOB du profil peut être erronée). Auparavant vérifié après
+            // chaque segment pendant la dictée ; maintenant une seule fois à la fin, l'extraction
+            // par segment ayant été retirée pour que Gemma ne se dispute plus la VRAM avec
+            // Whisper pendant l'enregistrement.
+            if (!_isAgeConfirmed)
+            {
+                var ageBlock = InterrogatoireBlocks.FirstOrDefault(b => b.Key == "age");
+                if (ageBlock != null && ageBlock.CoveredThemes.Contains("age"))
+                {
+                    _isAgeConfirmed = true;
+
+                    // Extraire l'âge numérique mentionné ("10 ans", "âgé de 7 ans", etc.)
+                    var ageText = ageBlock.FreeText ?? "";
+                    var m = System.Text.RegularExpressions.Regex.Match(
+                        ageText, @"\b(\d+)\s*ans?\b",
+                        System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+                    if (m.Success && int.TryParse(m.Groups[1].Value, out var ag))
+                        _ageFromInterrogatoire = ag;
+
+                    OnPropertyChanged(nameof(HasConfirmedAge));
+                    if (_confirmedAge.HasValue) ApplyAutoHideRules(_confirmedAge.Value);
+                    System.Diagnostics.Debug.WriteLine($"[Blocks] Âge confirmé via interrogatoire ({_ageFromInterrogatoire} ans mentionnés, {_confirmedAge} ans DDN).");
+                }
+            }
+
+            // V0b : vérifier si le motif principal est détecté
+            _motifDetector.CheckForMotif(InterrogatoireBlocks);
 
             // Construire la note finale
             var blocks = InterrogatoireBlocks.Select(vm => new ConsultationBlock
@@ -3233,10 +3190,11 @@ Texte :
                         new System.Diagnostics.ProcessStartInfo(pdfPath) { UseShellExecute = true });
                 }
                 catch { /* ouverture best-effort */ }
-                // Refermer le panneau après un court délai
+                // Refermer le panneau après un court délai puis enchaîner sur l'étape suivante
+                // (Observations Cliniques) — le formulaire est la 2e étape du fil.
                 await Task.Delay(1200);
-                IsFormulaireMode = false;
                 FormulaireStatusMessage = "";
+                EnterObservationsMode();
             }
             else
             {
@@ -3341,11 +3299,37 @@ Texte :
                 IsEditingConsultation = false;
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+
+                // Enchaîne automatiquement sur l'étape suivante (Formulaire parents) — un
+                // bouton « ← Retour Interrogatoire » reste disponible sur l'étape Observations
+                // pour revenir jusqu'ici si besoin.
+                EnterFormulaireMode();
             }
             else
             {
                 ExtractionStatus = $"Erreur sauvegarde : {err}";
             }
+        }
+
+        /// <summary>Bascule vers l'étape « Formulaire parents » — appelé au clic sur le bouton
+        /// dédié ET automatiquement après la sauvegarde de l'Interrogatoire (Étape 1).</summary>
+        private void EnterFormulaireMode()
+        {
+            ScheduleDraftSave();
+            ResetWorkspaceModes();
+            FormulaireStatusMessage = "";
+            IsFormulaireMode = true;
+        }
+
+        /// <summary>Bascule vers l'étape « Observations Cliniques » — appelé au clic sur le bouton
+        /// dédié ET automatiquement une fois le Formulaire parents généré (Étape 2).</summary>
+        private void EnterObservationsMode()
+        {
+            if (_clinicalObservations.Cards.Count == 0)
+                InitializeClinicalObservations();
+            ScheduleDraftSave();
+            ResetWorkspaceModes();
+            IsInClinicalMode = true;
         }
 
         #endregion
@@ -3595,6 +3579,10 @@ Texte :
                 ObservationsStatusMessage = "✅ Observations ajoutées à la note de 1ère consultation.";
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+
+                // Enchaîne automatiquement sur l'étape suivante (Synthèse Initiale) — le bouton
+                // « ← Retour Observations » de cette étape permet de revenir en arrière.
+                SwitchToSynthesis();
             }
             else
             {
@@ -3626,30 +3614,38 @@ Texte :
             try
             {
                 var sb = new System.Text.StringBuilder();
-                sb.AppendLine("Tu es un clinicien en pédopsychiatrie. Lis l'interrogatoire ci-dessous pour comprendre le tableau clinique global (âge, motif, antécédents), puis propose pour chaque axe d'observation 3 à 4 qualificatifs adaptés au profil probable de cet enfant.");
+                sb.AppendLine("Tu es un clinicien en pédopsychiatrie. Lis l'interrogatoire ci-dessous pour comprendre le tableau clinique global (âge, motif, antécédents). Pour chaque axe d'observation ci-dessous, choisis un INTITULÉ adapté à l'âge et au contexte de cet enfant, puis propose 3 à 4 qualificatifs cochables pour cet axe ainsi renommé.");
                 sb.AppendLine();
                 sb.AppendLine("RÈGLES IMPÉRATIVES :");
+                sb.AppendLine("✅ L'intitulé doit rester quelque chose d'OBSERVABLE pendant la consultation, dans le même esprit clinique que l'axe d'origine (ex: pour un adolescent, \"Imaginaire / Jeu\" peut devenir \"Centres d'intérêt\" ; pour un tout-petit, garde \"Imaginaire / Jeu\"). Ne change pas la nature clinique de l'axe (ex: \"Contact\" reste une observation de la relation).");
+                sb.AppendLine("✅ Si l'intitulé d'origine convient déjà à cet âge/contexte, garde-le tel quel.");
                 sb.AppendLine("✅ Chaque item = qualificatif qui décrit la QUALITÉ ou l'INTENSITÉ d'une observation clinique (ex: \"Bon contact\", \"Contact médiocre\", \"Retrait relationnel\", \"Contact adhésif\").");
                 sb.AppendLine("✅ 3 à 4 items par axe, du plus favorable au moins favorable ou du plus fréquent au plus spécifique.");
                 sb.AppendLine("❌ NE JAMAIS reprendre ou paraphraser un élément de l'interrogatoire (ex: \"Réaction à l'interrogatoire\" ou \"Établissement du lien\" sont INTERDITS).");
                 sb.AppendLine("❌ NE PAS nommer une activité, une situation ou une observation faite à l'interrogatoire.");
                 sb.AppendLine("❌ Pas de diagnostic, pas d'interprétation.");
                 sb.AppendLine();
-                sb.AppendLine("EXEMPLES DE FORMAT ATTENDU :");
-                sb.AppendLine("Contact → [\"Bon contact\", \"Contact médiocre\", \"Retrait relationnel\", \"Contact adhésif\"]");
-                sb.AppendLine("Langage → [\"Adapté à l'âge\", \"Langage pauvre\", \"Mutisme relatif\", \"Logorrhée\"]");
-                sb.AppendLine("Psychomotricite → [\"Motricité harmonieuse\", \"Instabilité motrice\", \"Inhibition motrice\", \"Agitation constante\"]");
+                sb.AppendLine("AXES D'ORIGINE (intitulé par défaut — à garder ou remplacer selon l'âge/contexte) :");
+                sb.AppendLine("Contact : \"Contact/Rapport\" — relation à l'examinateur.");
+                sb.AppendLine("Langage : \"Langage\".");
+                sb.AppendLine("Comprehension : \"Compréhension\".");
+                sb.AppendLine("Psychomotricite : \"Psychomotricité\".");
+                sb.AppendLine("MimiquRegard : \"Mimique & Regard\".");
+                sb.AppendLine("ProfilCognitif : \"Profil Cognitif estimé\".");
+                sb.AppendLine("HumeurAnxiete : \"Humeur / Anxiété\".");
+                sb.AppendLine("ImaginaireJeu : \"Imaginaire / Jeu\" — chez un ado, peut devenir \"Centres d'intérêt\".");
+                sb.AppendLine("RapportCadre : \"Rapport au cadre\".");
                 sb.AppendLine();
-                sb.AppendLine("⚠ RÈGLE SPÉCIALE — axe \"Vigilance\" :");
-                sb.AppendLine("Cet axe ne concerne PAS l'état d'éveil ou d'attention de l'enfant.");
-                sb.AppendLine("Il s'agit de la VIGILANCE DE PROTECTION DU CLINICIEN : y a-t-il des signes évocateurs de maltraitance physique, psychologique, négligence ou autre danger pour l'enfant ?");
-                sb.AppendLine("Vigilance → TOUJOURS utiliser exactement : [\"Pas de signe inquiétant\", \"Signes de négligence suspectés\", \"Suspicion maltraitance physique\", \"Suspicion maltraitance psychologique\"]");
+                sb.AppendLine("EXEMPLE DE FORMAT ATTENDU (un axe, âge 14 ans) :");
+                sb.AppendLine("\"ImaginaireJeu\": {\"titre\": \"Centres d'intérêt\", \"options\": [\"Investissement riche\", \"Centres d'intérêt pauvres\", \"Usage excessif des écrans\", \"Repli sur intérêt restreint\"]}");
+                sb.AppendLine();
+                sb.AppendLine("⚠ AXE \"Vigilance\" — NE L'INCLUS PAS dans ta réponse : cet axe (repère de maltraitance/danger) reste toujours strictement inchangé, intitulé et options compris, et n'est jamais déterminé par toi.");
                 sb.AppendLine();
                 sb.AppendLine("INTERROGATOIRE (contexte clinique uniquement) :");
                 sb.AppendLine(NoteContent.Trim());
                 sb.AppendLine();
-                sb.AppendLine("Réponds UNIQUEMENT en JSON valide, sans markdown ni commentaire :");
-                sb.AppendLine("{\"Contact\":[],\"Langage\":[],\"Comprehension\":[],\"Psychomotricite\":[],\"MimiquRegard\":[],\"ProfilCognitif\":[],\"HumeurAnxiete\":[],\"ImaginaireJeu\":[],\"RapportCadre\":[],\"Vigilance\":[]}");
+                sb.AppendLine("Réponds UNIQUEMENT en JSON valide, sans markdown ni commentaire, avec cette forme pour CHAQUE axe listé ci-dessus (Vigilance exclu) :");
+                sb.AppendLine("{\"Contact\":{\"titre\":\"\",\"options\":[]},\"Langage\":{\"titre\":\"\",\"options\":[]},\"Comprehension\":{\"titre\":\"\",\"options\":[]},\"Psychomotricite\":{\"titre\":\"\",\"options\":[]},\"MimiquRegard\":{\"titre\":\"\",\"options\":[]},\"ProfilCognitif\":{\"titre\":\"\",\"options\":[]},\"HumeurAnxiete\":{\"titre\":\"\",\"options\":[]},\"ImaginaireJeu\":{\"titre\":\"\",\"options\":[]},\"RapportCadre\":{\"titre\":\"\",\"options\":[]}}");
 
                 var (ok, json, _) = await _llmService.ChatAsync(sb.ToString(), new(), maxTokens: 1200);
                 if (!ok || string.IsNullOrWhiteSpace(json)) throw new InvalidOperationException("LLM non disponible");
@@ -3679,10 +3675,33 @@ Texte :
                 foreach (var prop in doc.RootElement.EnumerateObject())
                 {
                     if (!branchMap.TryGetValue(prop.Name, out var branch)) continue;
+
+                    // Vigilance (repère de maltraitance/danger) n'est jamais déterminée par le LLM,
+                    // même s'il l'inclut dans sa réponse malgré la consigne.
+                    if (branch == Models.ClinicalObservationBranch.Vigilance) continue;
+
                     var card = ClinicalObservations.Cards.FirstOrDefault(c => c.Branch == branch);
                     if (card == null) continue;
 
-                    var suggestions = prop.Value.EnumerateArray()
+                    // Nouveau format {"titre": "...", "options": [...]}. Repli sur l'ancien format
+                    // (tableau direct d'options) si jamais le modèle répond dans l'ancienne forme.
+                    System.Text.Json.JsonElement optionsElement = prop.Value;
+                    if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    {
+                        if (prop.Value.TryGetProperty("titre", out var titreEl) &&
+                            titreEl.ValueKind == System.Text.Json.JsonValueKind.String)
+                        {
+                            var titre = titreEl.GetString();
+                            if (!string.IsNullOrWhiteSpace(titre))
+                                card.Title = titre.Trim();
+                        }
+                        if (!prop.Value.TryGetProperty("options", out optionsElement))
+                            continue;
+                    }
+
+                    if (optionsElement.ValueKind != System.Text.Json.JsonValueKind.Array) continue;
+
+                    var suggestions = optionsElement.EnumerateArray()
                         .Select(e => e.GetString() ?? "")
                         .Where(s => !string.IsNullOrWhiteSpace(s))
                         .Take(4)
@@ -3812,6 +3831,11 @@ Texte :
 
         private void SwitchToSynthesis()
         {
+            // Peut être appelé depuis la Restitution (« ← Retour Synthèse »), où ConsultationType
+            // a été mis à Normal en entrant dans ce mode — sans cette ligne, IsInterrogatoireMode
+            // reste faux et toute la barre Interrogatoire/Observations/Synthèse/Restitution
+            // resterait masquée au retour.
+            ConsultationType = ConsultationType.PremiereConsultation;
             ResetWorkspaceModes();
             IsSynthesisMode = true;
         }
@@ -3950,32 +3974,10 @@ justification: {SynthesisWeights.LLMJustification ?? ""}
                 // Recharge la synthèse dans le dossier bleu pour qu'elle soit immédiatement visible
                 LoadPatientSynthesisFromDisk();
 
-                // Retour automatique au hub après un court délai (laisse le temps de voir la confirmation)
-                _ = System.Threading.Tasks.Task.Run(async () =>
-                {
-                    await System.Threading.Tasks.Task.Delay(900);
-                    System.Windows.Application.Current?.Dispatcher.InvokeAsync(() =>
-                    {
-                        ConsultationType = ConsultationType.Normal;
-                        IsSynthesisMode = false;
-                        IsEditingConsultation = false;
-                        ResetWorkspaceModes();
-                        SynthesisStatusMessage = "";
-
-                        // Nettoyer les données temporaires de la consultation
-                        NoteContent = "";
-                        ManualNotes = "";
-                        ObservationsNarrative = "";
-                        TranscriptionInput = "";
-                        InterrogatoireBlocks.Clear();
-                        _premiereConsultationFilePath = null;
-                        _noteSaved = false;
-                        _observationsNoteSaved = false;
-                        // Brouillon terminé → supprimer
-                        _draftSaveCts?.Cancel();
-                        _draftSvc.Delete(_currentPatient?.DirectoryPath);
-                    });
-                });
+                // Enchaîne automatiquement sur l'étape suivante (Restitution 1er entretien) — le
+                // bouton « ← Retour Synthèse » de cette étape permet de revenir en arrière.
+                IsSynthesisMode = false;
+                EnterRestitutionMode();
             }
             catch (Exception ex)
             {
@@ -4303,6 +4305,14 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
         private void SwitchToRestitutionPremiereConsultation()
         {
             if (!ConfirmAbandonConsultationEnCoursSiBesoin()) return;
+            EnterRestitutionMode();
+        }
+
+        /// <summary>Bascule vers l'étape « Restitution 1er entretien » — appelé au clic sur le
+        /// bouton dédié ET automatiquement après la sauvegarde de la Synthèse (Étape 3). Pas de
+        /// vérification d'abandon ici : on vient de sauvegarder, rien n'est perdu.</summary>
+        private void EnterRestitutionMode()
+        {
             ConsultationType = ConsultationType.Normal;
             IsEditingConsultation = false;
             ResetWorkspaceModes();
@@ -4751,6 +4761,11 @@ pdf_path: ""{savedPdf.Replace("\\", "\\\\")}""
                 if (!string.IsNullOrEmpty(savedPdf))
                     LoadPatientDocumentsFromDisk();
 
+                // Rafraîchir « Dossiers de Restitution » (Med + dossier bleu) : sans ça, le PDF
+                // tout juste sauvegardé n'apparaît qu'au rechargement suivant du patient.
+                if (_currentPatient != null && !string.IsNullOrEmpty(savedPdf))
+                    await RestitutionsHub.LoadForPatientAsync(_currentPatient);
+
                 // Notifier MainWindow (enregistrement optionnel dans l'index Documents du panel IA)
                 if (_currentPatient != null && !string.IsNullOrEmpty(savedPdf))
                     RestitutionPdfSavedToPatient?.Invoke(this, savedPdf);
@@ -4766,6 +4781,33 @@ pdf_path: ""{savedPdf.Replace("\\", "\\\\")}""
             {
                 IsGeneratingRestitution = false;
             }
+        }
+
+        /// <summary>
+        /// Bouton « Terminer » — n'apparaît qu'une fois le PDF de restitution sauvegardé
+        /// (<c>_restitution.GeneratedPdfPath</c> renseigné). Referme explicitement le fil de la
+        /// 1ère consultation et revient à la frise, maintenant que la Synthèse et la Restitution
+        /// n'y renvoient plus automatiquement (l'utilisateur enchaîne librement entre les étapes ;
+        /// c'est lui qui décide quand c'est fini).
+        /// </summary>
+        private void FinishPremiereConsultation()
+        {
+            ConsultationType = ConsultationType.Normal;
+            IsEditingConsultation = false;
+            ResetWorkspaceModes();
+
+            NoteContent = "";
+            ManualNotes = "";
+            ObservationsNarrative = "";
+            TranscriptionInput = "";
+            InterrogatoireBlocks.Clear();
+            _premiereConsultationFilePath = null;
+            _noteSaved = false;
+            _observationsNoteSaved = false;
+            _draftSaveCts?.Cancel();
+            _draftSvc.Delete(_currentPatient?.DirectoryPath);
+
+            RefreshFriseStages();
         }
 
         private string BuildRestitutionPrompt()
@@ -5275,6 +5317,7 @@ source: ""MedCompanion""
         public ICommand ConfirmRestitutionCommand { get; }
         public ICommand BackToRestitutionFormCommand { get; }
         public ICommand OpenRestitutionCommand { get; }
+        public ICommand FinishPremiereConsultationCommand { get; }
 
         public ICommand ExtractSuiviCommand { get; }
         public ICommand SaveSuiviCommand { get; }
@@ -5363,6 +5406,16 @@ source: ""MedCompanion""
                 async _ =>
                 {
                     if (_whisperService == null) return;
+
+                    // Libère la VRAM de Gemma avant de démarrer Whisper : sans ça, un modèle
+                    // encore chargé depuis une tâche précédente (courrier, chat Med...) reste
+                    // résident pendant toute la dictée et se dispute la carte graphique avec
+                    // Whisper (mesuré : dégradation de la qualité de transcription). Le
+                    // rechargement au prochain appel LLM coûte quelques secondes, largement
+                    // rentable sur la durée d'une dictée.
+                    if (_llmService != null)
+                        await _llmService.UnloadAsync();
+
                     _whisperService.Mode                 = UseBatchMode ? RecordingMode.Batch : RecordingMode.Streaming;
                     _whisperService.BatchDurationSeconds = BatchDurationSeconds;
                     var modelManager = new WhisperModelManager { ModelSize = _selectedWhisperModel };
@@ -5544,22 +5597,9 @@ source: ""MedCompanion""
                 ResetWorkspaceModes();
             }, _ => IsInterrogatoireMode);
 
-            SwitchToClinicalCommand = new RelayCommand(_ =>
-            {
-                if (_clinicalObservations.Cards.Count == 0)
-                    InitializeClinicalObservations();
-                ScheduleDraftSave();
-                ResetWorkspaceModes();
-                IsInClinicalMode = true;
-            }, _ => IsInterrogatoireMode);
+            SwitchToClinicalCommand = new RelayCommand(_ => EnterObservationsMode(), _ => IsInterrogatoireMode);
 
-            OpenFormulaireParentsCommand = new RelayCommand(_ =>
-            {
-                ScheduleDraftSave();
-                ResetWorkspaceModes();
-                FormulaireStatusMessage = "";
-                IsFormulaireMode = true;
-            }, _ => IsInterrogatoireMode && HasPatient);
+            OpenFormulaireParentsCommand = new RelayCommand(_ => EnterFormulaireMode(), _ => IsInterrogatoireMode && HasPatient);
 
             GenererFormulaireCommand = new RelayCommand(
                 async _ => await GenerateFormulaireParentsAsync(),
@@ -5668,7 +5708,7 @@ source: ""MedCompanion""
             {
                 ScheduleDraftSave();
                 SwitchToSynthesis();
-            }, _ => IsInterrogatoireMode);
+            }, _ => IsInterrogatoireMode || IsRestitutionMode);
 
             ProposeWeightsCommand = new RelayCommand(async _ =>
             {
@@ -5728,6 +5768,10 @@ source: ""MedCompanion""
                 _ => OpenRestitutionFile(),
                 _ => IsRestitutionMode &&
                      (!string.IsNullOrEmpty(_restitution.GeneratedPdfPath) || !string.IsNullOrEmpty(_restitution.GeneratedHtmlPath)));
+
+            FinishPremiereConsultationCommand = new RelayCommand(
+                _ => FinishPremiereConsultation(),
+                _ => !string.IsNullOrEmpty(_restitution.GeneratedPdfPath));
 
             // Commands Consultation de Suivi
             ExtractSuiviCommand = new RelayCommand(
@@ -6315,6 +6359,18 @@ source: ""MedCompanion""
             // Réinitialiser l'interrogatoire (blocs, état, textes)
             ConsultationType = ConsultationType.Normal;   // remet les flags IsInterrogatoireMode etc.
             IsEditingConsultation = false;                // retour à la vue frise
+
+            // Referme tout panneau de lecture/mode spécial resté ouvert (ex. « Mode Lecture Seule »
+            // d'une 1ère consultation passée) : sans ça, il restait affiché — avec le contenu du
+            // patient PRÉCÉDENT — par-dessus le nouveau patient après changement.
+            ResetWorkspaceModes();
+            _pastPremiereFilePath     = null;
+            PastPremiereStep          = 1;
+            PastInterrogatoireText    = "";
+            PastObservationsNarrative = "";
+            PastSynthesisContent      = "";
+            IsEditingPastPremiere     = false;
+
             InterrogatoireBlocks.Clear();
             _interrogatoireState = InterrogatoireState.Saisie;
             _noteSaved = false;
@@ -6327,9 +6383,7 @@ source: ""MedCompanion""
             ExtractionStatus = "";
 
             // Reset état Synthèse Initiale pour éviter la persistance entre patients
-            IsSynthesisMode = false;
-            IsSyntheseGlobaleMode = false;
-            IsProjetTherapeutiqueMode = false;
+            // (flags de mode déjà remis par ResetWorkspaceModes() ci-dessus)
             SynthesisContent = "";
             SynthesisStatusMessage = "";
             ObservationsStatusMessage = "";
@@ -6366,15 +6420,12 @@ source: ""MedCompanion""
                 OnPropertyChanged(nameof(HasConfirmedAge));
             }
 
-            // V0e : réinitialiser la restitution
-            IsRestitutionMode = false;
+            // V0e : réinitialiser la restitution (flag de mode déjà remis par ResetWorkspaceModes())
             _restitution = new RestitutionAuxParents();
             OnPropertyChanged(nameof(Restitution));
             RestitutionStatusMessage = "";
 
-            // V0c : réinitialiser les observations cliniques
-            IsInClinicalMode = false;
-            IsInObservationsReviewMode = false;
+            // V0c : réinitialiser les observations cliniques (flags de mode déjà remis ci-dessus)
             ObservationsNarrative = "";
             ObservationsStatusMessage = "";
             _observationsNoteSaved = false;

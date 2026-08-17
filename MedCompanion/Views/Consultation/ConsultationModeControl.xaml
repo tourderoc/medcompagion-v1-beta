@@ -989,38 +989,6 @@
                                             <!-- Actions header -->
                                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
 
-                                                <!-- Bouton Restitution 1er entretien (toujours disponible, y compris après clôture) -->
-                                                <Button Content="🤝 Restitution 1er entretien"
-                                                        Command="{Binding SwitchToRestitutionPremiereConsultationCommand}"
-                                                        Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
-                                                        ToolTip="Générer le résumé de restitution adressé aux parents après ce premier entretien">
-                                                    <Button.Style>
-                                                        <Style TargetType="Button">
-                                                            <Setter Property="Background" Value="#16A085"/>
-                                                            <Setter Property="Foreground" Value="White"/>
-                                                            <Setter Property="Template">
-                                                                <Setter.Value>
-                                                                    <ControlTemplate TargetType="Button">
-                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                        </Border>
-                                                                        <ControlTemplate.Triggers>
-                                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                                <Setter Property="Background" Value="#138D75"/>
-                                                                            </Trigger>
-                                                                        </ControlTemplate.Triggers>
-                                                                    </ControlTemplate>
-                                                                </Setter.Value>
-                                                            </Setter>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
-                                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Button.Style>
-                                                </Button>
-
                                                 <!-- Bouton Modifier (visible en lecture seule) -->
                                                 <Button Content="✏️ Modifier"
                                                         Command="{Binding EditPastPremiereCommand}"
@@ -1507,6 +1475,13 @@
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsNormalMode}" Value="True">
                                                 <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                            <!-- La Restitution 1er entretien passe aussi par ConsultationType.Normal
+                                                 (voir SwitchToRestitutionPremiereConsultation) : sans cette exclusion,
+                                                 cette zone se superpose au panneau Restitution avec le contenu de
+                                                 NoteContent resté en mémoire. -->
+                                            <DataTrigger Binding="{Binding IsRestitutionMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
@@ -2977,6 +2952,29 @@
                                                 </Style>
                                             </Button.Style>
                                         </Button>
+                                        <!-- N'apparaît qu'une fois le PDF sauvegardé : referme explicitement le fil
+                                             de la 1ère consultation et revient à la frise. -->
+                                        <Button Content="✅ Terminer la 1ère consultation" Command="{Binding FinishPremiereConsultationCommand}"
+                                                Padding="12,7" Cursor="Hand" FontSize="11" Margin="8,0,0,0"
+                                                Background="#2C3E50" Foreground="White" BorderThickness="0"
+                                                Visibility="{Binding Restitution.GeneratedPdfPath, Converter={StaticResource StringNotWS}}">
+                                            <Button.Style>
+                                                <Style TargetType="Button">
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#1B2631"/></Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </Button.Style>
+                                        </Button>
                                     </StackPanel>
                                 </Grid>
                             </Grid>
@@ -3751,46 +3749,9 @@
                                                 </Button.Template>
                                             </Button>
 
-                                            <!-- Liste des restitutions existantes -->
-                                            <ItemsControl ItemsSource="{Binding Restitutions}" Margin="0,10,0,0"
-                                                          Visibility="{Binding HasRestitutions, Converter={StaticResource BoolToVis}}">
-                                                <ItemsControl.ItemTemplate>
-                                                    <DataTemplate>
-                                                        <Border Background="White" BorderBrush="#D1F2EB" BorderThickness="1" CornerRadius="4" Padding="6" Margin="0,0,0,6">
-                                                            <Grid>
-                                                                <Grid.ColumnDefinitions>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                    <ColumnDefinition Width="*"/>
-                                                                    <ColumnDefinition Width="Auto"/>
-                                                                </Grid.ColumnDefinitions>
-                                                                <TextBlock Grid.Column="0" Text="📄" FontSize="16" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                                    <TextBlock Text="{Binding Title}" FontSize="11" FontWeight="SemiBold" Foreground="#117A65"/>
-                                                                    <TextBlock Text="{Binding DateText}" FontSize="10" Foreground="#7F8C8D"/>
-                                                                </StackPanel>
-                                                                <Button Grid.Column="2" Command="{Binding OpenPdfCommand}" Content="PDF"
-                                                                        Padding="6,2" Background="#E74C3C" Foreground="White" FontSize="9"
-                                                                        BorderThickness="0" Cursor="Hand"
-                                                                        Visibility="{Binding HasPdf, Converter={StaticResource BoolToVis}}">
-                                                                    <Button.Template>
-                                                                        <ControlTemplate TargetType="Button">
-                                                                            <Border Background="{TemplateBinding Background}" CornerRadius="2" Padding="{TemplateBinding Padding}">
-                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                            </Border>
-                                                                            <ControlTemplate.Triggers>
-                                                                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#C0392B"/></Trigger>
-                                                                            </ControlTemplate.Triggers>
-                                                                        </ControlTemplate>
-                                                                    </Button.Template>
-                                                                </Button>
-                                                            </Grid>
-                                                        </Border>
-                                                    </DataTemplate>
-                                                </ItemsControl.ItemTemplate>
-                                            </ItemsControl>
-                                            
-                                            <TextBlock Text="Aucune restitution générée" FontSize="10" Foreground="#7F8C8D" Margin="0,5,0,0"
-                                                       Visibility="{Binding HasNoRestitutions, Converter={StaticResource BoolToVis}}"/>
+                                            <!-- La liste des dossiers de restitution générés ne s'affiche plus ici :
+                                                 elle vit uniquement dans le dossier bleu (onglet DOCUMENTS), qui
+                                                 porte aussi le bouton de suppression. -->
                                         </StackPanel>
                                     </Border>
 
@@ -4489,6 +4450,14 @@
                                                             <TextBlock Text="{Binding AdresseLieuVieText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
                                                         </StackPanel>
                                                     </Border>
+                                                    <!-- Autorisations -->
+                                                    <Border Margin="0,12,0,0" Background="#FEF9E7" BorderBrush="#F0B27A" BorderThickness="1" CornerRadius="8" Padding="15"
+                                                            Visibility="{Binding HasAutorisations, Converter={StaticResource BoolToVis}}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="✅ Autorisations" FontSize="15" FontWeight="SemiBold" Foreground="#784212" Margin="0,0,0,8"/>
+                                                            <TextBlock Text="{Binding AutorisationsText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
+                                                        </StackPanel>
+                                                    </Border>
                                                     <!-- Intervenants (praticiens auteurs de bilans/documents) -->
                                                     <Border Margin="0,12,0,0" Background="#EAFAF1" BorderBrush="#7DCEA0" BorderThickness="1" CornerRadius="8" Padding="15"
                                                             Visibility="{Binding HasIntervenants, Converter={StaticResource BoolToVis}}">
@@ -4579,6 +4548,14 @@
                                                         <StackPanel>
                                                             <TextBlock Text="🏠 Lieu de vie" FontSize="15" FontWeight="SemiBold" Foreground="#6C3483" Margin="0,0,0,8"/>
                                                             <TextBlock Text="{Binding AdresseLieuVieText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
+                                                        </StackPanel>
+                                                    </Border>
+                                                    <!-- Autorisations -->
+                                                    <Border Margin="0,12,0,0" Background="#FEF9E7" BorderBrush="#F0B27A" BorderThickness="1" CornerRadius="8" Padding="15"
+                                                            Visibility="{Binding HasAutorisations, Converter={StaticResource BoolToVis}}">
+                                                        <StackPanel>
+                                                            <TextBlock Text="✅ Autorisations" FontSize="15" FontWeight="SemiBold" Foreground="#784212" Margin="0,0,0,8"/>
+                                                            <TextBlock Text="{Binding AutorisationsText}" FontSize="13" Foreground="#34495E" TextWrapping="Wrap" LineHeight="20"/>
                                                         </StackPanel>
                                                     </Border>
                                                     <!-- Intervenants (praticiens auteurs de bilans/documents) -->
@@ -5549,6 +5526,7 @@
                                                                             <ColumnDefinition Width="Auto"/>
                                                                             <ColumnDefinition Width="*"/>
                                                                             <ColumnDefinition Width="Auto"/>
+                                                                            <ColumnDefinition Width="Auto"/>
                                                                         </Grid.ColumnDefinitions>
                                                                         <TextBlock Grid.Column="0" Text="📄" FontSize="18" VerticalAlignment="Center" Margin="0,0,10,0"/>
                                                                         <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -5557,7 +5535,7 @@
                                                                         </StackPanel>
                                                                         <Button Grid.Column="2" Command="{Binding OpenPdfCommand}"
                                                                                 Padding="10,4" Background="#E74C3C" Foreground="White" FontSize="11" FontWeight="Bold"
-                                                                                BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
+                                                                                BorderThickness="0" Cursor="Hand" VerticalAlignment="Center" Margin="0,0,6,0"
                                                                                 Visibility="{Binding HasPdf, Converter={StaticResource BoolToVis}}">
                                                                             <Button.Template>
                                                                                 <ControlTemplate TargetType="Button">
@@ -5566,6 +5544,21 @@
                                                                                     </Border>
                                                                                     <ControlTemplate.Triggers>
                                                                                         <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#C0392B"/></Trigger>
+                                                                                    </ControlTemplate.Triggers>
+                                                                                </ControlTemplate>
+                                                                            </Button.Template>
+                                                                        </Button>
+                                                                        <Button Grid.Column="3" Command="{Binding DeleteCommand}"
+                                                                                ToolTip="Supprimer cette restitution"
+                                                                                Padding="8,4" Background="#95A5A6" Foreground="White" FontSize="11"
+                                                                                BorderThickness="0" Cursor="Hand" VerticalAlignment="Center">
+                                                                            <Button.Template>
+                                                                                <ControlTemplate TargetType="Button">
+                                                                                    <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                        <TextBlock Text="🗑" Foreground="White" FontSize="11"/>
+                                                                                    </Border>
+                                                                                    <ControlTemplate.Triggers>
+                                                                                        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#7F8C8D"/></Trigger>
                                                                                     </ControlTemplate.Triggers>
                                                                                 </ControlTemplate>
                                                                             </Button.Template>
@@ -5641,6 +5634,7 @@
                                                                                  <ColumnDefinition Width="Auto"/>
                                                                                  <ColumnDefinition Width="*"/>
                                                                                  <ColumnDefinition Width="Auto"/>
+                                                                                 <ColumnDefinition Width="Auto"/>
                                                                              </Grid.ColumnDefinitions>
                                                                              <TextBlock Grid.Column="0" Text="📄" FontSize="14" VerticalAlignment="Center" Margin="0,0,8,0"/>
                                                                              <StackPanel Grid.Column="1" VerticalAlignment="Center">
@@ -5649,7 +5643,7 @@
                                                                              </StackPanel>
                                                                              <Button Grid.Column="2" Command="{Binding OpenPdfCommand}"
                                                                                      Padding="6,2" Background="#E74C3C" Foreground="White" FontSize="10" FontWeight="Bold"
-                                                                                     BorderThickness="0" Cursor="Hand" VerticalAlignment="Center"
+                                                                                     BorderThickness="0" Cursor="Hand" VerticalAlignment="Center" Margin="0,0,4,0"
                                                                                      Visibility="{Binding HasPdf, Converter={StaticResource BoolToVis}}">
                                                                                  <Button.Template>
                                                                                      <ControlTemplate TargetType="Button">
@@ -5659,6 +5653,23 @@
                                                                                          <ControlTemplate.Triggers>
                                                                                              <Trigger Property="IsMouseOver" Value="True">
                                                                                                  <Setter TargetName="PdfBd2" Property="Background" Value="#C0392B"/>
+                                                                                             </Trigger>
+                                                                                         </ControlTemplate.Triggers>
+                                                                                     </ControlTemplate>
+                                                                                 </Button.Template>
+                                                                             </Button>
+                                                                             <Button Grid.Column="3" Command="{Binding DeleteCommand}"
+                                                                                     ToolTip="Supprimer cette restitution"
+                                                                                     Padding="6,2" Background="#95A5A6" Foreground="White" FontSize="10"
+                                                                                     BorderThickness="0" Cursor="Hand" VerticalAlignment="Center">
+                                                                                 <Button.Template>
+                                                                                     <ControlTemplate TargetType="Button">
+                                                                                         <Border x:Name="DelBd2" Background="{TemplateBinding Background}" CornerRadius="3" Padding="{TemplateBinding Padding}">
+                                                                                             <TextBlock Text="🗑" Foreground="White" FontSize="10"/>
+                                                                                         </Border>
+                                                                                         <ControlTemplate.Triggers>
+                                                                                             <Trigger Property="IsMouseOver" Value="True">
+                                                                                                 <Setter TargetName="DelBd2" Property="Background" Value="#7F8C8D"/>
                                                                                              </Trigger>
                                                                                          </ControlTemplate.Triggers>
                                                                                      </ControlTemplate>

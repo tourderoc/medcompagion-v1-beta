@@ -112,8 +112,11 @@ namespace MedCompanion.Services
                 };
 
                 // ÉTAPE 3bis : Si un praticien auteur a été identifié dans le document, l'enregistrer
-                // comme intervenant du patient (Admin du dossier bleu)
-                if (analysis.intervenant != null && !string.IsNullOrWhiteSpace(analysis.intervenant.Nom))
+                // comme intervenant du patient (Admin du dossier bleu) — sauf s'il s'agit du médecin
+                // traitant lui-même (ex. mention "J'autorise le Dr Lassoued..." dans un formulaire de
+                // consentement, à tort extraite comme auteur du document par le LLM).
+                if (analysis.intervenant != null && !string.IsNullOrWhiteSpace(analysis.intervenant.Nom) &&
+                    !IsCurrentPractitioner(analysis.intervenant.Nom))
                 {
                     analysis.intervenant.SourceDocument = document.FileName;
                     analysis.intervenant.SourceCategory = document.Category;
@@ -454,7 +457,24 @@ INTERVENANT_EMAIL: [email, ou vide]";
 
             return value;
         }
-        
+
+        /// <summary>
+        /// Vrai si <paramref name="intervenantNom"/> désigne le médecin traitant lui-même
+        /// (comparaison sur le nom de famille depuis <c>AppSettings.Medecin</c>, robuste aux
+        /// formulations "Dr X", "Dr X Y" ou "X" — l'objectif est d'éviter que le praticien qui
+        /// utilise l'application se retrouve listé comme intervenant externe de son propre patient.
+        /// </summary>
+        private static bool IsCurrentPractitioner(string intervenantNom)
+        {
+            var medecin = AppSettings.Load().Medecin;
+            if (string.IsNullOrWhiteSpace(medecin)) return false;
+
+            var medecinWords = medecin.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .Where(w => !w.Equals("Dr", StringComparison.OrdinalIgnoreCase) && w.Length > 2);
+
+            return medecinWords.Any(w => intervenantNom.Contains(w, StringComparison.OrdinalIgnoreCase));
+        }
+
         /// <summary>
         /// Sauvegarde un document dans l'index JSON
         /// </summary>

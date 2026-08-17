@@ -23,6 +23,11 @@ namespace MedCompanion.ViewModels.Restitutions
         public bool HasPdf => !string.IsNullOrEmpty(PdfPath);
 
         public ICommand OpenPdfCommand { get; }
+        public ICommand DeleteCommand { get; }
+
+        /// <summary>Levé quand l'utilisateur confirme la suppression — le hub écoute cet
+        /// événement pour retirer la carte de la liste et supprimer les fichiers sur disque.</summary>
+        public event Action<RestitutionDocumentCardViewModel>? DeleteRequested;
 
         public RestitutionDocumentCardViewModel()
         {
@@ -43,6 +48,18 @@ namespace MedCompanion.ViewModels.Restitutions
                         Debug.WriteLine($"[Restitution] Error opening PDF: {ex.Message}");
                     }
                 }
+            });
+
+            DeleteCommand = new RelayCommand(_ =>
+            {
+                var result = System.Windows.MessageBox.Show(
+                    $"Supprimer « {Title} » ?\n\nLe PDF et le fichier source seront définitivement supprimés.",
+                    "Supprimer la restitution",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning);
+
+                if (result == System.Windows.MessageBoxResult.Yes)
+                    DeleteRequested?.Invoke(this);
             });
         }
     }
@@ -80,15 +97,26 @@ namespace MedCompanion.ViewModels.Restitutions
                 var isDraft = r.Statut == RestitutionStatut.Brouillon;
                 if (isDraft) title += " (Brouillon)";
 
-                Restitutions.Add(new RestitutionDocumentCardViewModel
+                var card = new RestitutionDocumentCardViewModel
                 {
                     Title = title,
                     DateText = dateText,
                     MarkdownPath = r.Id, // using Id which stores the path
                     PdfPath = r.GeneratedPdfPath ?? ""
-                });
+                };
+                card.DeleteRequested += OnDeleteRequested;
+                Restitutions.Add(card);
             }
 
+            OnPropertyChanged(nameof(HasRestitutions));
+            OnPropertyChanged(nameof(HasNoRestitutions));
+        }
+
+        private void OnDeleteRequested(RestitutionDocumentCardViewModel card)
+        {
+            _restitutionService.DeleteFiles(card.MarkdownPath, card.PdfPath);
+            card.DeleteRequested -= OnDeleteRequested;
+            Restitutions.Remove(card);
             OnPropertyChanged(nameof(HasRestitutions));
             OnPropertyChanged(nameof(HasNoRestitutions));
         }

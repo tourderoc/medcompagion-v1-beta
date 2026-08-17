@@ -50,6 +50,9 @@ namespace MedCompanion.Models
         public string AntecedentsAutreLabel { get; set; } = "";
         public string AntecedentsAutre      { get; set; } = "";
 
+        // Bloc 6 — Photo : "oui" | "non"
+        public string PhotoAutorise { get; set; } = ""; // Autorisation de photographie clinique
+
         // Bloc 7 — Autorisations : "oui" | "non"
         public string AutorUsageInfos { get; set; } = ""; // Utiliser les infos du formulaire pour le suivi
         public string AutorSms        { get; set; } = ""; // Envoi de SMS

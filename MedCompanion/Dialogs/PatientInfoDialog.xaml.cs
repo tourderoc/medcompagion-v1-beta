@@ -135,6 +135,7 @@ public partial class PatientInfoDialog : Window
         MereEmailTextBox.Text = _metadata.MereEmail ?? "";
 
         // === Autorisations ===
+        PhotoAutoriseCheckBox.IsChecked = _metadata.ConsentementPhoto;
         AutorUsageInfosCheckBox.IsChecked = _metadata.AutorisationUsageInfos;
         AutorSmsCheckBox.IsChecked = _metadata.AutorisationSms;
         AutorEmailCheckBox.IsChecked = _metadata.AutorisationEmail;
@@ -188,6 +189,7 @@ public partial class PatientInfoDialog : Window
         MereNomTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
         MereTelephoneTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
         MereEmailTextBox.TextChanged += (s, e) => _hasUnsavedChanges = true;
+        PhotoAutoriseCheckBox.Click += (s, e) => _hasUnsavedChanges = true;
         AutorUsageInfosCheckBox.Click += (s, e) => _hasUnsavedChanges = true;
         AutorSmsCheckBox.Click += (s, e) => _hasUnsavedChanges = true;
         AutorEmailCheckBox.Click += (s, e) => _hasUnsavedChanges = true;
@@ -286,6 +288,7 @@ public partial class PatientInfoDialog : Window
                 ? null : MereEmailTextBox.Text.Trim();
 
             // === Autorisations ===
+            _metadata.ConsentementPhoto = PhotoAutoriseCheckBox.IsChecked == true;
             _metadata.AutorisationUsageInfos = AutorUsageInfosCheckBox.IsChecked;
             _metadata.AutorisationSms = AutorSmsCheckBox.IsChecked;
             _metadata.AutorisationEmail = AutorEmailCheckBox.IsChecked;

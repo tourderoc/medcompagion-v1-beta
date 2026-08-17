@@ -28,6 +28,16 @@ namespace MedCompanion.Dialogs
         private string _enfantNom = "";
 
         /// <summary>
+        /// patient.json est écrit tantôt en camelCase (création via <c>PatientIndexService.Upsert</c>),
+        /// tantôt en PascalCase (<c>PatientInfoDialog</c>) — sans casse insensible à la lecture, les
+        /// champs ne se lient pas et <see cref="PatientMetadata"/> revient avec Nom/Prénom vides, ce
+        /// qui les réécrirait au moment de fusionner et ferait disparaître le patient de la recherche
+        /// (l'index exclut toute fiche sans Nom/Prénom).
+        /// </summary>
+        private static readonly JsonSerializerOptions PatientJsonReadOptions =
+            new() { PropertyNameCaseInsensitive = true };
+
+        /// <summary>
         /// Position verticale (mm, page A4) d'un bloc du template — sert à découper le scan avant
         /// de l'envoyer à l'OCR (voir <see cref="ComputeBlockBoundsAsync"/>).
         /// </summary>
@@ -91,7 +101,7 @@ namespace MedCompanion.Dialogs
             {
                 var path = Path.Combine(patientDir, "info_patient", "patient.json");
                 if (!File.Exists(path)) return "";
-                var meta = JsonSerializer.Deserialize<PatientMetadata>(File.ReadAllText(path, Encoding.UTF8));
+                var meta = JsonSerializer.Deserialize<PatientMetadata>(File.ReadAllText(path, Encoding.UTF8), PatientJsonReadOptions);
                 return meta?.Nom ?? "";
             }
             catch
@@ -133,9 +143,12 @@ namespace MedCompanion.Dialogs
         // en 3 bandes (père / mère / adresse) à partir de la carte de coordonnées du
         // template (déjà utilisée en Phase 4b) et on fait un appel OCR par bande.
         //
-        // Les grilles de cases à cocher (situation familiale, antécédents, autorisations)
-        // restent volontairement à cocher à la main : c'est le pire cas connu des VLM sur ce
-        // type de grille (décalages, coches hallucinées) — voir PLAN_FORMULAIRE_COMPLETION.md.
+        // Les grilles de cases à cocher (situation familiale, antécédents, autorisations, photo)
+        // restent volontairement à cocher à la main. Testé : la densité d'encre par case (§4d du
+        // plan) ne discrimine PAS de façon fiable sur un scan réel avec le simple ratio mm→pixel —
+        // les cases font ~3 mm, trop petites pour encaisser l'imprécision de calage qu'absorbent
+        // sans problème les bandes de texte (plusieurs cm). Un vrai recalage par repères
+        // (homographie, Phase 4c du plan) serait nécessaire avant de retenter une lecture auto.
 
         /// <summary>Marge ajoutée de part et d'autre de chaque bloc (mm) pour absorber un léger
         /// décalage de calage sans couper le texte.</summary>
@@ -418,6 +431,7 @@ namespace MedCompanion.Dialogs
             AntecedentsAutreLabel.Text = d.AntecedentsAutreLabel;
             SetOuiNonNsp(d.AntecedentsAutre, AutreAtcdOui, AutreAtcdNon, AutreAtcdNsp);
 
+            SetOuiNon(d.PhotoAutorise,   PhotoAutoriseOui, PhotoAutoriseNon);
             SetOuiNon(d.AutorUsageInfos, AutorInfosOui, AutorInfosNon);
             SetOuiNon(d.AutorSms,        AutorSmsOui,   AutorSmsNon);
             SetOuiNon(d.AutorEmail,      AutorEmailOui, AutorEmailNon);
@@ -465,6 +479,7 @@ namespace MedCompanion.Dialogs
             AntecedentsAutreLabel  = AntecedentsAutreLabel.Text.Trim(),
             AntecedentsAutre       = GetOuiNonNsp(AutreAtcdOui, AutreAtcdNon, AutreAtcdNsp),
 
+            PhotoAutorise   = GetOuiNon(PhotoAutoriseOui, PhotoAutoriseNon),
             AutorUsageInfos = GetOuiNon(AutorInfosOui, AutorInfosNon),
             AutorSms        = GetOuiNon(AutorSmsOui, AutorSmsNon),
             AutorEmail      = GetOuiNon(AutorEmailOui, AutorEmailNon),
@@ -512,7 +527,7 @@ namespace MedCompanion.Dialogs
             PatientMetadata? meta;
             try
             {
-                meta = JsonSerializer.Deserialize<PatientMetadata>(File.ReadAllText(path, Encoding.UTF8));
+                meta = JsonSerializer.Deserialize<PatientMetadata>(File.ReadAllText(path, Encoding.UTF8), PatientJsonReadOptions);
             }
             catch
             {
@@ -538,6 +553,9 @@ namespace MedCompanion.Dialogs
             SetIfGiven(data.Adresse, v => meta.AdresseRue = v);
             SetIfGiven(data.CodePostal, v => meta.AdresseCodePostal = v);
             SetIfGiven(data.Ville, v => meta.AdresseVille = v);
+
+            if (!string.IsNullOrWhiteSpace(data.PhotoAutorise))
+                meta.ConsentementPhoto = data.PhotoAutorise == "oui";
 
             if (!string.IsNullOrWhiteSpace(data.AutorUsageInfos))
                 meta.AutorisationUsageInfos = data.AutorUsageInfos == "oui";

@@ -404,13 +404,15 @@
                 <!-- Autorisations -->
                 <GroupBox Header="✅ Autorisations" Style="{StaticResource GroupStyle}">
                     <StackPanel>
+                        <CheckBox x:Name="PhotoAutoriseCheckBox"
+                                  Content="Autorisation de photographie clinique" FontSize="13" Margin="0,0,0,10"/>
                         <CheckBox x:Name="AutorUsageInfosCheckBox" IsThreeState="True"
                                   Content="Utiliser les informations du formulaire pour le suivi de l'enfant" FontSize="13" Margin="0,0,0,10"/>
                         <CheckBox x:Name="AutorSmsCheckBox" IsThreeState="True"
                                   Content="Envoi de SMS (rappels de rendez-vous, informations pratiques)" FontSize="13" Margin="0,0,0,10"/>
                         <CheckBox x:Name="AutorEmailCheckBox" IsThreeState="True"
                                   Content="Envoi d'emails" FontSize="13"/>
-                        <TextBlock Text="Case grisée = non renseigné" FontSize="10" Foreground="#95A5A6" Margin="0,8,0,0"/>
+                        <TextBlock Text="Case grisée = non renseigné (sauf photographie : oui/non uniquement)" FontSize="10" Foreground="#95A5A6" Margin="0,8,0,0"/>
                     </StackPanel>
                 </GroupBox>
 

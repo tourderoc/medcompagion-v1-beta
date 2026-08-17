@@ -131,6 +131,22 @@ namespace MedCompanion.Services.Restitutions
             r.Id = filePath; // On utilise Id comme FilePath temporaire
         }
 
+        /// <summary>Supprime les fichiers d'une restitution (manifest .md + PDF + HTML associé,
+        /// même base de nom). Utilisé par le bouton « 🗑 Supprimer » du dossier bleu.</summary>
+        public void DeleteFiles(string markdownPath, string? pdfPath)
+        {
+            TryDeleteFile(markdownPath);
+            TryDeleteFile(pdfPath);
+            if (!string.IsNullOrEmpty(markdownPath))
+                TryDeleteFile(Path.ChangeExtension(markdownPath, ".html"));
+        }
+
+        private static void TryDeleteFile(string? path)
+        {
+            if (string.IsNullOrEmpty(path)) return;
+            try { if (File.Exists(path)) File.Delete(path); } catch { }
+        }
+
         public string Validate(RestitutionBase r)
         {
             if (r.Statut == RestitutionStatut.Validee)

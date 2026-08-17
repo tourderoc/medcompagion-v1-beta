@@ -298,22 +298,27 @@
                                     <RowDefinition Height="26"/>
                                     <RowDefinition Height="26"/>
                                     <RowDefinition Height="26"/>
+                                    <RowDefinition Height="26"/>
                                 </Grid.RowDefinitions>
 
                                 <TextBlock Grid.Row="0" Grid.Column="1" Text="OUI" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 <TextBlock Grid.Row="0" Grid.Column="2" Text="NON" FontSize="10" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="J'autorise le Dr Lassoued à utiliser les informations de ce formulaire pour le suivi de mon enfant." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                <RadioButton Grid.Row="1" Grid.Column="1" x:Name="AutorInfosOui" GroupName="AutorInfos" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <RadioButton Grid.Row="1" Grid.Column="2" x:Name="AutorInfosNon" GroupName="AutorInfos" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="Autorisation de photographie clinique (prise d'image de l'enfant)." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <RadioButton Grid.Row="1" Grid.Column="1" x:Name="PhotoAutoriseOui" GroupName="PhotoAutorise" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="1" Grid.Column="2" x:Name="PhotoAutoriseNon" GroupName="PhotoAutorise" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="J'autorise l'envoi de SMS (rappels de rendez-vous, informations pratiques)." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                <RadioButton Grid.Row="2" Grid.Column="1" x:Name="AutorSmsOui" GroupName="AutorSms" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <RadioButton Grid.Row="2" Grid.Column="2" x:Name="AutorSmsNon" GroupName="AutorSms" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="J'autorise le Dr Lassoued à utiliser les informations de ce formulaire pour le suivi de mon enfant." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <RadioButton Grid.Row="2" Grid.Column="1" x:Name="AutorInfosOui" GroupName="AutorInfos" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="2" Grid.Column="2" x:Name="AutorInfosNon" GroupName="AutorInfos" HorizontalAlignment="Center" VerticalAlignment="Center"/>
 
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="J'autorise l'envoi d'emails." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
-                                <RadioButton Grid.Row="3" Grid.Column="1" x:Name="AutorEmailOui" GroupName="AutorEmail" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                <RadioButton Grid.Row="3" Grid.Column="2" x:Name="AutorEmailNon" GroupName="AutorEmail" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="J'autorise l'envoi de SMS (rappels de rendez-vous, informations pratiques)." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <RadioButton Grid.Row="3" Grid.Column="1" x:Name="AutorSmsOui" GroupName="AutorSms" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="3" Grid.Column="2" x:Name="AutorSmsNon" GroupName="AutorSms" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="J'autorise l'envoi d'emails." FontSize="11" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <RadioButton Grid.Row="4" Grid.Column="1" x:Name="AutorEmailOui" GroupName="AutorEmail" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <RadioButton Grid.Row="4" Grid.Column="2" x:Name="AutorEmailNon" GroupName="AutorEmail" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </StackPanel>
                     </Border>

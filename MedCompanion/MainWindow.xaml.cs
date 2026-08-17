@@ -451,15 +451,10 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             }
         };
 
-        // Quand un PDF de restitution 1er entretien est sauvegardé → l'enregistrer dans le panel DOCUMENTS (dossier bleu)
-        ConsultationModeContent.RestitutionPdfSavedToPatient += async (_, pdfPath) =>
-        {
-            if (_selectedPatient != null && !string.IsNullOrEmpty(pdfPath))
-            {
-                await _documentService.RegisterExistingDocumentAsync(pdfPath, _selectedPatient.NomComplet, "Restitution 1er entretien");
-                DocumentsControlPanel.RefreshDocuments();
-            }
-        };
+        // Le PDF de restitution 1er entretien n'est plus enregistré en double dans le panel DOCUMENTS
+        // (dossier bleu) : il apparaît déjà dans « Dossiers de Restitution », qui scanne directement
+        // le dossier {année}/restitutions/ (RestitutionsHub) et ouvre le PDF au clic. Enregistrer le
+        // même fichier ici aussi ne faisait que le dupliquer, sans ce raccourci d'ouverture directe.
 
         // Quand un patient est choisi dans le drawer « Consultations récentes » du mode Consultation
         // → exécuter le flux COMPLET de sélection (en-tête patient + tous les panneaux), pas juste
