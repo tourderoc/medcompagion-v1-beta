@@ -482,9 +482,15 @@ FORMAT ATTENDU :
         /// Génère un courrier à partir d'un template MCC avec analyse sémantique
         /// ✅ REFACTORISÉ : Utilise LLMGatewayService avec anonymisation automatique
         /// </summary>
+        /// <param name="onToken">
+        /// Si fourni, le texte est diffusé au fil de la génération (modèles locaux uniquement — voir
+        /// LLMGatewayService). Permet d'afficher le courrier pendant qu'il s'écrit au lieu d'attendre
+        /// ~35 s devant une barre de progression vide.
+        /// </param>
         public async Task<(bool success, string markdown, string error)> GenerateLetterFromMCCAsync(
             string nomComplet,
-            MCCModel mcc)
+            MCCModel mcc,
+            Action<string>? onToken = null)
         {
             try
             {
@@ -654,7 +660,8 @@ NE GÉNÈRE JAMAIS les éléments suivants (ils sont gérés automatiquement par
                     systemPrompt: systemPrompt,
                     messages: messages,
                     patientName: nomComplet,
-                    maxTokens: 2500
+                    maxTokens: 2500,
+                    onToken: onToken
                 );
 
                 if (success)

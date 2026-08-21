@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using NAudio.Wave;
 
 namespace MedCompanion.Services.Consultation
@@ -20,15 +21,62 @@ namespace MedCompanion.Services.Consultation
         private readonly WaveFormat _format;
         private bool _isDisposed;
 
+        /// <summary>Racine des sessions enregistrées.</summary>
+        public static string RecordingsRoot => Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "MedCompanion", "recordings");
+
+        /// <summary>
+        /// Nombre de sessions conservées. Au-delà, les plus anciennes sont supprimées.
+        ///
+        /// Ce ne sont pas des données cliniques mais des enregistrements audio bruts de
+        /// consultations, conservés pour diagnostiquer la transcription (voir
+        /// WhisperStreamingService.SaveAudioEnabled). La transcription utile, elle, est déjà dans le
+        /// dossier patient. Les accumuler sans limite ne sert donc à rien et fait grossir
+        /// indéfiniment un stock de données très sensibles — 379 sessions en trois mois avant
+        /// l'introduction de cette rotation.
+        /// </summary>
+        public const int MaxSessionsKept = 50;
+
         public AudioRecorder(int sampleRate = 16000, int channels = 1)
         {
             _format = new WaveFormat(sampleRate, 16, channels);
 
-            var baseDir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "MedCompanion", "recordings");
-            SessionFolder = Path.Combine(baseDir, $"session_{DateTime.Now:yyyyMMdd_HHmmss}");
+            SessionFolder = Path.Combine(RecordingsRoot, $"session_{DateTime.Now:yyyyMMdd_HHmmss}");
             Directory.CreateDirectory(SessionFolder);
+        }
+
+        /// <summary>
+        /// Supprime les sessions les plus anciennes au-delà de <see cref="MaxSessionsKept"/>.
+        ///
+        /// Opération destructive et irréversible : trois garde-fous la bornent — on ne descend
+        /// jamais sous la racine des enregistrements, on n'efface que des dossiers dont le nom suit
+        /// le motif "session_", et la session en cours est toujours épargnée. Tout échec est ignoré :
+        /// un fichier verrouillé ne doit pas interrompre une consultation.
+        /// </summary>
+        public static void PruneOldSessions(string? currentSessionFolder = null)
+        {
+            try
+            {
+                if (!Directory.Exists(RecordingsRoot)) return;
+
+                var sessions = new DirectoryInfo(RecordingsRoot)
+                    .GetDirectories("session_*")          // jamais autre chose que nos sessions
+                    .OrderByDescending(d => d.CreationTimeUtc)
+                    .Skip(MaxSessionsKept)
+                    .ToList();
+
+                foreach (var dir in sessions)
+                {
+                    if (currentSessionFolder != null &&
+                        string.Equals(dir.FullName, currentSessionFolder, StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    try { dir.Delete(recursive: true); }
+                    catch { /* dossier verrouillé : il repassera au prochain nettoyage */ }
+                }
+            }
+            catch { /* best-effort : ne doit jamais gêner l'enregistrement */ }
         }
 
         /// <summary>

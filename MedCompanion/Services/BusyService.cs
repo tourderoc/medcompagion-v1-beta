@@ -66,6 +66,37 @@ namespace MedCompanion.Services
             private set => SetProperty(ref _step, value);
         }
 
+        private string _livePreview = string.Empty;
+        /// <summary>
+        /// Texte généré au fil de l'eau pendant une génération IA en streaming. Vide = rien à
+        /// afficher (le bloc d'aperçu est alors masqué). Alimenté par <see cref="AppendPreview"/>.
+        /// </summary>
+        public string LivePreview
+        {
+            get => _livePreview;
+            private set => SetProperty(ref _livePreview, value);
+        }
+
+        /// <summary>
+        /// Ajoute un fragment au texte affiché en direct. Ne conserve que la fin du texte
+        /// (<see cref="PreviewMaxChars"/>) : l'aperçu tient dans une zone fixe et n'a pas vocation à
+        /// être lu intégralement — le texte complet arrive dans l'écran cible à la fin.
+        ///
+        /// Appelable depuis le thread qui reçoit les tokens (pas l'UI) : pour une propriété simple,
+        /// le moteur de binding WPF réachemine lui-même PropertyChanged vers le Dispatcher. Ce ne
+        /// serait pas le cas d'une collection observable, qui exigerait un marshalling explicite.
+        /// </summary>
+        public void AppendPreview(string fragment)
+        {
+            if (string.IsNullOrEmpty(fragment)) return;
+            var combined = _livePreview + fragment;
+            LivePreview = combined.Length > PreviewMaxChars
+                ? combined.Substring(combined.Length - PreviewMaxChars)
+                : combined;
+        }
+
+        private const int PreviewMaxChars = 600;
+
         private double _progress = -1;
         /// <summary>
         /// Progression (0-100). -1 = indéterminé (barre qui défile)
@@ -120,6 +151,7 @@ namespace MedCompanion.Services
             IsCancellationRequested = false;
             Message = message;
             Step = string.Empty;
+            LivePreview = string.Empty;   // sinon l'aperçu de l'opération précédente resterait affiché
             Progress = -1; // Indéterminé par défaut
             CanCancel = canCancel;
             IsBusy = true;

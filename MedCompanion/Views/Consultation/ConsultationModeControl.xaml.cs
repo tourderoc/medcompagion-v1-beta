@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
@@ -232,6 +233,14 @@ namespace MedCompanion.Views.Consultation
                 Owner = Window.GetWindow(this)
             };
             dialog.ShowDialog();
+        }
+
+        // Rafraîchit la liste des micros détectés à l'ouverture du menu (un micro USB
+        // peut avoir été branché/débranché depuis le dernier rafraîchissement).
+        private void MicrophoneComboBox_DropDownOpened(object sender, EventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            _viewModel?.RefreshAvailableMicrophones();
         }
 
         // ── Documents Importés (V0d) ──────────────────────────────────────────

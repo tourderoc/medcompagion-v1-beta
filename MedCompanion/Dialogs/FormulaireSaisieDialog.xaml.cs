@@ -10,6 +10,7 @@ using System.Windows;
 using MedCompanion.Models;
 using MedCompanion.Services;
 using MedCompanion.Services.Consultation;
+using MedCompanion.Services.LLM;
 using MedCompanion.Services.Vision;
 using Microsoft.Web.WebView2.Core;
 using SkiaSharp;
@@ -22,6 +23,10 @@ namespace MedCompanion.Dialogs
         private readonly string? _patientDir;
         private readonly FormulaireDataService _service = new();
         private readonly GlmOcrService _ocr = new(AppSettings.Load());
+
+        /// <summary>Lecture des cases à cocher uniquement (voir <see cref="AntecedentsSchema"/>) — GLM-OCR
+        /// échoue systématiquement sur cette tâche, testé fiable avec ce modèle vision.</summary>
+        private readonly LlamaCppProvider _vision = new();
 
         /// <summary>Nom de famille de l'enfant — sert à résoudre les cases « Même nom que
         /// l'enfant » du père/mère sans jamais faire lire ces cases par l'OCR.</summary>
@@ -42,7 +47,8 @@ namespace MedCompanion.Dialogs
         /// de l'envoyer à l'OCR (voir <see cref="ComputeBlockBoundsAsync"/>).
         /// </summary>
         private record BlockBounds(double PereY0, double PereY1, double MereY0, double MereY1,
-            double AdresseY0, double AdresseY1);
+            double AdresseY0, double AdresseY1, double AntecedentsY0, double AntecedentsY1,
+            double SituationY0, double SituationY1, double AutorisationsY0, double AutorisationsY1);
 
         /// <summary>
         /// Carte de coordonnées du template calculée une seule fois par session (Edge headless,
@@ -55,6 +61,59 @@ namespace MedCompanion.Dialogs
             InitializeComponent();
             _pdfPath = pdfPath;
             _patientDir = patientDir;
+            PopulateVisionModels();
+        }
+
+        /// <summary>
+        /// Alimente le sélecteur de modèle de vision. Seuls les modèles dont le projecteur ET le
+        /// GGUF sont réellement présents sont listés : proposer un modèle absent ne produirait
+        /// qu'un échec au moment de lire le formulaire.
+        /// </summary>
+        private void PopulateVisionModels()
+        {
+            _suspendVisionChange = true;
+            try
+            {
+                VisionModelCombo.Items.Clear();
+                var current = LlamaCppProfiles.VisionProfile;
+
+                foreach (var profile in LlamaCppProfiles.VisionCapable)
+                {
+                    var item = new System.Windows.Controls.ComboBoxItem
+                    {
+                        Content = profile.ShortName,
+                        Tag     = profile
+                    };
+                    VisionModelCombo.Items.Add(item);
+                    if (profile.Id == current.Id) VisionModelCombo.SelectedItem = item;
+                }
+
+                // Aucun modèle de vision installé : masquer plutôt qu'afficher une liste vide.
+                VisionModelCombo.Visibility = VisionModelCombo.Items.Count > 0
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+
+                if (VisionModelCombo.SelectedItem == null && VisionModelCombo.Items.Count > 0)
+                    VisionModelCombo.SelectedIndex = 0;
+            }
+            finally { _suspendVisionChange = false; }
+        }
+
+        private bool _suspendVisionChange;
+
+        private void VisionModelCombo_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
+        {
+            if (_suspendVisionChange) return;
+            if (VisionModelCombo.SelectedItem is not System.Windows.Controls.ComboBoxItem item) return;
+            if (item.Tag is not LlamaCppModelProfile profile) return;
+
+            // WPF peut lever cet événement après la construction, une fois le ComboBox mis en page :
+            // la garde posée pendant le remplissage est alors déjà levée. On ne réagit donc qu'à un
+            // changement réel, sinon un simple ouverture de formulaire afficherait un message.
+            if (profile.Id == LlamaCppProfiles.VisionProfile.Id) return;
+
+            LlamaCppProfiles.SetVisionProfile(profile);
+            AutoFillStatus.Text = $"Vision : {profile.ShortName} (appliqué à la prochaine lecture).";
         }
 
         private async void Window_Loaded(object sender, RoutedEventArgs e)
@@ -143,12 +202,13 @@ namespace MedCompanion.Dialogs
         // en 3 bandes (père / mère / adresse) à partir de la carte de coordonnées du
         // template (déjà utilisée en Phase 4b) et on fait un appel OCR par bande.
         //
-        // Les grilles de cases à cocher (situation familiale, antécédents, autorisations, photo)
-        // restent volontairement à cocher à la main. Testé : la densité d'encre par case (§4d du
-        // plan) ne discrimine PAS de façon fiable sur un scan réel avec le simple ratio mm→pixel —
-        // les cases font ~3 mm, trop petites pour encaisser l'imprécision de calage qu'absorbent
-        // sans problème les bandes de texte (plusieurs cm). Un vrai recalage par repères
-        // (homographie, Phase 4c du plan) serait nécessaire avant de retenter une lecture auto.
+        // Les cases à cocher (antécédents familiaux, situation familiale, autorisations, photo) sont
+        // lues séparément par un modèle VISION (Qwen3.8-27B, llama.cpp) plutôt que par GLM-OCR :
+        // testé — GLM-OCR échoue systématiquement sur cette tâche (recopie le schéma tel quel, ou
+        // coche plusieurs cases à la fois sur une ligne isolée). La densité d'encre par case (approche
+        // pixel, essayée avant) ne discriminait pas non plus de façon fiable sur un scan réel. Le
+        // modèle vision, lui, a été testé fiable : 8/8 cases correctement identifiées sur un
+        // formulaire réel, avec un raisonnement ligne par ligne cohérent.
 
         /// <summary>Marge ajoutée de part et d'autre de chaque bloc (mm) pour absorber un léger
         /// décalage de calage sans couper le texte.</summary>
@@ -205,10 +265,44 @@ namespace MedCompanion.Dialogs
                     ApplyAdresseJson(adrJson, "adresse2", Adresse2, CodePostal2, Ville2);
                 }
 
-                if (!pereOk && !mereOk && !adrOk)
-                    AutoFillStatus.Text = $"Échec OCR : {pereErr ?? mereErr ?? adrErr}";
+                // Cases à cocher : modèle vision, pas GLM-OCR — voir note en tête de section.
+                // Best-effort : n'empêche jamais le reste du pré-remplissage. Les 3 blocs partagent
+                // le même serveur en mode vision une fois démarré (coût de rechargement payé une
+                // seule fois, pas à chaque bloc).
+                var visionResults = new List<(string label, bool ok, string? error)>();
+
+                async Task<bool> ReadVisionBlock(string label, double y0, double y1,
+                    Func<string, bool> apply, string prompt)
+                {
+                    if (y1 <= y0) return false;
+                    AutoFillStatus.Text = $"Lecture {label} (vision)...";
+                    var crop = CropBlock(pageImage, y0, y1, mmToPx);
+                    var (visOk, visJson, visErr) = await _vision.AnalyzeImageAsync(prompt, crop, maxTokens: 600);
+                    bool applied = visOk && apply(visJson);
+                    visionResults.Add((label, applied, visOk ? (applied ? null : "réponse illisible") : visErr));
+                    return applied;
+                }
+
+                bool atcdOk = await ReadVisionBlock("des antécédents familiaux",
+                    bounds.AntecedentsY0, bounds.AntecedentsY1, ApplyAntecedentsJson, BuildAntecedentsPrompt());
+                bool sitOk = await ReadVisionBlock("de la situation familiale",
+                    bounds.SituationY0, bounds.SituationY1, ApplySituationJson, BuildSituationPrompt());
+                bool autorOk = await ReadVisionBlock("des autorisations",
+                    bounds.AutorisationsY0, bounds.AutorisationsY1, ApplyAutorisationsJson, BuildAutorisationsPrompt());
+
+                bool anyVisionOk = atcdOk || sitOk || autorOk;
+
+                if (!pereOk && !mereOk && !adrOk && !anyVisionOk)
+                {
+                    var firstErr = pereErr ?? mereErr ?? adrErr ?? visionResults.FirstOrDefault(r => r.error != null).error;
+                    AutoFillStatus.Text = $"Échec OCR : {firstErr}";
+                }
                 else
-                    AutoFillStatus.Text = "Champs texte pré-remplis — vérifiez avant de valider.";
+                {
+                    var failed = visionResults.Where(r => !r.ok).Select(r => $"{r.label} ({r.error})").ToList();
+                    AutoFillStatus.Text = "Champs pré-remplis — vérifiez avant de valider." +
+                        (failed.Count > 0 ? $" Non lus : {string.Join(", ", failed)}." : "");
+                }
             }
             catch (Exception ex)
             {
@@ -270,8 +364,11 @@ namespace MedCompanion.Dialogs
                 var (pY0, pY1) = Bounds("pere_");
                 var (mY0, mY1) = Bounds("mere_");
                 var (aY0, aY1) = Bounds("adresse1_", "adresse2_");
+                var (atY0, atY1) = Bounds("atcd_");
+                var (siY0, siY1) = Bounds("situation_", "garde_");
+                var (auY0, auY1) = Bounds("photo_", "consent_");
 
-                return new BlockBounds(pY0, pY1, mY0, mY1, aY0, aY1);
+                return new BlockBounds(pY0, pY1, mY0, mY1, aY0, aY1, atY0, atY1, siY0, siY1, auY0, auY1);
             }
             catch
             {
@@ -313,6 +410,47 @@ namespace MedCompanion.Dialogs
             "cases (adresse 1, à gauche), puis code postal et ville dans des cases juste en dessous. " +
             "Une adresse 2 facultative (garde alternée) peut apparaître à droite, même structure. " +
             "Si une zone est vide, laisse la valeur à null.";
+
+        // Lecture des cases à cocher (antécédents familiaux) : GLM-OCR échoue systématiquement sur
+        // cette tâche (testé — soit il recopie le schéma tel quel, soit il coche plusieurs cases à
+        // la fois sur une ligne isolée sans ambiguïté). Le modèle vision Qwen3.8-27B (llama.cpp,
+        // mmproj) a été testé fiable sur ce même formulaire réel : 8/8 cases correctement identifiées,
+        // avec un raisonnement ligne par ligne cohérent — voir LlamaCppProvider.
+        private const string AntecedentsSchema =
+            """
+            {
+              "tdah": "oui|non|nsp", "dyslexie": "oui|non|nsp", "tsa": "oui|non|nsp",
+              "anxiete": "oui|non|nsp", "depression": "oui|non|nsp", "bipolarite": "oui|non|nsp",
+              "addictions": "oui|non|nsp", "suicide": "oui|non|nsp"
+            }
+            """;
+        private const string AntecedentsConsigne =
+            "Ce tableau liste 8 antécédents familiaux, chacun avec 3 cases à cocher : Oui, Non, Ne sait " +
+            "pas. Pour chaque ligne, examine attentivement laquelle des 3 cases contient une croix ou " +
+            "une coche visible, et réponds par \"oui\", \"non\" ou \"nsp\" selon la colonne cochée. " +
+            "Une seule case doit être cochée par ligne ; si aucune ne l'est, réponds null.";
+
+        private const string SituationSchema =
+            """
+            {
+              "situation": "ensemble|separes|divorces|garde_alternee|recomposee|autre",
+              "garde": "parents|mere|pere|autre"
+            }
+            """;
+        private const string SituationConsigne =
+            "Ce bloc montre deux groupes de cases à cocher. Le premier (\"Situation familiale\") a 6 " +
+            "options : Parents ensemble, Parents séparés, Divorcés, Garde alternée, Famille recomposée, " +
+            "Autre — une seule est cochée. Le second (\"Mode de garde principal de l'enfant\") a 4 " +
+            "options : Parents, Mère, Père, Autre — une seule est cochée. Examine attentivement laquelle " +
+            "case contient une croix ou une coche visible dans chaque groupe.";
+
+        private const string AutorisationsSchema =
+            """{ "photo": "oui|non", "infos": "oui|non", "sms": "oui|non", "email": "oui|non" }""";
+        private const string AutorisationsConsigne =
+            "Ce bloc montre 4 questions, chacune avec 2 cases à cocher (Oui/Non ou Autorise/N'autorise " +
+            "pas) : autorisation de photographie de l'enfant, autorisation d'utiliser les informations du " +
+            "formulaire, autorisation d'envoi de SMS, autorisation d'envoi d'emails. Pour chacune, examine " +
+            "attentivement laquelle des 2 cases contient une croix ou une coche visible.";
 
         private const string FullPageSchema =
             """
@@ -375,6 +513,119 @@ namespace MedCompanion.Dialogs
             else
             {
                 villeBox.Text = raw;
+            }
+        }
+
+        private static string BuildAntecedentsPrompt() =>
+            AntecedentsConsigne +
+            "\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans commentaire ni texte autour, selon ce schéma :\n" +
+            AntecedentsSchema;
+
+        /// <summary>Applique la lecture vision des 8 antécédents aux boutons radio correspondants.
+        /// Retourne false si la réponse n'est pas exploitable (rien n'est modifié dans ce cas).</summary>
+        private bool ApplyAntecedentsJson(string raw)
+        {
+            try
+            {
+                var match = Regex.Match(raw, @"\{[\s\S]*\}");
+                if (!match.Success) return false;
+
+                using var doc = JsonDocument.Parse(match.Value);
+                var root = doc.RootElement;
+
+                void Apply(string key,
+                    System.Windows.Controls.RadioButton oui,
+                    System.Windows.Controls.RadioButton non,
+                    System.Windows.Controls.RadioButton nsp)
+                {
+                    if (!root.TryGetProperty(key, out var el) || el.ValueKind != JsonValueKind.String) return;
+                    var v = el.GetString();
+                    if (v == "oui" || v == "non" || v == "nsp") SetOuiNonNsp(v, oui, non, nsp);
+                }
+
+                Apply("tdah",       TdahOui, TdahNon, TdahNsp);
+                Apply("dyslexie",   DyslexieOui, DyslexieNon, DyslexieNsp);
+                Apply("tsa",        TsaOui, TsaNon, TsaNsp);
+                Apply("anxiete",    AnxieuxOui, AnxieuxNon, AnxieuxNsp);
+                Apply("depression", DepOui, DepNon, DepNsp);
+                Apply("bipolarite", BipoOui, BipoNon, BipoNsp);
+                Apply("addictions", AddOui, AddNon, AddNsp);
+                Apply("suicide",    TsOui, TsNon, TsNsp);
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string BuildSituationPrompt() =>
+            SituationConsigne +
+            "\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans commentaire ni texte autour, selon ce schéma :\n" +
+            SituationSchema;
+
+        private bool ApplySituationJson(string raw)
+        {
+            try
+            {
+                var match = Regex.Match(raw, @"\{[\s\S]*\}");
+                if (!match.Success) return false;
+
+                using var doc = JsonDocument.Parse(match.Value);
+                var root = doc.RootElement;
+
+                if (root.TryGetProperty("situation", out var sitEl) && sitEl.ValueKind == JsonValueKind.String)
+                    SetRadio(sitEl.GetString() ?? "", ("ensemble", SitEnsemble), ("separes", SitSepares),
+                        ("divorces", SitDivorces), ("garde_alternee", SitGardeAlt),
+                        ("recomposee", SitRecomposee), ("autre", SitAutre));
+
+                if (root.TryGetProperty("garde", out var gardeEl) && gardeEl.ValueKind == JsonValueKind.String)
+                    SetRadio(gardeEl.GetString() ?? "", ("parents", GardeParents), ("mere", GardeMere),
+                        ("pere", GardePere), ("autre", GardeAutre));
+
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static string BuildAutorisationsPrompt() =>
+            AutorisationsConsigne +
+            "\n\nRéponds UNIQUEMENT avec un objet JSON valide, sans commentaire ni texte autour, selon ce schéma :\n" +
+            AutorisationsSchema;
+
+        private bool ApplyAutorisationsJson(string raw)
+        {
+            try
+            {
+                var match = Regex.Match(raw, @"\{[\s\S]*\}");
+                if (!match.Success) return false;
+
+                using var doc = JsonDocument.Parse(match.Value);
+                var root = doc.RootElement;
+
+                void Apply(string key,
+                    System.Windows.Controls.RadioButton oui,
+                    System.Windows.Controls.RadioButton non)
+                {
+                    if (!root.TryGetProperty(key, out var el) || el.ValueKind != JsonValueKind.String) return;
+                    var v = el.GetString();
+                    if (v == "oui" || v == "non") SetOuiNon(v, oui, non);
+                }
+
+                Apply("photo", PhotoAutoriseOui, PhotoAutoriseNon);
+                Apply("infos", AutorInfosOui, AutorInfosNon);
+                Apply("sms",   AutorSmsOui, AutorSmsNon);
+                Apply("email", AutorEmailOui, AutorEmailNon);
+
+                return true;
+            }
+            catch
+            {
+                return false;
             }
         }
 

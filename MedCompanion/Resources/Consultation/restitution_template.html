@@ -217,6 +217,63 @@ body {
 @media print {
   body { background: white; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 }
+
+/* ── Page Parent'aile (accès + QR codes) ── */
+.parentaile-page {
+  page-break-before: always;
+  padding-top: 40px;
+  text-align: center;
+}
+.parentaile-title {
+  font-size: 26px;
+  font-weight: 800;
+  color: #112240;
+}
+.parentaile-subtitle {
+  font-size: 14px;
+  color: #2DC5A2;
+  font-weight: 600;
+  margin-top: 6px;
+  margin-bottom: 18px;
+}
+.parentaile-intro {
+  font-size: 12px;
+  color: #6B7A8D;
+  max-width: 480px;
+  margin: 0 auto 30px;
+  line-height: 1.7;
+}
+.parentaile-qr-grid {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+}
+.qr-card {
+  background: white;
+  border: 1px solid #E8EDF3;
+  border-bottom: 3px solid #2DC5A2;
+  border-radius: 10px;
+  padding: 20px;
+  width: 220px;
+}
+.qr-img {
+  width: 160px;
+  height: 160px;
+}
+.qr-caption {
+  font-size: 11px;
+  color: #112240;
+  font-weight: 700;
+  margin-top: 12px;
+  line-height: 1.5;
+}
+.qr-caption span {
+  display: block;
+  font-weight: 400;
+  color: #6B7A8D;
+  font-size: 10px;
+  margin-top: 3px;
+}
 </style>
 </head>
 <body>
@@ -261,42 +318,26 @@ body {
   </div>
 
   <div class="card card-defis">
-    <div class="card-title">Ce que nous allons soutenir</div>
+    <div class="card-title">Difficultés constatées</div>
     <div class="card-body">{{DEFIS}}</div>
   </div>
 
 </div>
 
-<!-- Parcours d'évaluation -->
-<div class="timeline-section">
-  <div class="timeline-title">Parcours d'Évaluation</div>
-  <div class="timeline-note">Le nombre de séances est mentionné à titre purement indicatif et peut être amené à varier selon le rythme et les besoins de l'enfant.</div>
-  <div class="timeline-track">
-    <div class="timeline-step">
-      <div class="step-dot">1</div>
-      <div class="step-name">Première Rencontre</div>
-      <div class="step-desc">Entretien initial et pose des bases d'observation.</div>
-    </div>
-    <div class="timeline-step">
-      <div class="step-dot">2</div>
-      <div class="step-name">{{NOMBRE_SEANCES}} Séance(s) d'Évaluation</div>
-      <div class="step-desc">Observations cliniques ludiques complémentaires.</div>
-    </div>
-    <div class="timeline-step">
-      <div class="step-dot">3</div>
-      <div class="step-name">Projet de Soin</div>
-      <div class="step-desc">Bilan partagé et plan de soin personnalisé.</div>
-    </div>
-  </div>
-</div>
+{{BILANS_SYNTHESE}}
+
+<!-- Parcours / suite recommandée -->
+{{PARCOURS_SUITE}}
 
 <!-- Conclusion -->
 <div class="conclusion">
-  <p class="conclusion-text">À l'issue de ces étapes d'évaluation, un projet de soin personnalisé adapté sera proposé en fonction des constats.</p>
+  <p class="conclusion-text">{{CONCLUSION_TEXT}}</p>
   <div class="signature">Avec toute ma bienveillance,<br>{{DOCTOR_NAME}}</div>
 </div>
 
 {{MENTION_LEGALE}}
+
+{{PARENTAILE_PAGE}}
 
 </body>
 </html>

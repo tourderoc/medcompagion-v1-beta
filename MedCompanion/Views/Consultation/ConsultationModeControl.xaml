@@ -25,6 +25,53 @@
         <conv:StringNotWhiteSpaceToVisibilityConverter x:Key="StringNotWS"/>
         <conv:StringToBrushConverter x:Key="StringToBrush"/>
 
+        <!-- Voyant moteur Whisper (chargé / vérifié / à l'écoute).
+             Partagé entre la barre de dictée de l'interrogatoire et celle du suivi :
+             <ContentControl Template="{StaticResource WhisperEngineIndicator}"/>
+             Le clignotement orange signale les phases où le micro n'est PAS encore ouvert. -->
+        <ControlTemplate x:Key="WhisperEngineIndicator" TargetType="ContentControl">
+            <Border Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="1"
+                    CornerRadius="10" Padding="8,4"
+                    ToolTip="{Binding WhisperStateTooltip}">
+                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                    <Ellipse x:Name="Dot" Width="9" Height="9" VerticalAlignment="Center"
+                             Fill="{Binding WhisperStateColor, Converter={StaticResource StringToBrush}}"/>
+                    <TextBlock Text="{Binding WhisperStateLabel}" FontSize="10"
+                               Foreground="#495057" VerticalAlignment="Center" Margin="6,0,0,0"/>
+                </StackPanel>
+            </Border>
+            <ControlTemplate.Triggers>
+                <DataTrigger Binding="{Binding WhisperState}" Value="Loading">
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard x:Name="SbLoading">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="Dot" Storyboard.TargetProperty="Opacity"
+                                                 From="1" To="0.25" Duration="0:0:0.6"
+                                                 AutoReverse="True" RepeatBehavior="Forever"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="SbLoading"/>
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding WhisperState}" Value="Warmup">
+                    <DataTrigger.EnterActions>
+                        <BeginStoryboard x:Name="SbWarmup">
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetName="Dot" Storyboard.TargetProperty="Opacity"
+                                                 From="1" To="0.25" Duration="0:0:0.6"
+                                                 AutoReverse="True" RepeatBehavior="Forever"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </DataTrigger.EnterActions>
+                    <DataTrigger.ExitActions>
+                        <StopStoryboard BeginStoryboardName="SbWarmup"/>
+                    </DataTrigger.ExitActions>
+                </DataTrigger>
+            </ControlTemplate.Triggers>
+        </ControlTemplate>
+
         <!-- Template réutilisable : affichage/édition d'une note sur une page A4 -->
         <DataTemplate x:Key="NotePageTemplate" DataType="{x:Type vm:ConsultationNoteViewModel}">
             <StackPanel>
@@ -1778,6 +1825,14 @@
                                         </Button.Template>
                                     </Button>
 
+                                    <!-- Sélecteur micro (source de dictée) -->
+                                    <ComboBox ItemsSource="{Binding AvailableMicrophones}"
+                                              SelectedItem="{Binding SelectedMicrophoneName, UpdateSourceTrigger=PropertyChanged}"
+                                              Width="160" Margin="0,0,8,0" FontSize="10"
+                                              ToolTip="Micro utilisé pour la dictée"
+                                              Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
+                                              DropDownOpened="MicrophoneComboBox_DropDownOpened"/>
+
                                     <!-- Toggle modèle Whisper (Medium ↔ Large-v3) -->
                                     <Button Content="{Binding WhisperModelLabel}"
                                             Command="{Binding SwitchWhisperModelCommand}"
@@ -1809,6 +1864,11 @@
                                             </Style>
                                         </Button.Style>
                                     </Button>
+
+                                    <!-- Voyant moteur Whisper — toujours visible, y compris pendant
+                                         l'enregistrement : c'est lui qui dit quand le micro est réellement ouvert. -->
+                                    <ContentControl Template="{StaticResource WhisperEngineIndicator}"
+                                                    VerticalAlignment="Center" Margin="0,0,8,0"/>
 
                                     <!-- Bouton Démarrer dictée -->
                                     <Button Content="🎙 Dicter"
@@ -2755,20 +2815,87 @@
                                                 </StackPanel>
                                             </Border>
 
-                                            <TextBlock Text="Séances d'évaluation prévues :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
-                                            <Grid Margin="0,0,0,16">
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="30"/>
-                                                </Grid.ColumnDefinitions>
-                                                <Slider Grid.Column="0" Minimum="1" Maximum="6" SmallChange="1" LargeChange="1"
-                                                        IsSnapToTickEnabled="True" TickFrequency="1"
-                                                        Value="{Binding Restitution.NombreSeances, UpdateSourceTrigger=PropertyChanged}"
-                                                        VerticalAlignment="Center"/>
-                                                <TextBlock Grid.Column="1" Text="{Binding Restitution.NombreSeances}"
-                                                           FontWeight="Bold" FontSize="14" Foreground="#E67E22"
-                                                           HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                            </Grid>
+                                            <TextBlock Text="Suite recommandée :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                                            <ComboBox SelectedIndex="{Binding RestitutionTypeSuiviIndex, UpdateSourceTrigger=PropertyChanged}"
+                                                      Margin="0,0,0,4">
+                                                <ComboBoxItem Content="Suivi pédopsychiatrique"/>
+                                                <ComboBoxItem Content="Aucun suivi nécessaire"/>
+                                                <ComboBoxItem Content="Autre suivi recommandé (orthophonie, psychomotricité...)"/>
+                                                <ComboBoxItem Content="Orientation vers une structure spécialisée (CMP...)"/>
+                                            </ComboBox>
+                                            <!-- Cases à cocher : "Autre suivi recommandé" -->
+                                            <StackPanel Margin="0,0,0,8">
+                                                <StackPanel.Style>
+                                                    <Style TargetType="StackPanel">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Restitution.TypeSuivi}" Value="AutreSuiviRecommande">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </StackPanel.Style>
+                                                <CheckBox Content="Suivi orthophonique" IsChecked="{Binding Restitution.SuiviOrthophonique}" Margin="0,0,0,4"/>
+                                                <CheckBox Content="Suivi psychologique" IsChecked="{Binding Restitution.SuiviPsychologique}" Margin="0,0,0,4"/>
+                                                <CheckBox Content="Suivi psychomoteur" IsChecked="{Binding Restitution.SuiviPsychomoteur}" Margin="0,0,0,4"/>
+                                                <CheckBox Content="Suivi orthoptique" IsChecked="{Binding Restitution.SuiviOrthoptique}" Margin="0,0,0,4"/>
+                                            </StackPanel>
+
+                                            <!-- Cases à cocher : "Orientation vers structure spécialisée" -->
+                                            <StackPanel Margin="0,0,0,8">
+                                                <StackPanel.Style>
+                                                    <Style TargetType="StackPanel">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Restitution.TypeSuivi}" Value="OrientationStructureSpecialisee">
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </StackPanel.Style>
+                                                <CheckBox Content="CMP (Centre Médico-Psychologique)" IsChecked="{Binding Restitution.OrientationCmp}" Margin="0,0,0,4"/>
+                                                <CheckBox Content="Hôpital de jour" IsChecked="{Binding Restitution.OrientationHopitalJour}" Margin="0,0,0,4"/>
+                                                <CheckBox Content="ITEP" IsChecked="{Binding Restitution.OrientationItep}" Margin="0,0,0,4"/>
+                                            </StackPanel>
+
+                                            <TextBox Text="{Binding Restitution.PrecisionSuivi, UpdateSourceTrigger=PropertyChanged}"
+                                                     Padding="8,5" FontSize="11" Margin="0,0,0,12"
+                                                     Background="#FAFAFA" BorderBrush="#BDC3C7" BorderThickness="1"
+                                                     Visibility="{Binding Restitution.RequiresPrecisionSuivi, Converter={StaticResource BoolToVis}}"
+                                                     ToolTip="Autre (préciser)"/>
+
+                                            <StackPanel>
+                                                <StackPanel.Style>
+                                                    <Style TargetType="StackPanel">
+                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Restitution.TypeSuivi}" Value="AucunSuiviNecessaire">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Restitution.TypeSuivi}" Value="AutreSuiviRecommande">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Restitution.TypeSuivi}" Value="OrientationStructureSpecialisee">
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </StackPanel.Style>
+                                                <TextBlock Text="Séances d'évaluation prévues :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
+                                                <Grid Margin="0,0,0,16">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="30"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Slider Grid.Column="0" Minimum="1" Maximum="6" SmallChange="1" LargeChange="1"
+                                                            IsSnapToTickEnabled="True" TickFrequency="1"
+                                                            Value="{Binding Restitution.NombreSeances, UpdateSourceTrigger=PropertyChanged}"
+                                                            VerticalAlignment="Center"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding Restitution.NombreSeances}"
+                                                               FontWeight="Bold" FontSize="14" Foreground="#E67E22"
+                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                </Grid>
+                                            </StackPanel>
 
                                             <TextBlock Text="Notes clinicien (optionnel) :" FontWeight="SemiBold" FontSize="12" Margin="0,0,0,6"/>
                                             <TextBox Text="{Binding Restitution.NotesLibres, UpdateSourceTrigger=PropertyChanged}"
@@ -2875,13 +3002,28 @@
                                             <Border Background="#FEF6F0" BorderBrush="#E8834A" BorderThickness="0,0,0,2"
                                                     CornerRadius="6" Padding="10" Margin="0,0,0,14">
                                                 <StackPanel>
-                                                    <TextBlock Text="Ce que nous allons soutenir" FontWeight="Bold" FontSize="12"
+                                                    <TextBlock Text="Difficultés constatées" FontWeight="Bold" FontSize="12"
                                                                Foreground="#C4622A" Margin="0,0,0,6"/>
                                                     <TextBlock Text="(un point par ligne)" FontSize="10" Foreground="#7A8899" Margin="0,0,0,5"/>
                                                     <TextBox Text="{Binding ReviewDefis, UpdateSourceTrigger=PropertyChanged}"
                                                              AcceptsReturn="True" Height="70" Padding="8" TextWrapping="Wrap"
                                                              FontSize="11" VerticalScrollBarVisibility="Auto"
                                                              Background="White" BorderBrush="#F0C0A0" BorderThickness="1"/>
+                                                </StackPanel>
+                                            </Border>
+
+                                            <!-- Bilans en résumé (visible seulement si des bilans ont été fournis) -->
+                                            <Border Background="#F4F6FF" BorderBrush="#7B8CDE" BorderThickness="0,0,0,2"
+                                                    CornerRadius="6" Padding="10" Margin="0,0,0,14"
+                                                    Visibility="{Binding ReviewBilansSynthese, Converter={StaticResource StringNotWS}}">
+                                                <StackPanel>
+                                                    <TextBlock Text="Vos bilans en résumé" FontWeight="Bold" FontSize="12"
+                                                               Foreground="#4C5FB0" Margin="0,0,0,6"/>
+                                                    <TextBlock Text="(synthèse accessible + conclusion pour les parents)" FontSize="10" Foreground="#7A8899" Margin="0,0,0,5"/>
+                                                    <TextBox Text="{Binding ReviewBilansSynthese, UpdateSourceTrigger=PropertyChanged}"
+                                                             AcceptsReturn="True" Height="90" Padding="8" TextWrapping="Wrap"
+                                                             FontSize="11" VerticalScrollBarVisibility="Auto"
+                                                             Background="White" BorderBrush="#C3CBEF" BorderThickness="1"/>
                                                 </StackPanel>
                                             </Border>
 
@@ -3118,6 +3260,39 @@
 
                                             <!-- Barre boutons dictée / import / IA -->
                                             <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                                                <!-- Voyant moteur Whisper (même template que l'interrogatoire) -->
+                                                <ContentControl Template="{StaticResource WhisperEngineIndicator}"
+                                                                VerticalAlignment="Center" Margin="0,0,8,0"/>
+
+                                                <!-- Sélecteur micro (source de dictée) -->
+                                                <ComboBox ItemsSource="{Binding AvailableMicrophones}"
+                                                          SelectedItem="{Binding SelectedMicrophoneName, UpdateSourceTrigger=PropertyChanged}"
+                                                          Width="160" Margin="0,0,8,0" FontSize="10"
+                                                          VerticalAlignment="Center"
+                                                          ToolTip="Micro utilisé pour la dictée"
+                                                          Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
+                                                          DropDownOpened="MicrophoneComboBox_DropDownOpened"/>
+
+                                                <!-- Toggle modèle Whisper (Medium ↔ Large-v3) -->
+                                                <Button Content="{Binding WhisperModelLabel}"
+                                                        Command="{Binding SwitchWhisperModelCommand}"
+                                                        ToolTip="Basculer entre Whisper Medium et Large-v3 (chargement au prochain démarrage)"
+                                                        Padding="8,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
+                                                        Background="#8E44AD" Foreground="White" BorderThickness="0"
+                                                        Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Bd" Property="Background" Value="#7D3C98"/></Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False"><Setter TargetName="Bd" Property="Background" Value="#BDC3C7"/></Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+
                                                 <!-- Dicter (visible si pas en cours d'enregistrement) -->
                                                 <Button Content="🎙 Dicter"
                                                         Command="{Binding StartRecordingCommand}"

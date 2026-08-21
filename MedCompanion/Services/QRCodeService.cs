@@ -59,6 +59,18 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Génère un QR code (PNG) pour un texte/URL quelconque et retourne les octets bruts.
+        /// Utile pour l'embarquer en data URI dans un document HTML (ex: page Parent'aile de la restitution).
+        /// </summary>
+        public byte[] GetQrPngBytes(string text)
+        {
+            using var qrGenerator = new QRCodeGenerator();
+            using var qrCodeData = qrGenerator.CreateQrCode(text, QRCodeGenerator.ECCLevel.Q);
+            using var qrCode = new PngByteQRCode(qrCodeData);
+            return qrCode.GetGraphic(20);
+        }
+
+        /// <summary>
         /// Sauvegarde le QR code en tant que fichier PNG
         /// </summary>
         /// <param name="tokenId">L'identifiant du token</param>

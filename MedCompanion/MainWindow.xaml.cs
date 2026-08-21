@@ -72,6 +72,13 @@ public partial class MainWindow : Window
     private LLMServiceFactory _llmFactory;
     private LLMWarmupService _warmupService;
     private ILLMService? _currentLLMService;
+
+    /// <summary>Proxy "vivant" (voir LiveLlmServiceProxy) — à utiliser pour tout service construit
+    /// une seule fois au démarrage, afin qu'il suive automatiquement les changements de modèle.
+    /// Ne pas utiliser pour des besoins ponctuels : préférer <see cref="_currentLLMService"/> dans
+    /// ce cas (évite un niveau d'indirection inutile).</summary>
+    private ILLMService _llmServiceProxy = null!;
+
     private WhisperStreamingService? _whisperStreamingService;
     private readonly LLMGatewayService _llmGatewayService; // ✅ NOUVEAU - Gateway centralisé
     
@@ -121,6 +128,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+
+        // Nettoie tout llama-server.exe orphelin d'une session précédente mal fermée, avant même de
+        // savoir quel modèle est sélectionné — sinon un orphelin reste invisible tant qu'on ne
+        // bascule pas vers Qwen (constaté : survit à un aller-retour complet vers un autre modèle).
+        Services.LLM.LlamaCppServerManager.CleanupOrphansAtStartup();
+
         _settings = AppSettings.Load();
         _whisperStreamingService = new WhisperStreamingService();
         _pathService = new PathService();
@@ -147,6 +160,7 @@ public partial class MainWindow : Window
         // Initialisation asynchrone sécurisée
         _llmFactory.InitializeAsync();
         _currentLLMService = _llmFactory.GetCurrentProvider();
+        _llmServiceProxy = new LiveLlmServiceProxy(_llmFactory);
 
         // ✅ ORDRE CRITIQUE : Initialiser AnonymizationService AVANT PromptConfigService
         // ✅ MODIFIÉ : Passer AppSettings pour permettre la détection du provider LLM
@@ -374,7 +388,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         var urgenceDispatcher  = new UrgenceDispatcher(urgenceLogService);
         var keywordFallback    = new KeywordSuicideRiskDetector();
         if (_currentLLMService != null)
-            urgenceDispatcher.Register(new SuicideRiskDetector(_currentLLMService, keywordFallback));
+            urgenceDispatcher.Register(new SuicideRiskDetector(_llmServiceProxy, keywordFallback));
         else
             urgenceDispatcher.Register(keywordFallback);
         urgenceDispatcher.SignalDetected += sig =>
@@ -397,12 +411,12 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         BrancheEnvironnementLectureService?  brancheLecture       = null;
         if (_currentLLMService != null)
         {
-            preparationSuggester = new PreparationSuggesterService(_currentLLMService);
-            axesSuggester        = new AxesSuggesterService(_currentLLMService);
-            axisExtractor        = new AxisExtractorService(_currentLLMService);
-            bilanFinalSuggester    = new BilanFinalSuggesterService(_currentLLMService);
-            feuilleLecture       = new FeuilleLectureService(_currentLLMService);
-            brancheLecture       = new BrancheEnvironnementLectureService(_currentLLMService);
+            preparationSuggester = new PreparationSuggesterService(_llmServiceProxy);
+            axesSuggester        = new AxesSuggesterService(_llmServiceProxy);
+            axisExtractor        = new AxisExtractorService(_llmServiceProxy);
+            bilanFinalSuggester    = new BilanFinalSuggesterService(_llmServiceProxy);
+            feuilleLecture       = new FeuilleLectureService(_llmServiceProxy);
+            brancheLecture       = new BrancheEnvironnementLectureService(_llmServiceProxy);
         }
 
         // Synthèse Globale V0.1 (persistance) + V0.2 (génération initiale par Med)
@@ -413,9 +427,9 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         if (_currentLLMService != null && _patientContextService != null)
         {
             syntheseGlobaleSuggester = new SyntheseGlobaleSuggesterService(
-                _currentLLMService, _patientContextService, evaluationPhaseService);
+                _llmServiceProxy, _patientContextService, evaluationPhaseService);
             syntheseGlobaleRelecteur = new SyntheseGlobaleRelectureService(
-                _currentLLMService, _patientContextService, evaluationPhaseService);
+                _llmServiceProxy, _patientContextService, evaluationPhaseService);
         }
 
         // Projet Thérapeutique V1.0 → V1.4
@@ -426,16 +440,18 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         if (_currentLLMService != null && _patientContextService != null)
         {
             projetTherapeutiqueSuggester = new ProjetTherapeutiqueSuggesterService(
-                _currentLLMService, _patientContextService, evaluationPhaseService, syntheseGlobaleService);
+                _llmServiceProxy, _patientContextService, evaluationPhaseService, syntheseGlobaleService);
             projetTherapeutiquePilotage  = new ProjetTherapeutiquePilotageService(
-                _currentLLMService, _patientContextService);
+                _llmServiceProxy, _patientContextService);
             projetTherapeutiqueRelecteur = new ProjetTherapeutiqueRelectureService(
-                _currentLLMService, syntheseGlobaleService);
+                _llmServiceProxy, syntheseGlobaleService);
         }
 
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
+        // Proxy (pas _currentLLMService) : ConsultationModeViewModel garde cette référence tant que
+        // UpdateLlmService n'est pas rappelé — autant qu'elle suive nativement les bascules de modèle.
         if (_currentLLMService != null)
-            ConsultationModeContent.Initialize(_currentLLMService, _storageService, _whisperStreamingService,
+            ConsultationModeContent.Initialize(_llmServiceProxy, _storageService, _whisperStreamingService,
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
                 evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture,
                 syntheseGlobaleService, syntheseGlobaleSuggester, _synthesisWeightTracker, syntheseGlobaleRelecteur,
@@ -1273,7 +1289,8 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             // Générer le courrier avec l'IA en utilisant toutes les métadonnées du MCC
             var (success, markdown, error) = await _letterService.GenerateLetterFromMCCAsync(
                 _selectedPatient.NomComplet,
-                selectedMCC
+                selectedMCC,
+                onToken: fragment => busyService.AppendPreview(fragment)
             );
 
             if (success && !string.IsNullOrEmpty(markdown))

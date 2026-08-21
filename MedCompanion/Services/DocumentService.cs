@@ -358,7 +358,9 @@ INTERVENANT_TEL: [téléphone, ou vide]
 INTERVENANT_EMAIL: [email, ou vide]";
 
                 var messages = new List<(string role, string content)> { ("user", prompt) };
-                var (success, response, error) = await _llmGatewayService.ChatAsync("", messages, patientName);
+                // Prompt court (2000 caractères max) : une fenêtre de contexte réduite suffit largement
+                // et évite le surcoût VRAM/temps d'une fenêtre de 65536 dimensionnée pour la dictée longue.
+                var (success, response, error) = await _llmGatewayService.ChatAsync("", messages, patientName, numCtx: 8192);
 
                 if (!success)
                 {
@@ -628,7 +630,14 @@ Crée une synthèse en Markdown avec:
             {
                 // ✅ ÉTAPE 1 : Nettoyage OCR si non déjà fait (ou optionnel s'il est déjà propre)
                 // Pour l'instant on considère que document.ExtractedText est déjà nettoyé s'il vient d'ImportDocumentAsync
-                string contentToAnalyze = document.ExtractedText;
+                // Plafonné à 8000 caractères : la synthèse (résumé + points clés) n'a pas besoin du
+                // document intégral, et un texte non borné pouvait faire exploser le temps de traitement
+                // sur les bilans longs (plusieurs pages).
+                const int MaxSynthesisInputChars = 8000;
+                string fullText = document.ExtractedText ?? "";
+                string contentToAnalyze = fullText.Length > MaxSynthesisInputChars
+                    ? fullText.Substring(0, MaxSynthesisInputChars) + "\n[...document tronqué pour la synthèse...]"
+                    : fullText;
 
                 // ✅ ÉTAPE 2 : Préparer le prompt de synthèse
                 var basePrompt = $@"Tu es un assistant médical. Analyse ce document patient et génère une synthèse détaillée en Markdown.
@@ -673,7 +682,7 @@ POIDS_SYNTHESE: X.X";
 
                 // ✅ ÉTAPE 3 : Appel Gateway (Anonymisation 3 phases + Chat + Désanonymisation automatique)
                 var messages = new List<(string role, string content)> { ("user", basePrompt) };
-                var (success, synthesis, error) = await _llmGatewayService.ChatAsync("", messages, patientName);
+                var (success, synthesis, error) = await _llmGatewayService.ChatAsync("", messages, patientName, numCtx: 8192);
 
                 if (!success)
                 {

@@ -4,6 +4,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:converters="clr-namespace:MedCompanion.Converters"
+             xmlns:pilotage="clr-namespace:MedCompanion.Views.Pilotage"
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="1400"
              Background="#1E1E1E">
@@ -1308,6 +1309,16 @@
                         </Border>
                     </Grid>
                 </Grid>
+            </TabItem>
+
+            <!-- ═══════════════════════════════════════════════════════════════ -->
+            <!-- ONGLET MOTEUR LOCAL (llama.cpp)                                -->
+            <!-- ═══════════════════════════════════════════════════════════════ -->
+            <TabItem Style="{StaticResource PilotageTabItemStyle}">
+                <TabItem.Header>
+                    <TextBlock Text="⚙️ Moteur local" FontSize="14" FontWeight="SemiBold"/>
+                </TabItem.Header>
+                <pilotage:LlamaServerControl/>
             </TabItem>
 
         </TabControl>

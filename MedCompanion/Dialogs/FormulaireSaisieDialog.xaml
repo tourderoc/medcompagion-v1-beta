@@ -41,6 +41,16 @@
                     <Button x:Name="BtnAutoFill" Content="🪄 Remplissage automatique (OCR)" Click="BtnAutoFill_Click"
                             Padding="10,6" FontSize="12" Background="#EBF5FB" BorderBrush="#85C1E9"
                             BorderThickness="1" Cursor="Hand"/>
+
+                    <!-- Modèle de lecture d'image, indépendant du modèle de texte sélectionné :
+                         Qwen est précis mais sature la carte (13,8 Go), Gemma 4 tient en 7,6 Go. -->
+                    <TextBlock Text="Vision :" VerticalAlignment="Center" FontSize="11"
+                               Foreground="#7F8C8D" Margin="14,0,6,0"/>
+                    <ComboBox x:Name="VisionModelCombo" Width="150" FontSize="11"
+                              VerticalContentAlignment="Center"
+                              ToolTip="Modèle utilisé pour lire l'image du formulaire. Le changer provoque un redémarrage du moteur (~6-10 s)."
+                              SelectionChanged="VisionModelCombo_SelectionChanged"/>
+
                     <TextBlock x:Name="AutoFillStatus" VerticalAlignment="Center" FontSize="11"
                                Foreground="#7F8C8D" Margin="12,0,0,0" TextWrapping="Wrap"/>
                 </StackPanel>

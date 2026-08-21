@@ -446,7 +446,7 @@ POIDS_SYNTHESE: X.X
         /// </summary>
         public bool IsCurrentProviderLocal()
         {
-            return _settings.LLMProvider == "Ollama";
+            return _settings.LLMProvider == "Ollama" || _settings.LLMProvider == "LlamaCpp";
         }
 
         public async Task<(bool success, string result, string? error)> GenerateTextAsync(string prompt, int maxTokens = 3000, System.Threading.CancellationToken cancellationToken = default)
@@ -545,6 +545,13 @@ Format JSON attendu :
                         "Exemple : llama3.2, mistral, phi3"
                     );
                 }
+
+                // Libère llama.cpp (Qwen) s'il tourne : ce chemin d'anonymisation local est indépendant
+                // du sélecteur de modèle principal et chargeait sinon un second modèle en parallèle,
+                // saturant la VRAM/RAM (mesuré : débordement vers la mémoire partagée, ralentissements).
+                // Sans effet si llama.cpp n'est pas actif ; il se rechargera automatiquement au prochain
+                // appel Qwen.
+                LlamaCppServerManager.Stop();
 
                 // Créer un provider Ollama avec le modèle dédié (toujours local)
                 ILLMService piiProvider = new OllamaLLMProvider(_settings.OllamaBaseUrl, _settings.AnonymizationModel);

@@ -269,7 +269,25 @@
                             </Style>
                         </ComboBox.Style>
                     </ComboBox>
-                    
+
+                    <!-- Niveau de réflexion (visible seulement pour les modèles qui le supportent, ex: gpt-oss, Qwen3.8-27B) -->
+                    <ComboBox x:Name="ReasoningEffortCombo"
+                              Width="110"
+                              Height="40"
+                              FontSize="12"
+                              Padding="8,0"
+                              VerticalContentAlignment="Center"
+                              ToolTip="Niveau de réflexion du modèle"
+                              SelectionChanged="ReasoningEffortCombo_SelectionChanged"
+                              Visibility="Collapsed"
+                              Margin="0,0,10,0">
+                        <ComboBoxItem Content="🚫 Sans réflexion" Tag="off"
+                                      ToolTip="Réponse immédiate, sans phase de réflexion. Le plus rapide, mais la qualité de raisonnement baisse nettement — à réserver aux tâches mécaniques. Change le mode du serveur : ~6 s de redémarrage."/>
+                        <ComboBoxItem Content="🧠 Faible" Tag="low"/>
+                        <ComboBoxItem Content="🧠 Moyen" Tag="medium"/>
+                        <ComboBoxItem Content="🧠 Élevé" Tag="high"/>
+                    </ComboBox>
+
                     <!-- Indicateur de statut circulaire -->
                     <Border x:Name="LLMStatusIndicator"
                             Width="40"
@@ -283,6 +301,22 @@
                                    FontSize="20"
                                    HorizontalAlignment="Center"
                                    VerticalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Débit de la dernière génération (t/s). Masqué tant qu'aucune génération
+                         n'a eu lieu ; alimenté par LlmThroughputMonitor. -->
+                    <Border x:Name="ThroughputBadge"
+                            Background="#EAF4FF" BorderBrush="#B3D7FF" BorderThickness="1"
+                            CornerRadius="12" Padding="9,4" Margin="0,0,10,0"
+                            VerticalAlignment="Center"
+                            Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                            <TextBlock Text="⚡" FontSize="11" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="ThroughputText"
+                                       Text="—" FontSize="11" FontWeight="SemiBold"
+                                       Foreground="#1B5E9E" VerticalAlignment="Center"
+                                       Margin="4,0,0,0"/>
+                        </StackPanel>
                     </Border>
 
                     <!-- Bouton décharger Med (reset état GPU local) -->

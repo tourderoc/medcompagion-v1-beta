@@ -46,6 +46,27 @@ namespace MedCompanion
         // Modèle Whisper sélectionné ("Medium" | "LargeV3")
         public string WhisperModel { get; set; } = "Medium";
 
+        // Micro sélectionné pour la dictée (nom du périphérique, ex: "Amazon Basics USB Microphone").
+        // Stocké par nom (pas par index) car l'index Windows n'est pas stable entre deux sessions
+        // (branchement/débranchement USB) — vide = périphérique par défaut du système.
+        public string MicrophoneDeviceName { get; set; } = "";
+
+        // Niveau de réflexion ("low" | "medium" | "high") pour les modèles Ollama qui exposent un
+        // "reasoning_effort" graduable (gpt-oss, hybrides Qwen3 calqués sur ce format). Vide = défaut.
+        public string OllamaReasoningEffort { get; set; } = "";
+
+        /// <summary>Réglages par profil llama.cpp, format compact "id=contexte,mtp,kv;..." —
+        /// voir LlamaCppProfiles.LoadSettings. Vide = valeurs par défaut de chaque profil.</summary>
+        public string LlamaCppProfileSettings { get; set; } = "";
+
+        /// <summary>Interrupteur général du moteur local llama.cpp. À false, tous les modèles
+        /// repassent par Ollama — filet de sécurité, l'app reste utilisable sans llama.cpp.</summary>
+        public bool LlamaCppEnabled { get; set; } = true;
+
+        /// <summary>Id du profil llama.cpp utilisé pour les requêtes image, indépendant du modèle
+        /// de texte sélectionné. Vide = premier profil capable de vision.</summary>
+        public string LlamaCppVisionProfile { get; set; } = "";
+
         // Configuration Handy (transcription vocale)
         public string HandyHotkey { get; set; } = "Ctrl+Space";
         public bool HandyEnabled { get; set; } = true;

@@ -31,9 +31,43 @@ namespace MedCompanion.Services.LLM
         // 65536 couvre ~300 min de transcription et reste raisonnable en VRAM (~4-6 GB de KV cache).
         private const int DefaultNumCtx = 65536;
 
+        /// <summary>
+        /// Niveau de réflexion souhaité ("low" | "medium" | "high"), pour les modèles dont le
+        /// template expose une variable "reasoning_effort" graduée (gpt-oss, et certains hybrides
+        /// communautaires comme les quantizations Qwen3 calquées sur ce même format). Null/vide =
+        /// comportement par défaut (think on/off simple selon <see cref="IsGptOssModel"/>).
+        /// Ignoré silencieusement si le modèle actif ne supporte pas ce réglage.
+        /// </summary>
+        public string? ReasoningEffort { get; set; }
+
+        /// <summary>
+        /// Vrai si le modèle expose un niveau de réflexion graduable (low/medium/high) via le champ
+        /// "think" de l'API Ollama, plutôt qu'un simple on/off.
+        /// </summary>
+        public static bool SupportsReasoningEffort(string? modelName)
+        {
+            if (string.IsNullOrEmpty(modelName)) return false;
+            return IsGptOssModel(modelName) ||
+                   modelName.Contains("Qwen3.8-27B", StringComparison.OrdinalIgnoreCase);
+        }
+
         /// <summary>num_predict effectif : ajoute la réserve de raisonnement pour les modèles think=true.</summary>
         private static int EffectiveNumPredict(int maxTokens, bool thinkMode)
             => (thinkMode && maxTokens > 0) ? maxTokens + ReasoningHeadroomTokens : maxTokens;
+
+        // Ce modèle pèse ~12,7 Go rien qu'en poids. À 65536 tokens de contexte, le cache KV ne tient
+        // plus dans les 16 Go de VRAM disponibles et force un débordement (mesuré : ~5 t/s au lieu
+        // d'une vitesse GPU normale). 16384 reste largement suffisant pour une synthèse ou une
+        // conversation Med (quelques milliers de tokens) et libère assez de VRAM pour que le modèle
+        // tienne entièrement sur GPU. N'affecte aucun autre modèle.
+        private const int Qwen38ReducedNumCtx = 16384;
+
+        private static int EffectiveNumCtx(string? modelName, int requestedCtx)
+        {
+            if (!string.IsNullOrEmpty(modelName) && modelName.Contains("Qwen3.8-27B", StringComparison.OrdinalIgnoreCase))
+                return Math.Min(requestedCtx, Qwen38ReducedNumCtx);
+            return requestedCtx;
+        }
 
         public OllamaLLMProvider(string baseUrl = "http://localhost:11434", string defaultModel = "llama3.2:latest")
         {
@@ -131,6 +165,24 @@ namespace MedCompanion.Services.LLM
         /// Le prochain appel paiera 5-10s de rechargement (selon taille du modèle).
         /// Mécanisme Ollama : POST /api/generate avec keep_alive=0 → décharge immédiat.
         /// </summary>
+        /// <summary>
+        /// Publie le débit de génération. Ollama renvoie les compteurs exacts du moteur —
+        /// <c>eval_count</c> (tokens générés) et <c>eval_duration</c> (durée de génération seule, en
+        /// nanosecondes) — donc aucune mesure côté client n'est nécessaire, et le temps de traitement
+        /// du prompt est déjà exclu.
+        /// </summary>
+        private static void ReportThroughput(JsonElement root, string model)
+        {
+            try
+            {
+                if (!root.TryGetProperty("eval_count", out var evalCount)) return;
+                if (!root.TryGetProperty("eval_duration", out var evalDuration)) return;
+
+                LlmThroughputMonitor.Report(model, evalCount.GetInt32(), evalDuration.GetInt64() / 1_000_000_000.0);
+            }
+            catch { /* métrique d'affichage : jamais bloquant */ }
+        }
+
         public async Task<(bool success, string message)> UnloadAsync()
         {
             try
@@ -216,7 +268,7 @@ namespace MedCompanion.Services.LLM
                         think = thinkMode,
                         options = new
                         {
-                            num_ctx = DefaultNumCtx,
+                            num_ctx = EffectiveNumCtx(activeModel, DefaultNumCtx),
                             temperature = 0.3,
                             num_gpu = 99  // Forcer le maximum de layers sur GPU
                         }
@@ -234,7 +286,7 @@ namespace MedCompanion.Services.LLM
                         options = new
                         {
                             num_predict = EffectiveNumPredict(maxTokens, thinkMode),
-                            num_ctx = DefaultNumCtx,
+                            num_ctx = EffectiveNumCtx(activeModel, DefaultNumCtx),
                             temperature = 0.3,
                             num_gpu = 99  // Forcer le maximum de layers sur GPU
                         }
@@ -286,7 +338,8 @@ namespace MedCompanion.Services.LLM
             List<(string role, string content)> messages,
             int maxTokens = 1500,
             System.Threading.CancellationToken cancellationToken = default,
-            string? forceModel = null)
+            string? forceModel = null,
+            int? numCtx = null)
         {
             try
             {
@@ -303,16 +356,19 @@ namespace MedCompanion.Services.LLM
 
                 var activeModel = forceModel ?? _currentModel;
                 var thinkMode = IsGptOssModel(activeModel);  // gpt-oss : harmony nécessite think=true ; autres : false
+                object thinkValue = (!string.IsNullOrEmpty(ReasoningEffort) && ReasoningEffort != ReasoningLevels.Off && SupportsReasoningEffort(activeModel))
+                    ? ReasoningEffort
+                    : thinkMode;
                 var requestBody = new
                 {
                     model = activeModel,
                     messages = ollamaMessages.ToArray(),
                     stream = false,
-                    think = thinkMode,
+                    think = thinkValue,
                     options = new
                     {
                         num_predict = EffectiveNumPredict(maxTokens, thinkMode),
-                        num_ctx = DefaultNumCtx,
+                        num_ctx = EffectiveNumCtx(activeModel, numCtx ?? DefaultNumCtx),
                         temperature = 0.3,
                         num_gpu = 99  // Forcer le maximum de layers sur GPU
                     }
@@ -330,6 +386,8 @@ namespace MedCompanion.Services.LLM
                 }
 
                 var doc = JsonDocument.Parse(responseBody);
+
+                ReportThroughput(doc.RootElement, activeModel);
 
                 if (doc.RootElement.TryGetProperty("message", out var messageObj))
                 {
@@ -432,16 +490,19 @@ namespace MedCompanion.Services.LLM
                 }
 
                 var thinkMode = IsGptOssModel(_currentModel);  // gpt-oss : harmony nécessite think=true
+                object thinkValue = (!string.IsNullOrEmpty(ReasoningEffort) && ReasoningEffort != ReasoningLevels.Off && SupportsReasoningEffort(_currentModel))
+                    ? ReasoningEffort
+                    : thinkMode;
                 var requestBody = new
                 {
                     model = _currentModel,
                     messages = ollamaMessages.ToArray(),
                     stream = true, // Activer le streaming
-                    think = thinkMode,
+                    think = thinkValue,
                     options = new
                     {
                         num_predict = EffectiveNumPredict(maxTokens, thinkMode),
-                        num_ctx = DefaultNumCtx,
+                        num_ctx = EffectiveNumCtx(_currentModel, DefaultNumCtx),
                         temperature = 0.3,
                         num_gpu = 99  // Forcer le maximum de layers sur GPU
                     }

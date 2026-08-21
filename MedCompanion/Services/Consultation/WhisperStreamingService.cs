@@ -21,6 +21,21 @@ namespace MedCompanion.Services.Consultation
     }
 
     /// <summary>
+    /// État du moteur Whisper, pour affichage d'un indicateur visuel. Le point clé pour l'utilisateur
+    /// est de distinguer <see cref="Loading"/> (rien n'est encore capturé — parler ici = perdre ses
+    /// phrases) de <see cref="Recording"/> (micro réellement ouvert).
+    /// </summary>
+    public enum WhisperEngineState
+    {
+        Unloaded,    // modèle absent de la VRAM
+        Loading,     // chargement du modèle depuis le disque
+        Warmup,      // test de fonctionnement (première inférence)
+        Ready,       // modèle chargé et vérifié, prêt à démarrer
+        Recording,   // micro ouvert, capture en cours
+        Error
+    }
+
+    /// <summary>
     /// Capture micro continue → transcription Whisper GPU → texte.
     ///
     /// Deux modes :
@@ -99,9 +114,57 @@ namespace MedCompanion.Services.Consultation
         private bool _whisperInitialized;
         private readonly SemaphoreSlim _initLock = new(1, 1);
 
+        // ── Déchargement de secours après inactivité ──────────────────────────
+        // Le cas normal est traité par StopAsync, qui décharge immédiatement. Ce minuteur ne sert
+        // que de filet pour les chemins où le modèle a été chargé sans qu'une dictée démarre
+        // vraiment (micro absent, erreur d'ouverture du périphérique) : sans lui, les ~3 Go de
+        // large-v3 resteraient en VRAM jusqu'à la fermeture de l'application.
+        public static TimeSpan IdleUnloadTimeout { get; set; } = TimeSpan.FromMinutes(5);
+        private System.Threading.Timer? _idleUnloadTimer;
+        private readonly object _idleLock = new();
+
+        // ── État du moteur (indicateur visuel) ────────────────────────────────
+        private WhisperEngineState _engineState = WhisperEngineState.Unloaded;
+
+        /// <summary>État courant du moteur. Voir <see cref="EngineStateChanged"/>.</summary>
+        public WhisperEngineState EngineState => _engineState;
+
+        /// <summary>Levé à chaque changement d'état (peut venir d'un thread de fond).</summary>
+        public event Action<WhisperEngineState>? EngineStateChanged;
+
+        private void SetEngineState(WhisperEngineState state)
+        {
+            if (_engineState == state) return;
+            _engineState = state;
+            EngineStateChanged?.Invoke(state);
+        }
+
         // ── Mode (configurable avant Start) ───────────────────────────────────
         public RecordingMode Mode                 { get; set; } = RecordingMode.Batch;
         public int           BatchDurationSeconds { get; set; } = 90;
+
+        /// <summary>Index du micro à utiliser (WaveIn device number). Null = périphérique par défaut (index 0).</summary>
+        public int? DeviceNumber { get; set; }
+
+        /// <summary>
+        /// Liste des micros disponibles (index, nom) — pour peupler un sélecteur dans l'UI.
+        /// À rappeler à chaque ouverture du sélecteur : les périphériques USB peuvent changer
+        /// entre deux sessions (branchement/débranchement).
+        /// </summary>
+        public static List<(int Index, string Name)> GetAvailableMicrophones()
+        {
+            var result = new List<(int, string)>();
+            for (int i = 0; i < WaveInEvent.DeviceCount; i++)
+            {
+                try
+                {
+                    var caps = WaveInEvent.GetCapabilities(i);
+                    result.Add((i, caps.ProductName));
+                }
+                catch { /* périphérique illisible : on l'ignore */ }
+            }
+            return result;
+        }
 
         // ── Capture audio (recréés à chaque Start/Stop) ───────────────────────
         private WaveInEvent? _waveIn;
@@ -169,6 +232,7 @@ namespace MedCompanion.Services.Consultation
             {
                 if (_whisperInitialized) return;
 
+                SetEngineState(WhisperEngineState.Loading);
                 EnsureCudaInPath();
 
                 StatusChanged?.Invoke("Téléchargement modèle Whisper...");
@@ -200,10 +264,49 @@ namespace MedCompanion.Services.Consultation
                                      .Build();
 
                 _whisperInitialized = true;
+
+                // Warmup : première inférence à vide. Deux bénéfices distincts —
+                //  1) elle vérifie réellement que la chaîne GPU produit un résultat (un modèle
+                //     "chargé" peut échouer à la première passe : CUDA absent, VRAM insuffisante) ;
+                //  2) elle absorbe le coût unique d'initialisation des kernels CUDA/cuBLAS, qui
+                //     autrement ralentit le premier vrai chunk de la consultation.
+                SetEngineState(WhisperEngineState.Warmup);
+                StatusChanged?.Invoke("Vérification du moteur (warmup)...");
+                var warmOk = await WarmupProcessorAsync();
+                SetEngineState(warmOk ? WhisperEngineState.Ready : WhisperEngineState.Error);
+                if (!warmOk)
+                    StatusChanged?.Invoke("⚠ Warmup Whisper échoué — la transcription peut ne pas fonctionner.");
+            }
+            catch
+            {
+                SetEngineState(WhisperEngineState.Error);
+                throw;
             }
             finally
             {
                 _initLock.Release();
+            }
+        }
+
+        /// <summary>
+        /// Passe un court silence dans le processor pour forcer l'initialisation du chemin GPU et
+        /// confirmer qu'il répond. Les segments éventuels sont jetés (jamais émis vers l'UI).
+        /// </summary>
+        private async Task<bool> WarmupProcessorAsync()
+        {
+            if (_processor == null) return false;
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var silence = new float[SampleRate];   // 1 s — whisper.cpp complète à 30 s en interne
+                await foreach (var _ in _processor.ProcessAsync(silence)) { /* jeté */ }
+                Log($"Warmup Whisper OK en {sw.ElapsedMilliseconds} ms");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Log($"Warmup Whisper échoué : {ex.Message}");
+                return false;
             }
         }
 
@@ -215,6 +318,7 @@ namespace MedCompanion.Services.Consultation
 
             try
             {
+                CancelIdleUnload();   // avant l'init : sinon le timer pourrait décharger en plein chargement
                 await EnsureWhisperInitializedAsync(modelManager);
 
                 // Reset complet de la session
@@ -235,12 +339,15 @@ namespace MedCompanion.Services.Consultation
                 if (WaveInEvent.DeviceCount == 0)
                 {
                     IsActive = false;
+                    SetEngineState(WhisperEngineState.Error);
+                    ScheduleIdleUnload();   // le modèle est chargé mais aucune dictée ne démarrera
                     StatusChanged?.Invoke("✗ Aucun microphone détecté. Branchez un micro et réessayez.");
                     return;
                 }
 
                 _waveIn = new WaveInEvent
                 {
+                    DeviceNumber       = DeviceNumber ?? 0,
                     WaveFormat         = new WaveFormat(SampleRate, 16, Channels),
                     BufferMilliseconds = 250,
                     NumberOfBuffers    = 4
@@ -257,6 +364,8 @@ namespace MedCompanion.Services.Consultation
                 catch (Exception ex)
                 {
                     IsActive = false;
+                    SetEngineState(WhisperEngineState.Error);
+                    ScheduleIdleUnload();   // idem : modèle chargé, dictée avortée
                     StatusChanged?.Invoke($"✗ Erreur microphone : {ex.Message}. Vérifiez les autorisations dans Paramètres → Confidentialité → Microphone.");
                     _waveIn.Dispose();
                     _waveIn = null;
@@ -280,10 +389,13 @@ namespace MedCompanion.Services.Consultation
                     _batchTimerTask = Task.Run(() => BatchTimerLoopAsync(_cts.Token));
 
                 InitLogFile();
-                Log($"Session démarrée — mode={Mode}, batch={BatchDurationSeconds}s, save={SaveAudioEnabled}");
+                var deviceName = "défaut";
+                try { deviceName = WaveInEvent.GetCapabilities(DeviceNumber ?? 0).ProductName; } catch { }
+                Log($"Session démarrée — mode={Mode}, batch={BatchDurationSeconds}s, save={SaveAudioEnabled}, micro=[{DeviceNumber ?? 0}] {deviceName}");
                 if (_audioRecorder != null) Log($"Audio sauvegardé dans : {_audioRecorder.SessionFolder}");
 
                 IsActive = true;
+                SetEngineState(WhisperEngineState.Recording);
                 var modeMsg = Mode == RecordingMode.Batch
                     ? $"● Capture (batch {BatchDurationSeconds}s)..."
                     : "● Enregistrement (streaming)...";
@@ -293,6 +405,8 @@ namespace MedCompanion.Services.Consultation
             {
                 StatusChanged?.Invoke($"✗ Erreur Whisper : {ex.Message}");
                 IsActive = false;
+                SetEngineState(WhisperEngineState.Error);
+                ScheduleIdleUnload();   // idem : modèle éventuellement chargé, dictée avortée
                 await CleanupCaptureAsync();
             }
         }
@@ -358,14 +472,33 @@ namespace MedCompanion.Services.Consultation
                 _batchTimerTask = null;
             }
 
+            var finishedSession = _audioRecorder?.SessionFolder;
             _audioRecorder?.Dispose();
             _audioRecorder = null;
+
+            // Rotation des enregistrements : on ne garde que les dernières sessions. En tâche de
+            // fond et sans attendre — supprimer des dossiers ne doit pas retarder la fin de dictée,
+            // qui enchaîne immédiatement sur l'extraction.
+            if (SaveAudioEnabled)
+                _ = Task.Run(() => AudioRecorder.PruneOldSessions(finishedSession));
 
             _cts?.Dispose();
             _cts = null;
             _audioQueue = null;
 
             StatusChanged?.Invoke("Enregistrement arrêté.");
+
+            // Déchargement IMMÉDIAT, pas différé : l'extraction IA démarre dans la foulée de l'arrêt
+            // (bouton « Extraire avec IA » en interrogatoire, automatique sur Pause en suivi). Garder
+            // les ~3 Go de large-v3 en VRAM pendant que le LLM recharge ses ~14,6 Go fait déborder la
+            // carte au pire moment. Le rechargement au prochain démarrage coûte 1-3 s, signalés par
+            // le voyant du moteur.
+            //
+            // Sauf pendant Dispose (qui appelle StopAsync en bloquant le thread puis libère
+            // factory/processor lui-même) : UnloadModelAsync attend _initLock de façon asynchrone,
+            // ce qui bloquerait le thread UI déjà bloqué par le GetAwaiter().GetResult() de Dispose.
+            if (!_isDisposed)
+                await UnloadModelAsync();
         }
 
         /// <summary>
@@ -397,6 +530,7 @@ namespace MedCompanion.Services.Consultation
 
                 _waveIn = new WaveInEvent
                 {
+                    DeviceNumber       = DeviceNumber ?? 0,
                     WaveFormat         = new WaveFormat(SampleRate, 16, Channels),
                     BufferMilliseconds = 250,
                     NumberOfBuffers    = 4
@@ -721,7 +855,12 @@ namespace MedCompanion.Services.Consultation
 
         private void Log(string message)
         {
-            if (string.IsNullOrEmpty(_logPath)) return;
+            // Avant InitLogFile (chargement/warmup, qui précèdent la session) : au moins la trace debug.
+            if (string.IsNullOrEmpty(_logPath))
+            {
+                System.Diagnostics.Debug.WriteLine($"[Whisper] {message}");
+                return;
+            }
             try
             {
                 File.AppendAllText(_logPath,
@@ -851,11 +990,54 @@ namespace MedCompanion.Services.Consultation
                 _factory = null;
                 _modelPath = null;
                 _whisperInitialized = false;
+                SetEngineState(WhisperEngineState.Unloaded);
                 GC.Collect();
                 GC.WaitForPendingFinalizers();
                 GC.Collect();
             }
             finally { _initLock.Release(); }
+        }
+
+        /// <summary>
+        /// Arme (ou réarme) le déchargement automatique du modèle après <see cref="IdleUnloadTimeout"/>
+        /// sans dictée. Appelé à chaque arrêt d'enregistrement.
+        /// </summary>
+        private void ScheduleIdleUnload()
+        {
+            lock (_idleLock)
+            {
+                _idleUnloadTimer?.Dispose();
+                _idleUnloadTimer = new System.Threading.Timer(
+                    _ => _ = IdleUnloadTickAsync(),
+                    null,
+                    IdleUnloadTimeout,
+                    Timeout.InfiniteTimeSpan);   // one-shot : réarmé au prochain Stop
+            }
+        }
+
+        /// <summary>Désarme le déchargement automatique (une dictée démarre).</summary>
+        private void CancelIdleUnload()
+        {
+            lock (_idleLock)
+            {
+                _idleUnloadTimer?.Dispose();
+                _idleUnloadTimer = null;
+            }
+        }
+
+        private async Task IdleUnloadTickAsync()
+        {
+            try
+            {
+                if (IsActive || !_whisperInitialized) return;   // dictée relancée entre-temps
+                Log($"Inactivité > {IdleUnloadTimeout.TotalMinutes:0} min : déchargement du modèle Whisper (VRAM rendue).");
+                await UnloadModelAsync();
+                StatusChanged?.Invoke("💤 Whisper déchargé (inactivité) — rechargé à la prochaine dictée.");
+            }
+            catch (Exception ex)
+            {
+                Log($"Déchargement auto Whisper échoué : {ex.Message}");
+            }
         }
 
         public async Task<(bool ok, string message)> ResetEngineAsync(bool full = false)
@@ -929,6 +1111,7 @@ namespace MedCompanion.Services.Consultation
             _isDisposed = true;
 
             try { StopAsync().GetAwaiter().GetResult(); } catch { }
+            CancelIdleUnload();   // après StopAsync, qui vient de le réarmer
 
             _processor?.Dispose();
             _factory?.Dispose();

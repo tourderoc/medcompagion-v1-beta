@@ -40,12 +40,14 @@ namespace MedCompanion.Services
         #region Détection Provider
 
         /// <summary>
-        /// Vérifie si le provider actuel est local (Ollama)
+        /// Vérifie si le provider actuel est local (Ollama ou llama.cpp) — aucune anonymisation
+        /// nécessaire dans ce cas, les données ne quittent jamais la machine.
         /// </summary>
         public bool IsLocalProvider()
         {
             var providerName = _llmFactory.GetActiveProviderName();
-            return providerName.Equals("Ollama", StringComparison.OrdinalIgnoreCase);
+            return providerName.Equals("Ollama", StringComparison.OrdinalIgnoreCase)
+                || providerName.Equals("LlamaCpp", StringComparison.OrdinalIgnoreCase);
         }
 
         /// <summary>
@@ -150,7 +152,9 @@ namespace MedCompanion.Services
             List<(string role, string content)> messages,
             string? patientName = null,
             int maxTokens = 1500,
-            CancellationToken cancellationToken = default)
+            CancellationToken cancellationToken = default,
+            int? numCtx = null,
+            Action<string>? onToken = null)
         {
             System.Diagnostics.Debug.WriteLine($"[LLMGateway] ════════════════════════════════════════");
             System.Diagnostics.Debug.WriteLine($"[LLMGateway] ChatAsync - Début");
@@ -187,7 +191,17 @@ namespace MedCompanion.Services
                     if (cancellationToken.IsCancellationRequested)
                         return (false, "", "Opération annulée par l'utilisateur");
 
-                    var localResult = await llm.ChatAsync(systemPrompt ?? string.Empty, messages, maxTokens, cancellationToken);
+                    // Streaming réservé au local. En cloud, le texte revient pseudonymisé et doit
+                    // être ré-identifié APRÈS coup : diffuser les tokens bruts afficherait les
+                    // pseudonymes et casserait la restitution. On ignore donc onToken côté cloud
+                    // plutôt que d'afficher un texte incorrect.
+                    if (onToken != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[LLMGateway] → Appel local en streaming");
+                        return await llm.ChatStreamAsync(systemPrompt ?? string.Empty, messages, onToken, maxTokens, cancellationToken);
+                    }
+
+                    var localResult = await llm.ChatAsync(systemPrompt ?? string.Empty, messages, maxTokens, cancellationToken, numCtx: numCtx);
                     System.Diagnostics.Debug.WriteLine($"[LLMGateway] → Réponse locale: {localResult.result?.Length ?? 0} caractères");
                     System.Diagnostics.Debug.WriteLine($"[LLMGateway] ════════════════════════════════════════");
                     return localResult;
@@ -235,7 +249,7 @@ namespace MedCompanion.Services
 
                 // Appel LLM avec données anonymisées
                 System.Diagnostics.Debug.WriteLine($"[LLMGateway] → Appel LLM cloud avec données anonymisées...");
-                var (success, result, error) = await llm.ChatAsync(anonymizedSystemPrompt, anonymizedMessages, maxTokens, cancellationToken);
+                var (success, result, error) = await llm.ChatAsync(anonymizedSystemPrompt, anonymizedMessages, maxTokens, cancellationToken, numCtx: numCtx);
 
                 // Vérifier l'annulation après l'appel LLM
                 if (cancellationToken.IsCancellationRequested)

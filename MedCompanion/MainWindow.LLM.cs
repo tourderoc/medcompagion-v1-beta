@@ -23,7 +23,10 @@ public partial class MainWindow : Window
             
             // S'abonner aux événements de warm-up
             _warmupService.StatusChanged += OnLLMWarmupStatusChanged;
-            
+
+            // Badge de débit : alimenté par les providers locaux après chaque génération.
+            Services.LLM.LlmThroughputMonitor.Measured += OnThroughputMeasured;
+
             // Charger les modèles Ollama disponibles et peupler le ComboBox
             await PopulateLLMComboBoxAsync();
             
@@ -119,6 +122,9 @@ public partial class MainWindow : Window
                         };
                         LLMModelCombo.Items.Add(localHeader);
 
+                        // Les modèles Ollama restent servis par Ollama. Les variantes llama.cpp sont
+                        // listées séparément ci-dessous plutôt que de détourner ces entrées : un même
+                        // modèle peut ainsi être essayé via l'un ou l'autre moteur et comparé.
                         foreach (var model in localModels)
                         {
                             var item = new ComboBoxItem
@@ -127,6 +133,42 @@ public partial class MainWindow : Window
                                 Tag = new { Provider = "Ollama", Model = model }
                             };
                             LLMModelCombo.Items.Add(item);
+                        }
+                    }
+
+                    // Section dédiée au moteur local : un profil = une entrée, avec ses propres
+                    // réglages (contexte, MTP, cache KV) pilotables dans Pilotage → Moteur local.
+                    if (LlamaCppProfiles.Enabled)
+                    {
+                        LLMModelCombo.Items.Add(new ComboBoxItem
+                        {
+                            Content = "⚙️ MOTEUR LOCAL (llama.cpp)",
+                            IsEnabled = false,
+                            FontWeight = FontWeights.Bold,
+                            Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34))
+                        });
+
+                        foreach (var profile in LlamaCppProfiles.All)
+                        {
+                            // Suffixe « cpp » : le nom du modèle seul ne suffit pas à distinguer la
+                            // version servie par Ollama de celle servie ici, et une fois la liste
+                            // refermée seul l'item sélectionné reste visible (pas son en-tête).
+                            var label = $"  {profile.ShortName} · cpp";
+
+                            // Un téléchargement en cours laisse un fichier présent mais tronqué :
+                            // le proposer ferait échouer le chargement. On affiche la progression.
+                            var progress = profile.DownloadProgress;
+                            if (progress is double pct)
+                                label = $"  {profile.ShortName} · cpp (téléchargement {pct * 100:0}%)";
+                            else if (!profile.IsReady)
+                                label = $"  {profile.ShortName} · cpp (fichier absent)";
+
+                            LLMModelCombo.Items.Add(new ComboBoxItem
+                            {
+                                Content   = label,
+                                IsEnabled = profile.IsReady,
+                                Tag       = new { Provider = "LlamaCpp", Model = profile.Id }
+                            });
                         }
                     }
 
@@ -234,6 +276,20 @@ public partial class MainWindow : Window
     /// Utile quand Med "dérive" après usage prolongé sur plusieurs patients.
     /// Pour OpenAI : no-op (service distant sans état local).
     /// </summary>
+    /// <summary>
+    /// Affiche le débit de la dernière génération dans l'en-tête. Appelé depuis le thread qui a
+    /// exécuté la requête LLM (jamais l'UI) : d'où le passage par le Dispatcher.
+    /// </summary>
+    private void OnThroughputMeasured(Services.LLM.LlmThroughputMonitor.Sample sample)
+    {
+        Dispatcher.BeginInvoke(new Action(() =>
+        {
+            ThroughputText.Text     = sample.ShortLabel;
+            ThroughputBadge.ToolTip = sample.Tooltip;
+            ThroughputBadge.Visibility = Visibility.Visible;
+        }));
+    }
+
     private async void UnloadModelBtn_Click(object sender, RoutedEventArgs e)
     {
         var provider = _currentLLMService;
@@ -366,6 +422,27 @@ public partial class MainWindow : Window
         });
     }
 
+    /// <summary>
+    /// Change le niveau de réflexion ("low" | "medium" | "high") du modèle Ollama actif.
+    /// Visible uniquement pour les modèles qui exposent ce réglage (voir CurrentModelSupportsReasoningEffort).
+    /// </summary>
+    private void ReasoningEffortCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (ReasoningEffortCombo.SelectedItem is not ComboBoxItem selected || selected.Tag is not string level)
+            return;
+
+        _llmFactory.SetReasoningEffort(level);
+        _settings.OllamaReasoningEffort = level;
+        _settings.Save();
+
+        // "off" n'est pas un niveau mais un mode du serveur : le prochain appel provoquera un
+        // redémarrage de llama-server (~6-7 s mesurés). L'annoncer évite de croire à un blocage.
+        StatusTextBlock.Text = level == Services.LLM.ReasoningLevels.Off
+            ? "🚫 Réflexion désactivée — le modèle redémarrera au prochain appel (~6 s)."
+            : $"🧠 Niveau de réflexion : {selected.Content}";
+        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
+    }
+
     private async void LLMModelCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
     {
         if (LLMModelCombo.SelectedItem is not ComboBoxItem selectedItem || selectedItem.Tag == null)
@@ -390,13 +467,47 @@ public partial class MainWindow : Window
             if (success)
             {
                 _currentLLMService = _llmFactory.GetCurrentProvider();
-                
+
+                // Note : ConsultationModeControl et les suggesters (Projet Thérapeutique, Synthèse
+                // Globale...) ont été injectés avec LiveLlmServiceProxy (voir MainWindow.xaml.cs) —
+                // ils suivent donc automatiquement ce changement, aucune mise à jour à faire ici.
+
+                // Niveau de réflexion : visible seulement pour les modèles qui le supportent
+                // (gpt-oss, Qwen3.8-27B...). On réapplique le dernier niveau choisi (ou "high" par
+                // défaut) pour que le réglage soit immédiatement actif sur le nouveau modèle.
+                if (_llmFactory.CurrentModelSupportsReasoningEffort())
+                {
+                    // Le réglage persisté peut désigner un cran qui n'existe plus (ex. "minimal",
+                    // retiré car rejeté par le template Qwen). On retombe alors sur un niveau valide
+                    // plutôt que de laisser le sélecteur sans sélection visible.
+                    var savedLevel = _settings.OllamaReasoningEffort;
+                    bool known = ReasoningEffortCombo.Items.OfType<ComboBoxItem>()
+                                                           .Any(ci => (ci.Tag as string) == savedLevel);
+                    if (!known)
+                        savedLevel = Services.LLM.ReasoningLevels.Medium;
+
+                    _llmFactory.SetReasoningEffort(savedLevel);
+                    ReasoningEffortCombo.Visibility = Visibility.Visible;
+                    foreach (var item in ReasoningEffortCombo.Items)
+                    {
+                        if (item is ComboBoxItem ci && (ci.Tag as string) == savedLevel)
+                        {
+                            ReasoningEffortCombo.SelectedItem = ci;
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    ReasoningEffortCombo.Visibility = Visibility.Collapsed;
+                }
+
                 // Sauvegarder le choix dans les paramètres
                 _settings.Save();
-                
+
                 LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(76, 175, 80)); // Vert
                 LLMStatusIndicator.ToolTip = message;
-                
+
                 StatusTextBlock.Text = message;
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
             }

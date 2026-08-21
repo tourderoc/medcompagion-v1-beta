@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Input;
@@ -455,6 +456,14 @@ namespace MedCompanion.Models
         Autre
     }
 
+    public enum TypeSuiviRecommande
+    {
+        SuiviPedopsychiatrique,        // défaut : parcours d'évaluation classique (comportement historique)
+        AucunSuiviNecessaire,          // pas de bilan/suivi pédopsychiatrique, à revoir si besoin ressenti par les parents
+        AutreSuiviRecommande,          // orthophonie, psychomotricité... (précision en texte libre)
+        OrientationStructureSpecialisee // CMP ou autre structure (précision en texte libre)
+    }
+
     public class RestitutionAuxParents : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler? PropertyChanged;
@@ -486,6 +495,77 @@ namespace MedCompanion.Models
         {
             get => _notesLibres;
             set { _notesLibres = value; Notify(nameof(NotesLibres)); }
+        }
+
+        private TypeSuiviRecommande _typeSuivi = TypeSuiviRecommande.SuiviPedopsychiatrique;
+        public TypeSuiviRecommande TypeSuivi
+        {
+            get => _typeSuivi;
+            set { _typeSuivi = value; Notify(nameof(TypeSuivi)); Notify(nameof(RequiresPrecisionSuivi)); }
+        }
+
+        private string _precisionSuivi = "";
+        /// <summary>Champ "Autre" libre, complète les cases à cocher pour AutreSuiviRecommande / OrientationStructureSpecialisee.</summary>
+        public string PrecisionSuivi
+        {
+            get => _precisionSuivi;
+            set { _precisionSuivi = value; Notify(nameof(PrecisionSuivi)); Notify(nameof(SuiviAutreLabelsText)); Notify(nameof(OrientationLabelsText)); }
+        }
+
+        public bool RequiresPrecisionSuivi =>
+            TypeSuivi == TypeSuiviRecommande.AutreSuiviRecommande ||
+            TypeSuivi == TypeSuiviRecommande.OrientationStructureSpecialisee;
+
+        // ── Cases à cocher "Autre suivi recommandé" (plusieurs possibles) ──
+        private bool _suiviOrthophonique;
+        public bool SuiviOrthophonique { get => _suiviOrthophonique; set { _suiviOrthophonique = value; Notify(nameof(SuiviOrthophonique)); Notify(nameof(SuiviAutreLabelsText)); } }
+
+        private bool _suiviPsychologique;
+        public bool SuiviPsychologique { get => _suiviPsychologique; set { _suiviPsychologique = value; Notify(nameof(SuiviPsychologique)); Notify(nameof(SuiviAutreLabelsText)); } }
+
+        private bool _suiviPsychomoteur;
+        public bool SuiviPsychomoteur { get => _suiviPsychomoteur; set { _suiviPsychomoteur = value; Notify(nameof(SuiviPsychomoteur)); Notify(nameof(SuiviAutreLabelsText)); } }
+
+        private bool _suiviOrthoptique;
+        public bool SuiviOrthoptique { get => _suiviOrthoptique; set { _suiviOrthoptique = value; Notify(nameof(SuiviOrthoptique)); Notify(nameof(SuiviAutreLabelsText)); } }
+
+        /// <summary>Texte combiné des cases cochées + champ "Autre" pour AutreSuiviRecommande.</summary>
+        public string SuiviAutreLabelsText
+        {
+            get
+            {
+                var items = new List<string>();
+                if (SuiviOrthophonique) items.Add("un suivi orthophonique");
+                if (SuiviPsychologique) items.Add("un suivi psychologique");
+                if (SuiviPsychomoteur) items.Add("un suivi psychomoteur");
+                if (SuiviOrthoptique) items.Add("un suivi orthoptique");
+                if (!string.IsNullOrWhiteSpace(PrecisionSuivi)) items.Add(PrecisionSuivi.Trim());
+                return string.Join(", ", items);
+            }
+        }
+
+        // ── Cases à cocher "Orientation structure spécialisée" (plusieurs possibles) ──
+        private bool _orientationCmp;
+        public bool OrientationCmp { get => _orientationCmp; set { _orientationCmp = value; Notify(nameof(OrientationCmp)); Notify(nameof(OrientationLabelsText)); } }
+
+        private bool _orientationHopitalJour;
+        public bool OrientationHopitalJour { get => _orientationHopitalJour; set { _orientationHopitalJour = value; Notify(nameof(OrientationHopitalJour)); Notify(nameof(OrientationLabelsText)); } }
+
+        private bool _orientationItep;
+        public bool OrientationItep { get => _orientationItep; set { _orientationItep = value; Notify(nameof(OrientationItep)); Notify(nameof(OrientationLabelsText)); } }
+
+        /// <summary>Texte combiné des cases cochées + champ "Autre" pour OrientationStructureSpecialisee.</summary>
+        public string OrientationLabelsText
+        {
+            get
+            {
+                var items = new List<string>();
+                if (OrientationCmp) items.Add("le CMP (Centre Médico-Psychologique)");
+                if (OrientationHopitalJour) items.Add("l'hôpital de jour");
+                if (OrientationItep) items.Add("l'ITEP");
+                if (!string.IsNullOrWhiteSpace(PrecisionSuivi)) items.Add(PrecisionSuivi.Trim());
+                return string.Join(", ", items);
+            }
         }
 
         public string MentionLegale

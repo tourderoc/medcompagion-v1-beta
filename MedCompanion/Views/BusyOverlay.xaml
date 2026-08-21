@@ -83,6 +83,22 @@
                            Margin="0,0,0,15"
                            Visibility="{Binding Step, Mode=OneWay, Converter={StaticResource StringToVis}}"/>
 
+                <!-- Aperçu en direct du texte généré (streaming). Masqué si vide.
+                     Hauteur fixe et ancrage en bas : le texte défile vers le haut comme une console,
+                     sans faire sauter la taille de la fenêtre à chaque token reçu. -->
+                <Border Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="1"
+                        CornerRadius="6" Padding="12,10" Margin="0,0,0,15"
+                        MaxWidth="520" Height="120"
+                        ClipToBounds="True"
+                        Visibility="{Binding LivePreview, Mode=OneWay, Converter={StaticResource StringToVis}}">
+                    <TextBlock Text="{Binding LivePreview, Mode=OneWay}"
+                               FontSize="12"
+                               FontFamily="Consolas, Courier New, monospace"
+                               Foreground="#495057"
+                               TextWrapping="Wrap"
+                               VerticalAlignment="Bottom"/>
+                </Border>
+
                 <!-- Barre de progression -->
                 <ProgressBar Height="8"
                              Margin="0,0,0,20"

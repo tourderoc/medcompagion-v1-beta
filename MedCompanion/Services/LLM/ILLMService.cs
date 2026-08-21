@@ -38,14 +38,19 @@ namespace MedCompanion.Services.LLM
             string? forceModel = null);
 
         /// <summary>
-        /// Chat avec système prompt + historique de messages
+        /// Chat avec système prompt + historique de messages.
+        /// <paramref name="numCtx"/> : fenêtre de contexte à utiliser (tokens). Null = défaut du provider
+        /// (dimensionné pour les usages longs comme la dictée). À réduire explicitement pour les appels
+        /// sur des textes courts (analyse de document, etc.) — évite le surcoût VRAM/temps d'une fenêtre
+        /// surdimensionnée inutilement. Ignoré par les providers cloud (pas de notion de num_ctx).
         /// </summary>
         Task<(bool success, string result, string? error)> ChatAsync(
             string systemPrompt,
             List<(string role, string content)> messages,
             int maxTokens = 1500,
             System.Threading.CancellationToken cancellationToken = default,
-            string? forceModel = null);
+            string? forceModel = null,
+            int? numCtx = null);
 
         /// <summary>
         /// Chat avec streaming - les tokens sont envoyés au fur et à mesure via le callback

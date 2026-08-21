@@ -164,6 +164,9 @@ public partial class MainWindow : Window
         {
             System.Diagnostics.Debug.WriteLine($"Erreur lors de la sauvegarde de l'état de la fenêtre: {ex.Message}");
         }
+
+        // Éviter de laisser llama-server.exe orphelin (VRAM occupée) après fermeture de l'app.
+        Services.LLM.LlamaCppServerManager.Stop();
     }
 
     /// <summary>

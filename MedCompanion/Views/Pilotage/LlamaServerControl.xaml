@@ -1,0 +1,134 @@
+<UserControl x:Class="MedCompanion.Views.Pilotage.LlamaServerControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:conv="clr-namespace:MedCompanion.Converters">
+    <UserControl.Resources>
+        <SolidColorBrush x:Key="Bg"        Color="#1E1E1E"/>
+        <SolidColorBrush x:Key="Card"      Color="#2D2D2D"/>
+        <SolidColorBrush x:Key="Border1"   Color="#3D3D3D"/>
+        <SolidColorBrush x:Key="TextMain"  Color="#FFFFFF"/>
+        <SolidColorBrush x:Key="TextDim"   Color="#888888"/>
+        <SolidColorBrush x:Key="Accent"    Color="#E67E22"/>
+        <conv:StringNotWhiteSpaceToVisibilityConverter x:Key="StrToVis"/>
+
+        <Style x:Key="Btn" TargetType="Button">
+            <Setter Property="Background" Value="#3D3D3D"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="14,7"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="B" Background="{TemplateBinding Background}" CornerRadius="5"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="B" Property="Opacity" Value="0.8"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="B" Property="Opacity" Value="0.35"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="BtnAccent" TargetType="Button" BasedOn="{StaticResource Btn}">
+            <Setter Property="Background" Value="{StaticResource Accent}"/>
+        </Style>
+
+        <Style x:Key="Lbl" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextDim}"/>
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+
+        <Style x:Key="Val" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMain}"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Background="{StaticResource Bg}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <!-- ═══ ÉTAT DU SERVEUR + MESURES ═══ -->
+        <Border Grid.Row="0" Background="{StaticResource Card}" BorderBrush="{StaticResource Border1}"
+                BorderThickness="0,0,0,1" Padding="20,14">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <StackPanel Grid.Column="0">
+                    <StackPanel Orientation="Horizontal">
+                        <Ellipse x:Name="StateDot" Width="10" Height="10" Fill="#888888"
+                                 VerticalAlignment="Center" Margin="0,0,9,0"/>
+                        <TextBlock x:Name="StateText" Text="Serveur arrêté" Style="{StaticResource Val}"
+                                   FontSize="15"/>
+                        <TextBlock x:Name="LoadedModelText" Text="" Style="{StaticResource Lbl}"
+                                   Margin="12,0,0,0"/>
+                    </StackPanel>
+
+                    <!-- Mesures : c'est ce qui rend les réglages honnêtes. Un paramètre modifié
+                         sans mesure a déjà coûté 30 % de débit sans qu'on le voie. -->
+                    <StackPanel Orientation="Horizontal" Margin="19,12,0,0">
+                        <StackPanel Margin="0,0,28,0">
+                            <TextBlock Text="VRAM dédiée" Style="{StaticResource Lbl}"/>
+                            <TextBlock x:Name="VramDedicatedText" Text="—" Style="{StaticResource Val}"/>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,28,0">
+                            <TextBlock Text="Mémoire partagée" Style="{StaticResource Lbl}"/>
+                            <TextBlock x:Name="VramSharedText" Text="—" Style="{StaticResource Val}"/>
+                        </StackPanel>
+                        <StackPanel Margin="0,0,28,0">
+                            <TextBlock Text="VRAM libre (carte)" Style="{StaticResource Lbl}"/>
+                            <TextBlock x:Name="VramFreeText" Text="—" Style="{StaticResource Val}"/>
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Dernière génération" Style="{StaticResource Lbl}"/>
+                            <TextBlock x:Name="ThroughputText" Text="—" Style="{StaticResource Val}"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Avertissement de débordement, non bloquant -->
+                    <Border x:Name="OverflowWarning" Background="#4A2C1A" BorderBrush="#E67E22"
+                            BorderThickness="1" CornerRadius="5" Padding="10,7" Margin="19,12,0,0"
+                            HorizontalAlignment="Left" Visibility="Collapsed">
+                        <TextBlock x:Name="OverflowWarningText" Foreground="#F5B041" FontSize="11"
+                                   TextWrapping="Wrap" MaxWidth="620"/>
+                    </Border>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                    <CheckBox x:Name="EngineEnabledCheck" Content="Moteur activé"
+                              Foreground="White" FontSize="12" VerticalAlignment="Center"
+                              Margin="0,0,16,0"
+                              ToolTip="Décoché : tous les modèles repassent par Ollama. Re-sélectionnez le modèle pour appliquer."
+                              Checked="EngineEnabledCheck_Changed" Unchecked="EngineEnabledCheck_Changed"/>
+                    <Button x:Name="RefreshBtn"  Content="↻ Actualiser" Style="{StaticResource Btn}" Click="RefreshBtn_Click"/>
+                    <Button x:Name="RestartBtn"  Content="⟳ Redémarrer" Style="{StaticResource Btn}" Click="RestartBtn_Click"/>
+                    <Button x:Name="StopBtn"     Content="⏻ Arrêter"    Style="{StaticResource Btn}" Click="StopBtn_Click"
+                            Background="#A93226"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- ═══ PROFILS ═══ -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="20,16">
+            <StackPanel x:Name="ProfilesPanel"/>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

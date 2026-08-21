@@ -1294,6 +1294,7 @@ namespace MedCompanion.ViewModels
                     else             TranscriptionInput  += text;
                 });
                 _whisperService.SessionResetRequested += ()   => Dispatch(ResetDictationSession);
+                _whisperService.EngineStateChanged    += st   => Dispatch(() => WhisperState = st);
                 _whisperService.AudioLevelChanged     += lvl  => Dispatch(() => MicLevelPct = Math.Min(100, (int)(lvl * 600)));
                 _whisperService.BatchProgressChanged  += pct  => Dispatch(() =>
                 {
@@ -1302,6 +1303,8 @@ namespace MedCompanion.ViewModels
                     if (wasNearEnd && pct < 10)
                         _ = FlashBatchSentAsync();
                 });
+
+                RefreshAvailableMicrophones();
             }
         }
 
@@ -1476,6 +1479,116 @@ namespace MedCompanion.ViewModels
             }
         }
         public string WhisperModelLabel => _selectedWhisperModel == WhisperModelSize.LargeV3 ? "🔊 Large-v3" : "🔊 Medium";
+
+        // ── État du moteur Whisper (indicateur visuel) ──────────────────────────
+        // Objectif : ne jamais commencer à parler avant que le micro soit réellement ouvert.
+        // Pendant "Chargement"/"Vérification", rien n'est capturé — l'indicateur doit être sans ambiguïté.
+
+        private WhisperEngineState _whisperState = WhisperEngineState.Unloaded;
+        public WhisperEngineState WhisperState
+        {
+            get => _whisperState;
+            set
+            {
+                if (SetProperty(ref _whisperState, value))
+                {
+                    OnPropertyChanged(nameof(WhisperStateLabel));
+                    OnPropertyChanged(nameof(WhisperStateColor));
+                    OnPropertyChanged(nameof(WhisperStateTooltip));
+                }
+            }
+        }
+
+        public string WhisperStateLabel => _whisperState switch
+        {
+            WhisperEngineState.Unloaded  => "Micro en veille",
+            WhisperEngineState.Loading   => "Chargement du modèle…",
+            WhisperEngineState.Warmup    => "Vérification du moteur…",
+            WhisperEngineState.Ready     => "Moteur prêt",
+            WhisperEngineState.Recording => "À l'écoute",
+            _                            => "Moteur en erreur"
+        };
+
+        /// <summary>Couleur du voyant : gris = veille, orange = en préparation (ne pas parler),
+        /// vert = capture réelle, rouge = erreur.</summary>
+        public string WhisperStateColor => _whisperState switch
+        {
+            WhisperEngineState.Unloaded  => "#95A5A6",
+            WhisperEngineState.Loading   => "#F39C12",
+            WhisperEngineState.Warmup    => "#F39C12",
+            WhisperEngineState.Ready     => "#27AE60",
+            WhisperEngineState.Recording => "#E74C3C",
+            _                            => "#C0392B"
+        };
+
+        public string WhisperStateTooltip => _whisperState switch
+        {
+            WhisperEngineState.Unloaded  => "Modèle déchargé de la carte graphique. Il se recharge au clic sur Dicter (1-2 s).",
+            WhisperEngineState.Loading   => "Chargement en cours — le micro n'est pas encore ouvert, attendez avant de parler.",
+            WhisperEngineState.Warmup    => "Test du moteur GPU — le micro n'est pas encore ouvert, attendez avant de parler.",
+            WhisperEngineState.Ready     => "Modèle chargé et vérifié. Le micro s'ouvrira immédiatement au clic sur Dicter.",
+            WhisperEngineState.Recording => "Micro ouvert, transcription en cours. Vous pouvez parler.",
+            _                            => "Le moteur n'a pas démarré correctement — consultez le message de statut."
+        };
+
+        // ── Micro sélectionné pour la dictée ────────────────────────────────────
+
+        private System.Collections.ObjectModel.ObservableCollection<string> _availableMicrophones = new();
+        public System.Collections.ObjectModel.ObservableCollection<string> AvailableMicrophones
+        {
+            get => _availableMicrophones;
+            set => SetProperty(ref _availableMicrophones, value);
+        }
+
+        private string? _selectedMicrophoneName;
+        public string? SelectedMicrophoneName
+        {
+            get => _selectedMicrophoneName;
+            set
+            {
+                if (SetProperty(ref _selectedMicrophoneName, value))
+                {
+                    ApplySelectedMicrophoneToService();
+                    var settings = AppSettings.Load();
+                    settings.MicrophoneDeviceName = value ?? "";
+                    settings.Save();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Rafraîchit la liste des micros détectés (les périphériques USB peuvent changer
+        /// entre deux sessions) — à appeler à l'ouverture du sélecteur.
+        /// </summary>
+        public void RefreshAvailableMicrophones()
+        {
+            var mics = WhisperStreamingService.GetAvailableMicrophones();
+            AvailableMicrophones = new System.Collections.ObjectModel.ObservableCollection<string>(
+                mics.Select(m => m.Name));
+
+            // Si le micro sauvegardé n'est plus détecté (débranché), on retombe sur le défaut système
+            // sans écraser le réglage sauvegardé (il peut être rebranché plus tard).
+            if (!string.IsNullOrEmpty(_selectedMicrophoneName) && !AvailableMicrophones.Contains(_selectedMicrophoneName))
+                return;
+
+            if (string.IsNullOrEmpty(_selectedMicrophoneName) && AvailableMicrophones.Count > 0)
+            {
+                var saved = AppSettings.Load().MicrophoneDeviceName;
+                _selectedMicrophoneName = !string.IsNullOrEmpty(saved) && AvailableMicrophones.Contains(saved)
+                    ? saved
+                    : AvailableMicrophones[0];
+                OnPropertyChanged(nameof(SelectedMicrophoneName));
+            }
+            ApplySelectedMicrophoneToService();
+        }
+
+        private void ApplySelectedMicrophoneToService()
+        {
+            if (_whisperService == null || string.IsNullOrEmpty(_selectedMicrophoneName)) return;
+            var mics = WhisperStreamingService.GetAvailableMicrophones();
+            var match = mics.FirstOrDefault(m => m.Name == _selectedMicrophoneName);
+            _whisperService.DeviceNumber = match.Name != null ? match.Index : (int?)null;
+        }
 
         // ── Indicateurs visuels enregistrement ────────────────────────────────
 
@@ -4214,6 +4327,18 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
             }
         }
 
+        // Index ComboBox (0=SuiviPedopsychiatrique,1=AucunSuiviNecessaire,2=AutreSuiviRecommande,3=OrientationStructureSpecialisee)
+        public int RestitutionTypeSuiviIndex
+        {
+            get => (int)_restitution.TypeSuivi;
+            set
+            {
+                _restitution.TypeSuivi = (TypeSuiviRecommande)value;
+                OnPropertyChanged(nameof(RestitutionTypeSuiviIndex));
+                OnPropertyChanged(nameof(Restitution));
+            }
+        }
+
         private bool _isSelectingRestitutionTypeMode = false;
         public bool IsSelectingRestitutionTypeMode
         {
@@ -4276,6 +4401,9 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
 
         private string _reviewDefis = "";
         public string ReviewDefis { get => _reviewDefis; set => SetProperty(ref _reviewDefis, value); }
+
+        private string _reviewBilansSynthese = "";
+        public string ReviewBilansSynthese { get => _reviewBilansSynthese; set => SetProperty(ref _reviewBilansSynthese, value); }
 
         private bool _isGeneratingRestitution = false;
         public bool IsGeneratingRestitution
@@ -4624,10 +4752,13 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                 var raw = jsonRaw;
 
                 // Remplir les champs éditables
+                var hasBilansTag = raw.Contains("===BILANS===");
+                var defisEndTag  = hasBilansTag ? "===BILANS===" : "===FIN===";
                 ReviewIntro   = ExtractSection(raw, "===INTRO===",   "===MOTIF===");
                 ReviewMotif   = ExtractSection(raw, "===MOTIF===",   "===FORCES===");
                 ReviewForces  = ExtractBullets(ExtractSection(raw, "===FORCES===", "===DEFIS==="));
-                ReviewDefis   = ExtractBullets(ExtractSection(raw, "===DEFIS===",  "===FIN==="));
+                ReviewDefis   = ExtractBullets(ExtractSection(raw, "===DEFIS===",  defisEndTag));
+                ReviewBilansSynthese = hasBilansTag ? ExtractSection(raw, "===BILANS===", "===FIN===") : "";
 
                 // Fallback si le LLM n'a pas respecté les balises
                 if (string.IsNullOrWhiteSpace(ReviewIntro) && string.IsNullOrWhiteSpace(ReviewMotif))
@@ -4687,11 +4818,121 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                     : "<ul>" + string.Join("", ImportedDocuments.Select(d =>
                         $"<li>{System.Net.WebUtility.HtmlEncode(d.FileName)}</li>")) + "</ul>";
 
+                // Synthèse accessible des bilans pour les parents (bloc optionnel, seulement si des bilans ont été fournis)
+                var bilansSyntheseHtml = string.IsNullOrWhiteSpace(ReviewBilansSynthese) ? "" : $@"
+<div class=""timeline-section"">
+  <div class=""timeline-title"">Vos bilans en résumé</div>
+  <div class=""timeline-note"">{System.Net.WebUtility.HtmlEncode(ReviewBilansSynthese).Replace("\n", "<br/>")}</div>
+</div>";
+
+                // Parcours / suite recommandée + conclusion — dépend du choix explicite du clinicien
+                // (jamais laissé à l'appréciation du LLM). Cas par défaut = comportement historique inchangé.
+                var precisionSuiviValue = _restitution.TypeSuivi switch
+                {
+                    TypeSuiviRecommande.AutreSuiviRecommande => _restitution.SuiviAutreLabelsText,
+                    TypeSuiviRecommande.OrientationStructureSpecialisee => _restitution.OrientationLabelsText,
+                    _ => ""
+                };
+                var precisionSuiviHtml = System.Net.WebUtility.HtmlEncode(precisionSuiviValue);
+                string parcoursSuite;
+                string conclusionText;
+                switch (_restitution.TypeSuivi)
+                {
+                    case TypeSuiviRecommande.AucunSuiviNecessaire:
+                        parcoursSuite = @"
+<div class=""timeline-section"">
+  <div class=""timeline-title"">Conclusion de l'évaluation</div>
+  <div class=""timeline-note"">Aucun bilan ni suivi pédopsychiatrique n'est nécessaire à ce jour.</div>
+</div>";
+                        conclusionText = "N'hésitez pas à me recontacter si vous ressentez le besoin d'un nouvel avis.";
+                        break;
+                    case TypeSuiviRecommande.AutreSuiviRecommande:
+                        parcoursSuite = $@"
+<div class=""timeline-section"">
+  <div class=""timeline-title"">Conclusion de l'évaluation</div>
+  <div class=""timeline-note"">Un suivi pédopsychiatrique ne semble pas nécessaire à ce jour. Un accompagnement en {precisionSuiviHtml} est en revanche recommandé.</div>
+</div>";
+                        conclusionText = "N'hésitez pas à me recontacter si vous ressentez le besoin d'un nouvel avis pédopsychiatrique.";
+                        break;
+                    case TypeSuiviRecommande.OrientationStructureSpecialisee:
+                        parcoursSuite = $@"
+<div class=""timeline-section"">
+  <div class=""timeline-title"">Conclusion de l'évaluation</div>
+  <div class=""timeline-note"">Je vous oriente vers {precisionSuiviHtml} pour la suite de l'accompagnement.</div>
+</div>";
+                        conclusionText = "N'hésitez pas à me recontacter si besoin.";
+                        break;
+                    default: // SuiviPedopsychiatrique — comportement historique
+                        parcoursSuite = $@"
+<div class=""timeline-section"">
+  <div class=""timeline-title"">Parcours d'Évaluation</div>
+  <div class=""timeline-note"">Le nombre de séances est mentionné à titre purement indicatif et peut être amené à varier selon le rythme et les besoins de l'enfant.</div>
+  <div class=""timeline-track"">
+    <div class=""timeline-step"">
+      <div class=""step-dot"">1</div>
+      <div class=""step-name"">Première Rencontre</div>
+      <div class=""step-desc"">Entretien initial et pose des bases d'observation.</div>
+    </div>
+    <div class=""timeline-step"">
+      <div class=""step-dot"">2</div>
+      <div class=""step-name"">{_restitution.NombreSeances} Séance(s) d'Évaluation</div>
+      <div class=""step-desc"">Observations cliniques ludiques complémentaires.</div>
+    </div>
+    <div class=""timeline-step"">
+      <div class=""step-dot"">3</div>
+      <div class=""step-name"">Projet de Soin</div>
+      <div class=""step-desc"">Bilan partagé et plan de soin personnalisé.</div>
+    </div>
+  </div>
+</div>";
+                        conclusionText = "À l'issue de ces étapes d'évaluation, un projet de soin personnalisé adapté sera proposé en fonction des constats.";
+                        break;
+                }
+
                 // Données fixes C#
                 var doctorName    = AppSettings.Load().Medecin;
                 var mentionLegale = _restitution.MentionLegale;
                 var mentionBlock  = string.IsNullOrWhiteSpace(mentionLegale) ? "" :
                     $"<div class=\"legal\">⚖️ {mentionLegale}</div>";
+
+                // Page Parent'aile (QR site + QR accès personnel) : provisionne automatiquement le
+                // token du patient (réutilise le token actif existant s'il y en a déjà un, n'en crée
+                // jamais un doublon). Best-effort : une erreur ici (réseau, VPS injoignable...) ne doit
+                // jamais empêcher la génération du reste de la restitution.
+                var parentailePageHtml = "";
+                if (_currentPatient != null)
+                {
+                    try
+                    {
+                        var tokenService = new TokenService();
+                        var qrService    = new QRCodeService();
+                        var (token, _, _) = await tokenService.GetOrCreateTokenAsync(_currentPatient.Id, _currentPatient.NomComplet);
+
+                        var siteQrBase64  = Convert.ToBase64String(qrService.GetQrPngBytes("https://www.parentaile.fr"));
+                        var accesQrBase64 = Convert.ToBase64String(qrService.GetQrPngBytes(qrService.GetTokenUrl(token.TokenId)));
+
+                        parentailePageHtml = $@"
+<div class=""parentaile-page"">
+  <div class=""parentaile-title"">🦋 Parent'aile</div>
+  <div class=""parentaile-subtitle"">Parfois, il suffit d'en parler.</div>
+  <p class=""parentaile-intro"">Parent'aile est un espace de soutien entre parents, et un moyen simple de rester en contact avec le cabinet entre deux consultations.</p>
+  <div class=""parentaile-qr-grid"">
+    <div class=""qr-card"">
+      <img class=""qr-img"" src=""data:image/png;base64,{siteQrBase64}""/>
+      <div class=""qr-caption"">Découvrir Parent'aile<br/><span>www.parentaile.fr</span></div>
+    </div>
+    <div class=""qr-card"">
+      <img class=""qr-img"" src=""data:image/png;base64,{accesQrBase64}""/>
+      <div class=""qr-caption"">Votre accès personnel<br/><span>Messagerie avec le cabinet</span></div>
+    </div>
+  </div>
+</div>";
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[Restitution] Erreur génération page Parent'aile : {ex.Message}");
+                    }
+                }
 
                 var html = template
                     .Replace("{{DOCTOR_NAME}}",    System.Net.WebUtility.HtmlEncode(doctorName))
@@ -4700,8 +4941,11 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                     .Replace("{{BILANS_FOURNIS}}", bilansFournis)
                     .Replace("{{FORCES}}",         BuildListFromLines(ReviewForces))
                     .Replace("{{DEFIS}}",          BuildListFromLines(ReviewDefis))
-                    .Replace("{{NOMBRE_SEANCES}}", _restitution.NombreSeances.ToString())
-                    .Replace("{{MENTION_LEGALE}}", mentionBlock);
+                    .Replace("{{BILANS_SYNTHESE}}", bilansSyntheseHtml)
+                    .Replace("{{PARCOURS_SUITE}}", parcoursSuite)
+                    .Replace("{{CONCLUSION_TEXT}}", conclusionText)
+                    .Replace("{{MENTION_LEGALE}}", mentionBlock)
+                    .Replace("{{PARENTAILE_PAGE}}", parentailePageHtml);
 
                 if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
                 {
@@ -4842,6 +5086,26 @@ pdf_path: ""{savedPdf.Replace("\\", "\\\\")}""
                     "Salutation : \"Chers parents,\" — ton chaleureux."
             };
 
+            var precisionSuivi = _restitution.TypeSuivi switch
+            {
+                TypeSuiviRecommande.AutreSuiviRecommande => _restitution.SuiviAutreLabelsText,
+                TypeSuiviRecommande.OrientationStructureSpecialisee => _restitution.OrientationLabelsText,
+                _ => ""
+            };
+            var suiviInstruction = _restitution.TypeSuivi switch
+            {
+                TypeSuiviRecommande.AucunSuiviNecessaire =>
+                    "IMPORTANT : aucun suivi ni bilan pédopsychiatrique n'est prévu à l'issue de cette évaluation. " +
+                    "Ne mentionne AUCUNE poursuite de séances ni prochain rendez-vous dans l'intro ou le motif.",
+                TypeSuiviRecommande.AutreSuiviRecommande =>
+                    $"IMPORTANT : aucun suivi pédopsychiatrique n'est prévu. Un accompagnement en {(string.IsNullOrWhiteSpace(precisionSuivi) ? "un autre domaine" : precisionSuivi)} est recommandé à la place. " +
+                    "Ne mentionne AUCUNE poursuite de séances pédopsychiatriques dans l'intro ou le motif.",
+                TypeSuiviRecommande.OrientationStructureSpecialisee =>
+                    $"IMPORTANT : le suivi va être orienté vers {(string.IsNullOrWhiteSpace(precisionSuivi) ? "une structure spécialisée" : precisionSuivi)}, pas de poursuite en cabinet. " +
+                    "Ne mentionne AUCUNE poursuite de séances pédopsychiatriques dans l'intro ou le motif.",
+                _ => ""
+            };
+
             var donnees = new System.Text.StringBuilder();
 
             // Deux sources possibles : la consultation active en cours de saisie (InterrogatoireBlocks,
@@ -4891,11 +5155,21 @@ pdf_path: ""{savedPdf.Replace("\\", "\\\\")}""
             }
 
             var hasDonnees = donnees.Length > 0;
+            var hasBilans  = ImportedDocuments.Any(d => !string.IsNullOrWhiteSpace(d.DocumentSynthesis));
+
+            var bilansInstruction = hasBilans
+                ? "- BILANS : rédige une synthèse accessible (5-8 lignes) de ce que disent ensemble les bilans fournis " +
+                  "(sans jargon technique, sans réciter chaque bilan séparément), puis une conclusion simple d'1-2 phrases pour les parents. "
+                : "";
+            var bilansSection = hasBilans
+                ? "===BILANS===\n[Synthèse accessible des bilans fournis + conclusion simple pour les parents]\n"
+                : "";
 
             return $@"Tu es un pédopsychiatre. Rédige le document de restitution pour {patientName} (consultation du {dateStr}).
 
 TON ET SALUTATION : {tonInstruction}
 
+{(string.IsNullOrEmpty(suiviInstruction) ? "" : suiviInstruction + "\n")}
 {(hasDonnees ? $"DONNÉES CLINIQUES :\n{donnees}" : "AUCUNE DONNÉE CLINIQUE DISPONIBLE.")}
 
 RÈGLES ABSOLUES :
@@ -4903,6 +5177,7 @@ RÈGLES ABSOLUES :
 - Si les données sont insuffisantes : écris exactement ""Aucun élément identifié lors de cette première rencontre."" — ne jamais inventer.
 - FORCES et DEFIS : 2 à 3 éléments maximum, phrases courtes (débuter chaque élément par un tiret -).
 - L'intro cite la date {dateStr} et respecte strictement le ton indiqué.
+{bilansInstruction}
 
 RETOURNE UNIQUEMENT ce texte structuré (copie exactement les balises ===) :
 ===INTRO===
@@ -4915,7 +5190,7 @@ RETOURNE UNIQUEMENT ce texte structuré (copie exactement les balises ===) :
 ===DEFIS===
 - [Défi 1]
 - [Défi 2]
-===FIN===";
+{bilansSection}===FIN===";
         }
 
         private void OpenRestitutionFile()
@@ -5109,7 +5384,13 @@ PUCES :";
 
                 if (!ok || string.IsNullOrWhiteSpace(result))
                 {
-                    SuiviStatusMessage = $"❌ Erreur LLM : {err} (transcription conservée)";
+                    // Réponse vide sans erreur : le modèle a répondu mais n'a rien produit
+                    // d'exploitable (budget de tokens épuisé par le raisonnement, refus...).
+                    // Sans ce cas distinct, on affichait « Erreur LLM :  » sans aucun message.
+                    var detail = !string.IsNullOrWhiteSpace(err)
+                        ? err
+                        : "le modèle a renvoyé une réponse vide (budget de tokens probablement épuisé) — réessayez";
+                    SuiviStatusMessage = $"❌ Erreur LLM : {detail} (transcription conservée)";
                     return;
                 }
 
@@ -5418,6 +5699,7 @@ source: ""MedCompanion""
 
                     _whisperService.Mode                 = UseBatchMode ? RecordingMode.Batch : RecordingMode.Streaming;
                     _whisperService.BatchDurationSeconds = BatchDurationSeconds;
+                    ApplySelectedMicrophoneToService();
                     var modelManager = new WhisperModelManager { ModelSize = _selectedWhisperModel };
                     await _whisperService.StartAsync(modelManager);
                     IsRecording = true;

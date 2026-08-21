@@ -102,6 +102,20 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
+        /// Récupère le token actif existant du patient, ou en crée un nouveau s'il n'en a pas.
+        /// Utilisé pour la génération automatique de la page d'accès Parent'aile dans la restitution,
+        /// où on ne veut jamais faire échouer la génération du PDF ni dupliquer un token existant.
+        /// </summary>
+        public async Task<(PatientToken Token, bool FirebaseOk, string? FirebaseError)> GetOrCreateTokenAsync(string patientId, string patientDisplayName)
+        {
+            var existing = await GetTokenByPatientIdAsync(patientId);
+            if (existing != null)
+                return (existing, true, null);
+
+            return await CreateTokenAsync(patientId, patientDisplayName);
+        }
+
+        /// <summary>
         /// Récupère tous les tokens (actifs et révoqués)
         /// </summary>
         public async Task<List<PatientToken>> GetAllTokensAsync()

@@ -214,7 +214,8 @@ namespace MedCompanion.Services.LLM
             List<(string role, string content)> messages,
             int maxTokens = 1500,
             System.Threading.CancellationToken cancellationToken = default,
-            string? forceModel = null)
+            string? forceModel = null,
+            int? numCtx = null) // Sans effet côté cloud (pas de notion de num_ctx/KV cache local)
         {
             if (!IsConfigured())
             {
