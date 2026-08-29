@@ -11,7 +11,7 @@ namespace MedCompanion.Services.LLM
     /// <summary>
     /// Provider LLM pour Ollama (modèles locaux)
     /// </summary>
-    public class OllamaLLMProvider : ILLMService
+    public class OllamaLLMProvider : ILLMService, IStructuredOutputService
     {
         private readonly HttpClient _httpClient;
         private readonly string _baseUrl;
@@ -330,6 +330,90 @@ namespace MedCompanion.Services.LLM
             catch (Exception ex)
             {
                 return (false, "", $"Erreur inattendue: {ex.Message}");
+            }
+        }
+
+        // ── Sortie structurée (IStructuredOutputService) ──────────────────────
+
+        /// <summary>
+        /// Ollama compile le schéma passé dans <c>format</c> en grammaire, comme llama.cpp — c'est
+        /// le même moteur en dessous. Disponible sur toutes les versions que l'app cible.
+        /// </summary>
+        public bool SupportsStructuredOutput => true;
+
+        public async Task<(bool success, string result, string? error)> GenerateJsonAsync(
+            string prompt,
+            string schemaName,
+            string jsonSchema,
+            int maxTokens = 1500,
+            System.Threading.CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                var activeModel = _currentModel;
+
+                // Le schéma doit partir en objet JSON, pas en chaîne échappée.
+                using var schemaDoc = JsonDocument.Parse(jsonSchema);
+
+                var requestBody = new
+                {
+                    model    = activeModel,
+                    messages = new object[] { new { role = "user", content = prompt } },
+                    stream   = false,
+                    // Pas de réflexion sous contrainte : elle ne pourrait pas être exprimée dans le
+                    // schéma, et le budget de tokens n'a donc rien à absorber.
+                    think    = false,
+                    format   = schemaDoc.RootElement.Clone(),
+                    options  = new
+                    {
+                        num_predict = maxTokens,
+                        // On réutilise la fenêtre déjà en place : demander une autre taille forcerait
+                        // Ollama à recharger le modèle (plusieurs secondes et un pic de VRAM).
+                        num_ctx     = EffectiveNumCtx(activeModel, DefaultNumCtx),
+                        temperature = 0.0,
+                        num_gpu     = 99
+                    }
+                };
+
+                var json = JsonSerializer.Serialize(requestBody);
+                var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
+
+                var response = await _httpClient.PostAsync($"{_baseUrl}/api/chat", httpContent, cancellationToken).ConfigureAwait(false);
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+
+                if (!response.IsSuccessStatusCode)
+                    return (false, "", $"Erreur {response.StatusCode}: {responseBody}");
+
+                using var doc = JsonDocument.Parse(responseBody);
+                ReportThroughput(doc.RootElement, activeModel);
+
+                if (doc.RootElement.TryGetProperty("message", out var messageObj) &&
+                    messageObj.TryGetProperty("content", out var contentProp))
+                {
+                    var content = contentProp.GetString() ?? "";
+
+                    // Ollama signale par done_reason="length" une génération arrêtée au plafond.
+                    // Le JSON est alors tronqué : le dire ici évite de faire croire à un problème
+                    // de format côté appelant.
+                    if (doc.RootElement.TryGetProperty("done_reason", out var reason) &&
+                        reason.GetString() == "length")
+                    {
+                        return (false, content,
+                            $"Réponse coupée : le modèle a atteint le plafond de {maxTokens} tokens sans terminer.");
+                    }
+
+                    return (true, content, null);
+                }
+
+                return (false, "", "Format de réponse inattendu");
+            }
+            catch (TaskCanceledException ex) when (cancellationToken.IsCancellationRequested)
+            {
+                throw new OperationCanceledException("Génération annulée", ex, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                return (false, "", $"Erreur : {ex.Message}");
             }
         }
 

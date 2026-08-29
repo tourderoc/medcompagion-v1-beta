@@ -79,6 +79,9 @@ public partial class MainWindow : Window
     /// ce cas (évite un niveau d'indirection inutile).</summary>
     private ILLMService _llmServiceProxy = null!;
 
+    /// <summary>Modèle affecté à chaque étape de consultation, et bascule automatique.</summary>
+    private Services.LLM.EtapeModeleService _etapeModeles = null!;
+
     private WhisperStreamingService? _whisperStreamingService;
     private readonly LLMGatewayService _llmGatewayService; // ✅ NOUVEAU - Gateway centralisé
     
@@ -161,6 +164,12 @@ public partial class MainWindow : Window
         _llmFactory.InitializeAsync();
         _currentLLMService = _llmFactory.GetCurrentProvider();
         _llmServiceProxy = new LiveLlmServiceProxy(_llmFactory);
+
+        // Le sélecteur de l'en-tête suit désormais TOUTE bascule, y compris celles déclenchées par
+        // le code (étapes de consultation). Voir OnActiveModelChanged dans MainWindow.LLM.cs.
+        _llmFactory.ActiveModelChanged += OnActiveModelChanged;
+
+        _etapeModeles = new Services.LLM.EtapeModeleService(_llmFactory);
 
         // ✅ ORDRE CRITIQUE : Initialiser AnonymizationService AVANT PromptConfigService
         // ✅ MODIFIÉ : Passer AppSettings pour permettre la détection du provider LLM
@@ -457,6 +466,10 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 syntheseGlobaleService, syntheseGlobaleSuggester, _synthesisWeightTracker, syntheseGlobaleRelecteur,
                 projetTherapeutiqueService, projetTherapeutiqueSuggester, projetTherapeutiquePilotage, projetTherapeutiqueRelecteur);
 
+        // Affectation d'un modèle par étape (onglet Pilotage > Moteur local) : la consultation
+        // bascule d'elle-même sur le modèle prévu avant chaque étape.
+        ConsultationModeContent.SetEtapeModeles(_etapeModeles);
+
         // Quand une note est sauvegardée depuis Consultation → rafraîchir la liste de notes du mode Console
         ConsultationModeContent.NoteSavedToPatient += (_, _) =>
         {
@@ -502,6 +515,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
 
         // ✅ NOUVEAU : Initialiser PilotageControl
         PilotageContent.Initialize(_patientIndex, _pilotageAgentService, _firebaseService, _openAIService, _settings, _pathService, _pilotageAttachmentService);
+        PilotageContent.SetEtapeModeles(_etapeModeles, _llmFactory);
         PilotageContent.StatusChanged += (s, msg) => {
             StatusTextBlock.Text = msg;
         };

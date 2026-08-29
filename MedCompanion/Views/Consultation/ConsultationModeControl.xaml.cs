@@ -19,6 +19,20 @@ namespace MedCompanion.Views.Consultation
     public partial class ConsultationModeControl : UserControl
     {
         private ConsultationModeViewModel? _viewModel;
+
+        /// <summary>
+        /// Affectation modèle-par-étape, posée avant ou après Initialize selon l'ordre de
+        /// construction de MainWindow. Conservée ici pour être transmise au ViewModel dès qu'il
+        /// existe, plutôt que d'allonger encore la signature d'Initialize.
+        /// </summary>
+        private Services.LLM.EtapeModeleService? _etapeModelesEnAttente;
+
+        public void SetEtapeModeles(Services.LLM.EtapeModeleService service)
+        {
+            _etapeModelesEnAttente = service;
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            _viewModel?.InjectEtapeModeles(service);
+        }
         private DocumentService? _documentService;
         private ScannerService? _scannerService;
 
@@ -103,6 +117,8 @@ namespace MedCompanion.Views.Consultation
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
+            if (_etapeModelesEnAttente != null)
+                _viewModel?.InjectEtapeModeles(_etapeModelesEnAttente);
             if (patientIndex != null)
                 _viewModel?.InjectPatientIndex(patientIndex);
             if (urgenceDispatcher != null && urgenceLogService != null)

@@ -242,9 +242,43 @@ namespace MedCompanion.Models
         public List<string> NewThemes { get; set; } = new();
     }
 
+    /// <summary>
+    /// Une phrase gardée telle qu'elle a été dite.
+    ///
+    /// Sert l'alliance : pouvoir reciter à l'enfant sa propre formule à la consultation suivante.
+    /// Une citation reformulée, corrigée ou complétée ne remplit plus cette fonction — l'enfant ne
+    /// s'y reconnaît pas. Le contenu de <see cref="Citation"/> est donc recopié sans retouche, y
+    /// compris ses maladresses.
+    ///
+    /// Volontairement au niveau de la consultation et non du bloc : le critère est l'affect, qui ne
+    /// se range pas proprement dans un bloc (« j'aime pas mon père » relève autant de la famille que
+    /// du vécu émotionnel). Les citations sont rendues en une section unique en fin de note.
+    /// </summary>
+    public class VerbatimQuote
+    {
+        /// <summary>« enfant », « mère », « père » ou « autre ». Voir le schéma d'extraction.</summary>
+        public string Locuteur { get; set; } = "";
+
+        public string Citation { get; set; } = "";
+    }
+
     public class ExtractionResult
     {
         public List<BlockUpdate> Updates { get; set; } = new();
+
+        /// <summary>Phrases marquantes de la consultation. Vide si aucune ne qualifie.</summary>
+        public List<VerbatimQuote> Verbatim { get; set; } = new();
+    }
+
+    /// <summary>
+    /// Sortie de l'extraction d'un segment de consultation de SUIVI. Deux axes indépendants :
+    /// les puces répondent à « qu'est-ce qui compte cliniquement », le verbatim à « qu'est-ce qu'il
+    /// a dit avec ses mots ». Une phrase peut relever du second sans relever du premier.
+    /// </summary>
+    public class SuiviExtraction
+    {
+        public List<string> Puces { get; set; } = new();
+        public List<VerbatimQuote> Verbatim { get; set; } = new();
     }
 
     // ─── Item de checklist ───────────────────────────────────────────────────
@@ -739,11 +773,19 @@ namespace MedCompanion.Models
         /// <summary>Extraction IA en puces compactes (généré depuis la transcription).</summary>
         public string AIExtraction { get => _aiExtraction; set => Set(ref _aiExtraction, value); }
 
+        /// <summary>
+        /// Phrases gardées telles quelles, cumulées sur les dictées successives.
+        /// Séparées des puces à dessein : le filtre des puces écarte ce qui n'a pas de portée
+        /// symptomatique, or c'est exactement là que se trouvent les phrases qui portent un affect.
+        /// </summary>
+        public List<VerbatimQuote> Verbatim { get; } = new();
+
         public void Reset()
         {
             RAS = false; Renouvellement = false; PasEffetsSecondaires = false;
             AdhesionOk = false; EvolutionScolaire = false; SommeilCorrect = false; ARevoir = false;
             Transcription = ""; AIExtraction = "";
+            Verbatim.Clear();
         }
     }
 }

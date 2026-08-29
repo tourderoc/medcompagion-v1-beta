@@ -130,6 +130,19 @@
                                        Foreground="#7F8C8D" Margin="0,8,0,0" TextWrapping="Wrap"
                                        Visibility="Collapsed"/>
 
+                            <!-- Annuaire local : état + actualisation.
+                                 Une copie locale vieillit en silence — les coordonnées d'école
+                                 changent. L'âge du fichier est donc affiché en permanence. -->
+                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0">
+                                <TextBlock x:Name="TxtAnnuaireEtat" FontSize="10" Foreground="#95A5A6"
+                                           VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                <Button x:Name="BtnTelechargerAnnuaire" Content="Actualiser"
+                                        Margin="8,0,0,0" Padding="6,2" FontSize="10" Cursor="Hand"
+                                        Background="Transparent" Foreground="#2980B9" BorderThickness="0"
+                                        VerticalAlignment="Center"
+                                        Click="BtnTelechargerAnnuaire_Click"/>
+                            </StackPanel>
+
                             <!-- Sélecteur si plusieurs résultats -->
                             <StackPanel x:Name="PanelResultats" Visibility="Collapsed" Margin="0,8,0,0">
                                 <TextBlock Text="Plusieurs établissements trouvés — sélectionnez :" FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,4"/>

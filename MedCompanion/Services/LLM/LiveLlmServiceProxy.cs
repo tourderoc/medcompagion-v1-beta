@@ -18,7 +18,7 @@ namespace MedCompanion.Services.LLM
     /// En leur injectant ce proxy au lieu d'une instance figée, ils suivent automatiquement tout
     /// changement de modèle sans qu'il faille les reconstruire ou leur pousser une mise à jour.
     /// </summary>
-    public class LiveLlmServiceProxy : ILLMService
+    public class LiveLlmServiceProxy : ILLMService, IStructuredOutputService
     {
         private readonly LLMServiceFactory _factory;
 
@@ -54,5 +54,25 @@ namespace MedCompanion.Services.LLM
         public Task<(bool success, string result, string? error)> AnalyzeImageAsync(
             string prompt, byte[] imageData, int maxTokens = 1500, CancellationToken cancellationToken = default)
             => Current.AnalyzeImageAsync(prompt, imageData, maxTokens, cancellationToken);
+
+        // ── Sortie structurée ─────────────────────────────────────────────────
+        // Interrogé à chaque appel et non mis en cache : la capacité suit le provider actif, qui
+        // change avec le sélecteur de modèle. Un appelant qui aurait retenu la réponse tomberait à
+        // côté après une bascule llama.cpp → OpenAI.
+
+        public bool SupportsStructuredOutput
+            => Current is IStructuredOutputService s && s.SupportsStructuredOutput;
+
+        public Task<(bool success, string result, string? error)> GenerateJsonAsync(
+            string prompt, string schemaName, string jsonSchema,
+            int maxTokens = 1500, CancellationToken cancellationToken = default)
+        {
+            if (Current is IStructuredOutputService s && s.SupportsStructuredOutput)
+                return s.GenerateJsonAsync(prompt, schemaName, jsonSchema, maxTokens, cancellationToken);
+
+            // Repli : le provider actif ne sait pas contraindre. On génère en texte libre, et c'est
+            // à l'appelant de parser — d'où l'intérêt de tester SupportsStructuredOutput avant.
+            return Current.GenerateTextAsync(prompt, maxTokens, cancellationToken);
+        }
     }
 }

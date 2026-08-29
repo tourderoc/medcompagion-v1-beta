@@ -13,8 +13,16 @@ namespace MedCompanion.Views.Consultation
         public PatientContextDetails CompletedDetails { get; private set; }
         public bool IsSaved { get; private set; } = false;
 
-        private readonly EcoleAnnuaireService _ecoleService = new();
+        private readonly EcoleAnnuaireService _ecoleService = new();      // repli réseau
+        private readonly EcoleLocaleService    _ecoleLocale = new();      // socle hors ligne
+        private readonly EcoleSurcoucheService _surcouche   = new();      // alias + corrections
         private EcoleAnnuaireResult? _selectedEcole;
+
+        /// <summary>
+        /// Saisie du médecin au moment de la recherche, conservée pour pouvoir l'enregistrer comme
+        /// nom d'usage si elle ne correspondait pas au nom officiel de l'établissement retenu.
+        /// </summary>
+        private string _saisieRecherche = "";
 
         public ContextCompletionWindow(PatientContextDetails prefilledDetails)
         {
@@ -23,6 +31,7 @@ namespace MedCompanion.Views.Consultation
             ConfigureSections();
             PopulateFields();
             SetupWatermarks();
+            RafraichirEtatAnnuaire();
         }
 
         private void ConfigureSections()
@@ -159,12 +168,55 @@ namespace MedCompanion.Views.Consultation
             }
 
             BtnRechercheEcole.IsEnabled = false;
-            ShowRechercheStatut("Recherche dans l'annuaire officiel...", isError: false);
             PanelResultats.Visibility = Visibility.Collapsed;
+            _saisieRecherche = nom;
 
             try
             {
+                // 1. Nom d'usage déjà appris — court-circuite tout le reste.
+                var uaiConnu = _surcouche.ResoudreAlias(nom);
+                if (uaiConnu != null)
+                {
+                    var connue = _ecoleLocale.TrouverParUai(uaiConnu);
+                    if (connue != null)
+                    {
+                        FillCoordonnees(_surcouche.Appliquer(connue));
+                        ShowRechercheStatut("✓ École reconnue (nom d'usage enregistré).", isError: false);
+                        return;
+                    }
+                }
+
+                // 2. Socle local, tolérant aux fautes sur le nom ET sur la ville.
+                if (_ecoleLocale.AssurerCharge())
+                {
+                    var locaux = _ecoleLocale.Rechercher(nom, commune);
+                    if (locaux.Count > 0)
+                    {
+                        AfficherResultats(locaux, SuffixeFraicheur());
+                        return;
+                    }
+                }
+
+                // 3. Repli réseau : annuaire jamais téléchargé, ou établissement absent du socle
+                //    (annuaire local vieilli, école récente).
+                ShowRechercheStatut(_ecoleLocale.EstDisponible
+                    ? "Rien en local — recherche en ligne..."
+                    : "Annuaire local absent — recherche en ligne...", isError: false);
+
                 var (ok, results, error) = await _ecoleService.SearchAsync(nom, commune);
+
+                // Le filtre commune de l'API distante est littéral : une faute de frappe sur la
+                // ville y ramène zéro résultat alors que l'école existe. On relance sans elle
+                // plutôt que d'annoncer un échec.
+                if (ok && results.Count == 0 && !string.IsNullOrWhiteSpace(commune))
+                {
+                    var (ok2, results2, _) = await _ecoleService.SearchAsync(nom, null);
+                    if (ok2 && results2.Count > 0)
+                    {
+                        AfficherResultats(results2, " — ville ignorée, vérifiez le code postal");
+                        return;
+                    }
+                }
 
                 if (!ok)
                 {
@@ -174,21 +226,11 @@ namespace MedCompanion.Views.Consultation
 
                 if (results.Count == 0)
                 {
-                    ShowRechercheStatut("Aucun établissement trouvé. Vérifiez le nom/la ville ou saisissez les coordonnées manuellement.", isError: true);
+                    ShowRechercheStatut("Aucun établissement trouvé. Vérifiez le nom ou saisissez les coordonnées manuellement.", isError: true);
                     return;
                 }
 
-                if (results.Count == 1)
-                {
-                    FillCoordonnees(results[0]);
-                    ShowRechercheStatut("✓ Établissement trouvé — vérifiez les coordonnées ci-dessous.", isError: false);
-                    return;
-                }
-
-                // Plusieurs résultats → laisser le médecin choisir
-                CmbEcoleResultats.ItemsSource = results;
-                PanelResultats.Visibility = Visibility.Visible;
-                ShowRechercheStatut($"{results.Count} établissements trouvés — sélectionnez le bon.", isError: false);
+                AfficherResultats(results, "");
             }
             catch (Exception ex)
             {
@@ -200,6 +242,105 @@ namespace MedCompanion.Views.Consultation
             }
         }
 
+        /// <summary>
+        /// Présente les résultats. Même avec un seul, la liste reste visible : la recherche étant
+        /// désormais approximative, un résultat unique n'est plus une certitude — le médecin doit
+        /// pouvoir voir sur quoi il est tombé avant de valider les coordonnées.
+        /// </summary>
+        private void AfficherResultats(System.Collections.Generic.List<EcoleAnnuaireResult> resultats, string suffixe)
+        {
+            // La liste reste en fiches OFFICIELLES ; les corrections ne sont appliquées qu'à
+            // l'affichage des coordonnées (FillCoordonnees), pour garder de quoi comparer au moment
+            // d'enregistrer ce que le médecin a réellement changé.
+            FillCoordonnees(resultats[0]);
+
+            if (resultats.Count > 1)
+            {
+                CmbEcoleResultats.ItemsSource   = resultats;
+                CmbEcoleResultats.SelectedIndex = 0;
+                PanelResultats.Visibility       = Visibility.Visible;
+                ShowRechercheStatut($"{resultats.Count} établissements possibles — vérifiez la sélection{suffixe}.", isError: false);
+            }
+            else
+            {
+                ShowRechercheStatut($"✓ Établissement trouvé — vérifiez les coordonnées{suffixe}.", isError: false);
+            }
+        }
+
+        // ── Annuaire local : état et actualisation ──────────────────────────────
+
+        /// <summary>
+        /// Affiche l'état de la copie locale. Appelé à l'ouverture et après chaque téléchargement.
+        /// </summary>
+        private void RafraichirEtatAnnuaire()
+        {
+            var date = _ecoleLocale.DateTelechargement;
+
+            if (date == null)
+            {
+                TxtAnnuaireEtat.Text = "Annuaire local absent — les recherches passent par internet.";
+                return;
+            }
+
+            var jours = (int)(DateTime.Now - date.Value).TotalDays;
+            var perso = _surcouche.NombreAlias + _surcouche.NombreCorrections;
+            var suffixePerso = perso > 0 ? $" · {perso} entrée(s) personnelle(s)" : "";
+
+            TxtAnnuaireEtat.Text = jours > 180
+                ? $"Annuaire local du {date:dd/MM/yyyy} — {jours} jours, une actualisation serait utile{suffixePerso}"
+                : $"Annuaire local du {date:dd/MM/yyyy}{suffixePerso}";
+        }
+
+        private async void BtnTelechargerAnnuaire_Click(object sender, RoutedEventArgs e)
+        {
+            BtnTelechargerAnnuaire.IsEnabled = false;
+            BtnRechercheEcole.IsEnabled = false;
+
+            try
+            {
+                TxtAnnuaireEtat.Text = "Téléchargement de l'annuaire (~25 Mo)...";
+
+                var (ok, nombre, erreur) = await _ecoleLocale.TelechargerAsync(octets =>
+                {
+                    // Le téléchargement se fait hors du thread UI : repasser par le Dispatcher.
+                    Dispatcher.InvokeAsync(() =>
+                        TxtAnnuaireEtat.Text = $"Téléchargement... {octets / 1024 / 1024} Mo");
+                });
+
+                if (!ok)
+                {
+                    TxtAnnuaireEtat.Text = erreur ?? "Téléchargement impossible.";
+                    return;
+                }
+
+                // Les alias et corrections vivent dans un fichier distinct : remplacer l'annuaire
+                // ne les touche pas, ils se réappliquent sur les fiches fraîches.
+                RafraichirEtatAnnuaire();
+                ShowRechercheStatut($"✓ Annuaire local à jour — {nombre:N0} établissements, recherche hors ligne.", isError: false);
+            }
+            catch (Exception ex)
+            {
+                TxtAnnuaireEtat.Text = $"Échec : {ex.Message}";
+            }
+            finally
+            {
+                BtnTelechargerAnnuaire.IsEnabled = true;
+                BtnRechercheEcole.IsEnabled = true;
+            }
+        }
+
+        /// <summary>Âge de la copie locale, à afficher : elle vieillit en silence.</summary>
+        private string SuffixeFraicheur()
+        {
+            var date = _ecoleLocale.DateTelechargement;
+            if (date == null) return "";
+
+            var jours = (int)(DateTime.Now - date.Value).TotalDays;
+            return jours > 180
+                ? $" — annuaire local du {date:dd/MM/yyyy}, pensez à l'actualiser"
+                : $" — annuaire local du {date:dd/MM/yyyy}";
+        }
+
         private void CmbEcoleResultats_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (CmbEcoleResultats.SelectedItem is EcoleAnnuaireResult result)
@@ -208,15 +349,20 @@ namespace MedCompanion.Views.Consultation
 
         private void FillCoordonnees(EcoleAnnuaireResult r)
         {
+            // On retient la fiche OFFICIELLE : c'est elle qui sert de référence pour distinguer,
+            // à l'enregistrement, ce que le médecin a corrigé de ce qui venait de l'annuaire.
             _selectedEcole = r;
 
-            // Aligner nom/commune sur les valeurs officielles
-            if (!string.IsNullOrWhiteSpace(r.Nom))     TxtEcole.Text     = r.Nom;
-            if (!string.IsNullOrWhiteSpace(r.Commune)) TxtEcoleLieu.Text = r.Commune;
+            // ... mais on affiche la version corrigée, s'il a déjà rectifié cet établissement.
+            var affiche = _surcouche.Appliquer(r);
 
-            TxtEcoleAdresse.Text = r.Adresse;
-            TxtEcoleTel.Text     = r.Telephone;
-            TxtEcoleEmail.Text   = r.Email;
+            // Aligner nom/commune sur les valeurs officielles
+            if (!string.IsNullOrWhiteSpace(affiche.Nom))     TxtEcole.Text     = affiche.Nom;
+            if (!string.IsNullOrWhiteSpace(affiche.Commune)) TxtEcoleLieu.Text = affiche.Commune;
+
+            TxtEcoleAdresse.Text = affiche.Adresse;
+            TxtEcoleTel.Text     = affiche.Telephone;
+            TxtEcoleEmail.Text   = affiche.Email;
             PanelCoordonnees.Visibility = Visibility.Visible;
         }
 
@@ -279,9 +425,41 @@ namespace MedCompanion.Views.Consultation
                 PropreteAcq = d.ShowFullContext ? TxtProprete.Text.Trim() : null,
             };
 
+            ApprendreDeLaSaisie();
+
             IsSaved = true;
             DialogResult = true;
             Close();
+        }
+
+        /// <summary>
+        /// Retient ce que cette consultation vient d'apprendre sur l'école — la seule source
+        /// possible pour ces deux informations, absentes de l'annuaire officiel :
+        ///  • la façon dont le médecin nomme l'établissement, quand elle diffère du nom officiel ;
+        ///  • les coordonnées qu'il a rectifiées à la main.
+        /// Silencieux : rien à valider, l'apprentissage se fait en enregistrant la consultation.
+        /// </summary>
+        private void ApprendreDeLaSaisie()
+        {
+            if (_selectedEcole == null || string.IsNullOrWhiteSpace(_selectedEcole.Uai)) return;
+
+            try
+            {
+                // Nom d'usage : uniquement si la saisie ne retombe pas déjà sur l'officiel, sinon on
+                // encombrerait la table d'alias inutiles à chaque recherche réussie.
+                var saisieN   = EcoleLocaleService.Normaliser(_saisieRecherche);
+                var officielN = EcoleLocaleService.Normaliser(_selectedEcole.Nom);
+                if (saisieN.Length > 2 && !officielN.Contains(saisieN, StringComparison.Ordinal))
+                    _surcouche.EnregistrerAlias(_saisieRecherche, _selectedEcole.Uai);
+
+                _surcouche.EnregistrerCorrections(
+                    _selectedEcole,
+                    TxtEcoleEmail.Text.Trim(),
+                    TxtEcoleTel.Text.Trim(),
+                    TxtEcoleAdresse.Text.Trim(),
+                    null);
+            }
+            catch { /* l'apprentissage est un bonus : il ne doit jamais empêcher l'enregistrement */ }
         }
     }
 }

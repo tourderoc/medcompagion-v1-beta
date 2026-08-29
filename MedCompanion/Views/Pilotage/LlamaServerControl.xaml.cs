@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
 using System.Windows.Threading;
+using MedCompanion.Models;
 using MedCompanion.Services.LLM;
 
 namespace MedCompanion.Views.Pilotage
@@ -145,11 +146,253 @@ namespace MedCompanion.Views.Pilotage
 
         // ── Cartes de réglage par profil ──────────────────────────────────────
 
+        // ═══ Affectation d'un modèle par étape ═══════════════════════════════
+
+        private EtapeModeleService? _etapes;
+        private LLMServiceFactory? _factory;
+
+        /// <summary>Modèles proposés au choix : profils llama.cpp, plus les modèles Ollama trouvés.</summary>
+        private readonly System.Collections.Generic.List<(string provider, string model, string libelle)> _modelesDispo = new();
+
+        /// <summary>
+        /// Branche l'affectation par étape. Appelé depuis MainWindow via PilotageControl : ce
+        /// contrôle est déclaré en XAML et n'a donc pas de constructeur paramétrable.
+        /// </summary>
+        public async void InitEtapes(EtapeModeleService etapes, LLMServiceFactory factory)
+        {
+            _etapes  = etapes;
+            _factory = factory;
+
+            _modelesDispo.Clear();
+            foreach (var p in LlamaCppProfiles.All.Where(p => p.IsReady))
+                _modelesDispo.Add(("LlamaCpp", p.Id, p.ShortName + "  ·  cpp"));
+
+            BuildProfileCards();
+
+            // Les modèles Ollama demandent un appel réseau : le panneau s'affiche d'abord avec les
+            // profils locaux, la liste s'enrichit ensuite. Bloquer l'affichage pour ça donnerait un
+            // onglet figé quand Ollama n'est pas lancé.
+            try
+            {
+                var ollama = await factory.GetAvailableOllamaModelsAsync();
+                foreach (var m in ollama.Where(m => LlamaCppProfiles.Resolve(m) == null))
+                    _modelesDispo.Add(("Ollama", m, m + "  ·  ollama"));
+
+                if (ollama.Count > 0) BuildProfileCards();
+            }
+            catch { /* Ollama absent : on reste sur les profils locaux */ }
+        }
+
         private void BuildProfileCards()
         {
             ProfilesPanel.Children.Clear();
+
+            if (_etapes != null)
+                ProfilesPanel.Children.Add(BuildSchemaEtapes());
+
             foreach (var profile in LlamaCppProfiles.All)
                 ProfilesPanel.Children.Add(BuildCard(profile));
+        }
+
+        /// <summary>
+        /// Le schéma du parcours, une colonne par étape.
+        ///
+        /// Sa raison d'être n'est pas seulement de configurer : c'est de RENDRE VISIBLE LE COÛT.
+        /// Chaque changement de modèle arrête et relance llama-server (6 à 10 s), parce que Qwen et
+        /// Gemma ne tiennent pas ensemble en VRAM. Un réglage étape par étape sans vue d'ensemble
+        /// conduit à alterner sans s'en rendre compte et à payer l'attente en pleine consultation.
+        /// D'où la pastille de couleur par modèle et le compteur de bascules en tête de phase.
+        /// </summary>
+        private Border BuildSchemaEtapes()
+        {
+            var stack = new StackPanel();
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = "Affectation par étape",
+                Foreground = Brushes.White,
+                FontSize = 15,
+                FontWeight = FontWeights.SemiBold
+            });
+            stack.Children.Add(new TextBlock
+            {
+                Text = "Le modèle bascule tout seul avant chaque étape. Chaque changement relance le serveur (~8 s) : "
+                     + "regrouper les étapes sur un même modèle évite l'attente.",
+                Foreground = new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)),
+                FontSize = 11,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 700,
+                Margin = new Thickness(0, 2, 0, 12)
+            });
+
+            var actif = new CheckBox
+            {
+                Content = "Bascule automatique",
+                IsChecked = _etapes!.Actif,
+                Foreground = Brushes.White,
+                FontSize = 12,
+                Margin = new Thickness(0, 0, 0, 14),
+                ToolTip = "Décoché : tout se fait sur le modèle choisi dans l'en-tête, aucune bascule."
+            };
+            actif.Checked   += (_, _) => { _etapes.DefinirActif(true);  BuildProfileCards(); };
+            actif.Unchecked += (_, _) => { _etapes.DefinirActif(false); BuildProfileCards(); };
+            stack.Children.Add(actif);
+
+            foreach (var phase in new[] { EtapesConsultation.PhasePremiere, EtapesConsultation.PhaseSuivi })
+                stack.Children.Add(BuildPhase(phase));
+
+            return new Border
+            {
+                Background   = new SolidColorBrush(Color.FromRgb(0x2D, 0x2D, 0x2D)),
+                BorderBrush  = new SolidColorBrush(Color.FromRgb(0x3D, 0x3D, 0x3D)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding      = new Thickness(18, 16, 18, 16),
+                Margin       = new Thickness(0, 0, 0, 16),
+                Child        = stack
+            };
+        }
+
+        private StackPanel BuildPhase(string phase)
+        {
+            var bloc = new StackPanel { Margin = new Thickness(0, 0, 0, 14) };
+
+            var bascules = _etapes!.CompterBascules(phase);
+            var enTete = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 8) };
+            enTete.Children.Add(new TextBlock
+            {
+                Text = phase.ToUpperInvariant(),
+                Foreground = new SolidColorBrush(Color.FromRgb(0xE6, 0x7E, 0x22)),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            enTete.Children.Add(new TextBlock
+            {
+                Text = bascules == 0
+                    ? "   ·   aucune bascule"
+                    : $"   ·   {bascules} bascule(s) · ~{_etapes.SecondesEstimees(phase)} s d'attente",
+                Foreground = bascules > 1
+                    ? new SolidColorBrush(Color.FromRgb(0xF5, 0xB0, 0x41))   // au-delà d'une, ça se voit
+                    : new SolidColorBrush(Color.FromRgb(0x88, 0x88, 0x88)),
+                FontSize = 11,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            bloc.Children.Add(enTete);
+
+            var ligne = new WrapPanel();
+            foreach (var etape in EtapesConsultation.Toutes.Where(e => e.Phase == phase))
+                ligne.Children.Add(BuildCarteEtape(etape));
+            bloc.Children.Add(ligne);
+
+            return bloc;
+        }
+
+        /// <summary>Palette stable par modèle : la même couleur doit désigner le même modèle partout.</summary>
+        private static Brush CouleurModele(string? model) => model switch
+        {
+            null      => new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)),
+            "Qwen3.8-27B" => new SolidColorBrush(Color.FromRgb(0xE6, 0x7E, 0x22)),
+            _ when model.StartsWith("gemma", StringComparison.OrdinalIgnoreCase)
+                      => new SolidColorBrush(Color.FromRgb(0x35, 0x98, 0xDB)),
+            _         => new SolidColorBrush(Color.FromRgb(0x8E, 0x44, 0xAD))
+        };
+
+        private Border BuildCarteEtape(EtapeConsultation etape)
+        {
+            var affectation = _etapes!.Affectation(etape.Id);
+            var stack = new StackPanel { Width = 210 };
+
+            var titre = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, 0, 0, 6) };
+            titre.Children.Add(new System.Windows.Shapes.Ellipse
+            {
+                Width = 8, Height = 8,
+                Fill = CouleurModele(etape.EnArrierePlan ? null : affectation?.Model),
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(0, 0, 6, 0)
+            });
+            titre.Children.Add(new TextBlock
+            {
+                Text = etape.Libelle,
+                Foreground = Brushes.White,
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                MaxWidth = 190,
+                VerticalAlignment = VerticalAlignment.Center
+            });
+            stack.Children.Add(titre);
+
+            if (etape.EnArrierePlan)
+            {
+                // Pas de sélecteur : une étape lancée sans être attendue ne doit jamais décider
+                // seule d'un redémarrage du serveur pendant que le médecin travaille ailleurs.
+                stack.Children.Add(new TextBlock
+                {
+                    Text = "hérite du modèle courant",
+                    Foreground = new SolidColorBrush(Color.FromRgb(0x77, 0x77, 0x77)),
+                    FontSize = 10,
+                    FontStyle = FontStyles.Italic
+                });
+            }
+            else
+            {
+                // Style sombre complet (voir DarkCombo dans le XAML) : sans lui, le gabarit natif
+                // affiche la liste sur fond clair, donc du texte blanc illisible.
+                var combo = new ComboBox
+                {
+                    Style = (Style)FindResource("DarkCombo"),
+                    Height = 26
+                };
+
+                // Style posé sur chaque item : ItemContainerStyle ne s'applique pas de façon fiable
+                // à des ComboBoxItem construits à la main — ils sont déjà leur propre conteneur.
+                var styleItem = (Style)FindResource("DarkComboItem");
+
+                combo.Items.Add(new ComboBoxItem { Content = "— modèle courant", Tag = null, Style = styleItem });
+                foreach (var (provider, model, libelle) in _modelesDispo)
+                    combo.Items.Add(new ComboBoxItem { Content = libelle, Tag = (provider, model), Style = styleItem });
+
+                combo.SelectedIndex = 0;
+                if (affectation != null)
+                {
+                    for (int i = 1; i < combo.Items.Count; i++)
+                        if (combo.Items[i] is ComboBoxItem ci && ci.Tag is ValueTuple<string, string> t
+                            && t.Item1 == affectation.Provider && t.Item2 == affectation.Model)
+                        { combo.SelectedIndex = i; break; }
+                }
+
+                combo.SelectionChanged += (_, _) =>
+                {
+                    if (combo.SelectedItem is not ComboBoxItem ci) return;
+                    if (ci.Tag is ValueTuple<string, string> t) _etapes.Definir(etape.Id, t.Item1, t.Item2);
+                    else                                        _etapes.Effacer(etape.Id);
+
+                    // Reconstruire : les pastilles et le compteur de bascules changent avec ce choix.
+                    Dispatcher.BeginInvoke(new Action(BuildProfileCards));
+                };
+
+                stack.Children.Add(combo);
+            }
+
+            stack.Children.Add(new TextBlock
+            {
+                Text = etape.Description,
+                Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66)),
+                FontSize = 10,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 6, 0, 0)
+            });
+
+            return new Border
+            {
+                Background = new SolidColorBrush(Color.FromRgb(0x25, 0x25, 0x25)),
+                BorderBrush = new SolidColorBrush(Color.FromRgb(0x3D, 0x3D, 0x3D)),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(5),
+                Padding = new Thickness(12, 10, 12, 10),
+                Margin = new Thickness(0, 0, 10, 10),
+                Child = stack
+            };
         }
 
         private Border BuildCard(LlamaCppModelProfile profile)

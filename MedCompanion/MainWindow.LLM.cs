@@ -254,6 +254,75 @@ public partial class MainWindow : Window
     internal static bool IsOllamaCloudModel(string modelName) =>
         Services.LLM.OllamaModelInfo.IsCloudModel(modelName);
 
+    /// <summary>
+    /// Vrai pendant qu'on aligne le sélecteur sur une bascule déjà faite. Sans ce garde, poser
+    /// SelectedItem redéclencherait LLMModelCombo_SelectionChanged, qui relancerait une bascule vers
+    /// le modèle déjà chargé — soit un redémarrage inutile du serveur de 6 à 10 secondes, en boucle.
+    /// </summary>
+    private bool _syncSelecteurModele;
+
+    /// <summary>
+    /// Aligne l'en-tête sur le modèle réellement actif. Branché sur
+    /// <see cref="Services.LLM.LLMServiceFactory.ActiveModelChanged"/> : couvre donc aussi bien les
+    /// bascules automatiques des étapes de consultation que n'importe quel autre changement fait
+    /// par le code.
+    /// </summary>
+    private void OnActiveModelChanged(object? sender, (string provider, string model) info)
+    {
+        // L'événement peut venir d'un thread de travail (bascule d'étape lancée en tâche de fond).
+        Dispatcher.InvokeAsync(() =>
+        {
+            try
+            {
+                _syncSelecteurModele = true;
+
+                foreach (var item in LLMModelCombo.Items)
+                {
+                    if (item is not ComboBoxItem ci || ci.Tag == null) continue;
+
+                    var tag = ci.Tag as dynamic;
+                    var provider = tag.Provider as string;
+                    var model    = tag.Model as string;
+
+                    var correspond = provider == info.provider &&
+                                     (provider == "OpenAI" || model == info.model);
+                    if (!correspond) continue;
+
+                    if (!ReferenceEquals(LLMModelCombo.SelectedItem, ci))
+                        LLMModelCombo.SelectedItem = ci;
+                    break;
+                }
+
+                // Le niveau de réflexion n'a de sens que sur les modèles dont le template l'accepte :
+                // le laisser visible après une bascule vers Gemma proposerait un réglage sans effet.
+                if (!_llmFactory.CurrentModelSupportsReasoningEffort())
+                {
+                    ReasoningEffortCombo.Visibility = Visibility.Collapsed;
+                }
+                else
+                {
+                    // Le rendre visible NE SUFFIT PAS : sans sélection il s'affiche comme une case
+                    // blanche vide à côté du sélecteur de modèle. On réapplique le niveau persisté,
+                    // avec repli si ce cran n'existe plus dans la liste.
+                    var niveau = _settings.OllamaReasoningEffort;
+                    var connu = ReasoningEffortCombo.Items.OfType<ComboBoxItem>()
+                                                          .Any(ci => (ci.Tag as string) == niveau);
+                    if (!connu) niveau = Services.LLM.ReasoningLevels.Medium;
+
+                    _llmFactory.SetReasoningEffort(niveau);
+
+                    foreach (var it in ReasoningEffortCombo.Items)
+                        if (it is ComboBoxItem ci && (ci.Tag as string) == niveau)
+                        { ReasoningEffortCombo.SelectedItem = ci; break; }
+
+                    ReasoningEffortCombo.Visibility = Visibility.Visible;
+                }
+            }
+            catch { /* l'affichage ne doit jamais faire échouer une bascule */ }
+            finally { _syncSelecteurModele = false; }
+        });
+    }
+
     private void SelectCurrentModel()
     {
         foreach (var item in LLMModelCombo.Items)
@@ -447,7 +516,12 @@ public partial class MainWindow : Window
     {
         if (LLMModelCombo.SelectedItem is not ComboBoxItem selectedItem || selectedItem.Tag == null)
             return;
-        
+
+        // Sélection posée par le code pour refléter une bascule DÉJÀ faite : il n'y a rien à
+        // basculer, et le faire relancerait le serveur pour le modèle qui vient d'être chargé.
+        if (_syncSelecteurModele)
+            return;
+
         try
         {
             var tag = selectedItem.Tag as dynamic;

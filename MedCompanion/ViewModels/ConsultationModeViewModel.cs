@@ -576,7 +576,7 @@ namespace MedCompanion.ViewModels
                 Key = vm.Key, Title = vm.Title, FreeText = vm.FreeText,
                 ExpectedThemes = vm.ExpectedThemes, CoveredThemes = vm.CoveredThemes
             }).ToList();
-            NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocks, ConsultationDate);
+            NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocks, ConsultationDate, VerbatimQuotes);
         }
 
         private DateTime _consultationDate = DateTime.Now;
@@ -1278,6 +1278,40 @@ namespace MedCompanion.ViewModels
             return content.Substring(second + 3).TrimStart('\r', '\n');
         }
 
+        /// <summary>
+        /// Affectation d'un modèle par étape. Null = pas de bascule automatique, tout se fait sur le
+        /// modèle choisi dans l'en-tête.
+        /// </summary>
+        private MedCompanion.Services.LLM.EtapeModeleService? _etapeModeles;
+
+        public void InjectEtapeModeles(MedCompanion.Services.LLM.EtapeModeleService service)
+            => _etapeModeles = service;
+
+        /// <summary>
+        /// Met le moteur sur le modèle prévu pour l'étape avant de l'exécuter, et le dit dans le
+        /// bandeau de statut : une attente de 6 à 10 secondes sans explication passe pour un
+        /// blocage de l'application.
+        /// </summary>
+        /// <param name="statut">
+        /// Où écrire l'avancement. Chaque étape a son propre bandeau (extraction, synthèse,
+        /// restitution, suivi) : passer l'accesseur évite d'écrire dans celui d'une autre étape,
+        /// où le message serait invisible.
+        /// </param>
+        private async Task PreparerModeleAsync(string etapeId, Action<string>? statut = null)
+        {
+            if (_etapeModeles == null) return;
+
+            var affectation = _etapeModeles.Affectation(etapeId);
+            if (affectation == null) return;
+
+            statut?.Invoke($"⏳ Passage sur {affectation.Model}...");
+
+            var (bascule, message) = await _etapeModeles.AssurerModeleAsync(etapeId);
+
+            // Pas de bascule = le bon modèle était déjà chargé, rien à annoncer.
+            if (bascule && message != null) statut?.Invoke(message);
+        }
+
         public void InjectServices(ILLMService llmService, StorageService storageService,
                                    WhisperStreamingService? whisperService = null)
         {
@@ -1622,6 +1656,13 @@ namespace MedCompanion.ViewModels
 
         // Blocs interrogatoire
         public ObservableCollection<ConsultationBlockViewModel> InterrogatoireBlocks { get; } = new();
+
+        /// <summary>
+        /// Phrases gardées telles quelles pendant la consultation (voir <see cref="VerbatimQuote"/>).
+        /// Au niveau de la consultation et non du bloc : elles sont rendues en une section unique en
+        /// fin de note.
+        /// </summary>
+        public ObservableCollection<VerbatimQuote> VerbatimQuotes { get; } = new();
 
         // V0c : Blocs séparés (actifs vs complétés)
         private ObservableCollection<ConsultationBlockViewModel> _activeBlocks = new();
@@ -2704,9 +2745,16 @@ clinical_observations_json: |
                 return;
 
             InterrogatoireState = InterrogatoireState.Extraction;
+
+            await PreparerModeleAsync("interrogatoire_extraction", s => ExtractionStatus = s);
+
             ExtractionStatus = "Extraction en cours...";
 
-            var (ok, result, err) = await _extractor.ExtractAsync(_llmService, TranscriptionInput, ManualNotes);
+            // Les clés des blocs affichés ferment la liste des valeurs possibles côté schéma : une
+            // clé inventée par le modèle serait sinon ignorée sans bruit par la boucle ci-dessous.
+            var (ok, result, err) = await _extractor.ExtractAsync(
+                _llmService, TranscriptionInput, ManualNotes,
+                InterrogatoireBlocks.Select(b => b.Key));
 
             if (!ok || result == null)
             {
@@ -2718,6 +2766,12 @@ clinical_observations_json: |
             // Reset complet des blocs avant d'appliquer.
             foreach (var block in InterrogatoireBlocks)
                 block.Reset();
+
+            // Les citations suivent le même reset : une extraction relancée remplace la précédente,
+            // elle ne s'y ajoute pas — sinon la même phrase apparaîtrait en double à chaque essai.
+            VerbatimQuotes.Clear();
+            foreach (var q in result.Verbatim.Take(InterrogatoireExtractorService.MaxVerbatim))
+                if (!string.IsNullOrWhiteSpace(q.Citation)) VerbatimQuotes.Add(q);
 
             // Appliquer les mises à jour aux ViewModels des blocs
             foreach (var update in result.Updates)
@@ -2770,7 +2824,7 @@ clinical_observations_json: |
                 ExpectedThemes = vm.ExpectedThemes, CoveredThemes = vm.CoveredThemes
             }).ToList();
 
-            NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocks, ConsultationDate);
+            NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocks, ConsultationDate, VerbatimQuotes);
             ExtractionStatus = "Extraction terminée.";
             InterrogatoireState = InterrogatoireState.FinalNote;
             ScheduleDraftSave();
@@ -3061,7 +3115,7 @@ clinical_observations_json: |
                             CoveredThemes = vm.CoveredThemes
                         }).ToList();
 
-                        NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocksList, ConsultationDate);
+                        NoteContent = InterrogatoireExtractorService.BuildFinalNote(blocksList, ConsultationDate, VerbatimQuotes);
                         UpdateBlockCollections();
                     }
 
@@ -4005,6 +4059,9 @@ Texte :
         private async Task GenerateSynthesisAsync()
         {
             IsGeneratingSynthesis = true;
+
+            await PreparerModeleAsync("synthese_initiale", s => SynthesisStatusMessage = s);
+
             SynthesisStatusMessage = "⏳ Génération synthèse pondérée...";
 
             try
@@ -4710,6 +4767,9 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
             if (_llmService == null) return;
 
             IsGeneratingRestitution = true;
+
+            await PreparerModeleAsync("restitution", s => RestitutionStatusMessage = s);
+
             RestitutionStatusMessage = "⏳ Génération IA en cours...";
 
             try
@@ -5329,6 +5389,11 @@ RETOURNE UNIQUEMENT ce texte structuré (copie exactement les balises ===) :
                 sb.AppendLine(Suivi.AIExtraction.Trim());
             }
 
+            // Même rendu qu'en 1ère consultation : une section unique en fin de note, pour qu'une
+            // relecture avant le rendez-vous suivant retrouve les phrases d'un coup d'œil.
+            sb.AppendLine();
+            InterrogatoireExtractorService.AppendVerbatimSection(sb, Suivi.Verbatim);
+
             return sb.ToString().TrimEnd();
         }
 
@@ -5347,72 +5412,147 @@ RETOURNE UNIQUEMENT ce texte structuré (copie exactement les balises ===) :
             }
 
             IsExtractingSuivi = true;
+
+            await PreparerModeleAsync("suivi_extraction", s => SuiviStatusMessage = s);
+
             SuiviStatusMessage = "⏳ Extraction IA en cours...";
 
             try
             {
-                var prompt = $@"Tu es pédopsychiatre. Voici un SEGMENT de transcription d'une consultation de suivi (souvent bavarde, beaucoup de digressions).
+                // Le prompt vit dans Resources/Consultation/prompt_suivi.txt et non plus en dur ici :
+                // c'est le réglage qui demande le plus d'itérations cliniques, et le garder dans le
+                // code imposait une recompilation à chaque essai.
+                var promptPath = Path.Combine(
+                    AppDomain.CurrentDomain.BaseDirectory,
+                    "Resources", "Consultation", "prompt_suivi.txt");
 
-Ton rôle : extraire UNIQUEMENT les éléments cliniquement pertinents sous forme de PUCES ULTRA-COMPACTES (3-5 puces maximum, une ligne chacune).
-
-GARDE :
-- Évolution des symptômes cibles
-- Effets secondaires (même évoqués en passant)
-- Adhérence au traitement, oublis
-- Évènements de vie significatifs (déménagement, deuil, conflit, scolarité)
-- Humeur, sommeil, appétit, comportement
-- Idées noires, automutilation, consommation
-
-IGNORE :
-- Digressions, anecdotes ordinaires, bavardage
-- Activités banales (parc, jeux, vacances sans particularité)
-- Considérations météo, hobbies sans lien clinique
-
-Si rien de cliniquement pertinent dans ce segment : réponds exactement ""RAS"".
-
-FORMAT — RÈGLE ABSOLUE :
-- Uniquement des puces markdown avec ""- ""
-- AUCUN titre, AUCUNE introduction, AUCUN préambule (pas de ""Voici…"", ""Dans ce segment…"", etc.)
-- Commence DIRECTEMENT par ""- "" sur la première ligne
-
-SEGMENT À ANALYSER :
-{Suivi.Transcription}
-
-PUCES :";
-
-                var (ok, result, err) = await _llmService.ChatAsync(prompt, new(), maxTokens: 400);
-
-                if (!ok || string.IsNullOrWhiteSpace(result))
+                string template;
+                try { template = File.ReadAllText(promptPath, Encoding.UTF8); }
+                catch
                 {
-                    // Réponse vide sans erreur : le modèle a répondu mais n'a rien produit
-                    // d'exploitable (budget de tokens épuisé par le raisonnement, refus...).
-                    // Sans ce cas distinct, on affichait « Erreur LLM :  » sans aucun message.
-                    var detail = !string.IsNullOrWhiteSpace(err)
-                        ? err
-                        : "le modèle a renvoyé une réponse vide (budget de tokens probablement épuisé) — réessayez";
-                    SuiviStatusMessage = $"❌ Erreur LLM : {detail} (transcription conservée)";
+                    SuiviStatusMessage = "❌ prompt_suivi.txt introuvable — extraction impossible.";
                     return;
                 }
 
-                var newBullets = result.Trim();
+                var prompt = template.Replace("{SEGMENT}", Suivi.Transcription);
 
-                // Filtrer "RAS" simple (segment sans contenu pertinent)
-                if (string.Equals(newBullets, "RAS", StringComparison.OrdinalIgnoreCase))
+                // Deux tableaux indépendants : les puces filtrent sur la portée clinique, le verbatim
+                // sur l'affect. Les mêler ferait perdre les phrases sans intérêt symptomatique, qui
+                // sont précisément celles qu'on veut garder ici.
+                const string schema = """
+                {
+                  "type": "object",
+                  "properties": {
+                    "puces": { "type": "array", "maxItems": 5, "items": { "type": "string" } },
+                    "verbatim": {
+                      "type": "array",
+                      "maxItems": 3,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "locuteur": { "type": "string", "enum": ["enfant", "mère", "père", "autre"] },
+                          "citation": { "type": "string" }
+                        },
+                        "required": ["locuteur", "citation"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["puces", "verbatim"],
+                  "additionalProperties": false
+                }
+                """;
+
+                string raw;
+                string? err;
+
+                // Chemin contraint quand le moteur le permet : il garantit le JSON et coupe la
+                // réflexion du modèle. Sans cette coupure, Gemma remplit `reasoning_content` et
+                // renvoie un contenu VIDE — c'est l'origine des « réponses vides » constatées ici.
+                if (_llmService is MedCompanion.Services.LLM.IStructuredOutputService structured
+                    && structured.SupportsStructuredOutput)
+                {
+                    var r = await structured.GenerateJsonAsync(prompt, "extraction_suivi", schema, 900);
+                    if (!r.success)
+                    {
+                        SuiviStatusMessage = $"❌ Erreur LLM : {r.error} (transcription conservée)";
+                        return;
+                    }
+                    raw = r.result;
+                    err = null;
+                }
+                else
+                {
+                    var r = await _llmService.ChatAsync(prompt, new(), maxTokens: 900);
+                    if (!r.success || string.IsNullOrWhiteSpace(r.result))
+                    {
+                        err = !string.IsNullOrWhiteSpace(r.error) ? r.error : "réponse vide — réessayez";
+                        SuiviStatusMessage = $"❌ Erreur LLM : {err} (transcription conservée)";
+                        return;
+                    }
+                    raw = r.result;
+                }
+
+                SuiviExtraction? extraction;
+                try
+                {
+                    var start = raw.IndexOf('{');
+                    var end   = raw.LastIndexOf('}');
+                    if (start < 0 || end < start) throw new InvalidOperationException("aucun objet JSON dans la réponse");
+                    extraction = System.Text.Json.JsonSerializer.Deserialize<SuiviExtraction>(
+                        raw[start..(end + 1)],
+                        new System.Text.Json.JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                }
+                catch (Exception jx)
+                {
+                    SuiviStatusMessage = $"❌ Réponse illisible : {jx.Message} (transcription conservée)";
+                    return;
+                }
+
+                if (extraction == null)
+                {
+                    SuiviStatusMessage = "❌ Réponse vide (transcription conservée)";
+                    return;
+                }
+
+                var newBullets = string.Join("\n", extraction.Puces
+                    .Where(p => !string.IsNullOrWhiteSpace(p))
+                    .Select(p => "- " + p.Trim().TrimStart('-', ' ')));
+
+                // Cumul sans doublon : une dictée découpée en plusieurs pauses peut faire revenir la
+                // même phrase dans deux segments consécutifs.
+                var nouvellesCitations = 0;
+                foreach (var q in extraction.Verbatim)
+                {
+                    if (string.IsNullOrWhiteSpace(q.Citation)) continue;
+                    if (Suivi.Verbatim.Any(v => string.Equals(v.Citation.Trim(), q.Citation.Trim(),
+                                                              StringComparison.OrdinalIgnoreCase))) continue;
+                    Suivi.Verbatim.Add(q);
+                    nouvellesCitations++;
+                }
+
+                // RAS seulement si RIEN sur AUCUN des deux axes : un segment peut n'apporter aucune
+                // puce clinique tout en contenant une phrase qui compte.
+                if (string.IsNullOrWhiteSpace(newBullets) && nouvellesCitations == 0)
                 {
                     Suivi.Transcription = "";
                     SuiviStatusMessage = "✅ Segment sans élément clinique (RAS).";
                     return;
                 }
 
-                // Append au cumul existant (séparateur ligne vide entre segments)
-                if (string.IsNullOrWhiteSpace(Suivi.AIExtraction))
-                    Suivi.AIExtraction = newBullets;
-                else
-                    Suivi.AIExtraction = Suivi.AIExtraction.TrimEnd() + "\n" + newBullets;
+                if (!string.IsNullOrWhiteSpace(newBullets))
+                {
+                    if (string.IsNullOrWhiteSpace(Suivi.AIExtraction))
+                        Suivi.AIExtraction = newBullets;
+                    else
+                        Suivi.AIExtraction = Suivi.AIExtraction.TrimEnd() + "\n" + newBullets;
+                }
 
                 // Vider la transcription brute — la valeur est maintenant dans les puces
                 Suivi.Transcription = "";
-                SuiviStatusMessage = "✅ Segment extrait, puces cumulées.";
+                SuiviStatusMessage = nouvellesCitations > 0
+                    ? $"✅ Segment extrait, {nouvellesCitations} phrase(s) gardée(s)."
+                    : "✅ Segment extrait, puces cumulées.";
             }
             catch (Exception ex)
             {

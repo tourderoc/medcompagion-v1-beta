@@ -12,7 +12,7 @@ namespace MedCompanion.Services.LLM
     /// les modèles décrits par <see cref="LlamaCppProfiles"/> (Qwen pour le raisonnement, Gemma 4 pour
     /// le volume). Voir <see cref="LlamaCppServerManager"/> pour la gestion du process.
     /// </summary>
-    public class LlamaCppProvider : ILLMService
+    public class LlamaCppProvider : ILLMService, IStructuredOutputService
     {
         /// <summary>Profil servi actuellement — c'est lui qui porte le nom, les chemins et les
         /// capacités du modèle. Voir <see cref="LlamaCppProfiles"/>.</summary>
@@ -126,6 +126,19 @@ namespace MedCompanion.Services.LLM
             System.Threading.CancellationToken cancellationToken = default,
             string? forceModel = null,
             int? numCtx = null) // Contexte fixé côté serveur (32768) — non ajustable par requête ici.
+            => await ChatCoreAsync(systemPrompt, messages, maxTokens, cancellationToken, null, null);
+
+        /// <summary>
+        /// Corps commun de <see cref="ChatAsync"/> et <see cref="GenerateJsonAsync"/>. Le schéma,
+        /// quand il est fourni, contraint le décodage côté serveur.
+        /// </summary>
+        private async Task<(bool success, string result, string? error)> ChatCoreAsync(
+            string systemPrompt,
+            List<(string role, string content)> messages,
+            int maxTokens,
+            System.Threading.CancellationToken cancellationToken,
+            string? schemaName,
+            string? jsonSchema)
         {
             var (ready, readyMsg) = await LlamaCppServerManager.EnsureRunningAsync();
             if (!ready) return (false, "", readyMsg);
@@ -138,7 +151,7 @@ namespace MedCompanion.Services.LLM
                 foreach (var (role, content) in messages)
                     messagesList.Add(new { role, content });
 
-                var bodyDict = BuildRequestBody(messagesList, maxTokens, stream: false);
+                var bodyDict = BuildRequestBody(messagesList, maxTokens, stream: false, schemaName, jsonSchema);
 
                 var json = JsonSerializer.Serialize(bodyDict);
                 var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
@@ -158,8 +171,21 @@ namespace MedCompanion.Services.LLM
 
                 if (root.TryGetProperty("choices", out var choices) && choices.GetArrayLength() > 0)
                 {
-                    var messageContent = choices[0].GetProperty("message").GetProperty("content").GetString();
-                    return (true, messageContent ?? "", null);
+                    var messageContent = choices[0].GetProperty("message").GetProperty("content").GetString() ?? "";
+
+                    // Une génération arrêtée par le plafond de tokens rend un texte tronqué, pas une
+                    // erreur : sans ce test, l'appelant héritait d'un JSON incomplet et signalait un
+                    // problème de format, ce qui envoyait chercher le bug au mauvais endroit.
+                    if (choices[0].TryGetProperty("finish_reason", out var finish) &&
+                        finish.GetString() == "length")
+                    {
+                        var budget = EffectiveMaxTokens(maxTokens, !string.IsNullOrWhiteSpace(jsonSchema));
+                        return (false, messageContent,
+                            $"Réponse coupée : le modèle a atteint le plafond de {budget} tokens sans terminer. " +
+                            "Relancer sur un texte plus court, ou augmenter le budget de l'appelant.");
+                    }
+
+                    return (true, messageContent, null);
                 }
 
                 return (false, "", "Format de réponse inattendu");
@@ -181,6 +207,29 @@ namespace MedCompanion.Services.LLM
                 return (false, "", $"Erreur inattendue : {ex.Message}");
             }
         }
+
+        // ── Sortie structurée (IStructuredOutputService) ──────────────────────
+
+        /// <summary>
+        /// llama-server compile le schéma en grammaire GBNF et filtre les tokens candidats à chaque
+        /// pas : la contrainte est portée par le moteur, pas par le modèle. Vrai pour tous les
+        /// profils servis ici.
+        /// </summary>
+        public bool SupportsStructuredOutput => true;
+
+        public async Task<(bool success, string result, string? error)> GenerateJsonAsync(
+            string prompt,
+            string schemaName,
+            string jsonSchema,
+            int maxTokens = 1500,
+            System.Threading.CancellationToken cancellationToken = default)
+            => await ChatCoreAsync(
+                "",
+                new List<(string role, string content)> { ("user", prompt) },
+                maxTokens,
+                cancellationToken,
+                schemaName,
+                jsonSchema);
 
         public async Task<(bool success, string fullResponse, string? error)> ChatStreamAsync(
             string systemPrompt,
@@ -340,20 +389,80 @@ namespace MedCompanion.Services.LLM
         // Même réserve que OllamaLLMProvider.ReasoningHeadroomTokens.
         private const int ReasoningHeadroomTokens = 2000;
 
-        private Dictionary<string, object> BuildRequestBody(List<object> messagesList, int maxTokens, bool stream)
+        /// <summary>
+        /// Budget réellement envoyé au serveur.
+        ///
+        /// ATTENTION au sens de <see cref="LlamaCppModelProfile.SupportsReasoning"/> : il dit que le
+        /// chat template accepte un NIVEAU de réflexion, PAS que le modèle s'abstient de réfléchir.
+        /// Mesuré le 29/08/2026 sur Gemma 4 QAT (SupportsReasoning = false) : 1500 tokens demandés,
+        /// 4770 caractères partis dans `reasoning_content` et un `content` VIDE. Conditionner la
+        /// marge à ce drapeau la retirait donc exactement aux modèles qui en avaient besoin.
+        ///
+        /// La seule condition qui tienne est : la réflexion est-elle coupée pour CETTE requête.
+        /// Quand elle l'est (cas du décodage contraint, voir <see cref="BuildRequestBody"/>), il n'y
+        /// a plus rien à absorber et le budget demandé suffit — mesuré : 453 tokens au lieu de 1500
+        /// non terminés.
+        /// </summary>
+        private int EffectiveMaxTokens(int maxTokens, bool thinkingDisabled)
         {
+            if (maxTokens <= 0) return maxTokens;
+            return thinkingDisabled ? maxTokens : maxTokens + ReasoningHeadroomTokens;
+        }
+
+        private Dictionary<string, object> BuildRequestBody(
+            List<object> messagesList,
+            int maxTokens,
+            bool stream,
+            string? schemaName = null,
+            string? jsonSchema = null)
+        {
+            var schemaConstrained = !string.IsNullOrWhiteSpace(jsonSchema);
+
             var body = new Dictionary<string, object>
             {
                 ["model"] = ModelDisplayName,
                 ["messages"] = messagesList.ToArray(),
-                ["temperature"] = 0.3,
-                ["max_tokens"] = maxTokens > 0 ? maxTokens + ReasoningHeadroomTokens : maxTokens,
+                // Sous contrainte de schéma, la créativité ne sert plus qu'à varier la formulation
+                // des valeurs : on la coupe pour rendre l'extraction reproductible.
+                ["temperature"] = schemaConstrained ? 0.0 : 0.3,
+                ["max_tokens"] = EffectiveMaxTokens(maxTokens, schemaConstrained),
                 ["stream"] = stream
             };
+
+            if (schemaConstrained)
+            {
+                // Le schéma doit partir en OBJET, pas en chaîne échappée : llama-server le compile
+                // en grammaire GBNF, et une chaîne serait rejetée. JsonDocument.Parse valide au
+                // passage que le schéma est lui-même du JSON correct.
+                using var schemaDoc = JsonDocument.Parse(jsonSchema!);
+                body["response_format"] = new Dictionary<string, object>
+                {
+                    ["type"] = "json_schema",
+                    ["json_schema"] = new Dictionary<string, object>
+                    {
+                        ["name"]   = string.IsNullOrWhiteSpace(schemaName) ? "reponse" : schemaName!,
+                        ["strict"] = true,
+                        ["schema"] = schemaDoc.RootElement.Clone()
+                    }
+                };
+
+                // Sans ceci, le décodage contraint ne sert à rien : le modèle produit un bloc de
+                // réflexion que le serveur range dans `reasoning_content`, `content` reste vide et
+                // l'appelant ne voit AUCUN JSON — le schéma n'est appliqué qu'à la réponse finale,
+                // jamais atteinte. Mesuré sur Gemma 4 QAT : 1500 tokens et content vide sans le
+                // drapeau, 453 tokens et 8 blocs corrects avec.
+                // On passe par chat_template_kwargs et non par reasoning_effort="none" : les deux
+                // donnent le même résultat, mais les templates n'acceptent pas tous les mêmes
+                // niveaux (celui de Qwen rejette un niveau inconnu par une erreur 500), alors qu'une
+                // variable de template inconnue est simplement ignorée.
+                body["chat_template_kwargs"] = new Dictionary<string, object> { ["enable_thinking"] = false };
+            }
             // "off" n'est pas un niveau de reasoning_effort (les niveaux vont de 'minimal' à 'max') :
             // c'est l'interrupteur serveur --reasoning off, appliqué au démarrage du process. On
             // s'abstient donc d'envoyer le champ, sinon le template recevrait un niveau invalide.
-            if (!string.IsNullOrEmpty(ReasoningEffort) && ReasoningEffort != ReasoningLevels.Off)
+            // Jamais de niveau de réflexion sous contrainte de schéma : il contredirait le
+            // enable_thinking=false posé juste au-dessus.
+            if (!schemaConstrained && !string.IsNullOrEmpty(ReasoningEffort) && ReasoningEffort != ReasoningLevels.Off)
                 body["reasoning_effort"] = ToTemplateEffort(ReasoningEffort!);
             return body;
         }

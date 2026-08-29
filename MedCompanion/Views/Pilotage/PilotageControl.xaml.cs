@@ -172,6 +172,14 @@ namespace MedCompanion.Views.Pilotage
             InitAvatarSyncService();
         }
 
+        /// <summary>
+        /// Branche l'affectation modèle-par-étape sur l'onglet « Moteur local ». Séparé des
+        /// surcharges d'Initialize, déjà longues, et parce que ces deux dépendances relèvent du
+        /// moteur LLM et non du pilotage Parent'aile.
+        /// </summary>
+        public void SetEtapeModeles(Services.LLM.EtapeModeleService etapes, Services.LLM.LLMServiceFactory factory)
+            => MoteurLocalPanel.InitEtapes(etapes, factory);
+
         private void InitAvatarSyncService()
         {
             if (_avatarSyncService != null || _firebaseService == null) return;

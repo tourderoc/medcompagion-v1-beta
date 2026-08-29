@@ -76,9 +76,43 @@ namespace MedCompanion.Services.LLM
         }
 
         /// <summary>
-        /// Change le provider actif (Ollama ou OpenAI)
+        /// Le modèle actif vient de changer, quelle qu'en soit l'origine — sélecteur de l'en-tête,
+        /// bascule automatique d'une étape de consultation, ou tout autre appel.
+        ///
+        /// Existe parce qu'un changement déclenché par le code laissait le sélecteur de l'en-tête
+        /// afficher l'ANCIEN modèle : l'affichage ne se mettait à jour que lorsque le médecin
+        /// choisissait lui-même dans la liste. On ne peut pas savoir sur quel modèle on travaille en
+        /// regardant la barre si elle ne suit que les changements manuels.
+        ///
+        /// L'abonné doit se garder de relancer une bascule en réaction (voir MainWindow).
+        /// </summary>
+        public event EventHandler<(string provider, string model)>? ActiveModelChanged;
+
+        /// <summary>
+        /// Change le provider actif (Ollama, llama.cpp ou OpenAI) et signale le changement.
         /// </summary>
         public async Task<(bool success, string message)> SwitchProviderAsync(string providerName, string? modelName = null)
+        {
+            var resultat = await SwitchProviderCoreAsync(providerName, modelName);
+
+            // Signalé APRÈS coup et seulement en cas de succès : sur échec le modèle actif n'a pas
+            // bougé, prévenir l'interface ferait afficher un modèle qui n'est pas chargé.
+            //
+            // On renvoie le nom DEMANDÉ, pas GetActiveModelName() : pour llama.cpp ce dernier rend
+            // le libellé long du profil ("hf.co/jrell/Qwen3.8-27B-…-GGUF (llama.cpp)") alors que les
+            // entrées du sélecteur portent l'identifiant court ("Qwen3.8-27B"). L'abonné ne trouvait
+            // donc jamais la ligne correspondante et l'en-tête restait sur l'ancien modèle.
+            if (resultat.success)
+            {
+                var nomPourInterface = string.IsNullOrWhiteSpace(modelName) ? GetActiveModelName() : modelName!;
+                try { ActiveModelChanged?.Invoke(this, (providerName, nomPourInterface)); }
+                catch { /* un abonné défaillant ne doit pas faire échouer une bascule réussie */ }
+            }
+
+            return resultat;
+        }
+
+        private async Task<(bool success, string message)> SwitchProviderCoreAsync(string providerName, string? modelName = null)
         {
             try
             {

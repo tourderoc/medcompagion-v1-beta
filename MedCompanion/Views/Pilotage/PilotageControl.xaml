@@ -1318,7 +1318,7 @@
                 <TabItem.Header>
                     <TextBlock Text="⚙️ Moteur local" FontSize="14" FontWeight="SemiBold"/>
                 </TabItem.Header>
-                <pilotage:LlamaServerControl/>
+                <pilotage:LlamaServerControl x:Name="MoteurLocalPanel"/>
             </TabItem>
 
         </TabControl>
