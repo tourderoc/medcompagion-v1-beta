@@ -175,8 +175,23 @@ namespace MedCompanion.Services.LLM
                 }
                 else if (providerName == "Ollama")
                 {
+                    var modeleDiffere = _ollamaProvider != null && modelName != null
+                                         && _ollamaProvider.GetModelName() != modelName;
+
+                    // Décharge l'ancien modèle avant de charger le nouveau : sans ça, Ollama le
+                    // garde en VRAM (keep_alive) et les deux tournent en même temps tant que le
+                    // timeout n'expire pas — même défaut que celui déjà corrigé ci-dessus pour la
+                    // bascule vers llama.cpp, jamais reporté ici. Repéré sur un aller-retour 4B →
+                    // 1B qui saturait les 6 Go dédiés de la carte. Best-effort : un échec de
+                    // déchargement ne doit pas bloquer la bascule.
+                    if (modeleDiffere)
+                    {
+                        try { await _ollamaProvider!.UnloadAsync(); }
+                        catch { /* best-effort */ }
+                    }
+
                     // Créer ou réutiliser le provider Ollama
-                    if (_ollamaProvider == null || (modelName != null && _ollamaProvider.GetModelName() != modelName))
+                    if (_ollamaProvider == null || modeleDiffere)
                     {
                         _ollamaProvider = new OllamaLLMProvider(
                             _settings.OllamaBaseUrl,

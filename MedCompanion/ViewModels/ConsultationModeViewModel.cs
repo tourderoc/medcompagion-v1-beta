@@ -2656,10 +2656,20 @@ namespace MedCompanion.ViewModels
         /// Écrit (ou réécrit) le fichier unique de la 1ère consultation avec les sections
         /// Interrogatoire et Observations actuellement remplies.
         /// </summary>
-        private async Task<(bool ok, string? err)> WritePremiereConsultationFileAsync()
+        /// <summary>
+        /// Réécrit le fichier unifié de la 1ère consultation (Interrogatoire + Observations,
+        /// selon ce qui est déjà rempli au moment de l'appel).
+        ///
+        /// Ne déclenche PAS l'analyse d'urgence elle-même : cette méthode est appelée à la fois
+        /// après l'Interrogatoire (Observations encore vides) et après les Observations — la
+        /// déclencher ici l'aurait fait tourner deux fois, une première fois sur un texte partiel.
+        /// Le contenu écrit est renvoyé pour que l'appelant décide, au bon moment, avec le dossier
+        /// complet.
+        /// </summary>
+        private async Task<(bool ok, string? err, string? content)> WritePremiereConsultationFileAsync()
         {
             if (CurrentPatient == null || string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
-                return (false, "Patient non disponible");
+                return (false, "Patient non disponible", null);
 
             try
             {
@@ -2722,12 +2732,11 @@ clinical_observations_json: |
                 File.WriteAllText(_premiereConsultationFilePath, content, System.Text.Encoding.UTF8);
                 await RefreshConsultationNotesAsync();
                 RaiseNoteSavedToPatient();
-                TriggerUrgenceAnalysis(_premiereConsultationFilePath, content, "consultation-premiere");
-                return (true, null);
+                return (true, null, content);
             }
             catch (Exception ex)
             {
-                return (false, ex.Message);
+                return (false, ex.Message, null);
             }
         }
 
@@ -2912,6 +2921,11 @@ clinical_observations_json: |
             if (!needsAgeCheck && !needsFullContext)
                 return;
 
+            // Couvre toute la fenêtre à risque : appel LLM d'audit (avant l'ouverture de la
+            // popup), la popup elle-même, et la fusion des faits vérifiés dans les blocs après
+            // sa fermeture. Le bouton Sauvegarder reste désactivé sur tout ce trajet.
+            IsFinalNoteBusy = true;
+            System.Windows.Input.CommandManager.InvalidateRequerySuggested();
             try
             {
                 var oldStatus = ExtractionStatus;
@@ -3131,6 +3145,11 @@ clinical_observations_json: |
             {
                 System.Diagnostics.Debug.WriteLine($"[PatientContextAssistant] Erreur assistant complétude : {ex.Message}");
             }
+            finally
+            {
+                IsFinalNoteBusy = false;
+                System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+            }
         }
 
         /// <summary>
@@ -3193,6 +3212,20 @@ Retourne UNIQUEMENT le texte de la section, sans titre ni préambule ni balises 
         {
             get => _isReformulatingAll;
             private set => SetProperty(ref _isReformulatingAll, value);
+        }
+
+        private bool _isFinalNoteBusy;
+        /// <summary>
+        /// Vrai pendant l'assistant de vérification de complétude (popup de contexte patient +
+        /// fusion des faits vérifiés dans les cartouches). Désactive « Sauvegarder dossier » et
+        /// « Reformuler » : les blocs sont réécrits progressivement à ce moment-là, donc une
+        /// sauvegarde déclenchée pendant cette fenêtre figerait un mélange d'ancien et de nouveau
+        /// contenu — et un second déclenchement de l'assistant pourrait ouvrir une seconde popup.
+        /// </summary>
+        public bool IsFinalNoteBusy
+        {
+            get => _isFinalNoteBusy;
+            private set => SetProperty(ref _isFinalNoteBusy, value);
         }
 
         /// <summary>
@@ -3457,7 +3490,7 @@ Texte :
             if (string.IsNullOrWhiteSpace(NoteContent))
                 return;
 
-            var (ok, err) = await WritePremiereConsultationFileAsync();
+            var (ok, err, _) = await WritePremiereConsultationFileAsync();
             if (ok)
             {
                 _noteSaved = true;
@@ -3738,7 +3771,7 @@ Texte :
             }
 
             // Réécrit le fichier UNIQUE de la 1ère consultation (avec Interrogatoire + Observations).
-            var (ok, err) = await WritePremiereConsultationFileAsync();
+            var (ok, err, content) = await WritePremiereConsultationFileAsync();
 
             if (ok)
             {
@@ -3746,6 +3779,13 @@ Texte :
                 ObservationsStatusMessage = "✅ Observations ajoutées à la note de 1ère consultation.";
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
+
+                // Seul point de déclenchement de l'analyse d'urgence pour la 1ère consultation :
+                // le dossier est maintenant complet (Interrogatoire + Observations). La déclencher
+                // aussi après l'Interrogatoire seul la ferait tourner deux fois, une première sur
+                // un texte partiel — c'est ce qui produisait le double signal observé en pratique.
+                if (!string.IsNullOrEmpty(_premiereConsultationFilePath) && content != null)
+                    TriggerUrgenceAnalysis(_premiereConsultationFilePath, content, "consultation-premiere");
 
                 // Enchaîne automatiquement sur l'étape suivante (Synthèse Initiale) — le bouton
                 // « ← Retour Observations » de cette étape permet de revenir en arrière.
@@ -3776,6 +3816,12 @@ Texte :
             }
 
             IsGeneratingSuggestions = true;
+
+            // Sans affectation propre, cette étape héritait de n'importe quel modèle laissé actif
+            // par l'étape précédente — y compris un modèle trop petit (gemma3:1b) pour tenir le
+            // format JSON à 9 axes demandé, d'où des échecs intermittents observés en pratique.
+            await PreparerModeleAsync("observations_suggestions", s => SuggestionsStatus = s);
+
             SuggestionsStatus = "⏳ Génération des suggestions en cours…";
 
             try
@@ -3814,8 +3860,10 @@ Texte :
                 sb.AppendLine("Réponds UNIQUEMENT en JSON valide, sans markdown ni commentaire, avec cette forme pour CHAQUE axe listé ci-dessus (Vigilance exclu) :");
                 sb.AppendLine("{\"Contact\":{\"titre\":\"\",\"options\":[]},\"Langage\":{\"titre\":\"\",\"options\":[]},\"Comprehension\":{\"titre\":\"\",\"options\":[]},\"Psychomotricite\":{\"titre\":\"\",\"options\":[]},\"MimiquRegard\":{\"titre\":\"\",\"options\":[]},\"ProfilCognitif\":{\"titre\":\"\",\"options\":[]},\"HumeurAnxiete\":{\"titre\":\"\",\"options\":[]},\"ImaginaireJeu\":{\"titre\":\"\",\"options\":[]},\"RapportCadre\":{\"titre\":\"\",\"options\":[]}}");
 
-                var (ok, json, _) = await _llmService.ChatAsync(sb.ToString(), new(), maxTokens: 1200);
-                if (!ok || string.IsNullOrWhiteSpace(json)) throw new InvalidOperationException("LLM non disponible");
+                var (ok, json, callError) = await _llmService.ChatAsync(sb.ToString(), new(), maxTokens: 1200);
+                if (!ok || string.IsNullOrWhiteSpace(json))
+                    throw new InvalidOperationException(
+                        string.IsNullOrWhiteSpace(callError) ? "Réponse vide du modèle." : callError);
 
                 // Extrait le JSON brut (ignore texte éventuel avant/après)
                 var start = json.IndexOf('{');
@@ -3881,9 +3929,28 @@ Texte :
                 _suggestionsGenerated = true;
                 SuggestionsStatus = "✨ Suggestions IA — basées sur l'interrogatoire";
             }
-            catch
+            // Ici, l'interrogatoire n'est JAMAIS vide : le garde-fou en tête de méthode
+            // (NoteContent vide → retour anticipé, sans exception) l'a déjà écarté. Un message
+            // qui l'évoquerait comme cause possible induirait le médecin en erreur — d'où deux
+            // messages distincts selon la cause réelle, plutôt qu'un message générique.
+            catch (InvalidOperationException ex)
             {
-                SuggestionsStatus = "ℹ️ Options génériques (LLM indisponible ou interrogatoire vide)";
+                // ex.Message porte la raison réelle renvoyée par le provider (ex. "Erreur 401:
+                // Unauthorized" pour un modèle Ollama Cloud sans authentification configurée) —
+                // "service LLM indisponible" était trompeur quand un modèle est bien sélectionné
+                // et actif : l'appel a échoué pour une raison précise, pas par absence de modèle.
+                System.Diagnostics.Debug.WriteLine($"[ObservationSuggestions] Échec de l'appel LLM : {ex.Message}");
+                SuggestionsStatus = $"ℹ️ Options génériques — échec de l'appel au modèle : {ex.Message}";
+            }
+            catch (Exception ex) when (ex is FormatException or System.Text.Json.JsonException)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ObservationSuggestions] Réponse LLM non exploitable : {ex.Message}");
+                SuggestionsStatus = "ℹ️ Options génériques — réponse du modèle non exploitable (modèle probablement trop petit pour ce format ; essayez-en un plus grand).";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ObservationSuggestions] Erreur inattendue : {ex.Message}");
+                SuggestionsStatus = "ℹ️ Options génériques — échec de la génération IA.";
             }
             finally
             {
@@ -5795,10 +5862,17 @@ source: ""MedCompanion""
 
             // Commands interrogatoire
             ExtractInterrogatoireCommand   = new RelayCommand(async _ => await ExtractInterrogatoireAsync(), _ => CanExtract);
-            SaveInterrogatoireNoteCommand  = new RelayCommand(async _ => await SaveInterrogatoireNoteAsync(), _ => IsInFinalNoteMode && HasPatient && HasNoteContent && !_noteSaved);
+            // !IsReformulatingAll && !IsFinalNoteBusy : tant que les cartouches sont en cours de
+            // réécriture (reformulation globale ou fusion des faits vérifiés post-popup), la note
+            // n'est pas dans un état stable à figer — sauvegarder à ce moment-là mélangerait ancien
+            // et nouveau contenu selon l'avancement bloc par bloc.
+            SaveInterrogatoireNoteCommand  = new RelayCommand(async _ => await SaveInterrogatoireNoteAsync(),
+                                                              _ => IsInFinalNoteMode && HasPatient && HasNoteContent && !_noteSaved
+                                                                   && !IsReformulatingAll && !IsFinalNoteBusy);
             AddFinalNoteSectionCommand     = new RelayCommand(p => AddFinalNoteSection(p as ConsultationBlockViewModel), p => p is ConsultationBlockViewModel);
             ReformulateAllCommand          = new RelayCommand(async _ => await ReformulateAllAsync(),
-                                                              _ => !IsReformulatingAll && FinalNoteBlocks.Any(b => !string.IsNullOrWhiteSpace(b.FreeText)));
+                                                              _ => !IsReformulatingAll && !IsFinalNoteBusy
+                                                                   && FinalNoteBlocks.Any(b => !string.IsNullOrWhiteSpace(b.FreeText)));
             BackToSaisieCommand = new RelayCommand(_ =>
             {
                 // Retour en saisie sans effacer les blocs (le contenu est précieux)

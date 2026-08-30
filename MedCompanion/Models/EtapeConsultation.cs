@@ -58,6 +58,12 @@ namespace MedCompanion.Models
             },
             new EtapeConsultation
             {
+                Id = "observations_suggestions", Phase = PhasePremiere,
+                Libelle = "Suggestions observations",
+                Description = "Propose un intitulé et 3-4 qualificatifs adaptés à l'âge pour chacun des 9 axes d'observation clinique."
+            },
+            new EtapeConsultation
+            {
                 Id = "synthese_initiale", Phase = PhasePremiere,
                 Libelle = "Synthèse initiale",
                 Description = "Intègre l'ensemble du premier entretien. Étape de raisonnement."

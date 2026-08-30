@@ -49,29 +49,37 @@ namespace MedCompanion.Views.Patients
 
             var patients = _patientIndex.GetAllPatients();
             var totalCount = patients.Count;
-            
-            var displayList = patients.Select(p =>
+
+            // Trier et limiter à 60 AVANT de calculer la date de dernière consultation :
+            // RecentOrder (liste en mémoire) et NomComplet (déjà dans l'index) ne coûtent rien,
+            // mais GetLastConsultationDate() lit le disque (répertoires années + fichiers .md) par
+            // patient. La calculer pour les 700+ patients avant de n'en garder que 60 gelait
+            // l'interface à chaque rafraîchissement (perceptible en pratique au-delà de quelques
+            // centaines de dossiers) — elle ne sert qu'à l'AFFICHAGE des lignes visibles, jamais au
+            // tri, donc il n'y a aucune raison de la calculer plus tôt que ça.
+            var patientsAffiches = patients
+                .Select(p => (Patient: p, RecentOrder: _patientIndex.GetRecentOrder(p.Id)))
+                .OrderBy(x => x.RecentOrder == -1 ? int.MaxValue : x.RecentOrder)
+                .ThenBy(x => x.Patient.NomComplet)
+                .Take(60)
+                .ToList();
+
+            var displayList = patientsAffiches.Select(x =>
             {
-                var lastConsult = _patientIndex.GetLastConsultationDate(p.Id);
-                var recentOrder = _patientIndex.GetRecentOrder(p.Id); // -1 si pas récent, 0 = plus récent, 1 = 2e, etc.
+                var lastConsult = _patientIndex.GetLastConsultationDate(x.Patient.Id);
 
                 return new PatientDisplayInfo
                 {
-                    Patient = p,
-                    NomComplet = p.NomComplet,
-                    AgeDisplay = p.Age.HasValue ? $"{p.Age} ans" : "-",
+                    Patient = x.Patient,
+                    NomComplet = x.Patient.NomComplet,
+                    AgeDisplay = x.Patient.Age.HasValue ? $"{x.Patient.Age} ans" : "-",
                     LastConsultDisplay = lastConsult.HasValue
                         ? lastConsult.Value.ToString("dd/MM/yyyy")
                         : "Jamais",
                     LastConsultDate = lastConsult,
-                    RecentOrder = recentOrder // Pour le tri par ordre d'ouverture
+                    RecentOrder = x.RecentOrder
                 };
-            })
-            // Tri intelligent: Patients récemment ouverts en priorité, puis alphabétique
-            .OrderBy(p => p.RecentOrder == -1 ? int.MaxValue : p.RecentOrder) // Récents en premier (0, 1, 2...), puis autres (MaxValue)
-            .ThenBy(p => p.NomComplet) // Ordre alphabétique pour les non-récents
-            .Take(60) // Limiter à 60 patients pour performance
-            .ToList();
+            }).ToList();
 
             PatientsDataGrid.ItemsSource = displayList;
             
