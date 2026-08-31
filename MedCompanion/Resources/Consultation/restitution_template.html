@@ -221,7 +221,7 @@ body {
 /* ── Page Parent'aile (accès + QR codes) ── */
 .parentaile-page {
   page-break-before: always;
-  padding-top: 40px;
+  padding-top: 22px;
   text-align: center;
 }
 .parentaile-title {
@@ -240,7 +240,7 @@ body {
   font-size: 12px;
   color: #6B7A8D;
   max-width: 480px;
-  margin: 0 auto 30px;
+  margin: 0 auto 20px;
   line-height: 1.7;
 }
 .parentaile-qr-grid {
@@ -253,12 +253,12 @@ body {
   border: 1px solid #E8EDF3;
   border-bottom: 3px solid #2DC5A2;
   border-radius: 10px;
-  padding: 20px;
+  padding: 16px;
   width: 220px;
 }
 .qr-img {
-  width: 160px;
-  height: 160px;
+  width: 148px;
+  height: 148px;
 }
 .qr-caption {
   font-size: 11px;
@@ -273,6 +273,106 @@ body {
   color: #6B7A8D;
   font-size: 10px;
   margin-top: 3px;
+}
+
+/* ── Identifiant Famille en clair ──
+   Le QR code ne suffit pas : un parent dont le téléphone ne lit pas les QR, ou qui préfère
+   son ordinateur, n'avait aucun moyen d'entrer. L'identifiant doit donc être lisible et
+   recopiable à la main. */
+.token-box {
+  margin: 26px auto 0;
+  max-width: 430px;
+  border: 2px dashed #2DC5A2;
+  border-radius: 10px;
+  padding: 14px 18px;
+  background: #F4FCFA;
+}
+.token-label {
+  font-size: 11px;
+  color: #6B7A8D;
+  font-weight: 600;
+}
+.token-value {
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 22px;
+  font-weight: 700;
+  color: #112240;
+  letter-spacing: 2px;
+  margin-top: 4px;
+}
+.token-hint {
+  font-size: 10px;
+  color: #6B7A8D;
+  margin-top: 5px;
+}
+
+/* ── Marche à suivre ── */
+.pa-steps {
+  max-width: 520px;
+  margin: 28px auto 0;
+  text-align: left;
+}
+.pa-steps h3, .pa-priorites h3 {
+  font-size: 13px;
+  color: #112240;
+  font-weight: 800;
+  margin-bottom: 10px;
+  text-align: center;
+}
+.pa-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 7px;
+  font-size: 11px;
+  color: #3C4A5C;
+  line-height: 1.5;
+}
+.pa-num {
+  flex-shrink: 0;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #2DC5A2;
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ── Ce qui est prioritaire ──
+   Reprend la hiérarchie clinique de la fiche « Générer Token » : dire aux parents ce qui
+   justifie un message évite autant les urgences noyées que les inquiétudes gardées pour soi. */
+.pa-priorites {
+  max-width: 520px;
+  margin: 24px auto 0;
+  text-align: left;
+}
+.pa-prio {
+  font-size: 10.5px;
+  color: #3C4A5C;
+  padding: 5px 9px;
+  border-left: 3px solid #E8EDF3;
+  margin-bottom: 5px;
+  line-height: 1.45;
+}
+.pa-prio b { color: #112240; }
+.pa-prio.p1 { border-left-color: #E74C3C; }
+.pa-prio.p2 { border-left-color: #E67E22; }
+.pa-prio.p3 { border-left-color: #F1C40F; }
+.pa-prio.p4 { border-left-color: #7FB3D5; }
+
+.pa-urgence {
+  max-width: 520px;
+  margin: 20px auto 0;
+  border: 2px solid #E74C3C;
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 700;
+  color: #C0392B;
 }
 </style>
 </head>

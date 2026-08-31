@@ -93,9 +93,48 @@ namespace MedCompanion.Services
                     return (false, null, "Impossible d'extraire le texte du document.");
                 }
 
+                // ÉTAPE 1bis : Est-ce NOTRE formulaire de complétion qui revient rempli ?
+                //
+                // Court-circuit avant tout appel LLM. Ce document n'a rien à faire analyser : son
+                // contenu utile est manuscrit, donc absent de la couche texte, et les trois appels
+                // qui suivaient (nettoyage, analyse, synthèse détaillée) ne pouvaient produire
+                // qu'une description du gabarit vierge. Constaté sur un cas réel : « Le formulaire
+                // recueille les informations administratives… », « prévoit des sections pour les
+                // coordonnées du père » — zéro information nouvelle, et le document repartait
+                // ensuite pondéré à 0,7 dans la Synthèse Initiale.
+                //
+                // Sa valeur est ailleurs : dans la lecture champ par champ (FormulaireSaisieDialog).
+                var (defFormulaire, versionFormulaire) = ReconnaitreFormulaire(extractedText);
+                if (defFormulaire != null)
+                {
+                    var formulaire = new PatientDocument
+                    {
+                        FileName      = $"{DateTime.Now:yyyy-MM-dd}_formulaire_{defFormulaire.Id.ToLowerInvariant()}_rempli{extension}",
+                        Category      = "Formulaires",
+                        Summary       = $"{defFormulaire.Libelle} rempli par les parents — à lire champ par champ.",
+                        ExtractedText = extractedText,
+                        FileSizeBytes = fileInfo.Length,
+                        FileExtension = extension,
+                        DateAdded     = DateTime.Now,
+                        IsFormulaireCompletion = true,
+                        FormulaireId      = defFormulaire.Id,
+                        FormulaireVersion = versionFormulaire
+                    };
+
+                    var dossierFormulaires = Path.Combine(
+                        _pathService.GetDocumentsDirectory(nomComplet), formulaire.Category);
+                    Directory.CreateDirectory(dossierFormulaires);
+                    var destination = Path.Combine(dossierFormulaires, formulaire.FileName);
+                    File.Copy(sourceFilePath, destination, overwrite: true);
+                    formulaire.FilePath = destination;
+
+                    await SaveDocumentToIndexAsync(nomComplet, formulaire);
+                    return (true, formulaire, "Formulaire de complétion reconnu — prêt pour la lecture des champs.");
+                }
+
                 // ÉTAPE 2 : Nettoyage local via Ollama (Indépendant du patient, texte brut)
                 string cleanedText = await CleanAndStructureOcrViaLocalLLMAsync(extractedText);
-                
+
                 // ÉTAPE 3 : Analyser avec l'IA pour catégorisation et nommage (via Gateway pour anonymisation)
                 var analysis = await AnalyzeDocumentWithAIAsync(cleanedText, fileInfo.Name, nomComplet);
 
@@ -157,6 +196,77 @@ namespace MedCompanion.Services
         /// <summary>
         /// Extrait le texte d'un fichier (OCR si nécessaire)
         /// </summary>
+        /// <summary>
+        /// Reconnaît le formulaire de complétion à son titre imprimé.
+        ///
+        /// Vérifié sur un scan réel : le titre ressort de la couche texte sous la forme
+        /// « FORMULAIRE DE COMPLÉTION - 1RE CONSULTATION ». Deux pièges constatés sur ce cas, d'où
+        /// la forme de ce test :
+        ///  • la CASSE diffère du gabarit HTML (le titre y est en minuscules, mis en capitales par
+        ///    la feuille de style) — comparaison insensible à la casse ;
+        ///  • le titre n'apparaît PAS en tête du texte extrait mais au milieu, l'ordre de lecture du
+        ///    PDF ne suivant pas celui de la page — on cherche donc dans tout le texte.
+        /// Les accents sont neutralisés : un scan médiocre rend parfois « COMPLETION ».
+        ///
+        /// Un faux négatif est sans gravité : le document repart dans le circuit habituel.
+        /// </summary>
+        /// <summary>
+        /// Au-delà de cette longueur de texte extrait, le document contient autre chose que le seul
+        /// formulaire — typiquement plusieurs pièces passées au scanner en une fois.
+        ///
+        /// Mesuré sur les 332 documents du fonds : les 18 formulaires seuls tiennent entre 728 et
+        /// 2 113 caractères normalisés (leur texte se réduit au gabarit imprimé, le manuscrit
+        /// n'atteignant pas la couche texte), tandis qu'un scan mêlant un bilan psychomoteur et le
+        /// formulaire atteint 3 208.
+        /// </summary>
+        private const int LongueurMaxFormulaireSeul = 2600;
+
+        /// <summary>
+        /// Reconnaît un formulaire à saisir dans le texte extrait, et avec quelle version de mise
+        /// en page il a été imprimé.
+        ///
+        /// La version compte autant que le type : c'est elle qui désigne la géométrie de lecture.
+        /// Un exemplaire remis aux parents il y a trois semaines et rendu aujourd'hui doit être relu
+        /// avec le gabarit de son époque, sans quoi on cherche l'adresse là où se trouve désormais
+        /// la situation familiale.
+        /// </summary>
+        internal static (FormulaireDefinition? definition, int version) ReconnaitreFormulaire(string? texteExtrait)
+        {
+            if (string.IsNullOrWhiteSpace(texteExtrait)) return (null, 0);
+
+            var normalise = NormaliserPourComparaison(texteExtrait);
+            var (definition, version) = FormulairesConnus.Reconnaitre(normalise);
+            if (definition == null) return (null, 0);
+
+            // Reconnaître ne suffit pas : un scan groupé contient le formulaire ET autre chose. Le
+            // court-circuiter ferait perdre la synthèse d'une pièce réellement clinique — cas
+            // rencontré en base, un bilan psychomoteur scanné avec le formulaire.
+            //
+            // L'erreur n'est pas symétrique : renoncer à l'optimisation sur un document ambigu ne
+            // coûte que trois appels LLM, alors qu'un court-circuit à tort perd du contenu clinique.
+            // On penche donc vers le circuit habituel dès qu'il y a du texte en trop.
+            if (normalise.Length > LongueurMaxFormulaireSeul) return (null, 0);
+
+            return (definition, version);
+        }
+
+        private static string NormaliserPourComparaison(string texte)
+        {
+            var decompose = texte.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder(decompose.Length);
+            var espacePrecedent = false;
+
+            foreach (var c in decompose)
+            {
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                    == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+
+                if (char.IsLetterOrDigit(c)) { sb.Append(c); espacePrecedent = false; }
+                else if (!espacePrecedent)   { sb.Append(' '); espacePrecedent = true; }
+            }
+            return sb.ToString();
+        }
+
         private async Task<string> ExtractTextFromFileAsync(string filePath)
         {
             var extension = Path.GetExtension(filePath).ToLowerInvariant();

@@ -36,9 +36,19 @@ namespace MedCompanion.Services
         /// <paramref name="perePrenom"/> et <paramref name="merePrenom"/> sont extraits par le LLM
         /// depuis le bloc famille de l'interrogatoire avant d'appeler cette méthode.
         /// </summary>
+        /// <param name="situationParentale">
+        /// Situation validée par le médecin dans la fenêtre de complétion : <c>ensemble</c>,
+        /// <c>separes_garde_principale</c> ou <c>separes_garde_alternee</c>. Null = non renseignée,
+        /// aucune case n'est alors pré-cochée.
+        ///
+        /// Pré-cocher n'est pas anodin : le parent découvre en salle d'attente une affirmation sur
+        /// sa famille. On ne le fait donc qu'à partir de cette valeur validée à l'écran, jamais
+        /// directement depuis l'extraction de la transcription.
+        /// </param>
         public async Task<(bool ok, string? pdfPath, string? error)> GenerateAsync(
             PatientMetadata meta, string outputDir,
-            string? perePrenom = null, string? merePrenom = null)
+            string? perePrenom = null, string? merePrenom = null,
+            string? situationParentale = null)
         {
             if (!File.Exists(TemplatePath))
                 return (false, null,
@@ -50,7 +60,7 @@ namespace MedCompanion.Services
             try
             {
                 var html = await File.ReadAllTextAsync(TemplatePath, Encoding.UTF8);
-                html = FillPlaceholders(html, BuildValues(meta, perePrenom, merePrenom));
+                html = FillPlaceholders(html, BuildValues(meta, perePrenom, merePrenom, situationParentale));
 
                 Directory.CreateDirectory(outputDir);
                 var stamp   = DateTime.Now.ToString("yyyy-MM-dd_HHmm");
@@ -77,8 +87,13 @@ namespace MedCompanion.Services
         /// sont injectés. Tout le reste est laissé vide — rempli à la main par les parents.
         /// </summary>
         private static Dictionary<string, string> BuildValues(
-            PatientMetadata m, string? perePrenom, string? merePrenom) =>
-            new(StringComparer.OrdinalIgnoreCase)
+            PatientMetadata m, string? perePrenom, string? merePrenom, string? situationParentale)
+        {
+            var ensemble = situationParentale == "ensemble";
+            var alternee = situationParentale == "separes_garde_alternee";
+            var separes  = situationParentale == "separes_garde_principale" || alternee;
+
+            return new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
                 ["date_rdv"]      = DateTime.Now.ToString("dd/MM/yyyy"),
                 ["enfant_nom"]    = m.Nom ?? "",
@@ -88,7 +103,19 @@ namespace MedCompanion.Services
                 ["classe"]        = m.Classe ?? "",
                 ["pere_prenom"]   = perePrenom ?? "",
                 ["mere_prenom"]   = merePrenom ?? "",
+
+                // Cases pré-cochées de la situation familiale. « Garde alternée » s'ajoute à
+                // « Parents séparés » : ce sont deux cases distinctes du formulaire, pas deux
+                // valeurs exclusives.
+                ["cls_situ_ensemble"]       = ensemble ? "checked" : "",
+                ["cls_situ_separes"]        = separes  ? "checked" : "",
+                ["cls_situ_garde_alternee"] = alternee ? "checked" : "",
+
+                // Adresse 2 atténuée sauf en garde alternée. Rien n'est atténué quand la situation
+                // est inconnue : mieux vaut deux blocs pleins qu'un bloc décoloré à tort.
+                ["cls_adresse2"] = (situationParentale != null && !alternee) ? "adresse-inactive" : "",
             };
+        }
 
         /// <summary>
         /// Remplace les placeholders {{cle}} par leur valeur (HTML-encodée).

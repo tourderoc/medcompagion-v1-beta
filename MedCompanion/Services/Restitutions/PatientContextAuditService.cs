@@ -27,6 +27,17 @@ namespace MedCompanion.Services.Restitutions
         public string? PereAge { get; set; }
         public string? PereJob { get; set; }
         public string? Fratrie { get; set; }
+
+        /// <summary>
+        /// Situation parentale validée par le médecin : <c>ensemble</c>,
+        /// <c>separes_garde_principale</c> ou <c>separes_garde_alternee</c>. Null = non renseignée.
+        ///
+        /// Trois états et non deux : ce qui commande la SECONDE ADRESSE du formulaire n'est pas la
+        /// séparation mais la GARDE ALTERNÉE — des parents séparés dont l'enfant vit chez un seul
+        /// d'entre eux n'ont qu'une adresse. Le formulaire le dit lui-même : « Adresse 2 (si garde
+        /// alternée) ». Un binaire ensemble/séparés ne prédirait donc pas ce qu'on veut qu'il prédise.
+        /// </summary>
+        public string? SituationParentale { get; set; }
         public string? MarcheAge { get; set; }
         public string? LangageAcq { get; set; }
         public string? PropreteAcq { get; set; }
@@ -72,6 +83,7 @@ Champs JSON à extraire :
   ""pereAge"": ""Âge du père (ex: '42 ans', ou null)"",
   ""pereJob"": ""Profession ou activité du père (ou null)"",
   ""fratrie"": ""Description courte de la fratrie (ex: '2 sœurs de 8 ans', 'Enfant unique', ou null)"",
+  ""situationParentale"": ""EXACTEMENT une de ces trois valeurs, ou null si la note ne le dit pas : 'ensemble' (parents vivant ensemble) | 'separes_garde_principale' (parents séparés, enfant vivant principalement chez l'un d'eux) | 'separes_garde_alternee' (parents séparés avec garde alternée / résidence alternée). Ne devine pas : si la note ne précise pas les modalités de garde alors que les parents sont séparés, réponds 'separes_garde_principale'. Si rien n'indique la situation, réponds null."",
   ""marcheAge"": ""Âge de la marche (ex: '14 mois', 'dans les délais', ou null)"",
   ""langageAcq"": ""Acquisition du langage (ex: 'retard', 'dans les délais', ou null)"",
   ""propreteAcq"": ""Statut propreté diurne/nocturne (ex: 'acquise', ou null)""

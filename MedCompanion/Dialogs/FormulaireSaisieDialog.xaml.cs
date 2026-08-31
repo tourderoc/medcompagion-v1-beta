@@ -51,16 +51,42 @@ namespace MedCompanion.Dialogs
             double SituationY0, double SituationY1, double AutorisationsY0, double AutorisationsY1);
 
         /// <summary>
-        /// Carte de coordonnées du template calculée une seule fois par session (Edge headless,
-        /// ~1,7 s) puis réutilisée par tous les clics « Remplissage automatique ».
+        /// Cartes de coordonnées calculées une fois par session et par GABARIT (Edge headless,
+        /// ~1,7 s chacune), puis réutilisées par tous les clics « Remplissage automatique ».
+        ///
+        /// Indexées par nom de gabarit et non plus uniques : un formulaire imprimé avant un
+        /// remaniement doit être relu avec la géométrie de SA version. Une carte unique renverrait
+        /// les coordonnées du gabarit courant pour tous les exemplaires, et découperait au mauvais
+        /// endroit un formulaire pourtant correctement rempli.
         /// </summary>
-        private static readonly Lazy<Task<BlockBounds?>> BlockBoundsTask = new(ComputeBlockBoundsAsync);
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, Lazy<Task<BlockBounds?>>>
+            _cartesParGabarit = new();
 
-        public FormulaireSaisieDialog(string? pdfPath, string? patientDir)
+        private static Task<BlockBounds?> CarteDuGabarit(string nomGabarit) =>
+            _cartesParGabarit.GetOrAdd(nomGabarit,
+                n => new Lazy<Task<BlockBounds?>>(() => ComputeBlockBoundsAsync(n))).Value;
+
+        /// <summary>Gabarit à utiliser pour CE formulaire, déterminé par sa version imprimée.</summary>
+        private readonly string _gabarit;
+
+        /// <param name="formulaireId">Type reconnu à l'import, ou null pour le formulaire de complétion.</param>
+        /// <param name="version">
+        /// Version de mise en page lue sur le formulaire. 0 = inconnue : on prend alors le gabarit
+        /// courant, seul choix possible, mais c'est le cas où une lecture décalée reste envisageable.
+        /// </param>
+        public FormulaireSaisieDialog(string? pdfPath, string? patientDir,
+                                      string? formulaireId = null, int version = 0)
         {
             InitializeComponent();
             _pdfPath = pdfPath;
             _patientDir = patientDir;
+
+            var definition = FormulairesConnus.Par(formulaireId ?? "COMPLETION")
+                          ?? FormulairesConnus.Tous[0];
+
+            _gabarit = (version > 0 ? definition.TemplatePourVersion(version) : null)
+                       ?? definition.Template;
+
             PopulateVisionModels();
         }
 
@@ -226,7 +252,7 @@ namespace MedCompanion.Dialogs
 
             try
             {
-                var bounds = await BlockBoundsTask.Value;
+                var bounds = await CarteDuGabarit(_gabarit);
                 var pageImage = await Task.Run(() => RenderFirstPageToPng(_pdfPath!));
 
                 if (bounds == null)
@@ -328,12 +354,12 @@ namespace MedCompanion.Dialogs
         /// scan étant celle du template imprimé, ces bornes restent valables tant que le
         /// template n'est pas modifié.
         /// </summary>
-        private static async Task<BlockBounds?> ComputeBlockBoundsAsync()
+        private static async Task<BlockBounds?> ComputeBlockBoundsAsync(string nomGabarit)
         {
             try
             {
                 var templatePath = Path.Combine(
-                    AppDomain.CurrentDomain.BaseDirectory, "Resources", "Formulaires", "formulaire_completion.html");
+                    AppDomain.CurrentDomain.BaseDirectory, "Resources", "Formulaires", nomGabarit);
                 if (!File.Exists(templatePath)) return null;
 
                 var pdf = new EdgeHeadlessPdfService();

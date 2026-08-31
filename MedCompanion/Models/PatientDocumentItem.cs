@@ -47,6 +47,19 @@ namespace MedCompanion.Models
 
         public string DateFormatted => DateAdded.ToString("dd/MM/yyyy");
 
+        /// <summary>
+        /// Ce document est un formulaire à saisir champ par champ — seul cas où le crayon de saisie
+        /// a un sens. Sur un bilan ou une restitution, il ouvrait une fenêtre de saisie de
+        /// formulaire parents qui n'avait rien à lire.
+        ///
+        /// Déduit du dossier et du nom plutôt que de l'index : cette liste est construite en
+        /// balayant le disque, sans passer par documents-index.json. Le test sur le nom couvre au
+        /// passage les formulaires importés AVANT la catégorie dédiée, qui dorment dans « autres ».
+        /// </summary>
+        public bool IsFormulaire =>
+            Category.Equals("Formulaires", StringComparison.OrdinalIgnoreCase) ||
+            FileName.Contains("formulaire", StringComparison.OrdinalIgnoreCase);
+
         public event PropertyChangedEventHandler? PropertyChanged;
     }
 }

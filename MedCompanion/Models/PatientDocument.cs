@@ -14,6 +14,25 @@ namespace MedCompanion.Models
         public DateTime DateAdded { get; set; } = DateTime.Now;
         public string Summary { get; set; } = string.Empty; // Synthèse IA du document
         public string ExtractedText { get; set; } = string.Empty; // Texte extrait (OCR si nécessaire)
+        /// <summary>
+        /// Ce document est le formulaire de complétion rempli par les parents, reconnu à son titre
+        /// imprimé lors de l'import.
+        ///
+        /// Il ne doit être ni analysé ni synthétisé — son contenu utile est manuscrit, donc invisible
+        /// à l'extraction de texte — et surtout il ne doit PAS entrer dans la pondération de la
+        /// Synthèse Initiale : c'est une pièce administrative, pas un élément clinique.
+        /// </summary>
+        public bool IsFormulaireCompletion { get; set; }
+
+        /// <summary>Type de formulaire reconnu (voir <see cref="FormulairesConnus"/>), ou vide.</summary>
+        public string FormulaireId { get; set; } = string.Empty;
+
+        /// <summary>
+        /// Version de la mise en page avec laquelle ce formulaire a été IMPRIMÉ — pas celle du
+        /// gabarit actuel. C'est elle qui désigne la géométrie à utiliser pour le relire.
+        /// </summary>
+        public int FormulaireVersion { get; set; }
+
         public long FileSizeBytes { get; set; }
         public string FileExtension { get; set; } = string.Empty;
         
@@ -21,6 +40,17 @@ namespace MedCompanion.Models
         /// Nom d'affichage formaté
         /// </summary>
         public string DisplayName => $"{FileName} ({Category})";
+
+        /// <summary>
+        /// Document à lire champ par champ — seul cas où le crayon de saisie a un sens.
+        /// Le drapeau seul ne suffit pas : il n'existe que depuis l'ajout de la reconnaissance
+        /// automatique, et les formulaires importés avant dorment dans « autres » sans lui. On
+        /// retombe donc sur la catégorie puis sur le nom du fichier.
+        /// </summary>
+        public bool IsFormulaire =>
+            IsFormulaireCompletion ||
+            Category.Equals("Formulaires", StringComparison.OrdinalIgnoreCase) ||
+            FileName.Contains("formulaire", StringComparison.OrdinalIgnoreCase);
         
         /// <summary>
         /// Date formatée pour l'affichage

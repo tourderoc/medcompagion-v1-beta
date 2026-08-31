@@ -183,6 +183,28 @@
                     <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
                         <StackPanel>
                             <TextBlock Text="👪 Famille &amp; Parents" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
+
+                            <!-- Situation parentale — c'est elle qui décide du nombre d'adresses sur
+                                 le formulaire parents. Trois états et non deux : ce qui commande la
+                                 seconde adresse est la garde alternée, pas la séparation. -->
+                            <Border Background="#F4F8FB" CornerRadius="6" Padding="12" Margin="0,0,0,14"
+                                    BorderBrush="#D6E4F0" BorderThickness="1">
+                                <StackPanel>
+                                    <TextBlock Text="Situation parentale" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,2"/>
+                                    <TextBlock Text="Détermine le nombre d'adresses à remplir sur le formulaire parents."
+                                               FontSize="10" Foreground="#7F8C8D" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                                    <RadioButton x:Name="RadSituEnsemble" GroupName="SituationParentale"
+                                                 Content="Parents ensemble  —  1 adresse"
+                                                 Foreground="#2C3E50" FontSize="12" Margin="0,0,0,5"/>
+                                    <RadioButton x:Name="RadSituSeparesPrincipale" GroupName="SituationParentale"
+                                                 Content="Séparés, garde principale chez un parent  —  1 adresse"
+                                                 Foreground="#2C3E50" FontSize="12" Margin="0,0,0,5"/>
+                                    <RadioButton x:Name="RadSituSeparesAlternee" GroupName="SituationParentale"
+                                                 Content="Séparés, garde alternée  —  2 adresses"
+                                                 Foreground="#2C3E50" FontSize="12"/>
+                                </StackPanel>
+                            </Border>
+
                             <TextBlock Text="Mère" FontWeight="SemiBold" Foreground="#34495E" Margin="0,0,0,5"/>
                             <Grid Margin="0,0,0,10">
                                 <Grid.ColumnDefinitions>
@@ -214,8 +236,13 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Groupe 3 : Acquisitions développementales -->
-                    <Border Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
+                    <!-- Groupe 3 : Acquisitions développementales.
+                         SEUL bloc réservé aux 3-11 ans : demander l'âge de la marche ou le statut de
+                         la propreté aux parents d'un adolescent de 16 ans n'a pas de sens. Tout le
+                         reste du panneau (école, parents, fratrie, situation parentale) sert le
+                         formulaire parents, qui est remis à toutes les familles quel que soit l'âge. -->
+                    <Border x:Name="DeveloppementBorder"
+                            Background="White" CornerRadius="8" Padding="15" Margin="0,0,0,15" BorderBrush="#E0E0E0" BorderThickness="1">
                         <StackPanel>
                             <TextBlock Text="👶 Acquisitions développementales" FontSize="14" FontWeight="SemiBold" Foreground="#2980B9" Margin="0,0,0,10"/>
                             <Grid>

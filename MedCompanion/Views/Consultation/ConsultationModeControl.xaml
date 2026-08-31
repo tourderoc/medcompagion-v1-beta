@@ -2297,11 +2297,20 @@
                                                 <Border Background="{TemplateBinding Background}"
                                                         CornerRadius="4"
                                                         Padding="{TemplateBinding Padding}">
-                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    <ContentPresenter x:Name="TermCp" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                 </Border>
                                                 <ControlTemplate.Triggers>
                                                     <Trigger Property="IsMouseOver" Value="True">
                                                         <Setter Property="Background" Value="#219A52"/>
+                                                    </Trigger>
+                                                    <!-- État inactif visible : sans lui le bouton restait
+                                                         vert vif tout en refusant les clics, ce qui donne
+                                                         l'impression d'une application figée — et pousse
+                                                         justement à cliquer plusieurs fois. -->
+                                                    <Trigger Property="IsEnabled" Value="False">
+                                                        <Setter Property="Background" Value="#A9BFB1"/>
+                                                        <Setter TargetName="TermCp" Property="Opacity" Value="0.6"/>
+                                                        <Setter Property="Cursor" Value="Wait"/>
                                                     </Trigger>
                                                 </ControlTemplate.Triggers>
                                             </ControlTemplate>
@@ -2488,10 +2497,58 @@
                                 <Border Grid.Row="0" Background="#F8F9FA" Padding="12" Margin="0,0,0,12"
                                         BorderThickness="0,0,0,1" BorderBrush="#E0E0E0">
                                     <StackPanel>
-                                        <!-- Liste des documents déjà importés (lecture seule — l'import se fait depuis Med > Documents) -->
+                                        <!-- Import à portée de main : les documents que les parents
+                                             remettent PENDANT l'entretien nourrissent cette synthèse.
+                                             Obliger à ressortir vers la zone Med pour y revenir était
+                                             un détour, et l'ancien texte d'aide l'avouait.
+                                             Mêmes gestionnaires que les boutons de la zone Med : ce
+                                             sont deux entrées vers un seul comportement, pas deux
+                                             comportements. -->
                                         <TextBlock Text="📄 Documents importés pour cette synthèse" FontWeight="Bold" FontSize="13" Margin="0,0,0,4"/>
-                                        <TextBlock Text="Pour ajouter un document : utilisez le bouton 📄 Documents dans la zone Med (mode Suggestions)."
-                                                   FontSize="10" Foreground="#7F8C8D" FontStyle="Italic" Margin="0,0,0,10" TextWrapping="Wrap"/>
+                                        <TextBlock Text="Les documents remis par les parents pendant l'entretien sont pris en compte dans la synthèse."
+                                                   FontSize="10" Foreground="#7F8C8D" FontStyle="Italic" Margin="0,0,0,8" TextWrapping="Wrap"/>
+
+                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
+                                            <Button Content="📂 Importer" Click="MedImportDocBtn_Click"
+                                                    ToolTip="Ajouter un document du patient à cette synthèse"
+                                                    Padding="10,5" Margin="0,0,8,0" Cursor="Hand"
+                                                    Background="#2980B9" Foreground="White" FontSize="11"
+                                                    BorderThickness="0">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="ImpBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="ImpBd" Property="Background" Value="#2471A3"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                            <Button Content="📷 Scanner" Click="MedScannerBtn_Click"
+                                                    ToolTip="Scanner un document et l'ajouter à cette synthèse"
+                                                    Padding="10,5" Cursor="Hand"
+                                                    Background="#16A085" Foreground="White" FontSize="11"
+                                                    BorderThickness="0">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="ScanBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="ScanBd" Property="Background" Value="#12876F"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                            <TextBlock Text="{Binding MedDocumentStatus}" VerticalAlignment="Center"
+                                                       Margin="10,0,0,0" FontSize="10" Foreground="#7F8C8D"
+                                                       TextWrapping="Wrap" MaxWidth="320"/>
+                                        </StackPanel>
 
                                         <!-- Liste des documents importés -->
                                         <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="220" Margin="0,0,0,12">
@@ -5639,9 +5696,13 @@
                                                                                 </ControlTemplate>
                                                                             </Button.Template>
                                                                         </Button>
-                                                                        <!-- Saisir formulaire parents -->
+                                                                        <!-- Saisir formulaire parents — visible sur les seuls formulaires.
+                                                                             Ce bouton ouvre une lecture champ par champ calée sur la
+                                                                             géométrie du formulaire : sur un bilan ou une restitution,
+                                                                             il n'avait rien à lire. -->
                                                                         <Button Command="{Binding DataContext.SaisirFormulaireCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
                                                                                 CommandParameter="{Binding}"
+                                                                                Visibility="{Binding IsFormulaire, Converter={StaticResource BoolToVis}}"
                                                                                 ToolTip="Saisir les données du formulaire (côte à côte avec le PDF)"
                                                                                 Padding="6,3" Cursor="Hand"
                                                                                 Background="#E67E22" Foreground="White" FontSize="10" FontWeight="Bold"

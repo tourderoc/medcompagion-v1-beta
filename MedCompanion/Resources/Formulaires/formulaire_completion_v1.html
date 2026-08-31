@@ -111,17 +111,6 @@ body {
   font-weight: 700;
   margin-top: 1px;
 }
-/* Jeton de reconnaissance : lisible par la machine, effacé pour l'œil.
-   Gris clair et 5px — présent sur la page et dans la couche texte du PDF, mais assez
-   discret pour ne pas encombrer un document que des parents remplissent à la main. */
-.jeton-formulaire {
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 5px;
-  letter-spacing: 0.5px;
-  color: #b9c6d6;
-  margin-top: 2px;
-}
-
 .date-box {
   border: 1.2px solid #004098;
   border-radius: 4px;
@@ -283,24 +272,6 @@ body {
 }
 .custom-checkbox.checked::after {
   content: '✓';
-}
-
-/* Adresse 2 mise en retrait quand la garde n'est pas alternée.
-
-   EN RETRAIT ET NON SUPPRIMÉE : la mise en page doit rester identique d'un patient à
-   l'autre. La carte de coordonnées qui pilote le découpage OCR est extraite du template
-   générique, pas du formulaire imprimé pour ce patient — un bloc retiré décalerait tout ce
-   qui suit et l'OCR lirait à côté.
-
-   Et seul le LIBELLÉ est atténué, jamais les cases-lettres : ce sont elles qui guident la
-   lecture OCR, les pâlir dégraderait la reconnaissance dans le cas — parfaitement possible —
-   où les parents remplissent quand même cette adresse parce qu'on s'était trompé. */
-.field-item.adresse-inactive .field-label {
-  opacity: 0.5;
-}
-.field-item.adresse-inactive .field-label-detail::after {
-  content: ' — a priori sans objet, à remplir seulement si besoin';
-  font-style: italic;
 }
 
 /* Email — ligne libre */
@@ -617,13 +588,6 @@ body {
     <div class="title-container">
       <h1>Formulaire de complétion – 1<sup>re</sup> consultation</h1>
       <p>À remplir pendant le temps d'attente – Merci d'écrire en lettres majuscules</p>
-      <!-- Jeton de reconnaissance. Discret pour le lecteur, exact pour la machine : il donne le
-           TYPE de formulaire et la VERSION de sa mise en page, donc la géométrie avec laquelle il
-           devra être relu. Sans lui, un exemplaire imprimé avant un remaniement serait lu avec les
-           coordonnées du gabarit actuel — l'adresse cherchée là où se trouve désormais la situation
-           familiale, sans qu'aucune erreur ne se manifeste.
-           Du texte plutôt qu'un QR code : la couche texte du PDF le transporte déjà. -->
-      <p class="jeton-formulaire">MEDCOMP-FORM-COMPLETION-V2</p>
     </div>
     <div class="date-box">
       <div>Date du RDV :</div>
@@ -717,44 +681,10 @@ body {
       </div>
     </div>
 
-    <!-- 3. SITUATION FAMILIALE (avant l'adresse : c'est elle qui decide du nombre d'adresses) -->
+    <!-- 3. ADRESSE DU MILIEU DE VIE -->
     <div class="section-card">
       <div class="section-header">
-        <span class="section-number">3</span> SITUATION FAMILIALE
-      </div>
-      <div class="section-content">
-        <div class="situation-grid">
-          <!-- Col 1 -->
-          <div class="situation-column">
-            <div class="checkbox-item"><span class="custom-checkbox {{cls_situ_ensemble}}" data-field="situation_ensemble"></span> Parents ensemble</div>
-            <div class="checkbox-item"><span class="custom-checkbox {{cls_situ_separes}}" data-field="situation_separes"></span> Parents séparés</div>
-            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_divorces"></span> Divorcés</div>
-          </div>
-          <!-- Col 2 -->
-          <div class="situation-column">
-            <div class="checkbox-item"><span class="custom-checkbox {{cls_situ_garde_alternee}}" data-field="situation_garde_alternee"></span> Garde alternée</div>
-            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_recomposee"></span> Famille recomposée</div>
-            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_autre"></span> Autre : <span class="line-input" data-field="situation_autre_texte" data-charset="free"></span></div>
-          </div>
-          <!-- Col 3 -->
-          <div class="situation-column" style="border-left: 1px dashed #b3c9e0; padding-left: 10px;">
-            <div class="sub-section-title">Mode de garde principal de l'enfant</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2.5px 5px;">
-              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_parents"></span> Parents</div>
-              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_mere"></span> Mère</div>
-              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_pere"></span> Père</div>
-              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_autre"></span> Autre : <span class="line-input" data-field="garde_autre_texte" data-charset="free"></span></div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-
-    <!-- 4. ADRESSE DU MILIEU DE VIE -->
-    <div class="section-card">
-      <div class="section-header">
-        <span class="section-number">4</span> ADRESSE DU MILIEU DE VIE
+        <span class="section-number">3</span> ADRESSE DU MILIEU DE VIE
       </div>
       <div class="section-content">
         <div class="field-row" style="align-items: flex-start; gap: 8px;">
@@ -772,7 +702,7 @@ body {
           </div>
 
           <!-- Adresse 2 (garde alternée) -->
-          <div class="field-item {{cls_adresse2}}" style="width: 49%; border-left: 1px dashed #b3c9e0; padding-left: 8px;">
+          <div class="field-item" style="width: 49%; border-left: 1px dashed #b3c9e0; padding-left: 8px;">
             <div style="display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 2px;">
               <span class="field-label">Adresse 2 <span class="field-label-detail">(si garde alternée)</span> &nbsp;—&nbsp; Chez :</span>
               <div class="checkbox-item"><span class="custom-checkbox" data-field="adresse2_chez_mere"></span> Mère</div>
@@ -783,6 +713,39 @@ body {
             <div class="letter-boxes-row medium" style="margin-top: 1.5px;" data-field="adresse2_cp_ville" data-charset="alphanum" data-boxes="" data-len="20"></div>
           </div>
 
+        </div>
+      </div>
+    </div>
+
+    <!-- 4. SITUATION FAMILIALE -->
+    <div class="section-card">
+      <div class="section-header">
+        <span class="section-number">4</span> SITUATION FAMILIALE
+      </div>
+      <div class="section-content">
+        <div class="situation-grid">
+          <!-- Col 1 -->
+          <div class="situation-column">
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_ensemble"></span> Parents ensemble</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_separes"></span> Parents séparés</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_divorces"></span> Divorcés</div>
+          </div>
+          <!-- Col 2 -->
+          <div class="situation-column">
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_garde_alternee"></span> Garde alternée</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_recomposee"></span> Famille recomposée</div>
+            <div class="checkbox-item"><span class="custom-checkbox" data-field="situation_autre"></span> Autre : <span class="line-input" data-field="situation_autre_texte" data-charset="free"></span></div>
+          </div>
+          <!-- Col 3 -->
+          <div class="situation-column" style="border-left: 1px dashed #b3c9e0; padding-left: 10px;">
+            <div class="sub-section-title">Mode de garde principal de l'enfant</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2.5px 5px;">
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_parents"></span> Parents</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_mere"></span> Mère</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_pere"></span> Père</div>
+              <div class="checkbox-item"><span class="custom-checkbox" data-field="garde_autre"></span> Autre : <span class="line-input" data-field="garde_autre_texte" data-charset="free"></span></div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1067,7 +1030,7 @@ body {
 
       var carte = {
         template: 'formulaire_completion',
-        version: 2,
+        version: 1,
         page: { widthMm: LARGEUR_PAGE_MM, heightMm: HAUTEUR_PAGE_MM },
         fiducials: {},
         fields: []

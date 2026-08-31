@@ -3030,6 +3030,11 @@ clinical_observations_json: |
                                 adminMeta.Ecole = result.Ecole;
                                 adminMeta.Classe = result.Classe;
 
+                                // Uniquement si le médecin a coché : ne pas effacer une situation
+                                // déjà validée parce qu'il a laissé le groupe vide cette fois-ci.
+                                if (!string.IsNullOrWhiteSpace(result.SituationParentale))
+                                    adminMeta.SituationParentale = result.SituationParentale;
+
                                 // Coordonnées de l'école (annuaire EN) — n'écraser que si renseigné
                                 if (!string.IsNullOrWhiteSpace(result.EcoleLieu))       adminMeta.EcoleCommune    = result.EcoleLieu;
                                 if (!string.IsNullOrWhiteSpace(result.EcoleAdresse))    adminMeta.EcoleAdresse    = result.EcoleAdresse;
@@ -3379,7 +3384,8 @@ Texte :
             var outputDir = Path.Combine(Path.GetTempPath(), "MedCompanion", "formulaires");
 
             FormulaireStatusMessage = "⏳ Génération du formulaire...";
-            var (ok, pdfPath, error) = await svc.GenerateAsync(meta, outputDir, perePrenom, merePrenom);
+            var (ok, pdfPath, error) = await svc.GenerateAsync(
+                meta, outputDir, perePrenom, merePrenom, meta.SituationParentale);
 
             if (ok && !string.IsNullOrEmpty(pdfPath))
             {
@@ -3603,11 +3609,28 @@ Texte :
 
         private bool _suggestionsGenerated = false;
 
+        /// <summary>
+        /// Une terminaison des observations est en cours. Empêche les clics répétés sur
+        /// « Terminer Observations » : la rédaction clinique est un appel LLM de plusieurs secondes
+        /// pendant lesquelles le bouton restait actif, et chaque clic relançait une génération
+        /// concurrente sur les mêmes cartes.
+        /// </summary>
+        private bool _terminaisonEnCours;
+
         private bool _isGeneratingSuggestions;
         public bool IsGeneratingSuggestions
         {
             get => _isGeneratingSuggestions;
-            set => SetProperty(ref _isGeneratingSuggestions, value);
+            set
+            {
+                if (!SetProperty(ref _isGeneratingSuggestions, value)) return;
+
+                // Les boutons dont l'activation dépend de cet état changent à la FIN d'un appel LLM,
+                // sans que l'utilisateur ait touché à quoi que ce soit. RequerySuggested, qui se
+                // déclenche sur les interactions, ne suffit donc pas : sans cette invalidation,
+                // « Terminer Observations » resterait grisé jusqu'au prochain clic ailleurs.
+                CommandManager.InvalidateRequerySuggested();
+            }
         }
 
         private string _suggestionsStatus = "";
@@ -5038,11 +5061,20 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                         var siteQrBase64  = Convert.ToBase64String(qrService.GetQrPngBytes("https://www.parentaile.fr"));
                         var accesQrBase64 = Convert.ToBase64String(qrService.GetQrPngBytes(qrService.GetTokenUrl(token.TokenId)));
 
+                        // Page volontairement explicite, alignée sur la fiche « Générer Token ».
+                        // Deux manques de la version précédente :
+                        //  • l'identifiant n'était NULLE PART en clair — un parent dont le téléphone
+                        //    ne lit pas les QR codes, ou qui préfère son ordinateur, n'avait aucune
+                        //    porte d'entrée ;
+                        //  • rien n'indiquait ce qui mérite un message, ni ce qui relève du 15.
+                        var tokenAffiche = System.Net.WebUtility.HtmlEncode(token.TokenId);
+
                         parentailePageHtml = $@"
 <div class=""parentaile-page"">
   <div class=""parentaile-title"">🦋 Parent'aile</div>
   <div class=""parentaile-subtitle"">Parfois, il suffit d'en parler.</div>
-  <p class=""parentaile-intro"">Parent'aile est un espace de soutien entre parents, et un moyen simple de rester en contact avec le cabinet entre deux consultations.</p>
+  <p class=""parentaile-intro"">Parent'aile est un espace de soutien entre parents, et un moyen simple de rester en contact avec le cabinet entre deux consultations. Vous pouvez y écrire ou dicter votre message.</p>
+
   <div class=""parentaile-qr-grid"">
     <div class=""qr-card"">
       <img class=""qr-img"" src=""data:image/png;base64,{siteQrBase64}""/>
@@ -5053,6 +5085,31 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
       <div class=""qr-caption"">Votre accès personnel<br/><span>Messagerie avec le cabinet</span></div>
     </div>
   </div>
+
+  <div class=""token-box"">
+    <div class=""token-label"">Votre Identifiant Famille</div>
+    <div class=""token-value"">{tokenAffiche}</div>
+    <div class=""token-hint"">À saisir sur www.parentaile.fr si vous ne pouvez pas scanner le QR code.</div>
+  </div>
+
+  <div class=""pa-steps"">
+    <h3>Comment créer votre accès</h3>
+    <div class=""pa-step""><span class=""pa-num"">1</span><div>Rendez-vous sur <b>www.parentaile.fr</b>, depuis un ordinateur, une tablette ou un téléphone.</div></div>
+    <div class=""pa-step""><span class=""pa-num"">2</span><div>Créez votre compte, puis connectez-vous à votre espace personnel.</div></div>
+    <div class=""pa-step""><span class=""pa-num"">3</span><div>Ouvrez l'onglet <b>Enfant</b> dans les paramètres.</div></div>
+    <div class=""pa-step""><span class=""pa-num"">4</span><div>Cliquez sur <b>Ajouter un enfant</b> et saisissez l'Identifiant Famille ci-dessus.</div></div>
+  </div>
+
+  <div class=""pa-priorites"">
+    <h3>Ce qui justifie un message</h3>
+    <div class=""pa-prio p1""><b>Effet indésirable ou réaction</b> — effet secondaire inhabituel ou réaction à un traitement en cours.</div>
+    <div class=""pa-prio p2""><b>Situation préoccupante</b> — changement brutal de comportement, inquiétude majeure.</div>
+    <div class=""pa-prio p3""><b>Erreur sur un document</b> — nom, dosage ou date sur une ordonnance, un courrier ou un compte-rendu.</div>
+    <div class=""pa-prio p4""><b>Demande administrative ou rendez-vous</b> — attestation, justificatif, report ou annulation.</div>
+    <p class=""token-hint"" style=""text-align:center; margin-top:8px;"">Chaque message reçoit une réponse ; le délai dépend de la priorité clinique et de la charge du cabinet.</p>
+  </div>
+
+  <div class=""pa-urgence"">En cas d'urgence vitale : composez le 15 ou le 112.</div>
 </div>";
                     }
                     catch (Exception ex)
@@ -6179,10 +6236,24 @@ source: ""MedCompanion""
                     ToggleCardExpand(card);
             }, _ => IsInClinicalMode);
 
+            // Bloqué pendant la génération des suggestions — terminer à ce moment-là abandonnait un
+            // travail en cours — et pendant la terminaison elle-même, contre les clics répétés.
+            //
+            // Volontairement PAS conditionné à « les suggestions ont abouti » : la génération ne se
+            // déclenche pas si l'interrogatoire est vide, et échoue parfois. Exiger sa réussite
+            // enfermerait le médecin dans une étape dont il ne pourrait plus sortir.
             TerminateClinicalObservationsCommand = new RelayCommand(async _ =>
             {
-                await TerminateClinicalObservationsAsync();
-            }, _ => IsInClinicalMode);
+                if (_terminaisonEnCours) return;
+                _terminaisonEnCours = true;
+                CommandManager.InvalidateRequerySuggested();
+                try { await TerminateClinicalObservationsAsync(); }
+                finally
+                {
+                    _terminaisonEnCours = false;
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }, _ => IsInClinicalMode && !IsGeneratingSuggestions && !_terminaisonEnCours);
 
             GenerateSuggestionsCommand = new RelayCommand(
                 async _ => await GenerateObservationSuggestionsAsync(),

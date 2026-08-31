@@ -452,7 +452,10 @@ namespace MedCompanion.Views.Documents
             var document = (sender as System.Windows.Controls.Button)?.Tag as PatientDocument;
             var pdfPath = document?.FilePath;
 
-            var dialog = new FormulaireSaisieDialog(pdfPath, _currentPatient.DirectoryPath)
+            // Version 0 pour un document importé avant la reconnaissance : le gabarit courant sera
+            // utilisé, faute de mieux.
+            var dialog = new FormulaireSaisieDialog(pdfPath, _currentPatient.DirectoryPath,
+                                                    document?.FormulaireId, document?.FormulaireVersion ?? 0)
             {
                 Owner = Window.GetWindow(this)
             };

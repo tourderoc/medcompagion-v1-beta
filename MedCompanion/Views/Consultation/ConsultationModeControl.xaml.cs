@@ -436,7 +436,23 @@ categorie: {document.Category ?? "Documents"}
         /// automatiquement en mode Consultation soit de la même qualité qu'en mode Console.
         /// En cas d'échec, retombe sur le résumé court (document.Summary).
         /// </summary>
-        private async Task<string> GenerateRichDocumentSynthesisAsync(MedCompanion.Models.PatientDocument document)
+        /// <summary>
+        /// Poids retenu quand le modèle n'a pas rendu d'évaluation exploitable. Valeur historique,
+        /// qui était jusqu'ici appliquée à TOUS les documents.
+        /// </summary>
+        private const double PoidsDocumentParDefaut = 0.7;
+
+        /// <returns>
+        /// La synthèse ET le poids que le modèle lui a attribué (0,0 à 1,0).
+        ///
+        /// Ce poids était calculé puis jeté : le prompt demande explicitement une évaluation
+        /// d'importance — 0,9 pour un bilan psychologique complet, 0,2 pour une pièce administrative
+        /// — le service la parsait et la retournait, et l'appelant écrivait 0,7 en dur pour tout le
+        /// monde. Un bilan neuropsychologique pesait donc autant qu'un courrier de rappel dans la
+        /// Synthèse Initiale.
+        /// </returns>
+        private async Task<(string synthese, double poids)> GenerateRichDocumentSynthesisAsync(
+            MedCompanion.Models.PatientDocument document)
         {
             try
             {
@@ -447,13 +463,19 @@ categorie: {document.Category ?? "Documents"}
                         Nom = _viewModel.CurrentPatient.Nom
                     };
 
-                var (synthesis, _) = await _documentService!.GenerateSingleDocumentSynthesisAsync(document, patientData);
-                return string.IsNullOrWhiteSpace(synthesis) ? (document.Summary ?? "") : synthesis;
+                var (synthesis, poids) = await _documentService!.GenerateSingleDocumentSynthesisAsync(document, patientData);
+
+                // Un poids nul ou hors bornes signale une évaluation absente ou mal formée, pas un
+                // document sans intérêt : on retombe alors sur la valeur par défaut plutôt que
+                // d'annuler silencieusement l'influence du document.
+                var poidsRetenu = poids > 0 && poids <= 1.0 ? poids : PoidsDocumentParDefaut;
+
+                return (string.IsNullOrWhiteSpace(synthesis) ? (document.Summary ?? "") : synthesis, poidsRetenu);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[MedDocSynthesis] Erreur génération synthèse détaillée: {ex.Message}");
-                return document.Summary ?? "";
+                return (document.Summary ?? "", PoidsDocumentParDefaut);
             }
         }
 
@@ -483,10 +505,14 @@ categorie: {document.Category ?? "Documents"}
                 var (success, document, message) = await _documentService.ImportDocumentAsync(
                     dlg.FileName, _viewModel.CurrentPatient.NomComplet);
 
-                if (success && document != null)
+                if (success && document != null && document.IsFormulaireCompletion)
+                {
+                    TraiterFormulaireCompletion(document);
+                }
+                else if (success && document != null)
                 {
                     _viewModel.MedDocumentStatus = "⏳ Génération de la synthèse détaillée…";
-                    var richSynthesis = await GenerateRichDocumentSynthesisAsync(document);
+                    var (richSynthesis, poidsDocument) = await GenerateRichDocumentSynthesisAsync(document);
 
                     // Auto-sauvegarde la synthèse du document (compatibilité Console)
                     SaveDocumentSynthesisToDisk(_viewModel.CurrentPatient.NomComplet, document, richSynthesis);
@@ -498,7 +524,9 @@ categorie: {document.Category ?? "Documents"}
                         FilePath = document.FilePath ?? dlg.FileName,
                         DocumentSynthesis = richSynthesis,
                         Category = document.Category ?? "Documents",
-                        Weight = 0.6
+                        // Même évaluation par document que sur le chemin scanner : le mode d'entrée
+                        // — import ou scan — ne dit rien de l'importance clinique de la pièce.
+                        Weight = poidsDocument
                     });
 
                     // Rafraîchit les onglets BILANS et DOCS du dossier bleu
@@ -523,6 +551,36 @@ categorie: {document.Category ?? "Documents"}
             }
         }
 
+        /// <summary>
+        /// Le formulaire de complétion revient rempli : on l'archive et on enchaîne sur la lecture
+        /// champ par champ, sans synthèse et sans l'ajouter aux documents pondérés.
+        ///
+        /// Les deux exclusions comptent autant l'une que l'autre. La synthèse ne pourrait décrire
+        /// que le gabarit vierge, le manuscrit étant absent de la couche texte. Et la pondération à
+        /// 0,7 faisait entrer une pièce purement administrative — téléphones, courriels,
+        /// autorisations — dans le calcul de la Synthèse Initiale.
+        /// </summary>
+        private void TraiterFormulaireCompletion(PatientDocument document)
+        {
+            if (_viewModel?.CurrentPatient == null) return;
+
+            _viewModel.MedDocumentStatus = "✅ Formulaire reconnu — lecture des champs…";
+            _viewModel.LoadPatientDocumentsFromDisk();
+
+            // Le type ET la version viennent du jeton lu à l'import : c'est la version imprimée,
+            // pas celle du gabarit courant, qui désigne la géométrie de lecture.
+            var saisie = new MedCompanion.Dialogs.FormulaireSaisieDialog(
+                document.FilePath, _viewModel.CurrentPatient.DirectoryPath,
+                document.FormulaireId, document.FormulaireVersion)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            saisie.ShowDialog();
+
+            _viewModel.RefreshAdminInfoPublic();
+            _viewModel.MedDocumentStatus = "✅ Formulaire de complétion traité.";
+        }
+
         private async void MedScannerBtn_Click(object sender, RoutedEventArgs e)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
@@ -544,10 +602,14 @@ categorie: {document.Category ?? "Documents"}
                 var (success, document, message) = await _documentService.ImportDocumentAsync(
                     scanDialog.ScannedFilePath, _viewModel.CurrentPatient.NomComplet);
 
-                if (success && document != null)
+                if (success && document != null && document.IsFormulaireCompletion)
+                {
+                    TraiterFormulaireCompletion(document);
+                }
+                else if (success && document != null)
                 {
                     _viewModel.MedDocumentStatus = "⏳ Génération de la synthèse détaillée…";
-                    var richSynthesis = await GenerateRichDocumentSynthesisAsync(document);
+                    var (richSynthesis, poidsDocument) = await GenerateRichDocumentSynthesisAsync(document);
 
                     // Auto-sauvegarde la synthèse du document (compatibilité Console)
                     SaveDocumentSynthesisToDisk(_viewModel.CurrentPatient.NomComplet, document, richSynthesis);
@@ -558,7 +620,10 @@ categorie: {document.Category ?? "Documents"}
                         FilePath = document.FilePath ?? scanDialog.ScannedFilePath,
                         DocumentSynthesis = richSynthesis,
                         Category = document.Category ?? "Documents",
-                        Weight = 0.7
+                        // Poids évalué par le modèle sur ce document précis, plutôt qu'un 0,7
+                        // uniforme : un bilan psychologique complet et un courrier de rappel ne
+                        // doivent pas peser pareil dans la Synthèse Initiale.
+                        Weight = poidsDocument
                     });
 
                     // Rafraîchit les onglets BILANS et DOCS du dossier bleu

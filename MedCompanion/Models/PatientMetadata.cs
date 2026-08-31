@@ -34,6 +34,15 @@ namespace MedCompanion.Models
         public string? EcoleEmail { get; set; }
         public string? EcoleUai { get; set; }          // Code UAI (identifiant officiel)
 
+        /// <summary>
+        /// Situation parentale validée par le médecin : <c>ensemble</c>,
+        /// <c>separes_garde_principale</c> ou <c>separes_garde_alternee</c>. Null = non renseignée.
+        ///
+        /// Persistée ici et non gardée en mémoire de session : le formulaire de complétion peut être
+        /// réimprimé des semaines après la consultation où la situation a été validée.
+        /// </summary>
+        public string? SituationParentale { get; set; }
+
         // === Adresse ===
         public string? AdresseRue { get; set; }
         public string? AdresseCodePostal { get; set; }

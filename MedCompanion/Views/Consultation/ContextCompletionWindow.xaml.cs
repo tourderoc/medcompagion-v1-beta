@@ -42,8 +42,16 @@ namespace MedCompanion.Views.Consultation
             bool showAge = d.NeedsDobEntry || d.HasAgeDiscrepancy;
             AgeSectionBorder.Visibility = showAge ? Visibility.Visible : Visibility.Collapsed;
 
-            // Sections contexte complet : uniquement pour 3-11 ans
-            FullContextPanel.Visibility = d.ShowFullContext ? Visibility.Visible : Visibility.Collapsed;
+            // Le contexte complet s'affiche désormais à TOUT ÂGE : le formulaire de complétion est
+            // remis aux parents d'adolescents comme à ceux d'enfants, et il a besoin de l'école, des
+            // parents et surtout de la situation parentale — qui commande le nombre d'adresses.
+            // Auparavant réservé aux 3-11 ans, ce qui laissait le formulaire d'un ado sans aucun
+            // pré-remplissage.
+            FullContextPanel.Visibility = Visibility.Visible;
+
+            // Seules les acquisitions développementales restent bornées : marche, langage et
+            // propreté n'ont pas de sens passé l'enfance.
+            DeveloppementBorder.Visibility = d.ShowFullContext ? Visibility.Visible : Visibility.Collapsed;
         }
 
         private void PopulateFields()
@@ -77,9 +85,10 @@ namespace MedCompanion.Views.Consultation
                 TxtDobCorrigee.Text = "";
             }
 
-            // Sections contexte complet
-            if (d.ShowFullContext)
+            // Contexte : rempli à tout âge, comme le panneau qui l'affiche (voir ConfigureSections).
             {
+                AppliquerSituationParentale(d.SituationParentale);
+
                 TxtEcole.Text = d.Ecole ?? "";
                 TxtEcoleLieu.Text = d.EcoleLieu ?? "";
                 TxtClasse.Text = d.Classe ?? "";
@@ -109,7 +118,8 @@ namespace MedCompanion.Views.Consultation
 
         private void SetupWatermarks()
         {
-            if (!CompletedDetails.ShowFullContext) return;
+            // Plus de garde sur ShowFullContext : les champs concernés (parents, école) sont
+            // désormais affichés à tout âge, ils doivent donc porter leur libellé indicatif.
 
             AddWatermark(TxtMereNom, "Prénom");
             AddWatermark(TxtMereAge, "Âge");
@@ -373,6 +383,34 @@ namespace MedCompanion.Views.Consultation
             TxtRechercheStatut.Visibility = Visibility.Visible;
         }
 
+        // ── Situation parentale ─────────────────────────────────────────────────
+
+        /// <summary>Valeurs persistées. Aucune n'est cochée par défaut : voir <see cref="AppliquerSituationParentale"/>.</summary>
+        private const string SituEnsemble          = "ensemble";
+        private const string SituSeparesPrincipale = "separes_garde_principale";
+        private const string SituSeparesAlternee   = "separes_garde_alternee";
+
+        /// <summary>
+        /// Coche l'état proposé par l'extraction. Volontairement AUCUN état par défaut quand la note
+        /// ne dit rien : pré-cocher « parents ensemble » imprimerait sur le formulaire une
+        /// affirmation sur la famille que personne n'a validée, et que les parents découvriraient en
+        /// salle d'attente. Non renseigné vaut mieux que faux.
+        /// </summary>
+        private void AppliquerSituationParentale(string? valeur)
+        {
+            RadSituEnsemble.IsChecked          = valeur == SituEnsemble;
+            RadSituSeparesPrincipale.IsChecked = valeur == SituSeparesPrincipale;
+            RadSituSeparesAlternee.IsChecked   = valeur == SituSeparesAlternee;
+        }
+
+        private string? LireSituationParentale()
+        {
+            if (RadSituEnsemble.IsChecked == true)          return SituEnsemble;
+            if (RadSituSeparesPrincipale.IsChecked == true) return SituSeparesPrincipale;
+            if (RadSituSeparesAlternee.IsChecked == true)   return SituSeparesAlternee;
+            return null;
+        }
+
         private void BtnIgnore_Click(object sender, RoutedEventArgs e)
         {
             IsSaved = false;
@@ -402,24 +440,31 @@ namespace MedCompanion.Views.Consultation
                 // DDN corrigée par le médecin
                 DateNaissanceCorrigee = string.IsNullOrWhiteSpace(dobCorrigee) ? null : dobCorrigee,
 
-                // Contexte complet (3-11 ans)
-                Ecole     = d.ShowFullContext ? TxtEcole.Text.Trim() : null,
-                EcoleLieu = d.ShowFullContext ? TxtEcoleLieu.Text.Trim() : null,
-                Classe    = d.ShowFullContext ? TxtClasse.Text.Trim() : null,
+                // Contexte, collecté à TOUT ÂGE depuis que le panneau est toujours affiché.
+                // Le conditionner à ShowFullContext jetterait maintenant en silence ce que le
+                // médecin vient de saisir pour un adolescent.
+                Ecole     = TxtEcole.Text.Trim(),
+                EcoleLieu = TxtEcoleLieu.Text.Trim(),
+                Classe    = TxtClasse.Text.Trim(),
 
                 // Coordonnées école (annuaire EN ou saisie manuelle)
-                EcoleAdresse    = d.ShowFullContext ? TxtEcoleAdresse.Text.Trim() : null,
-                EcoleTelephone  = d.ShowFullContext ? TxtEcoleTel.Text.Trim()     : null,
-                EcoleEmail      = d.ShowFullContext ? TxtEcoleEmail.Text.Trim()   : null,
-                EcoleCodePostal = d.ShowFullContext ? (_selectedEcole?.CodePostal ?? "") : null,
-                EcoleUai        = d.ShowFullContext ? (_selectedEcole?.Uai ?? "")        : null,
-                MereNom  = d.ShowFullContext ? GetCleanText(TxtMereNom, "Prénom") : null,
-                MereAge  = d.ShowFullContext ? GetCleanText(TxtMereAge, "Âge") : null,
-                MereJob  = d.ShowFullContext ? GetCleanText(TxtMereJob, "Profession") : null,
-                PereNom  = d.ShowFullContext ? GetCleanText(TxtPereNom, "Prénom") : null,
-                PereAge  = d.ShowFullContext ? GetCleanText(TxtPereAge, "Âge") : null,
-                PereJob  = d.ShowFullContext ? GetCleanText(TxtPereJob, "Profession") : null,
-                Fratrie  = d.ShowFullContext ? TxtFratrie.Text.Trim() : null,
+                EcoleAdresse    = TxtEcoleAdresse.Text.Trim(),
+                EcoleTelephone  = TxtEcoleTel.Text.Trim(),
+                EcoleEmail      = TxtEcoleEmail.Text.Trim(),
+                EcoleCodePostal = _selectedEcole?.CodePostal ?? "",
+                EcoleUai        = _selectedEcole?.Uai ?? "",
+                MereNom  = GetCleanText(TxtMereNom, "Prénom"),
+                MereAge  = GetCleanText(TxtMereAge, "Âge"),
+                MereJob  = GetCleanText(TxtMereJob, "Profession"),
+                PereNom  = GetCleanText(TxtPereNom, "Prénom"),
+                PereAge  = GetCleanText(TxtPereAge, "Âge"),
+                PereJob  = GetCleanText(TxtPereJob, "Profession"),
+                Fratrie  = TxtFratrie.Text.Trim(),
+
+                SituationParentale = LireSituationParentale(),
+
+                // Acquisitions développementales : le bloc reste masqué hors 3-11 ans, donc ses
+                // champs y sont vides — inutile de les enregistrer.
                 MarcheAge  = d.ShowFullContext ? TxtMarche.Text.Trim() : null,
                 LangageAcq = d.ShowFullContext ? TxtLangage.Text.Trim() : null,
                 PropreteAcq = d.ShowFullContext ? TxtProprete.Text.Trim() : null,
