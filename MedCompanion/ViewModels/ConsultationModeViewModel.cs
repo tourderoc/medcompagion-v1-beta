@@ -828,6 +828,48 @@ namespace MedCompanion.ViewModels
         public ObservableCollection<PastInterrogatoireBlock> PastInterrogatoireBlocks { get; } = new();
         public ObservableCollection<PastClinicalCard> PastClinicalCards { get; } = new();
 
+        /// <summary>
+        /// Les cartes d'observation relues sont modifiables.
+        ///
+        /// Toujours vrai en relecture : un bouton « Modifier » de plus n'apportait rien, puisque
+        /// revenir sur une consultation, c'est déjà vouloir la corriger. L'enregistrement, lui,
+        /// reste un geste explicite.
+        /// </summary>
+        private bool _isPastObservationsEditing = true;
+        public bool IsPastObservationsEditing
+        {
+            get => _isPastObservationsEditing;
+            set
+            {
+                if (SetProperty(ref _isPastObservationsEditing, value))
+                {
+                    OnPropertyChanged(nameof(IsPastObservationsReadOnly));
+                    CommandManager.InvalidateRequerySuggested();
+                }
+            }
+        }
+
+        public bool IsPastObservationsReadOnly => !IsPastObservationsEditing;
+
+        private bool _isRegeneratingPast;
+        /// <summary>Une régénération est en cours — verrouille les boutons concernés.</summary>
+        public bool IsRegeneratingPast
+        {
+            get => _isRegeneratingPast;
+            set
+            {
+                if (SetProperty(ref _isRegeneratingPast, value))
+                    CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        private string _pastRegenStatus = "";
+        public string PastRegenStatus
+        {
+            get => _pastRegenStatus;
+            set => SetProperty(ref _pastRegenStatus, value);
+        }
+
         private ConsultationNoteViewModel? _selectedPastConsultation;
         /// <summary>La note de consultation passée actuellement affichée en lecture seule.</summary>
         public ConsultationNoteViewModel? SelectedPastConsultation
@@ -2261,6 +2303,25 @@ namespace MedCompanion.ViewModels
                 });
             }
 
+            // Le corps du fichier découpe l'interrogatoire en sous-titres de même niveau
+            // (## Âge, ## Motif de consultation…). Le balayage ci-dessus les prend pour la fin de
+            // la section, si bien que le texte récupéré est vide dès qu'une note est réellement
+            // remplie. Les blocs structurés sont la source fiable : on recompose à partir d'eux.
+            if (PastInterrogatoireBlocks.Count > 0)
+            {
+                var sbRecompose = new StringBuilder();
+                foreach (var bloc in PastInterrogatoireBlocks)
+                {
+                    if (string.IsNullOrWhiteSpace(bloc.FreeText)) continue;
+                    sbRecompose.AppendLine($"## {bloc.Title}");
+                    sbRecompose.AppendLine(bloc.FreeText.Trim());
+                    sbRecompose.AppendLine();
+                }
+                var recompose = sbRecompose.ToString().Trim();
+                if (!string.IsNullOrWhiteSpace(recompose))
+                    PastInterrogatoireText = recompose;
+            }
+
             bool loadedObs = false;
             var obsBlock = ExtractSubBlock(yaml, "clinical_observations_json: |");
             if (!string.IsNullOrEmpty(obsBlock))
@@ -2278,12 +2339,14 @@ namespace MedCompanion.ViewModels
                                 ?? (string.IsNullOrEmpty(c.SelectedOption)
                                     ? new List<string>()
                                     : new List<string> { c.SelectedOption });
-                            PastClinicalCards.Add(new PastClinicalCard
+                            var carte = new PastClinicalCard
                             {
                                 Title = c.Title ?? c.Branch,
                                 SelectedOptions = selectedOpts,
                                 FreeText = c.FreeText ?? ""
-                            });
+                            };
+                            RemplirOptions(carte, c.Options);
+                            PastClinicalCards.Add(carte);
                         }
                         loadedObs = PastClinicalCards.Count > 0;
                     }
@@ -2301,12 +2364,14 @@ namespace MedCompanion.ViewModels
                 };
                 foreach (var title in standardBranches)
                 {
-                    PastClinicalCards.Add(new PastClinicalCard
+                    var carte = new PastClinicalCard
                     {
                         Title = title,
                         SelectedOptions = new List<string>(),
                         FreeText = ""
-                    });
+                    };
+                    RemplirOptions(carte, null);
+                    PastClinicalCards.Add(carte);
                 }
             }
 
@@ -2363,7 +2428,16 @@ namespace MedCompanion.ViewModels
                 var jsonBlocksIndented = string.Join("\n  ", jsonBlocks.Split('\n'));
 
                 // Sérialiser les cartes d'observations éditées
-                var obsDto = PastClinicalCards.Select(c => new { title = c.Title, branch = c.Title, selectedOptions = c.SelectedOptions, freeText = c.FreeText }).ToList();
+                // `options` en plus des retenues : c'est ce qui rendra la consultation corrigeable
+                // la prochaine fois qu'on l'ouvrira, sans dépendre du catalogue par défaut.
+                var obsDto = PastClinicalCards.Select(c => new
+                {
+                    title           = c.Title,
+                    branch          = c.Title,
+                    selectedOptions = c.SelectedOptions,
+                    freeText        = c.FreeText,
+                    options         = c.Options.Select(o => o.Label).ToList()
+                }).ToList();
                 var jsonObs = System.Text.Json.JsonSerializer.Serialize(obsDto, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                 var jsonObsIndented = string.Join("\n  ", jsonObs.Split('\n'));
 
@@ -2417,6 +2491,94 @@ namespace MedCompanion.ViewModels
             public string FreeText { get; set; } = "";
         }
 
+        /// <summary>
+        /// Catalogue par défaut des qualificatifs, par axe. Sert de repli pour les consultations
+        /// enregistrées avant que la liste des options proposables ne soit persistée — sans quoi
+        /// leurs cartes ne seraient pas corrigeables, seulement relisibles.
+        /// Volontairement aligné sur <see cref="InitializeClinicalObservations"/>.
+        /// </summary>
+        /// <summary>
+        /// Axes standards, dans l'ordre, avec la branche que le générateur de suggestions utilise
+        /// pour se repérer dans sa réponse JSON. Vigilance est exclue : elle reste toujours à la
+        /// main du médecin et n'est jamais proposée par le modèle.
+        /// </summary>
+        private static readonly (ClinicalObservationBranch Branche, string Titre)[] AxesStandard =
+        {
+            (ClinicalObservationBranch.Contact,        "Contact/Rapport"),
+            (ClinicalObservationBranch.Langage,        "Langage"),
+            (ClinicalObservationBranch.Comprehension,  "Compréhension"),
+            (ClinicalObservationBranch.Psychomotricite,"Psychomotricité"),
+            (ClinicalObservationBranch.MimiquRegard,   "Mimique & Regard"),
+            (ClinicalObservationBranch.ProfilCognitif, "Profil Cognitif estimé"),
+            (ClinicalObservationBranch.HumeurAnxiete,  "Humeur / Anxiété"),
+            (ClinicalObservationBranch.ImaginaireJeu,  "Imaginaire / Jeu"),
+            (ClinicalObservationBranch.RapportCadre,   "Rapport au cadre"),
+        };
+
+        private static readonly Dictionary<string, string[]> OptionsParDefaut = new(StringComparer.OrdinalIgnoreCase)
+        {
+            ["Contact/Rapport"]        = new[] { "Bon", "Distant", "Fuyant", "Adhésif", "Instable" },
+            ["Langage"]                = new[] { "Adapté", "Riche", "Pauvre/Immaturité", "Inexistant" },
+            ["Compréhension"]          = new[] { "Adaptée", "Limitée", "Consignes simples uniquement" },
+            ["Psychomotricité"]        = new[] { "Harmonieuse", "Instabilité motrice", "Inhibition", "Maladresse" },
+            ["Mimique & Regard"]       = new[] { "Riche", "Pauvre", "Fuyant", "Soutenu" },
+            ["Profil Cognitif estimé"] = new[] { "Adapté à l'âge", "Immaturité", "Décalage net" },
+            ["Humeur / Anxiété"]       = new[] { "Stable", "Anxieuse", "Triste", "Irritable", "Labile" },
+            ["Imaginaire / Jeu"]       = new[] { "Riche", "Pauvre", "Répétitif", "Absent" },
+            ["Rapport au cadre"]       = new[] { "Bien intégré", "Testé", "Opposition", "Refus" },
+            ["Vigilance protection"]   = new[] { "Pas de signe inquiétant", "Signe à surveiller", "Signalement à envisager" },
+        };
+
+        /// <summary>
+        /// Catalogue de repli pour un axe, tolérant sur l'écriture du titre : les notes déjà
+        /// enregistrées portent « Contact / Rapport » là où le catalogue dit « Contact/Rapport »,
+        /// et une comparaison stricte renverrait une liste vide — donc un mode correction sans
+        /// rien à cocher.
+        /// </summary>
+        private static IReadOnlyList<string> CatalogueParDefaut(string titre)
+        {
+            if (string.IsNullOrWhiteSpace(titre)) return Array.Empty<string>();
+
+            var cible = new string(titre.Where(c => !char.IsWhiteSpace(c)).ToArray());
+            foreach (var paire in OptionsParDefaut)
+            {
+                var cle = new string(paire.Key.Where(c => !char.IsWhiteSpace(c)).ToArray());
+                if (string.Equals(cle, cible, StringComparison.OrdinalIgnoreCase))
+                    return paire.Value;
+            }
+            return Array.Empty<string>();
+        }
+
+        /// <summary>
+        /// Alimente les options cochables d'une carte relue. Une option retenue mais absente de la
+        /// liste proposable y est réinjectée : le modèle renomme parfois les qualificatifs d'une
+        /// consultation à l'autre, et une case cochée ne doit jamais disparaître de l'écran au
+        /// prétexte qu'elle n'est plus au catalogue.
+        /// </summary>
+        private static void RemplirOptions(PastClinicalCard carte, List<string>? optionsEnregistrees)
+        {
+            var proposables = optionsEnregistrees?.Where(o => !string.IsNullOrWhiteSpace(o)).ToList();
+
+            if (proposables == null || proposables.Count == 0)
+                proposables = CatalogueParDefaut(carte.Title).ToList();
+
+            foreach (var retenue in carte.SelectedOptions)
+                if (!proposables.Contains(retenue, StringComparer.OrdinalIgnoreCase))
+                    proposables.Add(retenue);
+
+            carte.Options.Clear();
+            foreach (var label in proposables)
+            {
+                var option = new PastClinicalOption
+                {
+                    Label = label,
+                    IsSelected = carte.SelectedOptions.Contains(label, StringComparer.OrdinalIgnoreCase)
+                };
+                option.Change = carte.SyncSelectionDepuisOptions;
+                carte.Options.Add(option);
+            }
+        }
+
         private class PastObsCardData
         {
             public string Branch { get; set; } = "";
@@ -2424,6 +2586,13 @@ namespace MedCompanion.ViewModels
             public List<string>? SelectedOptions { get; set; }   // nouveau format multi-select
             public string? SelectedOption { get; set; }           // ancien format (compat lecture)
             public string FreeText { get; set; } = "";
+
+            /// <summary>
+            /// Qualificatifs PROPOSABLES de l'axe, et non seulement les retenus. Nécessaire pour
+            /// pouvoir corriger une consultation relue : sans cette liste, on ne peut rien rendre
+            /// cliquable. Absent des notes antérieures, qui retombent sur le catalogue par défaut.
+            /// </summary>
+            public List<string>? Options { get; set; }
         }
 
         private void DeleteConsultationCard(ConsultationCardViewModel card)
@@ -2710,6 +2879,9 @@ namespace MedCompanion.ViewModels
                     Branch = c.Branch.ToString(),
                     c.Title,
                     SelectedOptions = c.OptionItems.Where(o => o.IsSelected).Select(o => o.Label).ToList(),
+                    // Le catalogue proposé, pas seulement ce qui a été retenu : sans lui, la
+                    // relecture n'a plus rien à recocher et le mode correction est vide.
+                    Options = c.OptionItems.Select(o => o.Label).ToList(),
                     c.FreeText
                 }));
                 var jsonBlocksIndented = string.Join("\n  ", jsonBlocks.Split('\n'));
@@ -3830,22 +4002,37 @@ Texte :
         /// Génère des suggestions d'observation contextuelles (LLM) à partir de l'interrogatoire.
         /// Remplace les options génériques par des items pertinents au tableau clinique.
         /// </summary>
-        private async Task GenerateObservationSuggestionsAsync()
+        /// <param name="interrogatoire">
+        /// Texte servant de contexte. Null = l'interrogatoire en cours de saisie.
+        /// </param>
+        /// <param name="cible">
+        /// Session dont les cartes reçoivent les intitulés et options proposés. Null = la session
+        /// en cours. Paramétré pour que la relecture d'une consultation enregistrée puisse
+        /// régénérer ses propres axes SANS écraser la consultation en cours — et surtout sans
+        /// dupliquer ce prompt, qui divergerait de celui-ci à la première retouche.
+        /// </param>
+        private async Task GenerateObservationSuggestionsAsync(
+            string? interrogatoire = null,
+            ClinicalObservationsSession? cible = null)
         {
-            if (_llmService == null || string.IsNullOrWhiteSpace(NoteContent))
+            var texteContexte = interrogatoire ?? NoteContent;
+            var session       = cible ?? ClinicalObservations;
+            var modeCourant   = cible == null;   // n'écrire l'état d'écran que pour la session vivante
+
+            if (_llmService == null || string.IsNullOrWhiteSpace(texteContexte))
             {
-                SuggestionsStatus = "";
+                if (modeCourant) SuggestionsStatus = "";
                 return;
             }
 
-            IsGeneratingSuggestions = true;
+            if (modeCourant) IsGeneratingSuggestions = true;
 
             // Sans affectation propre, cette étape héritait de n'importe quel modèle laissé actif
             // par l'étape précédente — y compris un modèle trop petit (gemma3:1b) pour tenir le
             // format JSON à 9 axes demandé, d'où des échecs intermittents observés en pratique.
-            await PreparerModeleAsync("observations_suggestions", s => SuggestionsStatus = s);
+            await PreparerModeleAsync("observations_suggestions", s => { if (modeCourant) SuggestionsStatus = s; });
 
-            SuggestionsStatus = "⏳ Génération des suggestions en cours…";
+            if (modeCourant) SuggestionsStatus = "⏳ Génération des suggestions en cours…";
 
             try
             {
@@ -3878,7 +4065,7 @@ Texte :
                 sb.AppendLine("⚠ AXE \"Vigilance\" — NE L'INCLUS PAS dans ta réponse : cet axe (repère de maltraitance/danger) reste toujours strictement inchangé, intitulé et options compris, et n'est jamais déterminé par toi.");
                 sb.AppendLine();
                 sb.AppendLine("INTERROGATOIRE (contexte clinique uniquement) :");
-                sb.AppendLine(NoteContent.Trim());
+                sb.AppendLine(texteContexte.Trim());
                 sb.AppendLine();
                 sb.AppendLine("Réponds UNIQUEMENT en JSON valide, sans markdown ni commentaire, avec cette forme pour CHAQUE axe listé ci-dessus (Vigilance exclu) :");
                 sb.AppendLine("{\"Contact\":{\"titre\":\"\",\"options\":[]},\"Langage\":{\"titre\":\"\",\"options\":[]},\"Comprehension\":{\"titre\":\"\",\"options\":[]},\"Psychomotricite\":{\"titre\":\"\",\"options\":[]},\"MimiquRegard\":{\"titre\":\"\",\"options\":[]},\"ProfilCognitif\":{\"titre\":\"\",\"options\":[]},\"HumeurAnxiete\":{\"titre\":\"\",\"options\":[]},\"ImaginaireJeu\":{\"titre\":\"\",\"options\":[]},\"RapportCadre\":{\"titre\":\"\",\"options\":[]}}");
@@ -3918,7 +4105,7 @@ Texte :
                     // même s'il l'inclut dans sa réponse malgré la consigne.
                     if (branch == Models.ClinicalObservationBranch.Vigilance) continue;
 
-                    var card = ClinicalObservations.Cards.FirstOrDefault(c => c.Branch == branch);
+                    var card = session.Cards.FirstOrDefault(c => c.Branch == branch);
                     if (card == null) continue;
 
                     // Nouveau format {"titre": "...", "options": [...]}. Repli sur l'ancien format
@@ -3949,8 +4136,8 @@ Texte :
                         card.SetOptions(suggestions);
                 }
 
-                _suggestionsGenerated = true;
-                SuggestionsStatus = "✨ Suggestions IA — basées sur l'interrogatoire";
+                if (modeCourant) _suggestionsGenerated = true;
+                if (modeCourant) SuggestionsStatus = "✨ Suggestions IA — basées sur l'interrogatoire";
             }
             // Ici, l'interrogatoire n'est JAMAIS vide : le garde-fou en tête de méthode
             // (NoteContent vide → retour anticipé, sans exception) l'a déjà écarté. Un message
@@ -3963,22 +4150,207 @@ Texte :
                 // "service LLM indisponible" était trompeur quand un modèle est bien sélectionné
                 // et actif : l'appel a échoué pour une raison précise, pas par absence de modèle.
                 System.Diagnostics.Debug.WriteLine($"[ObservationSuggestions] Échec de l'appel LLM : {ex.Message}");
-                SuggestionsStatus = $"ℹ️ Options génériques — échec de l'appel au modèle : {ex.Message}";
+                if (modeCourant) SuggestionsStatus = $"ℹ️ Options génériques — échec de l'appel au modèle : {ex.Message}";
             }
             catch (Exception ex) when (ex is FormatException or System.Text.Json.JsonException)
             {
                 System.Diagnostics.Debug.WriteLine($"[ObservationSuggestions] Réponse LLM non exploitable : {ex.Message}");
-                SuggestionsStatus = "ℹ️ Options génériques — réponse du modèle non exploitable (modèle probablement trop petit pour ce format ; essayez-en un plus grand).";
+                if (modeCourant) SuggestionsStatus = "ℹ️ Options génériques — réponse du modèle non exploitable (modèle probablement trop petit pour ce format ; essayez-en un plus grand).";
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[ObservationSuggestions] Erreur inattendue : {ex.Message}");
-                SuggestionsStatus = "ℹ️ Options génériques — échec de la génération IA.";
+                if (modeCourant) SuggestionsStatus = "ℹ️ Options génériques — échec de la génération IA.";
             }
             finally
             {
-                IsGeneratingSuggestions = false;
+                if (modeCourant) IsGeneratingSuggestions = false;
             }
+        }
+
+        // ── Correction d'une consultation déjà enregistrée ──────────────────────
+
+        /// <summary>
+        /// Convertit les cartes relues en session d'observations, pour réutiliser les générateurs
+        /// existants plutôt que d'en écrire des variantes qui divergeraient avec le temps.
+        /// </summary>
+        private ClinicalObservationsSession SessionDepuisCartesPassees()
+        {
+            var session = new ClinicalObservationsSession { CreatedAt = DateTime.Now };
+            foreach (var c in PastClinicalCards)
+            {
+                var carte = new ClinicalObservationCard
+                {
+                    Title    = c.Title,
+                    FreeText = c.FreeText
+                };
+                carte.SetOptions(
+                    c.Options.Select(o => o.Label),
+                    c.Options.Where(o => o.IsSelected).Select(o => o.Label));
+                session.Cards.Add(carte);
+            }
+            return session;
+        }
+
+        /// <summary>
+        /// Refait proposer par le modèle les intitulés d'axes et leurs qualificatifs, à partir de
+        /// l'interrogatoire de CETTE consultation.
+        ///
+        /// Efface les cases cochées, et le dit avant : le modèle réinvente les intitulés, si bien
+        /// que les choix précédents ne se rattachent plus à rien. D'où la confirmation préalable.
+        /// </summary>
+        private async Task RegenererSuggestionsPassees()
+        {
+            if (_llmService == null || string.IsNullOrWhiteSpace(PastInterrogatoireText))
+            {
+                PastRegenStatus = "Interrogatoire absent : rien à partir de quoi proposer des axes.";
+                return;
+            }
+
+            var coches = PastClinicalCards.Count(c => c.HasSelection);
+            var avertissement = coches > 0
+                ? $"\n\n{coches} axe(s) comportent déjà des éléments cochés : ils seront effacés."
+                : "";
+
+            var reponse = System.Windows.MessageBox.Show(
+                "Refaire proposer les axes et les qualificatifs par l'IA, à partir de l'interrogatoire ?" + avertissement,
+                "Régénérer les suggestions",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Question);
+            if (reponse != System.Windows.MessageBoxResult.Yes) return;
+
+            IsRegeneratingPast = true;
+            PastRegenStatus = "⏳ Nouvelles suggestions en cours…";
+            try
+            {
+                // Session jetable, remplie par le MÊME générateur que la consultation en cours :
+                // un second prompt aurait divergé de celui-ci à la première retouche.
+                var session = new ClinicalObservationsSession { CreatedAt = DateTime.Now };
+                foreach (var (branche, titre) in AxesStandard)
+                {
+                    var carte = new ClinicalObservationCard { Branch = branche, Title = titre };
+                    carte.SetOptions(CatalogueParDefaut(titre));
+                    session.Cards.Add(carte);
+                }
+
+                await GenerateObservationSuggestionsAsync(PastInterrogatoireText, session);
+
+                PastClinicalCards.Clear();
+                foreach (var carte in session.Cards)
+                {
+                    var passee = new PastClinicalCard
+                    {
+                        Title = carte.Title,
+                        SelectedOptions = new List<string>(),
+                        FreeText = ""
+                    };
+                    RemplirOptions(passee, carte.OptionItems.Select(o => o.Label).ToList());
+                    PastClinicalCards.Add(passee);
+                }
+
+                PastRegenStatus = $"✅ {PastClinicalCards.Count} axes proposés — cochez, puis « Rédiger et enregistrer ».";
+            }
+            catch (Exception ex)
+            {
+                PastRegenStatus = $"❌ Erreur : {ex.Message}";
+            }
+            finally { IsRegeneratingPast = false; }
+        }
+
+        /// <summary>
+        /// Réécrit la rédaction clinique à partir des cartes telles qu'elles sont maintenant.
+        /// Remplace le texte précédent — c'est le but : la correction doit se substituer à l'ancienne
+        /// version, pas s'y ajouter.
+        /// </summary>
+        private async Task RegenererRedactionPassee()
+        {
+            if (_llmService == null) return;
+
+            if (!PastClinicalCards.Any(c => c.HasSelection))
+            {
+                PastRegenStatus = "Aucun élément coché : il n'y a rien à rédiger.";
+                return;
+            }
+
+            IsRegeneratingPast = true;
+            PastRegenStatus = "⏳ Nouvelle rédaction clinique…";
+            try
+            {
+                var session   = SessionDepuisCartesPassees();
+                var narratif  = await GenerateClinicalNarrativeAsync(session);
+
+                PastObservationsNarrative = string.IsNullOrWhiteSpace(narratif)
+                    ? BuildFallbackNarrative(session)
+                    : narratif;
+
+                PastRegenStatus = "✅ Rédaction remplacée — enregistrement en cours…";
+            }
+            catch (Exception ex)
+            {
+                PastRegenStatus = $"❌ Erreur : {ex.Message}";
+            }
+            finally { IsRegeneratingPast = false; }
+        }
+
+        /// <summary>
+        /// Refait la synthèse initiale de cette consultation. Demande confirmation quand un texte
+        /// est déjà présent : il a pu être retouché à la main, et la régénération l'écrase.
+        /// </summary>
+        private async Task RegenererSynthesePassee()
+        {
+            if (_llmService == null) return;
+
+            // Sans matière, le modèle rédige une synthèse qui constate l'absence de matière : mieux
+            // vaut le dire ici que de laisser ce texte remplacer une synthèse valable.
+            if (string.IsNullOrWhiteSpace(PastInterrogatoireText) &&
+                string.IsNullOrWhiteSpace(PastObservationsNarrative))
+            {
+                PastRegenStatus = "Interrogatoire et observations vides : rien à synthétiser.";
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(PastSynthesisContent))
+            {
+                var reponse = System.Windows.MessageBox.Show(
+                    "Régénérer la synthèse remplacera le texte actuel, y compris vos éventuelles retouches.\n\nContinuer ?",
+                    "Régénérer la synthèse",
+                    System.Windows.MessageBoxButton.YesNo,
+                    System.Windows.MessageBoxImage.Warning);
+                if (reponse != System.Windows.MessageBoxResult.Yes) return;
+            }
+
+            IsRegeneratingPast = true;
+            PastRegenStatus = "⏳ Nouvelle synthèse…";
+            try
+            {
+                await PreparerModeleAsync("synthese_initiale", s => PastRegenStatus = s);
+
+                var prompt = new System.Text.StringBuilder();
+                prompt.AppendLine("Rédige la synthèse initiale d'une première consultation en pédopsychiatrie, à partir de l'interrogatoire et des observations cliniques ci-dessous.");
+                prompt.AppendLine("Style clinique sobre, structuré par sous-titres markdown. Aucune invention : uniquement ce qui figure ci-dessous.");
+                prompt.AppendLine();
+                prompt.AppendLine("## Interrogatoire");
+                prompt.AppendLine(PastInterrogatoireText);
+                prompt.AppendLine();
+                prompt.AppendLine("## Observations cliniques");
+                prompt.AppendLine(PastObservationsNarrative);
+
+                var (ok, resultat, err) = await _llmService.ChatAsync(prompt.ToString(), new(), maxTokens: 2000);
+
+                if (!ok || string.IsNullOrWhiteSpace(resultat))
+                {
+                    PastRegenStatus = $"❌ Échec : {err ?? "réponse vide"} — synthèse inchangée.";
+                    return;
+                }
+
+                PastSynthesisContent = resultat.Trim();
+                PastRegenStatus = "✅ Synthèse remplacée — pensez à enregistrer.";
+            }
+            catch (Exception ex)
+            {
+                PastRegenStatus = $"❌ Erreur : {ex.Message}";
+            }
+            finally { IsRegeneratingPast = false; }
         }
 
         private async Task<string> GenerateClinicalNarrativeAsync(ClinicalObservationsSession obs)
@@ -5810,6 +6182,18 @@ source: ""MedCompanion""
         public ICommand ClosePastConsultationCommand { get; }
         public ICommand DeleteSelectedPastConsultationCommand { get; }
         public ICommand ViewPastPremiereStepCommand { get; }
+
+        /// <summary>Refait proposer les axes et qualificatifs par le modèle. Efface les choix.</summary>
+        public ICommand RegeneratePastSuggestionsCommand { get; private set; } = null!;
+
+        /// <summary>Réécrit la rédaction clinique à partir des cartes, puis enregistre.</summary>
+        public ICommand SavePastNarrativeCommand { get; private set; } = null!;
+
+        /// <summary>Refait la synthèse initiale à partir de l'interrogatoire et des observations.</summary>
+        public ICommand RegeneratePastSynthesisCommand { get; private set; } = null!;
+
+        /// <summary>Enregistre la synthèse relue, régénérée ou retouchée à la main.</summary>
+        public ICommand SavePastSynthesisCommand { get; private set; } = null!;
         public ICommand ClosePastPremiereConsultationCommand { get; }
         public ICommand EditPastPremiereCommand { get; private set; } = null!;
         public ICommand SavePastPremiereCommand { get; private set; } = null!;
@@ -6034,6 +6418,30 @@ source: ""MedCompanion""
             {
                 DeleteSelectedPastConsultation();
             });
+
+            RegeneratePastSuggestionsCommand = new RelayCommand(
+                async _ => await RegenererSuggestionsPassees(),
+                _ => IsReadingPastPremiereConsultationMode && !IsRegeneratingPast);
+
+            // Un seul geste : rédiger, puis écrire sur le disque. Les séparer laissait la
+            // rédaction régénérée à l'écran sans aucun moyen de la conserver.
+            SavePastNarrativeCommand = new RelayCommand(
+                async _ =>
+                {
+                    await RegenererRedactionPassee();
+                    if (!string.IsNullOrWhiteSpace(PastObservationsNarrative))
+                        await SavePastPremiereAsync();
+                },
+                _ => IsReadingPastPremiereConsultationMode && !IsRegeneratingPast);
+
+            RegeneratePastSynthesisCommand = new RelayCommand(
+                async _ => await RegenererSynthesePassee(),
+                _ => IsReadingPastPremiereConsultationMode && !IsRegeneratingPast);
+
+            SavePastSynthesisCommand = new RelayCommand(
+                async _ => await SavePastPremiereAsync(),
+                _ => IsReadingPastPremiereConsultationMode && !IsRegeneratingPast
+                     && !string.IsNullOrWhiteSpace(PastSynthesisContent));
 
             ViewPastPremiereStepCommand = new RelayCommand(param =>
             {
@@ -7644,12 +8052,72 @@ source: ""MedCompanion""
         public string FreeText { get; set; } = "";
     }
 
-    public class PastClinicalCard
+    /// <summary>
+    /// Carte d'observation d'une consultation déjà enregistrée, relue puis éventuellement corrigée.
+    /// </summary>
+    public class PastClinicalCard : INotifyPropertyChanged
     {
+        public event PropertyChangedEventHandler? PropertyChanged;
+        private void Notify(string n) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(n));
+
         public string Title { get; set; } = "";
-        public List<string> SelectedOptions { get; set; } = new();
+
+        private List<string> _selectedOptions = new();
+        public List<string> SelectedOptions
+        {
+            get => _selectedOptions;
+            set { _selectedOptions = value; Notify(nameof(SelectedOptions)); Notify(nameof(SelectedOption)); Notify(nameof(HasSelection)); }
+        }
+
         public string SelectedOption => SelectedOptions.FirstOrDefault() ?? ""; // compat lecture
-        public string FreeText { get; set; } = "";
+
+        private string _freeText = "";
+        public string FreeText
+        {
+            get => _freeText;
+            set { _freeText = value; Notify(nameof(FreeText)); }
+        }
+
         public bool HasSelection => SelectedOptions.Count > 0;
+
+        /// <summary>
+        /// Qualificatifs proposables pour cet axe.
+        ///
+        /// Nouveau champ : jusqu'ici seules les options COCHÉES étaient enregistrées, ce qui suffit
+        /// à relire une consultation mais pas à la corriger — on ne peut pas rendre cliquable une
+        /// liste qu'on n'a pas. Les notes antérieures n'en ont donc pas, et retombent sur le
+        /// catalogue par défaut de l'axe correspondant.
+        /// </summary>
+        public ObservableCollection<PastClinicalOption> Options { get; } = new();
+
+        /// <summary>Rafraîchit <see cref="SelectedOptions"/> depuis l'état coché des options.</summary>
+        public void SyncSelectionDepuisOptions()
+        {
+            SelectedOptions = Options.Where(o => o.IsSelected).Select(o => o.Label).ToList();
+        }
+    }
+
+    /// <summary>Un qualificatif proposable, cochable en mode correction.</summary>
+    public class PastClinicalOption : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        public required string Label { get; init; }
+
+        private bool _isSelected;
+        public bool IsSelected
+        {
+            get => _isSelected;
+            set
+            {
+                if (_isSelected == value) return;
+                _isSelected = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsSelected)));
+                Change?.Invoke();
+            }
+        }
+
+        /// <summary>Prévient la carte porteuse pour qu'elle recalcule sa sélection.</summary>
+        public Action? Change { get; set; }
     }
 }

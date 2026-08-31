@@ -22,6 +22,7 @@
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
         <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
         <conv:StringEqualsMultiConverter x:Key="StringEquals"/>
+        <conv:AllTrueToVisibilityConverter x:Key="AllTrueToVis"/>
         <conv:StringNotWhiteSpaceToVisibilityConverter x:Key="StringNotWS"/>
         <conv:StringToBrushConverter x:Key="StringToBrush"/>
 
@@ -1344,12 +1345,61 @@
                                             <!-- STEP 2: Observations Cliniques -->
                                             <Grid Visibility="{Binding IsPastPremiereStep2, Converter={StaticResource BoolToVis}}">
                                                 <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
                                                     <RowDefinition Height="*"/>
                                                     <RowDefinition Height="Auto"/>
                                                 </Grid.RowDefinitions>
-                                                
-                                                <!-- UniformGrid of read-only Cards -->
-                                                <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+
+                                                <!-- Barre de correction.
+                                                     Les cartes sont toujours cochables ici : revenir sur une
+                                                     consultation, c'est déjà vouloir la corriger. Restent deux
+                                                     gestes — refaire proposer les axes (qui efface les choix,
+                                                     d'où la confirmation), et rédiger + enregistrer. -->
+                                                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="6,0,6,8">
+                                                    <Button Content="✨ Régénérer les suggestions"
+                                                            Command="{Binding RegeneratePastSuggestionsCommand}"
+                                                            ToolTip="Refait proposer les axes et qualificatifs par l'IA. Efface les cases cochées."
+                                                            Padding="10,5" Margin="0,0,8,0" Cursor="Hand" FontSize="11"
+                                                            Background="#F39C12" Foreground="White" BorderThickness="0">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="RgBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsEnabled" Value="False">
+                                                                        <Setter TargetName="RgBd" Property="Opacity" Value="0.45"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+
+                                                    <Button Content="💾 Rédiger et enregistrer"
+                                                            Command="{Binding SavePastNarrativeCommand}"
+                                                            ToolTip="Réécrit le paragraphe clinique à partir des cartes cochées, puis enregistre la consultation."
+                                                            Padding="10,5" Margin="0,0,10,0" Cursor="Hand" FontSize="11"
+                                                            Background="#16A085" Foreground="White" BorderThickness="0">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="RnBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsEnabled" Value="False">
+                                                                        <Setter TargetName="RnBd" Property="Opacity" Value="0.45"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+
+                                                    <TextBlock Text="{Binding PastRegenStatus}" VerticalAlignment="Center"
+                                                               FontSize="10" Foreground="#7F8C8D" TextWrapping="Wrap" MaxWidth="300"/>
+                                                </StackPanel>
+
+                                                <!-- Cartes : lues, ou corrigées selon IsPastObservationsEditing -->
+                                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
                                                     <ItemsControl ItemsSource="{Binding PastClinicalCards}" Margin="0,0,10,0">
                                                         <ItemsControl.ItemsPanel>
                                                             <ItemsPanelTemplate>
@@ -1373,14 +1423,62 @@
                                                                     </Border.Style>
                                                                     <StackPanel>
                                                                         <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,6"/>
-                                                                        
-                                                                        <!-- Selection Badge -->
-                                                                        <Border HorizontalAlignment="Left" CornerRadius="4" Padding="6,3" Margin="0,0,0,6" Visibility="{Binding HasSelection, Converter={StaticResource BoolToVis}}" Background="#27AE60">
+
+                                                                        <!-- LECTURE : badge des options retenues -->
+                                                                        <Border HorizontalAlignment="Left" CornerRadius="4" Padding="6,3" Margin="0,0,0,6" Background="#27AE60">
+                                                                            <Border.Visibility>
+                                                                                <MultiBinding Converter="{StaticResource AllTrueToVis}">
+                                                                                    <Binding Path="HasSelection"/>
+                                                                                    <Binding Path="DataContext.IsPastObservationsReadOnly" RelativeSource="{RelativeSource AncestorType=UserControl}"/>
+                                                                                </MultiBinding>
+                                                                            </Border.Visibility>
                                                                             <TextBlock Text="{Binding SelectedOption}" FontSize="11" FontWeight="SemiBold" Foreground="White"/>
                                                                         </Border>
-                                                                        
-                                                                        <!-- Free text comment if exists -->
-                                                                        <TextBlock Text="{Binding FreeText}" FontSize="12" Foreground="#5D6D7E" TextWrapping="Wrap" LineHeight="16" FontStyle="Italic"/>
+
+                                                                        <!-- CORRECTION : les qualificatifs redeviennent cochables.
+                                                                             Une option retenue mais absente du catalogue y est
+                                                                             réinjectée au chargement, elle ne peut donc pas
+                                                                             disparaître ici. -->
+                                                                        <ItemsControl ItemsSource="{Binding Options}" Margin="0,0,0,6"
+                                                                                      Visibility="{Binding DataContext.IsPastObservationsEditing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}">
+                                                                            <ItemsControl.ItemsPanel>
+                                                                                <ItemsPanelTemplate><WrapPanel/></ItemsPanelTemplate>
+                                                                            </ItemsControl.ItemsPanel>
+                                                                            <ItemsControl.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                    <ToggleButton IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                                                                  Content="{Binding Label}" Cursor="Hand"
+                                                                                                  Margin="0,0,5,5" FontSize="11">
+                                                                                        <ToggleButton.Template>
+                                                                                            <ControlTemplate TargetType="ToggleButton">
+                                                                                                <Border x:Name="ChipBd" CornerRadius="12" Padding="9,4"
+                                                                                                        Background="#FFFFFF" BorderBrush="#BDC3C7" BorderThickness="1">
+                                                                                                    <ContentPresenter/>
+                                                                                                </Border>
+                                                                                                <ControlTemplate.Triggers>
+                                                                                                    <Trigger Property="IsChecked" Value="True">
+                                                                                                        <Setter TargetName="ChipBd" Property="Background" Value="#27AE60"/>
+                                                                                                        <Setter TargetName="ChipBd" Property="BorderBrush" Value="#27AE60"/>
+                                                                                                        <Setter Property="Foreground" Value="White"/>
+                                                                                                    </Trigger>
+                                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                                        <Setter TargetName="ChipBd" Property="BorderBrush" Value="#27AE60"/>
+                                                                                                    </Trigger>
+                                                                                                </ControlTemplate.Triggers>
+                                                                                            </ControlTemplate>
+                                                                                        </ToggleButton.Template>
+                                                                                    </ToggleButton>
+                                                                                </DataTemplate>
+                                                                            </ItemsControl.ItemTemplate>
+                                                                        </ItemsControl>
+
+                                                                        <!-- Texte libre : lu, ou saisi en correction -->
+                                                                        <TextBlock Text="{Binding FreeText}" FontSize="12" Foreground="#5D6D7E" TextWrapping="Wrap" LineHeight="16" FontStyle="Italic"
+                                                                                   Visibility="{Binding DataContext.IsPastObservationsReadOnly, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}"/>
+                                                                        <TextBox Text="{Binding FreeText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                                                 FontSize="12" TextWrapping="Wrap" AcceptsReturn="True" MinHeight="40"
+                                                                                 BorderBrush="#BDC3C7" Padding="5"
+                                                                                 Visibility="{Binding DataContext.IsPastObservationsEditing, RelativeSource={RelativeSource AncestorType=UserControl}, Converter={StaticResource BoolToVis}}"/>
                                                                     </StackPanel>
                                                                 </Border>
                                                             </DataTemplate>
@@ -1388,11 +1486,51 @@
                                                     </ItemsControl>
                                                 </ScrollViewer>
                                                 
-                                                <!-- Narratif complet -->
-                                                <Border Grid.Row="1" Background="#EAF2F8" BorderBrush="#27AE60" BorderThickness="3,1,1,1" CornerRadius="6" Padding="12" Margin="6,10,6,0">
+                                                <!-- Narratif complet, repliable.
+                                                     Déplié il occupe le bas de la vue et masque les
+                                                     cartes d'observation ; c'est pourtant sur elles
+                                                     qu'on revient quand on relit une consultation. -->
+                                                <Border Grid.Row="2" Background="#EAF2F8" BorderBrush="#27AE60" BorderThickness="3,1,1,1" CornerRadius="6" Padding="12" Margin="6,10,6,0">
                                                     <StackPanel>
-                                                        <TextBlock Text="✍️ Observations rédigées cliniques :" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,5"/>
-                                                        <TextBlock Text="{Binding PastObservationsNarrative}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18"/>
+                                                        <Grid Margin="0,0,0,5">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="✍️ Observations rédigées cliniques :" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+                                                            <ToggleButton x:Name="NarratifToggle" Grid.Column="1" IsChecked="True"
+                                                                          Cursor="Hand" Background="Transparent" BorderThickness="0"
+                                                                          ToolTip="Replier ou déplier la rédaction">
+                                                                <ToggleButton.Template>
+                                                                    <ControlTemplate TargetType="ToggleButton">
+                                                                        <Border Background="Transparent" Padding="6,2">
+                                                                            <TextBlock x:Name="Chevron" Text="▲ replier" FontSize="10" Foreground="#27AE60" FontWeight="SemiBold"/>
+                                                                        </Border>
+                                                                        <ControlTemplate.Triggers>
+                                                                            <Trigger Property="IsChecked" Value="False">
+                                                                                <Setter TargetName="Chevron" Property="Text" Value="▼ déplier"/>
+                                                                            </Trigger>
+                                                                        </ControlTemplate.Triggers>
+                                                                    </ControlTemplate>
+                                                                </ToggleButton.Template>
+                                                            </ToggleButton>
+                                                        </Grid>
+                                                        <!-- Replié : une hauteur bornée plutôt qu'un masquage total,
+                                                             pour garder la première ligne visible et se souvenir
+                                                             de ce que contient le bloc. -->
+                                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                            <ScrollViewer.Style>
+                                                                <Style TargetType="ScrollViewer">
+                                                                    <Setter Property="MaxHeight" Value="260"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding IsChecked, ElementName=NarratifToggle}" Value="False">
+                                                                            <Setter Property="MaxHeight" Value="34"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </ScrollViewer.Style>
+                                                            <TextBlock Text="{Binding PastObservationsNarrative}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18"/>
+                                                        </ScrollViewer>
                                                     </StackPanel>
                                                 </Border>
                                             </Grid>
@@ -1407,7 +1545,60 @@
                                                 <!-- Poids de fiabilité -->
                                                 <Border Grid.Row="0" Background="#F8F9FA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
                                                     <StackPanel>
-                                                        <TextBlock Text="📊 Indicateurs de fiabilité" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,8"/>
+                                                        <Grid Margin="0,0,0,8">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                            </Grid.ColumnDefinitions>
+                                                            <TextBlock Grid.Column="0" Text="📊 Indicateurs de fiabilité" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+                                                            <TextBlock Grid.Column="1" Text="{Binding PastRegenStatus}" Margin="12,0"
+                                                                       VerticalAlignment="Center" FontSize="10" Foreground="#7F8C8D"
+                                                                       TextWrapping="Wrap"/>
+                                                            <!-- Régénère la synthèse à partir de l'interrogatoire et des
+                                                                 observations de CETTE consultation. Confirme avant d'écraser
+                                                                 un texte existant, qui a pu être retouché à la main. -->
+                                                            <StackPanel Grid.Column="2" Orientation="Horizontal">
+                                                                <Button Content="✨ Régénérer la synthèse"
+                                                                        Command="{Binding RegeneratePastSynthesisCommand}"
+                                                                        Padding="10,5" Margin="0,0,8,0" Cursor="Hand" FontSize="11"
+                                                                        Background="#9B59B6" Foreground="White" BorderThickness="0">
+                                                                    <Button.Template>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border x:Name="RsBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                                    <Setter TargetName="RsBd" Property="Opacity" Value="0.45"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Button.Template>
+                                                                </Button>
+
+                                                                <!-- Régénérer ne suffit pas : le texte peut aussi
+                                                                     avoir été retouché à la main juste en dessous. -->
+                                                                <Button Content="💾 Enregistrer"
+                                                                        Command="{Binding SavePastSynthesisCommand}"
+                                                                        ToolTip="Écrit la synthèse affichée dans le dossier du patient."
+                                                                        Padding="10,5" Cursor="Hand" FontSize="11"
+                                                                        Background="#16A085" Foreground="White" BorderThickness="0">
+                                                                    <Button.Template>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border x:Name="SsBd" Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                                    <Setter TargetName="SsBd" Property="Opacity" Value="0.45"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Button.Template>
+                                                                </Button>
+                                                            </StackPanel>
+                                                        </Grid>
                                                         <Grid>
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
@@ -1434,40 +1625,21 @@
                                                 
                                                 <!-- Synthèse rédigée -->
                                                 <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Padding="15">
-                                                    <StackPanel>
-                                                        <TextBlock Text="📄 Synthèse Clinique :" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,8"/>
-                                                        <!-- Lecture -->
-                                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                                            <TextBlock Text="{Binding PastSynthesisContent}" FontSize="12" Foreground="#34495E" TextWrapping="Wrap" LineHeight="18">
-                                                                <TextBlock.Style>
-                                                                    <Style TargetType="TextBlock">
-                                                                        <Setter Property="Visibility" Value="Visible"/>
-                                                                        <Style.Triggers>
-                                                                            <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
-                                                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                                                            </DataTrigger>
-                                                                        </Style.Triggers>
-                                                                    </Style>
-                                                                </TextBlock.Style>
-                                                            </TextBlock>
-                                                        </ScrollViewer>
-                                                        <!-- Édition -->
-                                                        <TextBox Text="{Binding PastSynthesisContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="*"/>
+                                                        </Grid.RowDefinitions>
+                                                        <TextBlock Grid.Row="0" Text="📄 Synthèse Clinique :" FontSize="12" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,8"/>
+                                                        <!-- Retouchable sur place : régénérer donne un point de départ,
+                                                             la dernière main reste au médecin. « Enregistrer » ci-dessus
+                                                             écrit ce qui est affiché ici. -->
+                                                        <TextBox Grid.Row="1"
+                                                                 Text="{Binding PastSynthesisContent, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                                                  FontSize="12" Foreground="#34495E" TextWrapping="Wrap" AcceptsReturn="True"
-                                                                 BorderBrush="#BDC3C7" BorderThickness="1" Padding="8" MinHeight="120"
-                                                                 VerticalScrollBarVisibility="Auto">
-                                                            <TextBox.Style>
-                                                                <Style TargetType="TextBox">
-                                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                                    <Style.Triggers>
-                                                                        <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
-                                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                                        </DataTrigger>
-                                                                    </Style.Triggers>
-                                                                </Style>
-                                                            </TextBox.Style>
-                                                        </TextBox>
-                                                    </StackPanel>
+                                                                 Background="White" BorderBrush="#BDC3C7" BorderThickness="1" Padding="8"
+                                                                 MinHeight="120" VerticalScrollBarVisibility="Auto"/>
+                                                    </Grid>
                                                 </Border>
                                             </Grid>
                                         </Grid>

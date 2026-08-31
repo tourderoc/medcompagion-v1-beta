@@ -255,4 +255,26 @@ namespace MedCompanion.Converters
         public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
             => throw new NotImplementedException();
     }
+
+    /// <summary>
+    /// Visible seulement si TOUTES les valeurs booléennes fournies sont vraies.
+    ///
+    /// Sert les éléments dont l'affichage dépend de deux conditions indépendantes — par exemple un
+    /// badge de sélection qui ne doit apparaître que si la carte a une sélection ET qu'on est en
+    /// lecture, la correction affichant à sa place des puces cochables.
+    /// </summary>
+    public class AllTrueToVisibilityConverter : System.Windows.Data.IMultiValueConverter
+    {
+        public object Convert(object[] values, Type targetType, object parameter, CultureInfo culture)
+        {
+            foreach (var v in values)
+                if (v is not bool b || !b)
+                    return System.Windows.Visibility.Collapsed;
+
+            return System.Windows.Visibility.Visible;
+        }
+
+        public object[] ConvertBack(object value, Type[] targetTypes, object parameter, CultureInfo culture)
+            => throw new NotImplementedException();
+    }
 }
