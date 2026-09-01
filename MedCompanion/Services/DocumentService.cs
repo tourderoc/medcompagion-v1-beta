@@ -60,8 +60,63 @@ namespace MedCompanion.Services
         /// <summary>
         /// Importe un document et l'analyse avec l'IA
         /// </summary>
+        /// <summary>
+        /// Verse un formulaire connu SANS chercher à le reconnaître : l'appelant sait déjà de quoi
+        /// il s'agit.
+        ///
+        /// La reconnaissance par le contenu suppose une couche texte. Une feuille imprimée puis
+        /// remplie à la main et scannée n'en a pas — le jeton comme le titre sont alors des pixels,
+        /// et le document repartait dans la catégorisation LLM, qui le classait « bilans » : au
+        /// mauvais endroit, sans son crayon de saisie, et pondéré comme un élément clinique.
+        ///
+        /// Quand le geste de l'utilisateur dit déjà quel formulaire arrive, le lui demander
+        /// deviner est une occasion de se tromper, pas une sécurité.
+        /// </summary>
+        public async Task<(bool success, PatientDocument? document, string message)> ImportFormulaireConnuAsync(
+            string sourceFilePath,
+            string nomComplet,
+            FormulaireDefinition definition,
+            int version)
+        {
+            try
+            {
+                if (!File.Exists(sourceFilePath))
+                    return (false, null, "Fichier introuvable.");
+
+                var fileInfo  = new FileInfo(sourceFilePath);
+                var extension = fileInfo.Extension.ToLowerInvariant();
+
+                var formulaire = new PatientDocument
+                {
+                    FileName      = $"{DateTime.Now:yyyy-MM-dd}_formulaire_{definition.Id.ToLowerInvariant()}_rempli{extension}",
+                    Category      = "Formulaires",
+                    Summary       = $"{definition.Libelle} rempli par les parents — à lire champ par champ.",
+                    ExtractedText = "",
+                    FileSizeBytes = fileInfo.Length,
+                    FileExtension = extension,
+                    DateAdded     = DateTime.Now,
+                    IsFormulaireCompletion = true,
+                    FormulaireId      = definition.Id,
+                    FormulaireVersion = version
+                };
+
+                var dossier = Path.Combine(_pathService.GetDocumentsDirectory(nomComplet), formulaire.Category);
+                Directory.CreateDirectory(dossier);
+                var destination = Path.Combine(dossier, formulaire.FileName);
+                File.Copy(sourceFilePath, destination, overwrite: true);
+                formulaire.FilePath = destination;
+
+                await SaveDocumentToIndexAsync(nomComplet, formulaire);
+                return (true, formulaire, $"{definition.Libelle} ajouté aux documents.");
+            }
+            catch (Exception ex)
+            {
+                return (false, null, ex.Message);
+            }
+        }
+
         public async Task<(bool success, PatientDocument? document, string message)> ImportDocumentAsync(
-            string sourceFilePath, 
+            string sourceFilePath,
             string nomComplet)
         {
             try

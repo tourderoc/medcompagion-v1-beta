@@ -495,6 +495,11 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(PatientDisplayName));
                     OnPropertyChanged(nameof(PatientAge));
                     _contextCompletionChecked = false;
+
+                    // Une séance de cartographie appartient à UN enfant. Sans cette remise à
+                    // zéro, les cotations posées sur un patient restaient affichées sous le
+                    // suivant — et la carte du dossier bleu montrait encore l'ancien.
+                    ResetCartographieV2ForPatientChange();
                 }
             }
         }
@@ -711,6 +716,413 @@ namespace MedCompanion.ViewModels
         {
             get => _isEvaluationPhaseMode;
             set => SetProperty(ref _isEvaluationPhaseMode, value);
+        }
+
+        // ── Cartographie de l'enfant (V2) ─────────────────────────────────────────
+        // Bloc neuf, construit À CÔTÉ de la Phase d'évaluation sans y toucher
+        // (cf. PLAN_CARTOGRAPHIE_ENFANT_V2.md). On branchera les deux quand la partie
+        // sera finie et testée.
+
+        private bool _isCartographieMode;
+        /// <summary>
+        /// True quand le médecin a ouvert le bloc « Cartographie de l'enfant » depuis la frise.
+        /// </summary>
+        public bool IsCartographieMode
+        {
+            get => _isCartographieMode;
+            set => SetProperty(ref _isCartographieMode, value);
+        }
+
+        private string _cartographieStatusMessage = "";
+        public string CartographieStatusMessage
+        {
+            get => _cartographieStatusMessage;
+            set => SetProperty(ref _cartographieStatusMessage, value);
+        }
+
+        /// <summary>Tranche d'âge applicable, affichée avant impression (« 7-9 ans »).</summary>
+        public string CartographieTrancheLabel
+        {
+            get
+            {
+                var bande = Models.Evaluations.CartographieItemsV2.Bande(_confirmedAge);
+                return bande.HasValue
+                    ? Models.Evaluations.CartographieItemsV2.BandeLabel(bande.Value)
+                    : "hors 3-11 ans";
+            }
+        }
+
+        /// <summary>
+        /// Écran « Profils observés » : les 3 profils remplis par le médecin en observant
+        /// l'enfant. Instancié une seule fois — les cotations survivent à un aller-retour vers
+        /// l'accueil du bloc pendant la séance.
+        /// </summary>
+        public ProfilsObservesViewModel ProfilsObserves { get; } = new();
+
+        private bool _showProfilsObserves;
+        /// <summary>
+        /// Sous-vue du bloc Cartographie : false = accueil (impression du questionnaire),
+        /// true = les 3 profils. Les profils prennent toute la zone de travail — dix-huit
+        /// lignes ne tiennent pas sous la carte d'impression, et la saisie se fait en séance.
+        /// </summary>
+        public bool ShowProfilsObserves
+        {
+            get => _showProfilsObserves;
+            set => SetProperty(ref _showProfilsObserves, value);
+        }
+
+        private readonly Services.Evaluations.CartographieV2Service _cartoV2 = new();
+
+        /// <summary>Fiche de la séance du jour. Chargée à l'ouverture du bloc, créée au 1er enregistrement.</summary>
+        private Services.Evaluations.CartographieV2? _cartoV2Courante;
+
+        private string _profilsStatusMessage = "";
+        public string ProfilsStatusMessage
+        {
+            get => _profilsStatusMessage;
+            set => SetProperty(ref _profilsStatusMessage, value);
+        }
+
+        /// <summary>True quand la fiche du jour a déjà été versée au dossier bleu.</summary>
+        private bool _cartoV2Versee;
+        public bool CartoV2Versee
+        {
+            get => _cartoV2Versee;
+            set => SetProperty(ref _cartoV2Versee, value);
+        }
+
+        /// <summary>Ouvre le bloc Cartographie dans la zone de travail.</summary>
+        private void EnterCartographieMode()
+        {
+            ResetWorkspaceModes();
+            IsCartographieMode = true;
+            ShowProfilsObserves = false;
+            CartographieStatusMessage = "";
+            ProfilsStatusMessage = "";
+            OnPropertyChanged(nameof(CartographieTrancheLabel));
+
+            // Reprise de la séance du jour si elle existe : le médecin peut sortir du bloc et
+            // y revenir en cours de consultation sans reperdre ses cotations.
+            _cartoV2Courante = null;
+            CartoV2Versee    = false;
+            ProfilsObserves.Reset();
+
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir)) return;
+
+            var fiche = _cartoV2.LoadForDate(dir, DateTime.Today);
+            if (fiche == null) return;
+
+            _cartoV2Courante = fiche;
+            CartoV2Versee    = fiche.VerseeAuDossier;
+            ProfilsObserves.LoadFrom(fiche.Axes);
+            ProfilsStatusMessage = $"Reprise de la séance du {fiche.Date:dd/MM/yyyy}.";
+            OnPropertyChanged(nameof(CartographieEtatFeuille));
+        }
+
+        /// <summary>
+        /// Construit ou met à jour la fiche du jour depuis l'écran des profils, et l'écrit.
+        /// </summary>
+        /// <summary>
+        /// Écrit la fiche du jour et la rend visible dans l'onglet BILANS.
+        ///
+        /// Toute sauvegarde verse au dossier — il n'y a plus d'attente de fin de séance. La carte
+        /// porte son état de complétude ; c'est lui, et non un moment de publication, qui dit ce
+        /// qui a été recueilli et ce qui manque. Une cartographie en cours a sa place au dossier
+        /// dès lors qu'elle dit qu'elle est en cours.
+        /// </summary>
+        private bool EcrireCartoV2(bool verser, out string? erreur)
+        {
+            erreur = null;
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir)) { erreur = "Aucun patient sélectionné."; return false; }
+
+            var bande = Models.Evaluations.CartographieItemsV2.Bande(_confirmedAge);
+
+            _cartoV2Courante ??= new Services.Evaluations.CartographieV2 { Date = DateTime.Today };
+
+            // Le nom est réécrit à CHAQUE écriture, jamais figé à la création de l'objet : une
+            // fiche créée sous un patient puis écrite sous un autre porterait sinon le mauvais
+            // nom dans le bon dossier. C'est arrivé en test — la garde reste, en plus de la
+            // remise à zéro au changement de patient.
+            _cartoV2Courante.PatientNom = PatientDisplayName;
+            _cartoV2Courante.Age       = _confirmedAge;
+            _cartoV2Courante.BandeCode = bande.HasValue
+                ? Models.Evaluations.CartographieItemsV2.BandeCode(bande.Value) : "";
+            _cartoV2Courante.Axes      = ProfilsObserves.ToDictionary();
+            _cartoV2Courante.VerseeAuDossier = true;
+
+            var (ok, _, err) = _cartoV2.Save(dir, _cartoV2Courante);
+            if (!ok) { erreur = err; return false; }
+
+            CartoV2Versee = true;
+            LoadCartographieV2Bilans();
+            return true;
+        }
+
+        /// <summary>
+        /// Enregistre l'observation sans rien verser au dossier. Le médecin sauvegarde quand il
+        /// veut ; la carte n'apparaît dans BILANS qu'à la fin de la séance.
+        /// </summary>
+        private void SaveProfilsObserves()
+        {
+            if (!EcrireCartoV2(verser: false, out var err))
+            {
+                ProfilsStatusMessage = $"❌ {err}";
+                return;
+            }
+            ProfilsStatusMessage =
+                $"💾 Enregistré à {DateTime.Now:HH:mm} — {_cartoV2Courante!.EtatLisible}. "
+                + "Visible dans l'onglet BILANS du dossier.";
+        }
+
+        // ── Cartographies V2 dans l'onglet BILANS du dossier bleu ─────────────────
+
+        public ObservableCollection<CartographieV2CardViewModel> CartographieV2Bilans { get; } = new();
+        public bool HasCartographieV2Bilans => CartographieV2Bilans.Count > 0;
+
+        /// <summary>
+        /// Recharge les cartographies V2 versées au dossier. Les fiches non versées (séance en
+        /// cours) restent invisibles : le dossier ne se remplit pas de travaux en cours.
+        /// </summary>
+        /// <summary>État de la feuille parent pour la séance du jour, en clair.</summary>
+        public string CartographieEtatFeuille =>
+            _cartoV2Courante?.EtatQuestionnaire switch
+            {
+                Services.Evaluations.EtatQuestionnaireParent.Scanne when _cartoV2Courante.QuestionnaireLu
+                    => "Feuille scannée et lue",
+                Services.Evaluations.EtatQuestionnaireParent.Scanne
+                    => "Feuille scannée — lecture des réponses à faire",
+                Services.Evaluations.EtatQuestionnaireParent.Remis
+                    => "Feuille remise au parent — en attente de retour",
+                _   => "Feuille non encore remise"
+            };
+
+        /// <summary>
+        /// Enregistre la feuille remplie : l'image est copiée dans le dossier patient, à côté de
+        /// la fiche de séance, et l'état passe à « scannée ».
+        ///
+        /// PENDANT LA SÉANCE, RIEN N'EST AFFICHÉ DU RÉSULTAT — la famille est dans la pièce.
+        /// Le message est un accusé de lecture, pas un résultat : il dit que la feuille est
+        /// arrivée, rien de ce qu'elle contient.
+        /// </summary>
+        public void EnregistrerScanQuestionnaire(string sourceImagePath)
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir))
+            {
+                CartographieStatusMessage = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            try
+            {
+                var jour   = DateTime.Today;
+                var destDir = Services.Evaluations.CartographieV2Service.GetDirectory(dir, jour.Year);
+                System.IO.Directory.CreateDirectory(destDir);
+
+                var ext  = System.IO.Path.GetExtension(sourceImagePath);
+                var dest = System.IO.Path.Combine(destDir, $"{jour:yyyy-MM-dd}_questionnaire_scan{ext}");
+                System.IO.File.Copy(sourceImagePath, dest, overwrite: true);
+
+                _cartoV2Courante ??= new Services.Evaluations.CartographieV2 { Date = jour };
+                _cartoV2Courante.ScanImagePath     = dest;
+                _cartoV2Courante.EtatQuestionnaire = Services.Evaluations.EtatQuestionnaireParent.Scanne;
+
+                if (!EcrireCartoV2(verser: false, out var err))
+                {
+                    CartographieStatusMessage = $"❌ {err}";
+                    return;
+                }
+
+                OnPropertyChanged(nameof(CartographieEtatFeuille));
+                CartographieStatusMessage =
+                    "✅ Feuille reçue et archivée. La lecture des réponses se fera après la séance.";
+            }
+            catch (Exception ex)
+            {
+                CartographieStatusMessage = $"❌ Impossible d'archiver la feuille : {ex.Message}";
+            }
+        }
+
+        /// <summary>Éléments nécessaires au dépouillement : l'image, la tranche, les scores déjà saisis.</summary>
+        public (string? imagePath, BandeAgeCarto? bande, IReadOnlyDictionary<string, int>? scores)
+            GetDepouillementContexte()
+        {
+            // La tranche vient de la fiche quand elle y est : c'est la version RÉELLEMENT
+            // imprimée. L'âge courant n'est qu'un repli — un enfant qui passe de 9 à 10 ans
+            // entre l'impression et le dépouillement ne doit pas faire changer de questionnaire.
+            var bande = !string.IsNullOrEmpty(_cartoV2Courante?.BandeCode)
+                ? _cartoV2Courante!.BandeCode switch
+                {
+                    "3-4"  => BandeAgeCarto.TroisQuatre,
+                    "5-6"  => BandeAgeCarto.CinqSix,
+                    "7-9"  => BandeAgeCarto.SeptNeuf,
+                    "10-11" => BandeAgeCarto.DixOnze,
+                    _      => (BandeAgeCarto?)null
+                }
+                : CartographieItemsV2.Bande(_confirmedAge);
+
+            var scores = _cartoV2Courante != null && _cartoV2Courante.ScoresQuestionnaire.Count > 0
+                ? _cartoV2Courante.ScoresQuestionnaire
+                : null;
+
+            return (_cartoV2Courante?.ScanImagePath, bande, scores);
+        }
+
+        /// <summary>
+        /// Écrit les 5 scores dans la fiche de séance. C'est ce geste — et pas le scan — qui rend
+        /// la cartographie complète : une feuille archivée mais non dépouillée n'apporte aucun score.
+        /// </summary>
+        public void EnregistrerScoresQuestionnaire(Dictionary<string, int> scores, string? imageUtilisee = null)
+        {
+            _cartoV2Courante ??= new Services.Evaluations.CartographieV2 { Date = DateTime.Today };
+            _cartoV2Courante.ScoresQuestionnaire = scores;
+            _cartoV2Courante.EtatQuestionnaire   = Services.Evaluations.EtatQuestionnaireParent.Scanne;
+            if (string.IsNullOrEmpty(_cartoV2Courante.ScanImagePath) && !string.IsNullOrEmpty(imageUtilisee))
+                _cartoV2Courante.ScanImagePath = imageUtilisee;
+
+            if (!EcrireCartoV2(verser: false, out var err))
+            {
+                CartographieStatusMessage = $"❌ {err}";
+                return;
+            }
+
+            OnPropertyChanged(nameof(CartographieEtatFeuille));
+            LoadCartographieV2Bilans();
+
+            var lus = scores.Count;
+            CartographieStatusMessage =
+                $"✅ Questionnaire dépouillé — {lus} axes cotés. La cartographie est complète.";
+        }
+
+        /// <summary>Vrai dès qu'une feuille a été scannée : le dépouillement devient possible.</summary>
+        public bool PeutDepouiller => !string.IsNullOrEmpty(_cartoV2Courante?.ScanImagePath);
+
+        /// <summary>
+        /// Purge tout ce qui appartient à la séance de cartographie du patient précédent, et
+        /// recharge les cartes du nouveau. Appelé depuis le setter de <see cref="CurrentPatient"/>,
+        /// donc toujours APRÈS que le patient courant a changé — l'ordre compte, une purge faite
+        /// avant rechargerait l'ancien dossier.
+        /// </summary>
+        private void ResetCartographieV2ForPatientChange()
+        {
+            _cartoV2Courante = null;
+            CartoV2Versee    = false;
+            ProfilsObserves.Reset();
+            ProfilsStatusMessage      = "";
+            CartographieStatusMessage = "";
+            // Le bloc se referme : rester ouvert sur un enfant en affichant l'écran d'un autre
+            // est précisément le risque qu'on veut supprimer.
+            ShowProfilsObserves = false;
+            IsCartographieMode  = false;
+            LoadCartographieV2Bilans();
+        }
+
+        /// <summary>
+        /// Supprime une cartographie du dossier, après confirmation. Si c'est celle de la séance
+        /// en cours, l'écran des profils est remis à zéro : laisser des cotations à l'écran dont
+        /// le fichier vient d'être supprimé donnerait à croire qu'elles sont encore enregistrées.
+        /// </summary>
+        private void DeleteCartographieV2(CartographieV2CardViewModel card)
+        {
+            var r = System.Windows.MessageBox.Show(
+                $"Supprimer définitivement cette cartographie ?\n\n{card.TitreCard}\n\nCette action est irréversible.",
+                "Supprimer la cartographie",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            if (!_cartoV2.Delete(card.FilePath))
+            {
+                System.Windows.MessageBox.Show(
+                    "Le fichier n'a pas pu être supprimé.",
+                    "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                return;
+            }
+
+            if (_cartoV2Courante != null
+                && string.Equals(_cartoV2Courante.FilePath, card.FilePath, StringComparison.OrdinalIgnoreCase))
+            {
+                _cartoV2Courante = null;
+                CartoV2Versee    = false;
+                ProfilsObserves.Reset();
+                ProfilsStatusMessage = "Cartographie supprimée — l'écran a été remis à zéro.";
+            }
+
+            LoadCartographieV2Bilans();
+        }
+
+        private void LoadCartographieV2Bilans()
+        {
+            CartographieV2Bilans.Clear();
+            var dir = CurrentPatient?.DirectoryPath;
+            if (!string.IsNullOrEmpty(dir))
+            {
+                foreach (var c in _cartoV2.LoadAll(dir).Where(c => c.VerseeAuDossier))
+                    CartographieV2Bilans.Add(new CartographieV2CardViewModel(c));
+            }
+            OnPropertyChanged(nameof(HasCartographieV2Bilans));
+        }
+
+        /// <summary>
+        /// Génère le PDF du questionnaire parent pour la tranche d'âge de l'enfant, et l'ouvre
+        /// pour impression. Feuille VIERGE → générée en temporaire, pas versée au dossier : c'est
+        /// le scan de la feuille REMPLIE qui sera archivé.
+        /// </summary>
+        private async System.Threading.Tasks.Task PrintQuestionnaireCartographieAsync()
+        {
+            if (CurrentPatient == null)
+            {
+                CartographieStatusMessage = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            var meta = _patientIndex?.GetMetadata(CurrentPatient.Id);
+            if (meta == null)
+            {
+                CartographieStatusMessage = "❌ Métadonnées patient introuvables.";
+                return;
+            }
+
+            var svc = new Services.Evaluations.QuestionnaireCartographieService();
+            if (!svc.TemplateExists)
+            {
+                CartographieStatusMessage = "❌ Template absent (Resources/Formulaires/questionnaire_cartographie.html).";
+                return;
+            }
+
+            CartographieStatusMessage = "⏳ Génération du questionnaire…";
+
+            var outputDir = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), "MedCompanion", "questionnaires");
+
+            var (ok, pdfPath, error) = await svc.GenerateAsync(meta, _confirmedAge, outputDir);
+
+            if (ok && !string.IsNullOrEmpty(pdfPath))
+            {
+                // Imprimer, dans ce flux, c'est pour remettre : l'état passe donc à « remise »
+                // sans clic supplémentaire — et reste corrigeable depuis la carte 3.
+                _cartoV2Courante ??= new Services.Evaluations.CartographieV2 { Date = DateTime.Today };
+                if (_cartoV2Courante.EtatQuestionnaire == Services.Evaluations.EtatQuestionnaireParent.NonRecueilli)
+                {
+                    _cartoV2Courante.EtatQuestionnaire = Services.Evaluations.EtatQuestionnaireParent.Remis;
+                    EcrireCartoV2(verser: false, out _);
+                    OnPropertyChanged(nameof(CartographieEtatFeuille));
+                }
+
+                CartographieStatusMessage = $"✅ Questionnaire {CartographieTrancheLabel} généré — à imprimer et remettre au parent.";
+                try
+                {
+                    System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo(pdfPath) { UseShellExecute = true });
+                }
+                catch { /* ouverture best-effort */ }
+            }
+            else
+            {
+                CartographieStatusMessage = $"❌ {error}";
+            }
         }
 
         private bool _isSyntheseGlobaleMode;
@@ -1767,6 +2179,7 @@ namespace MedCompanion.ViewModels
             IsRestitutionMode = false;
             IsRestitutionReviewMode = false;
             IsEvaluationPhaseMode = false;
+            IsCartographieMode = false;
             IsSyntheseGlobaleMode = false;
             IsProjetTherapeutiqueMode = false;
             IsSelectingRestitutionTypeMode = false;
@@ -6199,6 +6612,12 @@ source: ""MedCompanion""
         public ICommand SavePastPremiereCommand { get; private set; } = null!;
         public ICommand CancelPastPremiereEditCommand { get; private set; } = null!;
         public ICommand OpenEvaluationCardCommand { get; }    // param : EvaluationCardViewModel
+        public ICommand PrintQuestionnaireCartographieCommand { get; private set; } = null!;
+        public ICommand CloseCartographieCommand { get; private set; } = null!;
+        public ICommand OpenProfilsObservesCommand { get; private set; } = null!;
+        public ICommand CloseProfilsObservesCommand { get; private set; } = null!;
+        public ICommand SaveProfilsObservesCommand { get; private set; } = null!;
+        public ICommand DeleteCartographieV2Command { get; private set; } = null!;  // param : CartographieV2CardViewModel
         public ICommand DeleteEvaluationCardCommand { get; }  // param : EvaluationCardViewModel
         public ICommand OpenSyntheseGlobaleCardCommand { get; private set; } = null!;  // param : SyntheseGlobaleCardViewModel
         public ICommand OpenProjetTherapeutiqueCardCommand { get; private set; } = null!;  // param : ProjetTherapeutiqueCardViewModel
@@ -6488,6 +6907,30 @@ source: ""MedCompanion""
             {
                 if (param is EvaluationCardViewModel ecard)
                     OpenEvaluationCard(ecard);
+            });
+
+            // Cartographie de l'enfant : générer et ouvrir le questionnaire parent à imprimer.
+            PrintQuestionnaireCartographieCommand = new RelayCommand(
+                async _ => await PrintQuestionnaireCartographieAsync(),
+                _ => CurrentPatient != null && Models.Evaluations.CartographieItemsV2.IsApplicable(_confirmedAge));
+
+            CloseCartographieCommand = new RelayCommand(_ =>
+            {
+                ShowProfilsObserves = false;
+                IsCartographieMode  = false;
+            });
+
+            OpenProfilsObservesCommand  = new RelayCommand(_ => ShowProfilsObserves = true);
+            CloseProfilsObservesCommand = new RelayCommand(_ => ShowProfilsObserves = false);
+
+            SaveProfilsObservesCommand = new RelayCommand(
+                _ => SaveProfilsObserves(),
+                _ => CurrentPatient != null && ProfilsObserves.NbRenseignes > 0);
+
+
+            DeleteCartographieV2Command = new RelayCommand(param =>
+            {
+                if (param is CartographieV2CardViewModel c) DeleteCartographieV2(c);
             });
 
             // Hub : supprimer une card évaluation (utile pour nettoyer les tests)
@@ -6956,7 +7399,21 @@ source: ""MedCompanion""
                 return;
             }
 
-            // ── Étape 2 : Évaluation ────────────────────────────────────────────────────
+            // ── Étape 2 : Cartographie de l'enfant ──────────────────────────────────────
+            // Bloc de séance : la feuille parent est remise à l'accueil et remplie en salle
+            // d'attente pendant que le médecin voit l'enfant et remplit les 3 profils.
+            // Disponible dès que la 1ère consultation est clôturée (le questionnaire tire ses
+            // illustrations de cet entretien) et que l'âge est dans la fourchette 3-11.
+            FriseStages.Add(new FriseStageViewModel
+            {
+                Key    = "cartographie",
+                Label  = "Cartographie de l'enfant",
+                Icon   = "🧩",
+                Status = FriseStageStatus.Available,
+                ActivateCommand = new Commands.RelayCommand(_ => EnterCartographieMode())
+            });
+
+            // ── Étape 3 : Évaluation ────────────────────────────────────────────────────
             bool evalCompleted  = EvaluationCards.Any(c => c.IsClosed);
             bool evalInProgress = EvaluationCards.Any(c => c.IsActive);
             var  evalDate       = evalCompleted
@@ -6982,7 +7439,7 @@ source: ""MedCompanion""
                 ActivateCommand = evalCmd
             });
 
-            // ── Étape 3 : Synthèse ──────────────────────────────────────────────────────
+            // ── Étape 4 : Synthèse ──────────────────────────────────────────────────────
             bool synthCompleted  = SyntheseGlobaleCards.Any(c => c.IsValidee);
             bool synthInProgress = SyntheseGlobaleCards.Any(c => c.IsActive);
             var  synthDate       = synthCompleted
@@ -7008,7 +7465,7 @@ source: ""MedCompanion""
                 ActivateCommand = synthCmd
             });
 
-            // ── Étape 4 : Projet thérapeutique ──────────────────────────────────────────
+            // ── Étape 5 : Projet thérapeutique ──────────────────────────────────────────
             bool projetCompleted  = ProjetTherapeutiqueCards.Any(c => c.IsValidee);
             bool projetInProgress = ProjetTherapeutiqueCards.Any(c => c.IsActive);
             var  projetDate       = projetCompleted
@@ -7034,7 +7491,7 @@ source: ""MedCompanion""
                 ActivateCommand = projetCmd
             });
 
-            // ── Étape 5 : Restitution ────────────────────────────────────────────────────
+            // ── Étape 6 : Restitution ────────────────────────────────────────────────────
             bool restitutionCompleted = false;
             if (CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
             {
@@ -7061,7 +7518,7 @@ source: ""MedCompanion""
                                                             _ => projetCompleted)
             });
 
-            // ── Étape 6 : Bilan semestriel ───────────────────────────────────────────────
+            // ── Étape 7 : Bilan semestriel ───────────────────────────────────────────────
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "bilan_s",
@@ -7071,7 +7528,7 @@ source: ""MedCompanion""
                 ActivateCommand = new Commands.RelayCommand(_ => { }, _ => false)
             });
 
-            // ── Étape 7 : Bilan annuel ────────────────────────────────────────────────────
+            // ── Étape 8 : Bilan annuel ────────────────────────────────────────────────────
             FriseStages.Add(new FriseStageViewModel
             {
                 Key       = "bilan_a",
@@ -7098,6 +7555,9 @@ source: ""MedCompanion""
             DiagnosticSyntheseBlocks.Clear();
             CartographieBilans.Clear();
             CartographieEnvironnementBilans.Clear();
+            // Le bloc Cartographie V2 vit dans ses propres fichiers, hors des évaluations —
+            // mais ses cartes s'affichent dans le même onglet BILANS.
+            LoadCartographieV2Bilans();
             if (_evaluationPhaseService == null || CurrentPatient == null
                 || string.IsNullOrEmpty(CurrentPatient.DirectoryPath)) return;
 
@@ -7743,10 +8203,46 @@ source: ""MedCompanion""
         private void SaisirFormulaire(object? param)
         {
             if (param is not PatientDocumentItem item) return;
+
+            // Deux feuilles, deux lectures. Le questionnaire de cartographie se dépouille par
+            // trente cases à cocher ; le formulaire de complétion se lit champ par champ sur sa
+            // géométrie. Ouvrir l'un avec la fenêtre de l'autre ne rendrait rien.
+            if (item.IsQuestionnaireCartographie)
+            {
+                OuvrirDepouillementCartographie(item.FilePath);
+                return;
+            }
+
             var dialog = new MedCompanion.Dialogs.FormulaireSaisieDialog(
                 item.FilePath,
                 _currentPatient?.DirectoryPath);
             dialog.ShowDialog();
+        }
+
+        /// <summary>
+        /// Ouvre le dépouillement sur une image donnée — depuis le crayon du dossier bleu, ou
+        /// juste après un scan. Les scores enregistrés rejoignent la fiche de la séance.
+        /// </summary>
+        public void OuvrirDepouillementCartographie(string? imagePath = null)
+        {
+            var (imageFiche, bande, scores) = GetDepouillementContexte();
+            if (bande == null)
+            {
+                System.Windows.MessageBox.Show(
+                    "La Cartographie de l'enfant couvre 3 à 11 ans. Impossible de savoir quelle version du questionnaire a été remplie.",
+                    "Dépouillement", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Information);
+                return;
+            }
+
+            var utilisee = imagePath ?? imageFiche;
+            var saisie = new MedCompanion.Dialogs.CartographieSaisieDialog(
+                utilisee, bande.Value, scores);
+
+            // La feuille utilisée pour dépouiller est retenue dans la fiche. Sans ça, un
+            // dépouillement lancé depuis le crayon du dossier — donc sur un fichier que la fiche
+            // ne connaissait pas — laissait « Reprendre le dépouillement » sans image à montrer.
+            if (saisie.ShowDialog() == true)
+                EnregistrerScoresQuestionnaire(saisie.Scores, utilisee);
         }
 
         // ── BILANS du dossier bleu (cartes cliquables, une par bilan) ──

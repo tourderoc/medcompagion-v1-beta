@@ -86,6 +86,24 @@ namespace MedCompanion.Models
                 TitreNormalise   = "formulaire de completion",
                 VersionSansJeton = 1,
             },
+
+            // Feuille du questionnaire parent de la Cartographie de l'enfant. Elle porte le même
+            // préfixe de jeton que le formulaire de complétion pour hériter de la reconnaissance
+            // tolérante à l'OCR — mesurée sur exemplaire réel, un jeton peut ressortir déformé
+            // (« MEDCOMP-FORN-COMPLETION-VS »), et la distance d'édition le rattrape.
+            //
+            // UNE SEULE VERSION POUR LES QUATRE TRANCHES D'ÂGE : la géométrie est identique,
+            // seul le texte des trente énoncés change. La tranche est donc lue dans la fiche de
+            // séance, pas dans le jeton.
+            new FormulaireDefinition
+            {
+                Id               = "CARTO",
+                Libelle          = "Cartographie de l'enfant — questionnaire parent",
+                VersionCourante  = 1,
+                Template         = "questionnaire_cartographie.html",
+                TitreNormalise   = "cartographie de l enfant",
+                VersionSansJeton = 1,
+            },
         };
 
         public static FormulaireDefinition? Par(string id) =>

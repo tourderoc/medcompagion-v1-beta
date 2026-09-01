@@ -57,8 +57,18 @@ namespace MedCompanion.Models
         /// passage les formulaires importés AVANT la catégorie dédiée, qui dorment dans « autres ».
         /// </summary>
         public bool IsFormulaire =>
+            IsQuestionnaireCartographie ||
             Category.Equals("Formulaires", StringComparison.OrdinalIgnoreCase) ||
             FileName.Contains("formulaire", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Feuille du questionnaire parent de la Cartographie de l'enfant, rendue remplie puis
+        /// scannée. Le crayon lui ouvre le DÉPOUILLEMENT — trente cases à cocher — et non la
+        /// saisie champ par champ du formulaire de complétion, qui n'aurait rien à y lire.
+        /// </summary>
+        public bool IsQuestionnaireCartographie =>
+            FileName.Contains("formulaire_carto", StringComparison.OrdinalIgnoreCase) ||
+            FileName.Contains("cartographie", StringComparison.OrdinalIgnoreCase);
 
         public event PropertyChangedEventHandler? PropertyChanged;
     }

@@ -563,8 +563,19 @@
 
                         <!-- Header -->
                         <StackPanel Grid.Row="0" Margin="0,0,0,10">
-                            <!-- Frise chronologique des consultations (hub) -->
+                            <!-- Frise chronologique des consultations (hub).
+                                 Repliée pendant la saisie des profils observés : dix-huit lignes
+                                 se cotent en séance et c'est la HAUTEUR qui manque, pas la largeur. -->
                             <DockPanel Margin="0,0,0,8">
+                                <DockPanel.Style>
+                                    <Style TargetType="DockPanel">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding ShowProfilsObserves}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </DockPanel.Style>
                                 <!-- Bouton + (nouvelle consultation) avec badge 🔔 incrémental Synthèse Globale -->
                                 <Grid DockPanel.Dock="Right" Margin="8,0,0,0">
                                     <Button x:Name="NewConsultationBtn"
@@ -919,6 +930,371 @@
                                   Background="#F5F7FA"
                                   Visibility="{Binding IsProjetTherapeutiqueMode, Converter={StaticResource BoolToVis}}">
                                 <projet:ProjetTherapeutiqueControl DataContext="{Binding ProjetTherapeutiqueVM}"/>
+                            </Grid>
+
+                            <!-- MODE CARTOGRAPHIE DE L'ENFANT (V2) : bloc de séance construit à côté
+                                 de la Phase d'évaluation, sans y toucher (cf. PLAN_CARTOGRAPHIE_ENFANT_V2.md).
+                                 Étape 1 seule pour l'instant : imprimer le questionnaire parent. -->
+                            <Grid Grid.Row="0" Grid.RowSpan="2"
+                                  Panel.ZIndex="103"
+                                  Background="#F5F7FA"
+                                  Visibility="{Binding IsCartographieMode, Converter={StaticResource BoolToVis}}">
+                                <Border Margin="15" CornerRadius="8" Background="White"
+                                        BorderBrush="#D6E2EC" BorderThickness="1"
+                                        VerticalAlignment="Top">
+                                    <StackPanel Margin="24">
+
+                                        <!-- Titre -->
+                                        <Grid>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <TextBlock Text="🧩" FontSize="18" Margin="0,0,8,0"/>
+                                                <StackPanel>
+                                                    <TextBlock Text="Cartographie de l'enfant" FontSize="15"
+                                                               FontWeight="Bold" Foreground="#1A3A6A"/>
+                                                    <TextBlock FontSize="10" Foreground="#7B8FA5" Margin="0,1,0,0">
+                                                        <Run Text="{Binding PatientDisplayName, Mode=OneWay}"/>
+                                                        <Run Text="·"/>
+                                                        <Run Text="questionnaire"/>
+                                                        <Run Text="{Binding CartographieTrancheLabel, Mode=OneWay}"/>
+                                                    </TextBlock>
+                                                </StackPanel>
+                                            </StackPanel>
+                                            <Button Command="{Binding CloseCartographieCommand}"
+                                                    Content="✕" FontSize="12" Foreground="#7B8FA5"
+                                                    Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                    Padding="6,2" ToolTip="Fermer"/>
+                                        </Grid>
+
+                                        <Border Height="1" Background="#E8EEF5" Margin="0,14,0,16"/>
+
+                                        <!-- Étape 1 — Questionnaire parents -->
+                                        <Border Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1"
+                                                CornerRadius="6" Padding="16">
+                                            <StackPanel>
+                                                <TextBlock Text="1 — Questionnaire parents" FontSize="12"
+                                                           FontWeight="SemiBold" Foreground="#1A3A6A"/>
+                                                <TextBlock FontSize="10.5" Foreground="#4F6D8A" Margin="0,6,0,0"
+                                                           TextWrapping="Wrap"
+                                                           Text="30 questions — 5 axes de 6 items, dans la version qui correspond à l'âge de l'enfant. À remettre au parent à l'accueil : il le remplit en salle d'attente pendant la séance."/>
+                                                <Button Command="{Binding PrintQuestionnaireCartographieCommand}"
+                                                        HorizontalAlignment="Left" Margin="0,14,0,0" Cursor="Hand">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="Bd" Background="#004098" CornerRadius="5"
+                                                                    Padding="14,8">
+                                                                <TextBlock Foreground="White" FontSize="11.5" FontWeight="SemiBold">
+                                                                    <Run Text="🖨"/>
+                                                                    <Run Text="Imprimer le questionnaire parents"/>
+                                                                </TextBlock>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#1A5296"/>
+                                                                </Trigger>
+                                                                <Trigger Property="IsEnabled" Value="False">
+                                                                    <Setter TargetName="Bd" Property="Background" Value="#B8C6D6"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                                <TextBlock Text="{Binding CartographieStatusMessage}"
+                                                           FontSize="10.5" Margin="0,10,0,0" TextWrapping="Wrap"
+                                                           Foreground="#2C3E50"/>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Étape 2 — Profils observés : ouvre l'écran des 3 profils -->
+                                        <Button Command="{Binding OpenProfilsObservesCommand}"
+                                                Margin="0,10,0,0" Cursor="Hand" HorizontalContentAlignment="Stretch">
+                                            <Button.Template>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="Bd" Background="#F4F8FB" BorderBrush="#D6E2EC"
+                                                            BorderThickness="1" CornerRadius="6" Padding="16">
+                                                        <Grid>
+                                                            <StackPanel>
+                                                                <TextBlock Text="2 — Profils observés" FontSize="12"
+                                                                           FontWeight="SemiBold" Foreground="#1A3A6A"/>
+                                                                <TextBlock FontSize="10.5" Foreground="#4F6D8A" Margin="0,6,0,0"
+                                                                           TextWrapping="Wrap"
+                                                                           Text="Tempérament, Psychomotricité, Attention — 18 axes remplis par vous en observant l'enfant pendant la séance."/>
+                                                            </StackPanel>
+                                                            <TextBlock Text="›" FontSize="20" Foreground="#7B8FA5"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                                        </Grid>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="Bd" Property="Background" Value="#EBF3FA"/>
+                                                            <Setter TargetName="Bd" Property="BorderBrush" Value="#3498DB"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Button.Template>
+                                        </Button>
+
+                                        <!-- Étape 3 — Récupérer la feuille remplie.
+                                             S'utilise à –10 min, la famille dans la pièce : aucun
+                                             résultat n'est affiché, c'est un accusé de réception. -->
+                                        <Border Background="#F4F8FB" BorderBrush="#D6E2EC" BorderThickness="1"
+                                                CornerRadius="6" Padding="16" Margin="0,10,0,0">
+                                            <StackPanel>
+                                                <Grid>
+                                                    <TextBlock Text="3 — Feuille remplie" FontSize="12"
+                                                               FontWeight="SemiBold" Foreground="#1A3A6A"/>
+                                                    <Border Background="#EEF3F9" CornerRadius="3" Padding="7,2"
+                                                            HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                        <TextBlock Text="{Binding CartographieEtatFeuille}"
+                                                                   FontSize="9.5" Foreground="#4F6D8A"/>
+                                                    </Border>
+                                                </Grid>
+                                                <TextBlock FontSize="10.5" Foreground="#4F6D8A" Margin="0,6,0,0"
+                                                           TextWrapping="Wrap"
+                                                           Text="Récupérez la feuille auprès du parent et scannez-la. Rien ne s'affiche du résultat : la lecture des réponses se fera après la séance."/>
+                                                <StackPanel Orientation="Horizontal" Margin="0,14,0,0">
+                                                    <Button x:Name="CartoScanBtn" Click="CartoScanBtn_Click"
+                                                            Cursor="Hand" Background="Transparent" BorderThickness="0">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="Sb" Background="#16A085" CornerRadius="5"
+                                                                        Padding="14,8">
+                                                                    <TextBlock Foreground="White" FontSize="11.5" FontWeight="SemiBold">
+                                                                        <Run Text="📷"/>
+                                                                        <Run Text="Scanner la feuille remplie"/>
+                                                                    </TextBlock>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="Sb" Property="Background" Value="#12876F"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+
+                                                    <!-- Rouvrir le dépouillement sans rescanner : la lecture se
+                                                         vérifie et se corrige après la séance, pas au moment du scan. -->
+                                                    <Button x:Name="CartoDepouillerBtn" Click="CartoDepouillerBtn_Click"
+                                                            Margin="8,0,0,0" Cursor="Hand"
+                                                            Background="White" BorderBrush="#B8CFE6" BorderThickness="1"
+                                                            Padding="12,7" FontSize="11" Foreground="#1A3A6A"
+                                                            Content="Reprendre le dépouillement"
+                                                            Visibility="{Binding PeutDepouiller, Converter={StaticResource BoolToVis}}"/>
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Pas de bouton « Terminer la séance » : toute sauvegarde verse
+                                             la cartographie au dossier. C'est l'état porté par la carte —
+                                             ce qui est recueilli, ce qui manque — qui dit où elle en est,
+                                             et non un moment de publication qu'il faudrait penser à déclencher. -->
+                                        <Border Height="1" Background="#E8EEF5" Margin="0,18,0,10"/>
+                                        <TextBlock FontSize="10.5" Foreground="#7B8FA5" TextWrapping="Wrap"
+                                                   Text="La cartographie apparaît dans l'onglet BILANS du dossier dès que vous enregistrez, avec ce qui a été recueilli et ce qui manque."/>
+
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+
+                            <!-- ÉCRAN PROFILS OBSERVÉS : les 3 profils, un seul acte d'observation.
+                                 Rempli PENDANT la séance → aucun dialogue, un clic par axe, rien de
+                                 coté au départ. Le Tempérament est un portrait (sans couleur), la
+                                 Psychomotricité et l'Attention des compétences (5 = toujours le bon
+                                 côté, rouge 1-2 / vert 4-5). Cf. PLAN_CARTOGRAPHIE_ENFANT_V2.md §10. -->
+                            <Grid Grid.Row="0" Grid.RowSpan="2"
+                                  Panel.ZIndex="104"
+                                  Background="#F5F7FA"
+                                  Visibility="{Binding ShowProfilsObserves, Converter={StaticResource BoolToVis}}">
+                                <Grid>
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="*"/>
+                                    </Grid.RowDefinitions>
+
+                                    <!-- Bandeau -->
+                                    <Border Grid.Row="0" Background="White" BorderBrush="#D6E2EC"
+                                            BorderThickness="0,0,0,1" Padding="20,12">
+                                        <Grid>
+                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                <Button Command="{Binding CloseProfilsObservesCommand}"
+                                                        Content="‹" FontSize="18" Foreground="#4F6D8A"
+                                                        Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                        Padding="6,0" Margin="0,0,8,0" ToolTip="Retour"/>
+                                                <TextBlock Text="Profils observés" FontSize="14" FontWeight="Bold"
+                                                           Foreground="#1A3A6A" VerticalAlignment="Center"/>
+                                                <TextBlock Text="{Binding ProfilsObserves.AvancementText}"
+                                                           FontSize="10.5" Foreground="#7B8FA5"
+                                                           VerticalAlignment="Center" Margin="14,2,0,0"/>
+                                            </StackPanel>
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right"
+                                                        VerticalAlignment="Center">
+                                                <TextBlock Text="Ne cotez que ce que vous avez observé — un axe peut rester vide."
+                                                           FontSize="10" Foreground="#93A7BD" FontStyle="Italic"
+                                                           VerticalAlignment="Center" Margin="0,0,14,0"/>
+                                                <!-- Agrandir : réutilise Focus Travail (F1), qui masque le dossier
+                                                     bleu et donne toute la largeur à la zone de travail. -->
+                                                <Button Command="{Binding SwitchToFocusTravailCommand}"
+                                                        Content="⛶  Agrandir (F1)" FontSize="10"
+                                                        Foreground="#4F6D8A" Background="Transparent"
+                                                        BorderBrush="#D6E2EC" BorderThickness="1"
+                                                        Padding="8,4" Cursor="Hand" Margin="0,0,8,0"
+                                                        ToolTip="Masque le dossier patient — F2 pour revenir"/>
+                                                <Button Command="{Binding SaveProfilsObservesCommand}"
+                                                        Content="💾  Sauvegarder" FontSize="10.5"
+                                                        Foreground="#1A3A6A" Background="#EBF3FA"
+                                                        BorderBrush="#B8CFE6" BorderThickness="1"
+                                                        Padding="10,4" Cursor="Hand" Margin="0,0,8,0"
+                                                        ToolTip="Enregistre l'observation sans la verser au dossier"/>
+                                                <!-- « Terminer la séance » n'est PAS ici : elle clôt la séance
+                                                     entière, pas la seule saisie des profils. Elle vit sous
+                                                     les trois cartes du bloc, à sa place dans le déroulé. -->
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Message d'état : dit toujours si l'observation est versée ou non -->
+                                    <Border Grid.Row="0" VerticalAlignment="Bottom" HorizontalAlignment="Left"
+                                            Margin="52,0,0,-16" Panel.ZIndex="10"
+                                            Background="#FFFFFF" CornerRadius="3" Padding="8,2">
+                                        <Border.Style>
+                                            <Style TargetType="Border">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding ProfilsStatusMessage}" Value="">
+                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </Border.Style>
+                                        <TextBlock Text="{Binding ProfilsStatusMessage}" FontSize="10"
+                                                   Foreground="#2C3E50"/>
+                                    </Border>
+
+                                    <!-- Les 3 profils EN TROIS COLONNES : six lignes de haut au lieu
+                                         de dix-huit. C'est ce qui supprime le défilement — la saisie
+                                         se fait en séance, et faire défiler avec un enfant en face
+                                         coûte plus qu'un écran un peu dense.
+                                         Chaque axe tient sur deux lignes : le libellé et les pastilles,
+                                         puis les deux pôles en petit dessous. -->
+                                    <Grid Grid.Row="1" Margin="14,12">
+                                        <ItemsControl ItemsSource="{Binding ProfilsObserves.Profils}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <UniformGrid Columns="3"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                                            CornerRadius="6" Margin="0,0,10,0">
+                                                        <StackPanel>
+                                                            <!-- En-tête du bloc : titre + règle de lecture.
+                                                                 La règle est portée par l'écran, pas par une doc. -->
+                                                            <Border Background="#F4F8FB" CornerRadius="6,6,0,0"
+                                                                    BorderBrush="#E8EEF5" BorderThickness="0,0,0,1"
+                                                                    Padding="10,7">
+                                                                <StackPanel>
+                                                                    <StackPanel Orientation="Horizontal">
+                                                                        <TextBlock Text="{Binding Icon}" FontSize="12" Margin="0,0,6,0"/>
+                                                                        <TextBlock Text="{Binding Label}" FontSize="11.5"
+                                                                                   FontWeight="SemiBold" Foreground="#1A3A6A"
+                                                                                   VerticalAlignment="Center"
+                                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                    </StackPanel>
+                                                                    <TextBlock Text="{Binding ReglePhrase}" FontSize="9"
+                                                                               Foreground="#7B8FA5" FontStyle="Italic"
+                                                                               TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                                                </StackPanel>
+                                                            </Border>
+
+                                                            <ItemsControl ItemsSource="{Binding Axes}" Margin="0,3,0,6">
+                                                                <ItemsControl.ItemTemplate>
+                                                                    <DataTemplate>
+                                                                        <Grid Margin="10,4">
+                                                                            <Grid.RowDefinitions>
+                                                                                <RowDefinition Height="Auto"/>
+                                                                                <RowDefinition Height="Auto"/>
+                                                                            </Grid.RowDefinitions>
+                                                                            <Grid.ColumnDefinitions>
+                                                                                <ColumnDefinition Width="*"/>
+                                                                                <ColumnDefinition Width="Auto"/>
+                                                                            </Grid.ColumnDefinitions>
+
+                                                                            <TextBlock Grid.Row="0" Grid.Column="0"
+                                                                                       Text="{Binding Label}"
+                                                                                       FontSize="10.5" FontWeight="SemiBold"
+                                                                                       Foreground="#2C3E50"
+                                                                                       VerticalAlignment="Center"
+                                                                                       TextWrapping="Wrap" Margin="0,0,6,0"/>
+
+                                                                            <!-- Les 5 pastilles. Recliquer la valeur choisie l'efface. -->
+                                                                            <ItemsControl Grid.Row="0" Grid.Column="1"
+                                                                                          ItemsSource="{Binding Pastilles}"
+                                                                                          VerticalAlignment="Center">
+                                                                                <ItemsControl.ItemsPanel>
+                                                                                    <ItemsPanelTemplate>
+                                                                                        <StackPanel Orientation="Horizontal"/>
+                                                                                    </ItemsPanelTemplate>
+                                                                                </ItemsControl.ItemsPanel>
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <Button Command="{Binding ClickCommand}"
+                                                                                                Cursor="Hand" Margin="2,0"
+                                                                                                Background="Transparent" BorderThickness="0">
+                                                                                            <Button.Template>
+                                                                                                <ControlTemplate TargetType="Button">
+                                                                                                    <Border x:Name="Dot" Width="23" Height="23"
+                                                                                                            CornerRadius="11.5"
+                                                                                                            Background="{Binding Fill}"
+                                                                                                            BorderBrush="#CBD8E4" BorderThickness="1">
+                                                                                                        <TextBlock x:Name="DotTxt" Text="{Binding Valeur}" FontSize="10"
+                                                                                                                   HorizontalAlignment="Center"
+                                                                                                                   VerticalAlignment="Center"
+                                                                                                                   Foreground="#4F6D8A"/>
+                                                                                                    </Border>
+                                                                                                    <ControlTemplate.Triggers>
+                                                                                                        <DataTrigger Binding="{Binding IsSelected}" Value="True">
+                                                                                                            <Setter TargetName="Dot" Property="BorderBrush" Value="#1A3A6A"/>
+                                                                                                            <Setter TargetName="Dot" Property="BorderThickness" Value="2"/>
+                                                                                                            <Setter TargetName="DotTxt" Property="Foreground" Value="White"/>
+                                                                                                            <Setter TargetName="DotTxt" Property="FontWeight" Value="Bold"/>
+                                                                                                        </DataTrigger>
+                                                                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                                                                            <Setter TargetName="Dot" Property="BorderBrush" Value="#3498DB"/>
+                                                                                                        </Trigger>
+                                                                                                    </ControlTemplate.Triggers>
+                                                                                                </ControlTemplate>
+                                                                                            </Button.Template>
+                                                                                        </Button>
+                                                                                    </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                            </ItemsControl>
+
+                                                                            <!-- Les deux pôles, sous la ligne, en petit -->
+                                                                            <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,2,0,0">
+                                                                                <Grid.ColumnDefinitions>
+                                                                                    <ColumnDefinition Width="*"/>
+                                                                                    <ColumnDefinition Width="*"/>
+                                                                                </Grid.ColumnDefinitions>
+                                                                                <TextBlock Grid.Column="0" Text="{Binding Pole1}"
+                                                                                           FontSize="8.5" Foreground="#93A7BD"
+                                                                                           TextWrapping="Wrap" Margin="0,0,6,0"/>
+                                                                                <TextBlock Grid.Column="1" Text="{Binding Pole5}"
+                                                                                           FontSize="8.5" Foreground="#93A7BD"
+                                                                                           TextAlignment="Right" TextWrapping="Wrap"/>
+                                                                            </Grid>
+                                                                        </Grid>
+                                                                    </DataTemplate>
+                                                                </ItemsControl.ItemTemplate>
+                                                            </ItemsControl>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </Grid>
+                                </Grid>
                             </Grid>
 
                             <!-- LECTURE D'UNE CONSULTATION PASSÉE -->
@@ -5547,6 +5923,7 @@
                                                                         <MultiDataTrigger.Conditions>
                                                                             <Condition Binding="{Binding HasNoPatientBilans}"                  Value="True"/>
                                                                             <Condition Binding="{Binding HasCartographieBilans}"               Value="False"/>
+                                                                            <Condition Binding="{Binding HasCartographieV2Bilans}"             Value="False"/>
                                                                             <Condition Binding="{Binding HasCartographieEnvironnementBilans}"  Value="False"/>
                                                                         </MultiDataTrigger.Conditions>
                                                                         <Setter Property="Visibility" Value="Visible"/>
@@ -5621,6 +5998,144 @@
                                                                                 <TextBlock Text="{Binding LectureBrancheMed}" FontSize="11" Foreground="#2C3E50" TextWrapping="Wrap"/>
                                                                             </StackPanel>
                                                                         </Border>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+
+                                                    <!-- Cartographies de l'enfant V2 (bloc Cartographie, versées en fin de séance).
+                                                         Placées AVANT les cartographies V1 : ce sont les plus récentes, et pendant
+                                                         la transition les deux cohabitent sans que l'une remplace l'autre. -->
+                                                    <ItemsControl ItemsSource="{Binding CartographieV2Bilans}" Margin="0,18,0,0"
+                                                                  Visibility="{Binding HasCartographieV2Bilans, Converter={StaticResource BoolToVis}}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Border Background="#F4F8FB" BorderBrush="#C7DCEC" BorderThickness="1"
+                                                                        CornerRadius="6" Padding="14" Margin="0,0,0,12">
+                                                                    <StackPanel>
+                                                                        <Grid>
+                                                                            <TextBlock Text="{Binding TitreCard}" FontSize="13"
+                                                                                       FontWeight="SemiBold" Foreground="#1A3A6A"
+                                                                                       Margin="0,0,26,0"
+                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                            <Button Command="{Binding DataContext.DeleteCartographieV2Command, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                                    CommandParameter="{Binding}"
+                                                                                    HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                                    Width="20" Height="20" Cursor="Hand"
+                                                                                    Background="Transparent" BorderThickness="0"
+                                                                                    ToolTip="Supprimer cette cartographie du dossier">
+                                                                                <Button.Template>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <Border x:Name="Db" Background="Transparent" CornerRadius="4">
+                                                                                            <TextBlock Text="🗑" FontSize="11" Foreground="#93A7BD"
+                                                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                                        </Border>
+                                                                                        <ControlTemplate.Triggers>
+                                                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                                                <Setter TargetName="Db" Property="Background" Value="#FADBD8"/>
+                                                                                            </Trigger>
+                                                                                        </ControlTemplate.Triggers>
+                                                                                    </ControlTemplate>
+                                                                                </Button.Template>
+                                                                            </Button>
+                                                                        </Grid>
+                                                                        <!-- Ce qui manque est écrit : sans cette ligne, 18 axes et aucun
+                                                                             questionnaire se liraient comme une cartographie complète. -->
+                                                                        <Border CornerRadius="3" Padding="7,2" Margin="0,7,0,0"
+                                                                                HorizontalAlignment="Left">
+                                                                            <Border.Style>
+                                                                                <Style TargetType="Border">
+                                                                                    <Setter Property="Background" Value="#FCF3CF"/>
+                                                                                    <Style.Triggers>
+                                                                                        <DataTrigger Binding="{Binding EstComplete}" Value="True">
+                                                                                            <Setter Property="Background" Value="#E9F7EF"/>
+                                                                                        </DataTrigger>
+                                                                                    </Style.Triggers>
+                                                                                </Style>
+                                                                            </Border.Style>
+                                                                            <TextBlock Text="{Binding EtatLigne}" FontSize="10"
+                                                                                       Foreground="#5D6D7E"/>
+                                                                        </Border>
+
+                                                                        <!-- La moitié PARENT : les 5 scores du questionnaire.
+                                                                             Placée avant les profils, comme dans la séance —
+                                                                             la feuille est remise à l'accueil, les profils
+                                                                             se remplissent pendant. -->
+                                                                        <StackPanel Margin="0,12,0,0"
+                                                                                    Visibility="{Binding HasQuestionnaire, Converter={StaticResource BoolToVis}}">
+                                                                            <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                                                                <TextBlock Text="📋" FontSize="11" Margin="0,0,5,0"/>
+                                                                                <TextBlock Text="Questionnaire parent" FontSize="11"
+                                                                                           FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                                                            </StackPanel>
+                                                                            <ItemsControl ItemsSource="{Binding Questionnaire}">
+                                                                                <ItemsControl.ItemTemplate>
+                                                                                    <DataTemplate>
+                                                                                        <Grid Margin="16,1,0,1">
+                                                                                            <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="170"/>
+                                                                                                <ColumnDefinition Width="Auto"/>
+                                                                                                <ColumnDefinition Width="*"/>
+                                                                                            </Grid.ColumnDefinitions>
+                                                                                            <TextBlock Grid.Column="0" Text="{Binding Label}"
+                                                                                                       FontSize="10.5" Foreground="#5D6D7E"
+                                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                                            <Border Grid.Column="1" Background="{Binding Couleur}"
+                                                                                                    CornerRadius="3" Padding="6,1" MinWidth="30">
+                                                                                                <TextBlock Text="{Binding ValeurText}" FontSize="10"
+                                                                                                           FontWeight="Bold" Foreground="White"
+                                                                                                           HorizontalAlignment="Center"/>
+                                                                                            </Border>
+                                                                                            <TextBlock Grid.Column="2" Text="{Binding Lecture}"
+                                                                                                       FontSize="10" Foreground="#93A7BD"
+                                                                                                       Margin="8,0,0,0"
+                                                                                                       TextTrimming="CharacterEllipsis"/>
+                                                                                        </Grid>
+                                                                                    </DataTemplate>
+                                                                                </ItemsControl.ItemTemplate>
+                                                                            </ItemsControl>
+                                                                        </StackPanel>
+
+                                                                        <ItemsControl ItemsSource="{Binding Blocs}" Margin="0,10,0,0">
+                                                                            <ItemsControl.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                    <StackPanel Margin="0,0,0,8">
+                                                                                        <StackPanel Orientation="Horizontal" Margin="0,0,0,3">
+                                                                                            <TextBlock Text="{Binding Icon}" FontSize="11" Margin="0,0,5,0"/>
+                                                                                            <TextBlock Text="{Binding Label}" FontSize="11"
+                                                                                                       FontWeight="SemiBold" Foreground="#2C3E50"/>
+                                                                                        </StackPanel>
+                                                                                        <ItemsControl ItemsSource="{Binding Lignes}">
+                                                                                            <ItemsControl.ItemTemplate>
+                                                                                                <DataTemplate>
+                                                                                                    <Grid Margin="16,1,0,1">
+                                                                                                        <Grid.ColumnDefinitions>
+                                                                                                            <ColumnDefinition Width="170"/>
+                                                                                                            <ColumnDefinition Width="Auto"/>
+                                                                                                            <ColumnDefinition Width="*"/>
+                                                                                                        </Grid.ColumnDefinitions>
+                                                                                                        <TextBlock Grid.Column="0" Text="{Binding Label}"
+                                                                                                                   FontSize="10.5" Foreground="#5D6D7E"
+                                                                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                                                        <Border Grid.Column="1" Background="{Binding Couleur}"
+                                                                                                                CornerRadius="3" Padding="6,1" MinWidth="30">
+                                                                                                            <TextBlock Text="{Binding ValeurText}" FontSize="10"
+                                                                                                                       FontWeight="Bold" Foreground="White"
+                                                                                                                       HorizontalAlignment="Center"/>
+                                                                                                        </Border>
+                                                                                                        <TextBlock Grid.Column="2" Text="{Binding Lecture}"
+                                                                                                                   FontSize="10" Foreground="#93A7BD"
+                                                                                                                   Margin="8,0,0,0"
+                                                                                                                   TextTrimming="CharacterEllipsis"/>
+                                                                                                    </Grid>
+                                                                                                </DataTemplate>
+                                                                                            </ItemsControl.ItemTemplate>
+                                                                                        </ItemsControl>
+                                                                                    </StackPanel>
+                                                                                </DataTemplate>
+                                                                            </ItemsControl.ItemTemplate>
+                                                                        </ItemsControl>
                                                                     </StackPanel>
                                                                 </Border>
                                                             </DataTemplate>

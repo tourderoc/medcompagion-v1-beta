@@ -564,6 +564,18 @@ categorie: {document.Category ?? "Documents"}
         {
             if (_viewModel?.CurrentPatient == null) return;
 
+            // Deux feuilles portent le même préfixe de jeton et sont donc reconnues par la même
+            // machinerie — mais elles ne se lisent pas pareil. Le questionnaire de cartographie
+            // se dépouille par cases cochées ; l'ouvrir avec la saisie champ par champ du
+            // formulaire de complétion ne rendrait rien.
+            if (string.Equals(document.FormulaireId, "CARTO", StringComparison.OrdinalIgnoreCase))
+            {
+                _viewModel.MedDocumentStatus = "✅ Questionnaire de cartographie reconnu.";
+                _viewModel.LoadPatientDocumentsFromDisk();
+                _viewModel.OuvrirDepouillementCartographie(document.FilePath);
+                return;
+            }
+
             _viewModel.MedDocumentStatus = "✅ Formulaire reconnu — lecture des champs…";
             _viewModel.LoadPatientDocumentsFromDisk();
 
@@ -655,6 +667,65 @@ categorie: {document.Category ?? "Documents"}
             {
                 _viewModel.IsImportingDocument = false;
             }
+        }
+
+        /// <summary>
+        /// Carte 3 du bloc Cartographie : récupérer la feuille remplie par le parent.
+        /// Reprend exactement le procédé du formulaire de complétion — <see cref="ScanDocumentDialog"/>,
+        /// qui offre le scanner, l'import d'un fichier et la photo.
+        ///
+        /// Le geste s'accomplit avec la famille dans la pièce : aucun résultat n'est affiché,
+        /// aucune analyse n'est lancée. On archive la feuille, on le dit, et c'est tout.
+        /// La lecture des réponses viendra après la séance.
+        /// </summary>
+        private void CartoScanBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            if (_viewModel == null || _scannerService == null || _viewModel.CurrentPatient == null)
+            {
+                MessageBox.Show("Scanner non disponible ou patient non sélectionné.",
+                    "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var dlg = new ScanDocumentDialog(_scannerService) { Owner = Window.GetWindow(this) };
+            if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.ScannedFilePath)) return;
+
+            // 1. La feuille est archivée à côté de la fiche de séance…
+            _viewModel.EnregistrerScanQuestionnaire(dlg.ScannedFilePath);
+
+            // 2. …et versée aux Documents du dossier bleu, comme le formulaire de complétion.
+            //    Elle y devient consultable, et son crayon rouvre le dépouillement.
+            _ = ImporterQuestionnaireDansDocumentsAsync(dlg.ScannedFilePath);
+        }
+
+        /// <summary>
+        /// Verse la feuille scannée dans les Documents du patient, catégorie « Formulaires ».
+        ///
+        /// Le formulaire est DÉCLARÉ, pas reconnu : l'utilisateur vient de cliquer « Scanner la
+        /// feuille remplie » sur la carte Cartographie, il n'y a aucune ambiguïté. Passer par la
+        /// reconnaissance de contenu la ferait échouer — une feuille manuscrite scannée n'a pas de
+        /// couche texte — et le document finirait classé « bilans », sans son crayon de saisie.
+        /// </summary>
+        private async System.Threading.Tasks.Task ImporterQuestionnaireDansDocumentsAsync(string scannedPath)
+        {
+            if (_viewModel?.CurrentPatient == null || _documentService == null) return;
+
+            var def = MedCompanion.Models.FormulairesConnus.Par("CARTO");
+            if (def == null) return;
+
+            var (ok, _, message) = await _documentService.ImportFormulaireConnuAsync(
+                scannedPath, _viewModel.CurrentPatient.NomComplet, def, def.VersionCourante);
+
+            if (ok) _viewModel.LoadPatientDocumentsFromDisk();
+            else    _viewModel.CartographieStatusMessage =
+                        $"⚠ Feuille archivée, mais non ajoutée aux Documents : {message}";
+        }
+
+        private void CartoDepouillerBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            _viewModel?.OuvrirDepouillementCartographie();
         }
     }
 }
