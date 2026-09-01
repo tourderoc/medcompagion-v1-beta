@@ -42,13 +42,14 @@
                             Padding="10,6" FontSize="12" Background="#EBF5FB" BorderBrush="#85C1E9"
                             BorderThickness="1" Cursor="Hand"/>
 
-                    <!-- Modèle de lecture d'image, indépendant du modèle de texte sélectionné :
-                         Qwen est précis mais sature la carte (13,8 Go), Gemma 4 tient en 7,6 Go. -->
-                    <TextBlock Text="Vision :" VerticalAlignment="Center" FontSize="11"
+                    <!-- Modèle de lecture d'image, indépendant du modèle de texte sélectionné.
+                         Il lit désormais TOUT le formulaire, champs texte compris — l'étiquette
+                         « Vision » laissait croire qu'il ne commandait que les cases à cocher. -->
+                    <TextBlock Text="Lecture :" VerticalAlignment="Center" FontSize="11"
                                Foreground="#7F8C8D" Margin="14,0,6,0"/>
                     <ComboBox x:Name="VisionModelCombo" Width="150" FontSize="11"
                               VerticalContentAlignment="Center"
-                              ToolTip="Modèle utilisé pour lire l'image du formulaire. Le changer provoque un redémarrage du moteur (~6-10 s)."
+                              ToolTip="Modèle qui lit le formulaire — texte manuscrit et cases à cocher. Gemma 4 QAT : 7,8 Go, rapide. Qwen3.8-27B : plus précis sur l'écriture fine, mais 14,6 Go. Le changer redémarre le moteur (~6-10 s)."
                               SelectionChanged="VisionModelCombo_SelectionChanged"/>
 
                     <TextBlock x:Name="AutoFillStatus" VerticalAlignment="Center" FontSize="11"
@@ -117,10 +118,35 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Bloc 3 — Adresse -->
+                    <!-- Bloc 3 — Situation familiale.
+                         Placé avant l'adresse comme sur le formulaire papier depuis la v2 : la
+                         saisie se fait feuille en main, l'ordre à l'écran doit être celui du
+                         document, sinon on cherche à chaque bloc. -->
+                    <Border Background="#F5EEF8" BorderBrush="#C39BD3" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="3 — SITUATION FAMILIALE" FontWeight="Bold" FontSize="12" Foreground="#6C3483" Margin="0,0,0,8"/>
+                            <WrapPanel Margin="0,0,0,6">
+                                <RadioButton x:Name="SitEnsemble"    GroupName="SitFam" Content="Ensemble"        Margin="0,0,10,4" FontSize="11"/>
+                                <RadioButton x:Name="SitSepares"     GroupName="SitFam" Content="Séparés"         Margin="0,0,10,4" FontSize="11"/>
+                                <RadioButton x:Name="SitDivorces"    GroupName="SitFam" Content="Divorcés"        Margin="0,0,10,4" FontSize="11"/>
+                                <RadioButton x:Name="SitGardeAlt"    GroupName="SitFam" Content="Garde alternée"  Margin="0,0,10,4" FontSize="11"/>
+                                <RadioButton x:Name="SitRecomposee"  GroupName="SitFam" Content="Recomposée"      Margin="0,0,10,4" FontSize="11"/>
+                                <RadioButton x:Name="SitAutre"       GroupName="SitFam" Content="Autre"           Margin="0,0,10,4" FontSize="11"/>
+                            </WrapPanel>
+                            <TextBlock Text="Garde principale :" FontSize="11" Foreground="#555" Margin="0,0,0,4"/>
+                            <WrapPanel>
+                                <RadioButton x:Name="GardeParents" GroupName="Garde" Content="Parents" Margin="0,0,10,0" FontSize="11"/>
+                                <RadioButton x:Name="GardeMere"    GroupName="Garde" Content="Mère"    Margin="0,0,10,0" FontSize="11"/>
+                                <RadioButton x:Name="GardePere"    GroupName="Garde" Content="Père"    Margin="0,0,10,0" FontSize="11"/>
+                                <RadioButton x:Name="GardeAutre"   GroupName="Garde" Content="Autre"   FontSize="11"/>
+                            </WrapPanel>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Bloc 4 — Adresse -->
                     <Border Background="#F9F9F9" BorderBrush="#BDC3C7" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
                         <StackPanel>
-                            <TextBlock Text="3 — ADRESSE DU MILIEU DE VIE" FontWeight="Bold" FontSize="12" Foreground="#2C3E50" Margin="0,0,0,8"/>
+                            <TextBlock Text="4 — ADRESSE DU MILIEU DE VIE" FontWeight="Bold" FontSize="12" Foreground="#2C3E50" Margin="0,0,0,8"/>
 
                             <!-- Adresse 1 -->
                             <TextBlock Text="Adresse 1 — Chez :" FontSize="11" Foreground="#555" Margin="0,0,0,2"/>
@@ -166,30 +192,8 @@
                                 </Grid>
                             </StackPanel>
                             <TextBlock x:Name="Adresse2Hint"
-                                       Text="Parents ensemble : une seule adresse suffit. Cochez la situation familiale (bloc 4) pour faire apparaître une 2e adresse si besoin."
+                                       Text="Parents ensemble : une seule adresse suffit. Cochez la situation familiale (bloc 3) pour faire apparaître une 2e adresse si besoin."
                                        FontSize="10" Foreground="#95A5A6" TextWrapping="Wrap" Margin="0,2,0,0" Visibility="Collapsed"/>
-                        </StackPanel>
-                    </Border>
-
-                    <!-- Bloc 4 — Situation familiale -->
-                    <Border Background="#F5EEF8" BorderBrush="#C39BD3" BorderThickness="1" CornerRadius="6" Padding="10" Margin="0,0,0,8">
-                        <StackPanel>
-                            <TextBlock Text="4 — SITUATION FAMILIALE" FontWeight="Bold" FontSize="12" Foreground="#6C3483" Margin="0,0,0,8"/>
-                            <WrapPanel Margin="0,0,0,6">
-                                <RadioButton x:Name="SitEnsemble"    GroupName="SitFam" Content="Ensemble"        Margin="0,0,10,4" FontSize="11"/>
-                                <RadioButton x:Name="SitSepares"     GroupName="SitFam" Content="Séparés"         Margin="0,0,10,4" FontSize="11"/>
-                                <RadioButton x:Name="SitDivorces"    GroupName="SitFam" Content="Divorcés"        Margin="0,0,10,4" FontSize="11"/>
-                                <RadioButton x:Name="SitGardeAlt"    GroupName="SitFam" Content="Garde alternée"  Margin="0,0,10,4" FontSize="11"/>
-                                <RadioButton x:Name="SitRecomposee"  GroupName="SitFam" Content="Recomposée"      Margin="0,0,10,4" FontSize="11"/>
-                                <RadioButton x:Name="SitAutre"       GroupName="SitFam" Content="Autre"           Margin="0,0,10,4" FontSize="11"/>
-                            </WrapPanel>
-                            <TextBlock Text="Garde principale :" FontSize="11" Foreground="#555" Margin="0,0,0,4"/>
-                            <WrapPanel>
-                                <RadioButton x:Name="GardeParents" GroupName="Garde" Content="Parents" Margin="0,0,10,0" FontSize="11"/>
-                                <RadioButton x:Name="GardeMere"    GroupName="Garde" Content="Mère"    Margin="0,0,10,0" FontSize="11"/>
-                                <RadioButton x:Name="GardePere"    GroupName="Garde" Content="Père"    Margin="0,0,10,0" FontSize="11"/>
-                                <RadioButton x:Name="GardeAutre"   GroupName="Garde" Content="Autre"   FontSize="11"/>
-                            </WrapPanel>
                         </StackPanel>
                     </Border>
 

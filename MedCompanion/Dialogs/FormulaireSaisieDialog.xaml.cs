@@ -22,10 +22,21 @@ namespace MedCompanion.Dialogs
         private readonly string? _pdfPath;
         private readonly string? _patientDir;
         private readonly FormulaireDataService _service = new();
-        private readonly GlmOcrService _ocr = new(AppSettings.Load());
+        // GLM-OCR (Ollama) retiré de la lecture des formulaires le 01/09/2026, après comparaison
+        // des trois moteurs sur les MÊMES images découpées d'un formulaire réel :
+        //
+        //   bloc adresse   GLM « 83390 PIERREFEU » (DU VAR perdu) + réponse répétée en boucle
+        //                  Gemma 4 QAT « 83390 PIERREFEU DU VAR »  — juste
+        //   e-mail du père GLM « constant.baker@uahoo-ps »          — faux
+        //                  Gemma 4 QAT « constant.beker@yahoo.fr »  — faux aussi, mais moins loin
+        //                  Qwen3.8-27B « constant.boko@yahoo.fr »   — juste
+        //   nom du père    GLM recopiait le libellé imprimé « Même nom que l'enfant »
+        //                  les deux modèles vision répondent null, ce qui est correct
+        //
+        // Un seul moteur pour toute la lecture : le modèle vision est de toute façon chargé pour
+        // les cases à cocher, et Ollama disparaît de cette chaîne — une VRAM de moins à partager.
 
-        /// <summary>Lecture des cases à cocher uniquement (voir <see cref="AntecedentsSchema"/>) — GLM-OCR
-        /// échoue systématiquement sur cette tâche, testé fiable avec ce modèle vision.</summary>
+        /// <summary>Seul moteur de lecture du formulaire : champs texte comme cases à cocher.</summary>
         private readonly LlamaCppProvider _vision = new();
 
         /// <summary>Nom de famille de l'enfant — sert à résoudre les cases « Même nom que
@@ -67,15 +78,38 @@ namespace MedCompanion.Dialogs
                 n => new Lazy<Task<BlockBounds?>>(() => ComputeBlockBoundsAsync(n))).Value;
 
         /// <summary>Gabarit à utiliser pour CE formulaire, déterminé par sa version imprimée.</summary>
-        private readonly string _gabarit;
+        private string _gabarit;
+
+        /// <summary>Formulaire retenu — sert à retrouver le gabarit d'une version relue sur la feuille.</summary>
+        private FormulaireDefinition _definition;
+
+        /// <summary>
+        /// Version de mise en page retenue pour découper le scan. Affichée à la fin du remplissage
+        /// automatique : une géométrie mal choisie lit la bonne feuille au mauvais endroit et rend
+        /// des champs plausibles mais faux, sans erreur ni trace. Autant qu'elle se voie.
+        /// </summary>
+        private int _versionGeometrie;
 
         /// <param name="formulaireId">Type reconnu à l'import, ou null pour le formulaire de complétion.</param>
         /// <param name="version">
-        /// Version de mise en page lue sur le formulaire. 0 = inconnue : on prend alors le gabarit
-        /// courant, seul choix possible, mais c'est le cas où une lecture décalée reste envisageable.
+        /// Version de mise en page lue sur le formulaire. 0 = inconnue, c'est-à-dire un document
+        /// importé AVANT que la version ne soit enregistrée : il a donc été imprimé avant le jeton,
+        /// et porte la mise en page d'alors. On retombe pour cette raison sur
+        /// <see cref="FormulaireDefinition.VersionSansJeton"/> et non sur le gabarit courant —
+        /// lequel est précisément la seule version que ce document ne peut pas avoir.
+        /// </param>
+        /// <param name="texteExtrait">
+        /// Texte du document tel qu'il a été extrait à l'import. Quand il est fourni, la version
+        /// est RECALCULÉE ici plutôt que reprise de la fiche.
+        ///
+        /// Une version enregistrée l'a été par le code du jour de l'import : un document rentré
+        /// avant que la lecture du jeton ne tolère les confusions d'OCR porte durablement la
+        /// mauvaise version, et rien ne la corrigerait jamais sans réimporter. Recalculer coûte
+        /// une comparaison de chaînes et rend la géométrie indépendante de l'historique.
         /// </param>
         public FormulaireSaisieDialog(string? pdfPath, string? patientDir,
-                                      string? formulaireId = null, int version = 0)
+                                      string? formulaireId = null, int version = 0,
+                                      string? texteExtrait = null)
         {
             InitializeComponent();
             _pdfPath = pdfPath;
@@ -84,8 +118,21 @@ namespace MedCompanion.Dialogs
             var definition = FormulairesConnus.Par(formulaireId ?? "COMPLETION")
                           ?? FormulairesConnus.Tous[0];
 
-            _gabarit = (version > 0 ? definition.TemplatePourVersion(version) : null)
-                       ?? definition.Template;
+            if (!string.IsNullOrWhiteSpace(texteExtrait))
+            {
+                var (defRelue, versionRelue) = FormulairesConnus.Reconnaitre(
+                    FormulairesConnus.NormaliserPourComparaison(texteExtrait));
+
+                if (versionRelue > 0)
+                {
+                    definition = defRelue ?? definition;
+                    version    = versionRelue;
+                }
+            }
+
+            _definition = definition;
+            _versionGeometrie = version > 0 ? version : definition.VersionSansJeton;
+            _gabarit = definition.TemplatePourVersion(_versionGeometrie) ?? definition.Template;
 
             PopulateVisionModels();
         }
@@ -162,7 +209,12 @@ namespace MedCompanion.Dialogs
                 {
                     var env = await CoreWebView2Environment.CreateAsync();
                     await PdfWebView.EnsureCoreWebView2Async(env);
-                    PdfWebView.CoreWebView2.Navigate("file:///" + _pdfPath.Replace('\\', '/'));
+                    // #zoom=page-width : sans consigne, le visualiseur PDF d'Edge reprend le
+                    // dernier zoom retenu pour le profil et peut afficher une vignette perdue au
+                    // milieu du volet. La page doit occuper la largeur : c'est de l'écriture
+                    // manuscrite qu'on relit ici.
+                    PdfWebView.CoreWebView2.Navigate(
+                        "file:///" + _pdfPath.Replace('\\', '/') + "#zoom=page-width");
                     PdfWebView.Visibility = Visibility.Visible;
                     PdfFallback.Visibility = Visibility.Collapsed;
                 }
@@ -240,6 +292,41 @@ namespace MedCompanion.Dialogs
         /// décalage de calage sans couper le texte.</summary>
         private const double BlockPaddingMm = 4;
 
+        /// <summary>
+        /// Trace du dernier remplissage automatique : image de chaque bloc découpé et réponse
+        /// brute du modèle, dans %TEMP%\MedCompanion\trace-formulaire.
+        ///
+        /// Un bloc annoncé « non lu » ne dit ni ce qui a été montré au modèle, ni ce qu'il a
+        /// répondu — les deux seules choses qui séparent un découpage faux d'un modèle incapable
+        /// de lire des cases. Le dossier est vidé à chaque exécution : il sert à comprendre le
+        /// coup d'après, pas à s'accumuler.
+        /// </summary>
+        private static string DossierTrace =>
+            Path.Combine(Path.GetTempPath(), "MedCompanion", "trace-formulaire");
+
+        private static void ReinitialiserTrace()
+        {
+            try
+            {
+                if (Directory.Exists(DossierTrace)) Directory.Delete(DossierTrace, recursive: true);
+                Directory.CreateDirectory(DossierTrace);
+            }
+            catch { /* la trace ne doit jamais empêcher la lecture */ }
+        }
+
+        private static void Tracer(string nom, byte[]? image, string? contenu)
+        {
+            try
+            {
+                if (!Directory.Exists(DossierTrace)) return;
+                if (image != null)
+                    File.WriteAllBytes(Path.Combine(DossierTrace, nom + ".png"), image);
+                if (contenu != null)
+                    File.WriteAllText(Path.Combine(DossierTrace, nom + ".txt"), contenu, Encoding.UTF8);
+            }
+            catch { }
+        }
+
         private async void BtnAutoFill_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrEmpty(_pdfPath) || !File.Exists(_pdfPath))
@@ -249,18 +336,39 @@ namespace MedCompanion.Dialogs
             }
 
             BtnAutoFill.IsEnabled = false;
+            ReinitialiserTrace();
 
             try
             {
-                var bounds = await CarteDuGabarit(_gabarit);
                 var pageImage = await Task.Run(() => RenderFirstPageToPng(_pdfPath!));
+
+                AutoFillStatus.Text = "Lecture de l'en-tête (version du formulaire)...";
+                await RelireVersionSurLaFeuilleAsync(pageImage);
+
+                var bounds = await CarteDuGabarit(_gabarit);
+
+                var (largeurPage, hauteurPage) = ImageOps.GetSize(pageImage);
+                Tracer("00-page", pageImage,
+                    $"gabarit          : {_gabarit}\n" +
+                    $"version géométrie : v{_versionGeometrie}\n" +
+                    $"image page       : {largeurPage} x {hauteurPage} px\n" +
+                    $"marge blocs      : {BlockPaddingMm} mm\n" +
+                    $"modèle vision    : {LlamaCppProfiles.VisionProfile.ShortName}\n" +
+                    (bounds == null
+                        ? "bornes           : AUCUNE (repli page entière)\n"
+                        : $"père         : {bounds.PereY0:F1} → {bounds.PereY1:F1} mm\n" +
+                          $"mère         : {bounds.MereY0:F1} → {bounds.MereY1:F1} mm\n" +
+                          $"adresse      : {bounds.AdresseY0:F1} → {bounds.AdresseY1:F1} mm\n" +
+                          $"antécédents  : {bounds.AntecedentsY0:F1} → {bounds.AntecedentsY1:F1} mm\n" +
+                          $"situation    : {bounds.SituationY0:F1} → {bounds.SituationY1:F1} mm\n" +
+                          $"autorisations: {bounds.AutorisationsY0:F1} → {bounds.AutorisationsY1:F1} mm\n"));
 
                 if (bounds == null)
                 {
                     // Repli : carte de coordonnées indisponible (Edge absent...) → un seul
                     // appel pleine page. Moins fiable, mieux que rien.
                     AutoFillStatus.Text = "Lecture OCR en cours...";
-                    var (ok, json, error) = await _ocr.ExtractJsonAsync(pageImage, FullPageSchema, FullPageConsigne);
+                    var (ok, json, error) = await LireBlocTexteAsync(pageImage, FullPageSchema, FullPageConsigne);
                     if (!ok) { AutoFillStatus.Text = $"Échec OCR : {error}"; return; }
                     ApplyPereJson(json);
                     ApplyMereJson(json);
@@ -274,17 +382,20 @@ namespace MedCompanion.Dialogs
 
                 AutoFillStatus.Text = "Lecture des coordonnées du père...";
                 var pereCrop = CropBlock(pageImage, bounds.PereY0, bounds.PereY1, mmToPx);
-                var (pereOk, pereJson, pereErr) = await _ocr.ExtractJsonAsync(pereCrop, PereSchema, PereConsigne);
+                var (pereOk, pereJson, pereErr) = await LireBlocTexteAsync(pereCrop, PereSchema, PereConsigne);
+                Tracer("01-pere", pereCrop, pereOk ? pereJson : $"ÉCHEC : {pereErr}");
                 if (pereOk) ApplyPereJson(pereJson);
 
                 AutoFillStatus.Text = "Lecture des coordonnées de la mère...";
                 var mereCrop = CropBlock(pageImage, bounds.MereY0, bounds.MereY1, mmToPx);
-                var (mereOk, mereJson, mereErr) = await _ocr.ExtractJsonAsync(mereCrop, MereSchema, MereConsigne);
+                var (mereOk, mereJson, mereErr) = await LireBlocTexteAsync(mereCrop, MereSchema, MereConsigne);
+                Tracer("02-mere", mereCrop, mereOk ? mereJson : $"ÉCHEC : {mereErr}");
                 if (mereOk) ApplyMereJson(mereJson);
 
                 AutoFillStatus.Text = "Lecture de l'adresse...";
                 var adresseCrop = CropBlock(pageImage, bounds.AdresseY0, bounds.AdresseY1, mmToPx);
-                var (adrOk, adrJson, adrErr) = await _ocr.ExtractJsonAsync(adresseCrop, AdresseSchema, AdresseConsigne);
+                var (adrOk, adrJson, adrErr) = await LireBlocTexteAsync(adresseCrop, AdresseSchema, AdresseConsigne);
+                Tracer("03-adresse", adresseCrop, adrOk ? adrJson : $"ÉCHEC : {adrErr}");
                 if (adrOk)
                 {
                     ApplyAdresseJson(adrJson, "adresse1", Adresse, CodePostal, Ville);
@@ -297,23 +408,33 @@ namespace MedCompanion.Dialogs
                 // seule fois, pas à chaque bloc).
                 var visionResults = new List<(string label, bool ok, string? error)>();
 
-                async Task<bool> ReadVisionBlock(string label, double y0, double y1,
+                async Task<bool> ReadVisionBlock(string trace, string label, double y0, double y1,
                     Func<string, bool> apply, string prompt)
                 {
-                    if (y1 <= y0) return false;
+                    if (y1 <= y0)
+                    {
+                        Tracer(trace, null, "Bloc ignoré : bornes vides dans la carte de coordonnées.");
+                        return false;
+                    }
                     AutoFillStatus.Text = $"Lecture {label} (vision)...";
                     var crop = CropBlock(pageImage, y0, y1, mmToPx);
                     var (visOk, visJson, visErr) = await _vision.AnalyzeImageAsync(prompt, crop, maxTokens: 600);
                     bool applied = visOk && apply(visJson);
+
+                    Tracer(trace, crop,
+                        $"--- zone découpée : {y0:F1} → {y1:F1} mm (± {BlockPaddingMm} mm) ---\n" +
+                        $"--- appel : {(visOk ? "OK" : "ÉCHEC — " + visErr)} | appliqué : {applied} ---\n\n" +
+                        $"=== INVITE ===\n{prompt}\n\n=== RÉPONSE BRUTE ===\n{(visOk ? visJson : "(aucune)")}\n");
+
                     visionResults.Add((label, applied, visOk ? (applied ? null : "réponse illisible") : visErr));
                     return applied;
                 }
 
-                bool atcdOk = await ReadVisionBlock("des antécédents familiaux",
+                bool atcdOk = await ReadVisionBlock("04-antecedents", "des antécédents familiaux",
                     bounds.AntecedentsY0, bounds.AntecedentsY1, ApplyAntecedentsJson, BuildAntecedentsPrompt());
-                bool sitOk = await ReadVisionBlock("de la situation familiale",
+                bool sitOk = await ReadVisionBlock("05-situation", "de la situation familiale",
                     bounds.SituationY0, bounds.SituationY1, ApplySituationJson, BuildSituationPrompt());
-                bool autorOk = await ReadVisionBlock("des autorisations",
+                bool autorOk = await ReadVisionBlock("06-autorisations", "des autorisations",
                     bounds.AutorisationsY0, bounds.AutorisationsY1, ApplyAutorisationsJson, BuildAutorisationsPrompt());
 
                 bool anyVisionOk = atcdOk || sitOk || autorOk;
@@ -326,8 +447,9 @@ namespace MedCompanion.Dialogs
                 else
                 {
                     var failed = visionResults.Where(r => !r.ok).Select(r => $"{r.label} ({r.error})").ToList();
-                    AutoFillStatus.Text = "Champs pré-remplis — vérifiez avant de valider." +
+                    AutoFillStatus.Text = $"Champs pré-remplis (mise en page v{_versionGeometrie}) — vérifiez avant de valider." +
                         (failed.Count > 0 ? $" Non lus : {string.Join(", ", failed)}." : "");
+                    AutoFillStatus.ToolTip = "Trace de la dernière lecture : " + DossierTrace;
                 }
             }
             catch (Exception ex)
@@ -338,6 +460,90 @@ namespace MedCompanion.Dialogs
             {
                 BtnAutoFill.IsEnabled = true;
             }
+        }
+
+        /// <summary>Hauteur de l'en-tête (mm) contenant le titre et le jeton de version. Le premier
+        /// champ à remplir commence à 35 mm sur les deux gabarits.</summary>
+        private const double EnteteHauteurMm = 34;
+
+        private const string EnteteSchema = """{ "texte": null }""";
+        private const string EnteteConsigne =
+            "Recopie fidèlement TOUT le texte imprimé visible sur cette image, y compris les codes " +
+            "techniques en petits caractères (par exemple une référence du type MEDCOMP-...-V2). " +
+            "N'interprète pas, ne corrige pas : recopie caractère par caractère.";
+
+        /// <summary>
+        /// Relit la version de mise en page sur l'en-tête de la feuille scannée.
+        ///
+        /// C'est la seule source qui ne ment pas. La version notée à l'import dépend du texte que
+        /// l'extraction a bien voulu rendre, et cette extraction est instable : sur le MÊME
+        /// formulaire, deux imports ont donné 1073 caractères (titre et jeton lisibles) puis 110
+        /// (le seul pied de page). Dans le second cas plus rien n'était reconnu, le formulaire
+        /// repartait en « autres », et la lecture retombait sur la géométrie v1 — donc sur la
+        /// mauvaise feuille.
+        ///
+        /// Best-effort : en cas d'échec, on garde la version déduite de la fiche.
+        /// </summary>
+        private async Task RelireVersionSurLaFeuilleAsync(byte[] pageImage)
+        {
+            try
+            {
+                var (_, hauteur) = ImageOps.GetSize(pageImage);
+                var mmToPx = hauteur / 297.0;
+                var entete = CropBlock(pageImage, 0, EnteteHauteurMm, mmToPx);
+
+                var (ok, json, err) = await LireBlocTexteAsync(entete, EnteteSchema, EnteteConsigne);
+                Tracer("00-entete", entete, ok ? json : $"ÉCHEC : {err}");
+                if (!ok) return;
+
+                using var doc = JsonDocument.Parse(json);
+                if (!doc.RootElement.TryGetProperty("texte", out var champ)) return;
+                var texte = champ.GetString();
+                if (string.IsNullOrWhiteSpace(texte)) return;
+
+                var (defLue, versionLue) = FormulairesConnus.Reconnaitre(
+                    FormulairesConnus.NormaliserPourComparaison(texte));
+                if (versionLue <= 0) return;
+
+                _definition = defLue ?? _definition;
+                _versionGeometrie = versionLue;
+                _gabarit = _definition.TemplatePourVersion(versionLue) ?? _definition.Template;
+            }
+            catch { /* la géométrie de la fiche reste en place */ }
+        }
+
+        /// <summary>
+        /// Lit un bloc de champs texte avec le modèle vision, sur le même contrat que l'ancien
+        /// service OCR : une image, un schéma, une consigne, un objet JSON en retour.
+        ///
+        /// La consigne « n'invente jamais » n'est pas de la politesse : sur un formulaire médical,
+        /// un champ laissé vide se corrige d'un coup d'œil, une valeur plausible mais fausse passe
+        /// à la validation.
+        /// </summary>
+        private async Task<(bool ok, string json, string? error)> LireBlocTexteAsync(
+            byte[] image, string schema, string consigne)
+        {
+            var prompt = new StringBuilder();
+            prompt.AppendLine("Extrais les informations de cette image.");
+            prompt.AppendLine(consigne);
+            prompt.AppendLine();
+            prompt.AppendLine("Réponds UNIQUEMENT avec un objet JSON valide : pas de commentaire,");
+            prompt.AppendLine("aucun texte avant ou après, et n'écris qu'une seule fois l'objet.");
+            prompt.AppendLine("Utilise null pour tout champ absent ou illisible — n'invente jamais de valeur.");
+            prompt.AppendLine();
+            prompt.AppendLine("Schéma attendu :");
+            prompt.AppendLine(schema);
+
+            var (ok, brut, erreur) = await _vision.AnalyzeImageAsync(prompt.ToString(), image, maxTokens: 800);
+            if (!ok) return (false, "", erreur);
+
+            // Les modèles encadrent volontiers leur réponse de ```json … ``` : on retient le premier
+            // objet accolade à accolade.
+            var trouve = Regex.Match(brut ?? "", @"\{[\s\S]*\}");
+            if (!trouve.Success)
+                return (false, "", "Aucun objet JSON trouvé dans la réponse du modèle.");
+
+            return (true, trouve.Value, null);
         }
 
         private static byte[] CropBlock(byte[] pageImage, double yMm0, double yMm1, double mmToPx)
@@ -463,12 +669,17 @@ namespace MedCompanion.Dialogs
               "garde": "parents|mere|pere|autre"
             }
             """;
+        // « une seule est cochée » a été retiré des deux groupes : la formulation affirmait qu'une
+        // case l'était forcément, et le modèle en choisissait une. Constaté sur un formulaire réel
+        // où AUCUNE case de « mode de garde » n'était cochée — la lecture rendait « Autre ». Une
+        // organisation familiale inventée dans un dossier médical est pire qu'un champ laissé vide.
         private const string SituationConsigne =
             "Ce bloc montre deux groupes de cases à cocher. Le premier (\"Situation familiale\") a 6 " +
             "options : Parents ensemble, Parents séparés, Divorcés, Garde alternée, Famille recomposée, " +
-            "Autre — une seule est cochée. Le second (\"Mode de garde principal de l'enfant\") a 4 " +
-            "options : Parents, Mère, Père, Autre — une seule est cochée. Examine attentivement laquelle " +
-            "case contient une croix ou une coche visible dans chaque groupe.";
+            "Autre. Le second (\"Mode de garde principal de l'enfant\") a 4 options : Parents, Mère, " +
+            "Père, Autre. Examine attentivement quelle case contient une croix ou une coche visible " +
+            "dans chaque groupe. Un groupe peut très bien n'avoir AUCUNE case cochée : dans ce cas " +
+            "réponds null pour ce groupe. Ne choisis jamais une option par défaut.";
 
         private const string AutorisationsSchema =
             """{ "photo": "oui|non", "infos": "oui|non", "sms": "oui|non", "email": "oui|non" }""";

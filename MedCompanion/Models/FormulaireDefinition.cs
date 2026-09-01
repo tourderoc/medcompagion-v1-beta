@@ -96,12 +96,41 @@ namespace MedCompanion.Models
             $"{PrefixeJeton}{def.Id}-V{def.VersionCourante}";
 
         /// <summary>
+        /// Minuscules, accents retirés, ponctuation ramenée à des espaces simples.
+        ///
+        /// Vit ici et non dans le service d'import : la reconnaissance est aussi rejouée à
+        /// l'ouverture de la saisie, et deux normalisations distinctes finiraient par diverger —
+        /// c'est-à-dire par reconnaître un formulaire à l'import et plus à la relecture.
+        /// </summary>
+        public static string NormaliserPourComparaison(string texte)
+        {
+            var decompose = texte.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
+            var sb = new System.Text.StringBuilder(decompose.Length);
+            var espacePrecedent = false;
+
+            foreach (var c in decompose)
+            {
+                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
+                    == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
+
+                if (char.IsLetterOrDigit(c)) { sb.Append(c); espacePrecedent = false; }
+                else if (!espacePrecedent)   { sb.Append(' '); espacePrecedent = true; }
+            }
+            return sb.ToString();
+        }
+
+        /// <summary>
         /// Reconnaît un formulaire dans un texte extrait.
         ///
-        /// Deux voies, dans cet ordre :
-        ///  1. le JETON, qui donne le type ET la version sans ambiguïté ;
-        ///  2. à défaut, le TITRE imprimé — cas des exemplaires antérieurs au jeton, dont on déduit
-        ///     la version par <see cref="FormulaireDefinition.VersionSansJeton"/>.
+        /// Trois voies, dans cet ordre :
+        ///  1. le JETON exact — cas d'une couche texte propre ;
+        ///  2. le JETON approché — cas d'un formulaire RENDU PAR LES PARENTS, donc scanné, donc
+        ///     océrisé. Mesuré sur un exemplaire réel : « MEDCOMP-FORM-COMPLETION-V2 » est ressorti
+        ///     « MEDCOMP-FORN-COMPLETION-VS ». La lecture exacte échouait, le repli par le titre
+        ///     annonçait v1, et le découpage cherchait l'adresse là où se trouve la situation
+        ///     familiale : des champs plausibles et faux, sans la moindre alerte ;
+        ///  3. à défaut, le TITRE imprimé — exemplaires antérieurs au jeton, dont on déduit la
+        ///     version par <see cref="FormulaireDefinition.VersionSansJeton"/>.
         /// </summary>
         public static (FormulaireDefinition? definition, int version) Reconnaitre(string? texteNormalise)
         {
@@ -111,7 +140,7 @@ namespace MedCompanion.Models
 
             foreach (var def in Tous)
             {
-                // 1. Jeton : "medcomp form completion v2" après normalisation.
+                // 1. Jeton exact : "medcomp form completion v2" après normalisation.
                 var racine = jetonNormalise + def.Id.ToLowerInvariant() + " v";
                 var i = texteNormalise.IndexOf(racine, StringComparison.Ordinal);
                 if (i >= 0)
@@ -121,12 +150,99 @@ namespace MedCompanion.Models
                     if (int.TryParse(chiffres, out var v) && v > 0) return (def, v);
                 }
 
-                // 2. Titre seul : exemplaire imprimé avant le jeton.
+                // 2. Jeton approché, pour un scan océrisé.
+                var versionApprochee = VersionParJetonApproche(texteNormalise, def);
+                if (versionApprochee > 0) return (def, versionApprochee);
+
+                // 3. Titre seul : exemplaire imprimé avant le jeton.
                 if (texteNormalise.Contains(def.TitreNormalise, StringComparison.Ordinal))
                     return (def, def.VersionSansJeton);
             }
 
             return (null, 0);
+        }
+
+        /// <summary>Distance d'édition tolérée sur les 22 caractères du jeton, hors chiffre.</summary>
+        private const int ToleranceJeton = 3;
+
+        /// <summary>
+        /// Caractères que l'OCR rend à la place d'un chiffre. Une lettre peut correspondre à
+        /// plusieurs chiffres (s → 5 ou 2) : la levée d'ambiguïté se fait plus bas, en ne gardant
+        /// que les versions réellement connues du formulaire.
+        /// </summary>
+        private static readonly Dictionary<char, int[]> ChiffresConfondus = new()
+        {
+            ['o'] = new[] { 0 }, ['q'] = new[] { 0 }, ['d'] = new[] { 0 },
+            ['i'] = new[] { 1 }, ['l'] = new[] { 1 }, ['t'] = new[] { 1 },
+            ['z'] = new[] { 2 }, ['s'] = new[] { 5, 2 }, ['g'] = new[] { 6, 9 },
+            ['b'] = new[] { 8, 6 }, ['a'] = new[] { 4 }, ['e'] = new[] { 8 },
+        };
+
+        /// <summary>
+        /// Cherche le jeton à quelques caractères près, puis décode le chiffre de version.
+        /// Renvoie 0 si le jeton est absent ou si le chiffre reste ambigu — on préfère alors la
+        /// voie du titre, qui se trompe de façon prévisible, à une version devinée.
+        /// </summary>
+        private static int VersionParJetonApproche(string texteNormalise, FormulaireDefinition def)
+        {
+            var compact = new string(texteNormalise.Where(char.IsLetterOrDigit).ToArray());
+            var aiguille = "medcompform" + def.Id.ToLowerInvariant() + "v";
+            if (compact.Length < aiguille.Length) return 0;
+
+            // Toutes les fenêtres acceptables, la meilleure d'abord. Trier importe : sur un cas
+            // réel, la fenêtre décalée d'un caractère passait aussi le seuil (distance 3) et
+            // tombait sur un « v » indécodable, alors que la bonne fenêtre était juste à côté à
+            // distance 1. Prendre la première venue aurait fait renoncer à un jeton lisible.
+            var fenetres = Enumerable
+                .Range(0, compact.Length - aiguille.Length + 1)
+                .Select(debut => (debut, ecart: Distance(compact.Substring(debut, aiguille.Length), aiguille)))
+                .Where(f => f.ecart <= ToleranceJeton)
+                .OrderBy(f => f.ecart);
+
+            var connues = VersionsConnues(def);
+
+            foreach (var (debut, _) in fenetres)
+            {
+                // Le caractère qui suit porte la version. Un vrai chiffre tranche seul.
+                var suivant = debut + aiguille.Length < compact.Length
+                    ? compact[debut + aiguille.Length]
+                    : '\0';
+
+                if (char.IsDigit(suivant)) return suivant - '0';
+                if (!ChiffresConfondus.TryGetValue(suivant, out var candidats)) continue;
+
+                var retenues = candidats.Where(connues.Contains).Distinct().ToList();
+                if (retenues.Count == 1) return retenues[0];
+            }
+
+            return 0;
+        }
+
+        private static HashSet<int> VersionsConnues(FormulaireDefinition def)
+        {
+            var set = new HashSet<int>(def.TemplatesAnterieurs.Keys) { def.VersionCourante };
+            return set;
+        }
+
+        /// <summary>Distance de Levenshtein, sur des chaînes de quelques dizaines de caractères.</summary>
+        private static int Distance(string a, string b)
+        {
+            var precedent = Enumerable.Range(0, b.Length + 1).ToArray();
+            var courant = new int[b.Length + 1];
+
+            for (int i = 1; i <= a.Length; i++)
+            {
+                courant[0] = i;
+                for (int j = 1; j <= b.Length; j++)
+                {
+                    var cout = a[i - 1] == b[j - 1] ? 0 : 1;
+                    courant[j] = Math.Min(Math.Min(courant[j - 1] + 1, precedent[j] + 1),
+                                          precedent[j - 1] + cout);
+                }
+                (precedent, courant) = (courant, precedent);
+            }
+
+            return precedent[b.Length];
         }
     }
 }

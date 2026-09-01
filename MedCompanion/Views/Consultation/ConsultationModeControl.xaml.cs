@@ -571,7 +571,7 @@ categorie: {document.Category ?? "Documents"}
             // pas celle du gabarit courant, qui désigne la géométrie de lecture.
             var saisie = new MedCompanion.Dialogs.FormulaireSaisieDialog(
                 document.FilePath, _viewModel.CurrentPatient.DirectoryPath,
-                document.FormulaireId, document.FormulaireVersion)
+                document.FormulaireId, document.FormulaireVersion, document.ExtractedText)
             {
                 Owner = Window.GetWindow(this)
             };

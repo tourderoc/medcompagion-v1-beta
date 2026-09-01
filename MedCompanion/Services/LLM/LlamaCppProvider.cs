@@ -342,7 +342,11 @@ namespace MedCompanion.Services.LLM
                 };
                 var messagesList = new List<object> { new { role = "user", content } };
 
-                var bodyDict = BuildRequestBody(messagesList, maxTokens, stream: false);
+                // sansReflexion : lire des cases cochées ne demande pas de délibération, et la
+                // réflexion coûtait ici la réponse entière — budget épuisé, `content` vide, bloc
+                // annoncé « non lu ». Mesuré sur Gemma 4 QAT et le tableau des 8 antécédents :
+                // sans le drapeau, rien ; avec, les 8 cases justes en 2,5 s.
+                var bodyDict = BuildRequestBody(messagesList, maxTokens, stream: false, sansReflexion: true);
 
                 var json = JsonSerializer.Serialize(bodyDict);
                 var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
@@ -414,9 +418,13 @@ namespace MedCompanion.Services.LLM
             int maxTokens,
             bool stream,
             string? schemaName = null,
-            string? jsonSchema = null)
+            string? jsonSchema = null,
+            bool sansReflexion = false)
         {
             var schemaConstrained = !string.IsNullOrWhiteSpace(jsonSchema);
+
+            // Réflexion coupée sous contrainte de schéma, mais aussi quand l'appelant le demande.
+            var reflexionCoupee = schemaConstrained || sansReflexion;
 
             var body = new Dictionary<string, object>
             {
@@ -425,9 +433,17 @@ namespace MedCompanion.Services.LLM
                 // Sous contrainte de schéma, la créativité ne sert plus qu'à varier la formulation
                 // des valeurs : on la coupe pour rendre l'extraction reproductible.
                 ["temperature"] = schemaConstrained ? 0.0 : 0.3,
-                ["max_tokens"] = EffectiveMaxTokens(maxTokens, schemaConstrained),
+                ["max_tokens"] = EffectiveMaxTokens(maxTokens, reflexionCoupee),
                 ["stream"] = stream
             };
+
+            if (reflexionCoupee)
+            {
+                // Mesuré sur Gemma 4 QAT lisant les 8 cases d'antécédents : sans ce drapeau, le
+                // modèle épuise son budget en réflexion, `content` revient vide et le bloc est
+                // annoncé « non lu ». Avec, la même image donne les 8 cases justes en 2,5 s.
+                body["chat_template_kwargs"] = new Dictionary<string, object> { ["enable_thinking"] = false };
+            }
 
             if (schemaConstrained)
             {
@@ -446,16 +462,16 @@ namespace MedCompanion.Services.LLM
                     }
                 };
 
-                // Sans ceci, le décodage contraint ne sert à rien : le modèle produit un bloc de
-                // réflexion que le serveur range dans `reasoning_content`, `content` reste vide et
-                // l'appelant ne voit AUCUN JSON — le schéma n'est appliqué qu'à la réponse finale,
-                // jamais atteinte. Mesuré sur Gemma 4 QAT : 1500 tokens et content vide sans le
-                // drapeau, 453 tokens et 8 blocs corrects avec.
+                // La coupure de la réflexion est posée plus haut, pour le schéma comme pour la
+                // vision : sans elle, le décodage contraint ne sert à rien — le modèle produit un
+                // bloc de réflexion que le serveur range dans `reasoning_content`, `content` reste
+                // vide et l'appelant ne voit AUCUN JSON, le schéma n'étant appliqué qu'à la réponse
+                // finale, jamais atteinte.
+                //
                 // On passe par chat_template_kwargs et non par reasoning_effort="none" : les deux
                 // donnent le même résultat, mais les templates n'acceptent pas tous les mêmes
                 // niveaux (celui de Qwen rejette un niveau inconnu par une erreur 500), alors qu'une
                 // variable de template inconnue est simplement ignorée.
-                body["chat_template_kwargs"] = new Dictionary<string, object> { ["enable_thinking"] = false };
             }
             // "off" n'est pas un niveau de reasoning_effort (les niveaux vont de 'minimal' à 'max') :
             // c'est l'interrupteur serveur --reasoning off, appliqué au démarrage du process. On

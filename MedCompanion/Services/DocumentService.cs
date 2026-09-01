@@ -250,22 +250,8 @@ namespace MedCompanion.Services
             return (definition, version);
         }
 
-        private static string NormaliserPourComparaison(string texte)
-        {
-            var decompose = texte.ToLowerInvariant().Normalize(System.Text.NormalizationForm.FormD);
-            var sb = new System.Text.StringBuilder(decompose.Length);
-            var espacePrecedent = false;
-
-            foreach (var c in decompose)
-            {
-                if (System.Globalization.CharUnicodeInfo.GetUnicodeCategory(c)
-                    == System.Globalization.UnicodeCategory.NonSpacingMark) continue;
-
-                if (char.IsLetterOrDigit(c)) { sb.Append(c); espacePrecedent = false; }
-                else if (!espacePrecedent)   { sb.Append(' '); espacePrecedent = true; }
-            }
-            return sb.ToString();
-        }
+        private static string NormaliserPourComparaison(string texte) =>
+            FormulairesConnus.NormaliserPourComparaison(texte);
 
         private async Task<string> ExtractTextFromFileAsync(string filePath)
         {
