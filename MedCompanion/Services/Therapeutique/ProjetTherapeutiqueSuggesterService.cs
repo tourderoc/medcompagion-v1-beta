@@ -42,6 +42,13 @@ namespace MedCompanion.Services.Therapeutique
         private readonly EvaluationPhaseService _evaluationPhaseService;
         private readonly SyntheseGlobaleService _syntheseGlobaleService;
 
+        /// <summary>
+        /// Les deux séances d'évaluation. Le projet se fonde sur la Synthèse Globale, mais les
+        /// cartographies disent CE QUI TIENT chez cet enfant — ce sur quoi un projet s'appuie
+        /// autant que sur ce qui manque.
+        /// </summary>
+        private readonly Evaluations.EvaluationV2ContextService _evaluationV2 = new();
+
         public ProjetTherapeutiqueSuggesterService(
             ILLMService llm,
             PatientContextService patientContext,
@@ -143,10 +150,15 @@ namespace MedCompanion.Services.Therapeutique
                 var bundle = _patientContext.GetCompleteContext(patientNomComplet);
                 var clinicalContent = bundle?.ClinicalContext ?? "";
 
-                if (synthese == null && evaluations.Count == 0 && string.IsNullOrWhiteSpace(clinicalContent))
+                var seancesV2 = _evaluationV2.PourPrompt(patientDirectoryPath);
+
+                // Les séances V2 comptent comme matière : un dossier évalué par les deux nouveaux
+                // blocs n'est pas un dossier vide.
+                if (synthese == null && evaluations.Count == 0
+                    && string.IsNullOrWhiteSpace(clinicalContent) && string.IsNullOrWhiteSpace(seancesV2))
                     return (false, null, "Aucune donnée clinique (synthèse, évaluation, notes) — proposition impossible.");
 
-                var prompt = BuildPrompt(patientNomComplet, bundle?.Metadata, synthese, evaluations, clinicalContent, orientationMedecin);
+                var prompt = BuildPrompt(patientNomComplet, bundle?.Metadata, synthese, evaluations, clinicalContent, seancesV2, orientationMedecin);
                 var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
                     return (false, null, err ?? "Réponse LLM vide.");
@@ -203,7 +215,8 @@ namespace MedCompanion.Services.Therapeutique
                 var bundle = _patientContext.GetCompleteContext(projet.PatientNomComplet);
                 var clinicalContent = bundle?.ClinicalContext ?? "";
 
-                var prompt = BuildPatchPrompt(projet, synthese, evaluations, clinicalContent);
+                var prompt = BuildPatchPrompt(projet, synthese, evaluations, clinicalContent,
+                                              _evaluationV2.PourPrompt(patientDirectoryPath));
                 var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
                     return (false, null, err ?? "Réponse LLM vide.");
@@ -224,7 +237,8 @@ namespace MedCompanion.Services.Therapeutique
             ProjetTherapeutique projet,
             SyntheseGlobale? synthese,
             List<EvaluationPhase> evaluations,
-            string clinicalContent)
+            string clinicalContent,
+            string seancesV2)
         {
             var sbCurrent = new StringBuilder();
             sbCurrent.AppendLine($"### Objectifs prioritaires");
@@ -289,7 +303,10 @@ Version actuelle du projet : v{projet.Version}
 [B] SYNTHÈSE GLOBALE actuelle :
 {(sbSynth.Length > 0 ? sbSynth.ToString().TrimEnd() : "(aucune)")}
 
-[C] Évaluations clôturées : {evaluations.Count}
+[C] Évaluations clôturées (ancien parcours) : {evaluations.Count}
+
+[C bis] Séances d'évaluation :
+{(string.IsNullOrWhiteSpace(seancesV2) ? "(aucune)" : seancesV2.Trim())}
 
 [D] Notes / contexte :
 {(string.IsNullOrWhiteSpace(clinicalContent) ? "(aucun)" : clinicalContent.Trim())}
@@ -386,6 +403,7 @@ RÉPONDS UNIQUEMENT par un JSON valide (les listes d'actions DOIVENT inclure une
             SyntheseGlobale? synthese,
             List<EvaluationPhase> evaluations,
             string clinicalContent,
+            string seancesV2 = "",
             string orientationMedecin = "")
         {
             var ageInfo = !string.IsNullOrWhiteSpace(meta?.Dob)
@@ -471,6 +489,12 @@ Patient : {patientNomComplet} ({ageInfo})
 
 [C] Notes cliniques / synthèse hors-ce-dossier :
 {(string.IsNullOrWhiteSpace(clinicalContent) ? "(aucune)" : clinicalContent.Trim())}
+
+[D] Séances d'évaluation (Cartographie de l'enfant, Environnement & évaluation ciblée) :
+{(string.IsNullOrWhiteSpace(seancesV2) ? "(aucune)" : seancesV2.Trim())}
+
+[D] dit AUSSI ce qui TIENT chez cet enfant, et pas seulement ce qui manque : un projet s'appuie
+sur l'un autant qu'il vise l'autre. Les fiabilités y qualifient la source, jamais la valeur.
 
 RÉPONDS UNIQUEMENT par un JSON valide :
 {{

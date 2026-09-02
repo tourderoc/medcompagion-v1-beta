@@ -35,6 +35,13 @@ namespace MedCompanion.Services.Synthesis
         private readonly PatientContextService _patientContext;
         private readonly EvaluationPhaseService _evaluationPhaseService;
 
+        /// <summary>
+        /// Les deux séances d'évaluation — indispensables ICI plus qu'ailleurs. La relecture
+        /// vérifie que chaque affirmation est SOURCÉE : sans les cartographies, elle signalerait
+        /// comme « non sourcé » tout ce que la synthèse en tire à juste titre.
+        /// </summary>
+        private readonly Evaluations.EvaluationV2ContextService _evaluationV2 = new();
+
         public SyntheseGlobaleRelectureService(
             ILLMService llm,
             PatientContextService patientContext,
@@ -65,7 +72,8 @@ namespace MedCompanion.Services.Synthesis
                         .ToList()
                     : new List<EvaluationPhase>();
 
-                var prompt = BuildPrompt(synthese, clinical, evaluations);
+                var prompt = BuildPrompt(synthese, clinical, evaluations,
+                                         _evaluationV2.PourPrompt(patientDirectoryPath));
                 var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
                     return (false, null, err ?? "Réponse LLM vide.");
@@ -85,7 +93,8 @@ namespace MedCompanion.Services.Synthesis
         private static string BuildPrompt(
             SyntheseGlobale synthese,
             string clinicalContent,
-            List<EvaluationPhase> evaluations)
+            List<EvaluationPhase> evaluations,
+            string seancesV2)
         {
             var sbSynthese = new StringBuilder();
             foreach (var s in synthese.Sections)
@@ -150,8 +159,15 @@ CONTRAINTES :
 [B] SOURCES DU DOSSIER (pour vérifier les affirmations) :
 {(string.IsNullOrWhiteSpace(clinicalContent) ? "(notes/synthèse vides)" : clinicalContent.Trim())}
 
-[C] ÉVALUATIONS CLÔTURÉES (pour vérifier) :
+[C] ÉVALUATIONS CLÔTURÉES — ancien parcours (pour vérifier) :
 {(sbEval.Length > 0 ? sbEval.ToString().TrimEnd() : "(aucune)")}
+
+[D] SÉANCES D'ÉVALUATION (pour vérifier) :
+{(string.IsNullOrWhiteSpace(seancesV2) ? "(aucune)" : seancesV2.Trim())}
+
+[D] est une SOURCE au même titre que [B] et [C] : une affirmation de la synthèse qui s'appuie sur
+une cartographie n'est pas « non sourcée ». En revanche, une affirmation tirée d'une feuille
+déclarée NON LISIBLE, ou d'une source dont la fiabilité est « non exploitable », en est bien une.
 
 RÉPONDS UNIQUEMENT par un JSON valide :
 {{

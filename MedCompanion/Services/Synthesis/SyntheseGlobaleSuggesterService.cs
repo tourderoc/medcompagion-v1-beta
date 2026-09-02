@@ -38,6 +38,12 @@ namespace MedCompanion.Services.Synthesis
         private readonly PatientContextService _patientContext;
         private readonly EvaluationPhaseService _evaluationPhaseService;
 
+        /// <summary>
+        /// Les deux séances d'évaluation. Sans elles, la synthèse d'un enfant évalué par les
+        /// nouveaux blocs ignorerait ses deux cartographies.
+        /// </summary>
+        private readonly Evaluations.EvaluationV2ContextService _evaluationV2 = new();
+
         public SyntheseGlobaleSuggesterService(
             ILLMService llm,
             PatientContextService patientContext,
@@ -101,10 +107,15 @@ namespace MedCompanion.Services.Synthesis
                         .ToList()
                     : new List<EvaluationPhase>();
 
-                if (string.IsNullOrWhiteSpace(clinicalContent) && evaluations.Count == 0)
+                // Les séances V2 comptent comme matière : un dossier sans évaluation V1 mais avec
+                // deux cartographies n'est pas un dossier vide.
+                if (string.IsNullOrWhiteSpace(clinicalContent) && evaluations.Count == 0
+                    && string.IsNullOrWhiteSpace(_evaluationV2.PourPrompt(patientDirectoryPath)))
                     return (false, null, "Aucune donnée clinique au dossier — synthèse impossible.");
 
-                var prompt = BuildPrompt(patientNomComplet, bundle?.Metadata, clinicalContent, evaluations);
+                var seancesV2 = _evaluationV2.PourPrompt(patientDirectoryPath);
+
+                var prompt = BuildPrompt(patientNomComplet, bundle?.Metadata, clinicalContent, evaluations, seancesV2);
                 var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
                     return (false, null, err ?? "Réponse LLM vide.");
@@ -162,7 +173,9 @@ namespace MedCompanion.Services.Synthesis
                         .ToList()
                     : new List<EvaluationPhase>();
 
-                var prompt = BuildPatchPrompt(synthese, bundle?.Metadata, clinicalContent, evaluations);
+                var seancesV2 = _evaluationV2.PourPrompt(patientDirectoryPath);
+
+                var prompt = BuildPatchPrompt(synthese, bundle?.Metadata, clinicalContent, evaluations, seancesV2);
                 var (ok, raw, err) = await _llm.GenerateTextAsync(prompt, maxTokens: MaxTokens, cancellationToken: cts.Token);
                 if (!ok || string.IsNullOrWhiteSpace(raw))
                     return (false, null, err ?? "Réponse LLM vide.");
@@ -183,7 +196,8 @@ namespace MedCompanion.Services.Synthesis
             Models.Synthesis.SyntheseGlobale synthese,
             Models.PatientMetadata? meta,
             string clinicalContent,
-            List<EvaluationPhase> evaluations)
+            List<EvaluationPhase> evaluations,
+            string seancesV2)
         {
             var ageInfo = !string.IsNullOrWhiteSpace(meta?.Dob)
                 ? $"né(e) le {meta!.Dob}"
@@ -242,6 +256,12 @@ Version actuelle : v{synthese.Version}
 [C] Évaluations clôturées du dossier :
 {(sbEval.Length > 0 ? sbEval.ToString().TrimEnd() : "(aucune)")}
 
+[D] Séances d'évaluation (Cartographie de l'enfant, Environnement & évaluation ciblée) :
+{(string.IsNullOrWhiteSpace(seancesV2) ? "(aucune)" : seancesV2.Trim())}
+
+Les fiabilités déclarées en [D] qualifient la source, jamais la valeur : une source peu fiable ne
+fonde pas une affirmation à elle seule, une source non exploitable ne s'utilise pas.
+
 PARTICULIER POUR LA SECTION ""evolution"" :
 - Elle décrit ce qui change DEPUIS la version précédente.
 - Si v > 1 et qu'il y a vraiment du nouveau, mets ""statut: nouvelle"" ou ""modifiee"" avec quelques lignes.
@@ -292,7 +312,8 @@ RÉPONDS UNIQUEMENT par un JSON valide, en respectant l'ordre des clés :
             string patientNomComplet,
             Models.PatientMetadata? meta,
             string clinicalContent,
-            List<EvaluationPhase> evaluations)
+            List<EvaluationPhase> evaluations,
+            string seancesV2)
         {
             var sbEval = new StringBuilder();
             if (evaluations.Count > 0)
@@ -394,8 +415,16 @@ Patient : {patientNomComplet} ({ageInfo})
 [A] Contexte clinique existant (synthèse ou notes) :
 {(string.IsNullOrWhiteSpace(clinicalContent) ? "(aucun)" : clinicalContent.Trim())}
 
-[B] Évaluations clôturées :
+[B] Évaluations clôturées (ancien parcours) :
 {sbEval.ToString().TrimEnd()}
+
+[C] Séances d'évaluation :
+{(string.IsNullOrWhiteSpace(seancesV2) ? "(aucune séance d'évaluation réalisée)" : seancesV2.Trim())}
+
+IMPORTANT sur [C] — chaque séance porte des FIABILITÉS déclarées par le médecin. Elles qualifient
+la source, jamais la valeur : une source jugée peu fiable ne doit pas fonder une affirmation à
+elle seule, et une source déclarée non exploitable ne doit pas être utilisée. Module la prudence
+de tes formulations en conséquence, sans jamais corriger un chiffre.
 
 RÉPONDS UNIQUEMENT par un JSON valide :
 {{
