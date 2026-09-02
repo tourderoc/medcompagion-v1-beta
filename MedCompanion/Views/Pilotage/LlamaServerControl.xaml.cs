@@ -238,7 +238,15 @@ namespace MedCompanion.Views.Pilotage
             actif.Unchecked += (_, _) => { _etapes.DefinirActif(false); BuildProfileCards(); };
             stack.Children.Add(actif);
 
-            foreach (var phase in new[] { EtapesConsultation.PhasePremiere, EtapesConsultation.PhaseSuivi })
+            // Ordre du parcours réel : 1er entretien → cartographie (2e séance) →
+            // environnement & évaluation ciblée (3e séance) → suivi.
+            foreach (var phase in new[]
+                     {
+                         EtapesConsultation.PhasePremiere,
+                         EtapesConsultation.PhaseCartographie,
+                         EtapesConsultation.PhaseEnvironnement,
+                         EtapesConsultation.PhaseSuivi
+                     })
                 stack.Children.Add(BuildPhase(phase));
 
             return new Border

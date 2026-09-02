@@ -49,11 +49,79 @@ namespace MedCompanion.Services.Evaluations
         public Dictionary<string, int> ScoresQuestionnaire { get; set; } = new();
 
         /// <summary>
+        /// Les SIX réponses de chaque axe — « oui », « non » ou « vide ».
+        ///
+        /// Le score seul ne suffit pas : un 4/6 ne dit pas la même chose selon QUELS items ont
+        /// échoué. En Attachement, manquer la séparation et la prudence avec l'inconnu, ou
+        /// manquer le recours et la consolabilité, ce sont deux enfants différents pour un même
+        /// score et une même couleur. Les six dimensions de chaque axe sont stables précisément
+        /// pour qu'on sache ce qui accroche — ne garder que la somme jetterait l'information que
+        /// cette structure existe pour produire.
+        /// </summary>
+        public Dictionary<string, string[]> ReponsesQuestionnaire { get; set; } = new();
+
+        /// <summary>
         /// Image de la feuille remplie, archivée dans le dossier patient. Conservée même quand
         /// la lecture aura réussi : c'est un document rempli par le parent, et c'est le seul
         /// recours si la lecture s'avère fausse.
         /// </summary>
         public string? ScanImagePath { get; set; }
+
+        /// <summary>
+        /// Qui a rempli la feuille : « mere », « pere », « autre », ou vide.
+        ///
+        /// Un 5/6 rempli par le parent qui vit avec l'enfant ne se lit pas comme un 5/6 rempli
+        /// par celui qui le voit deux week-ends par mois. Sans cette information, les scores sont
+        /// comparés entre eux comme s'ils venaient tous du même regard.
+        /// </summary>
+        public string? Informateur    { get; set; }
+
+        /// <summary>Prénom et lien de l'informateur, tels qu'écrits sur la feuille.</summary>
+        public string? InformateurNom { get; set; }
+
+        public string InformateurLisible
+        {
+            get
+            {
+                var qui = Informateur switch
+                {
+                    "mere"  => "Mère",
+                    "pere"  => "Père",
+                    "autre" => "Autre",
+                    _       => null
+                };
+                if (qui == null && string.IsNullOrWhiteSpace(InformateurNom)) return "informateur non renseigné";
+                if (string.IsNullOrWhiteSpace(InformateurNom)) return qui!;
+                return qui == null ? InformateurNom! : $"{qui} — {InformateurNom}";
+            }
+        }
+
+        // ── Fiabilité déclarée des deux moitiés ───────────────────────────────
+        // Qualifie la SOURCE, jamais la valeur : un 4/6 reste un 4/6. C'est ce qui rend le
+        // jugement auditable — sans lui, personne ne saura dans six mois pourquoi tel 5/6 a
+        // pesé peu.
+
+        /// <summary>Clé de <see cref="FiabiliteCartographie"/> pour le questionnaire parent.</summary>
+        public string? FiabiliteQuestionnaire { get; set; }
+
+        /// <summary>Clé de <see cref="FiabiliteCartographie"/> pour les profils observés.</summary>
+        public string? FiabiliteObservation { get; set; }
+
+        /// <summary>Synthèse de la cartographie : présente et qualifie les deux moitiés, ne conclut pas.</summary>
+        public string? SyntheseTexte { get; set; }
+        public DateTime? SyntheseDate { get; set; }
+
+        /// <summary>
+        /// Clôture de la séance. Une fois posée, la fiche passe en LECTURE SEULE : plus aucune
+        /// écriture n'est acceptée, par aucun chemin.
+        ///
+        /// Ce n'est pas un geste de publication — la carte est au dossier dès la première
+        /// sauvegarde. C'est un geste de fermeture : ce qui a été observé ce jour-là cesse de
+        /// bouger. Une cartographie qui resterait modifiable indéfiniment ne serait plus le
+        /// témoin d'une séance.
+        /// </summary>
+        public DateTime? DateCloture { get; set; }
+        public bool EstCloturee => DateCloture.HasValue;
 
         public int NbAxesRenseignes => Axes.Count(kv => kv.Value > 0);
         public bool QuestionnaireLu => ScoresQuestionnaire.Count > 0;
@@ -212,6 +280,18 @@ namespace MedCompanion.Services.Evaluations
                         case "age":                 if (int.TryParse(val, out var a)) c.Age = a; break;
                         case "bande":               c.BandeCode = val; break;
                         case "scan_image":          c.ScanImagePath = val; break;
+                        case "informateur":         c.Informateur = val; break;
+                        case "informateur_nom":     c.InformateurNom = val; break;
+                        case "fiabilite_questionnaire": c.FiabiliteQuestionnaire = val; break;
+                        case "fiabilite_observation":   c.FiabiliteObservation = val; break;
+                        case "date_cloture":
+                            if (DateTime.TryParse(val, CultureInfo.InvariantCulture,
+                                                  DateTimeStyles.None, out var dc)) c.DateCloture = dc;
+                            break;
+                        case "synthese_date":
+                            if (DateTime.TryParse(val, CultureInfo.InvariantCulture,
+                                                  DateTimeStyles.None, out var sd)) c.SyntheseDate = sd;
+                            break;
                         case "versee_au_dossier":   c.VerseeAuDossier = val.Equals("true", StringComparison.OrdinalIgnoreCase); break;
                         case "questionnaire_parent":
                             c.EtatQuestionnaire = val switch
@@ -233,11 +313,16 @@ namespace MedCompanion.Services.Evaluations
                             // Axes : « profil.axe: n ». Les scores du questionnaire : « q_axe: n ».
                             if (key.StartsWith("q_") && int.TryParse(val, out var sq))
                                 c.ScoresQuestionnaire[key[2..]] = sq;
+                            else if (key.StartsWith("r_"))
+                                c.ReponsesQuestionnaire[key[2..]] =
+                                    val.Split(',').Select(s => s.Trim()).ToArray();
                             else if (key.Contains('.') && int.TryParse(val, out var v))
                                 c.Axes[key] = v;
                             break;
                     }
                 }
+
+                c.SyntheseTexte = ExtraireSynthese(text);
                 return c;
             }
             catch { return null; }
@@ -255,6 +340,8 @@ namespace MedCompanion.Services.Evaluations
             if (c.Age.HasValue) sb.AppendLine($"age: {c.Age}");
             if (!string.IsNullOrEmpty(c.BandeCode)) sb.AppendLine($"bande: {c.BandeCode}");
             sb.AppendLine($"versee_au_dossier: {(c.VerseeAuDossier ? "true" : "false")}");
+            if (c.DateCloture.HasValue)
+                sb.AppendLine($"date_cloture: {c.DateCloture.Value:yyyy-MM-ddTHH:mm}");
             var etat = c.EtatQuestionnaire switch
             {
                 EtatQuestionnaireParent.Scanne => "scanne",
@@ -264,6 +351,16 @@ namespace MedCompanion.Services.Evaluations
             sb.AppendLine($"questionnaire_parent: {etat}");
             if (!string.IsNullOrEmpty(c.ScanImagePath))
                 sb.AppendLine($"scan_image: {c.ScanImagePath}");
+            if (!string.IsNullOrEmpty(c.FiabiliteQuestionnaire))
+                sb.AppendLine($"fiabilite_questionnaire: {c.FiabiliteQuestionnaire}");
+            if (!string.IsNullOrEmpty(c.FiabiliteObservation))
+                sb.AppendLine($"fiabilite_observation: {c.FiabiliteObservation}");
+            if (c.SyntheseDate.HasValue)
+                sb.AppendLine($"synthese_date: {c.SyntheseDate.Value:yyyy-MM-ddTHH:mm}");
+            if (!string.IsNullOrEmpty(c.Informateur))
+                sb.AppendLine($"informateur: {c.Informateur}");
+            if (!string.IsNullOrWhiteSpace(c.InformateurNom))
+                sb.AppendLine($"informateur_nom: \"{c.InformateurNom}\"");
 
             sb.AppendLine();
             sb.AppendLine("# Profils observés (médecin) — 1-5, axe absent = non observé");
@@ -277,6 +374,14 @@ namespace MedCompanion.Services.Evaluations
                 foreach (var kv in c.ScoresQuestionnaire.OrderBy(kv => kv.Key))
                     sb.AppendLine($"q_{kv.Key}: {kv.Value}");
             }
+
+            if (c.ReponsesQuestionnaire.Count > 0)
+            {
+                sb.AppendLine();
+                sb.AppendLine("# Questionnaire parent — les 6 réponses de chaque axe, dans l'ordre des items");
+                foreach (var kv in c.ReponsesQuestionnaire.OrderBy(kv => kv.Key))
+                    sb.AppendLine($"r_{kv.Key}: {string.Join(",", kv.Value)}");
+            }
             sb.AppendLine("---");
             sb.AppendLine();
 
@@ -285,6 +390,42 @@ namespace MedCompanion.Services.Evaluations
             sb.AppendLine();
             sb.AppendLine($"_{c.EtatLisible}_");
             sb.AppendLine();
+
+            // Le questionnaire parent, item par item : c'est CE QUI accroche qui se lit, pas
+            // seulement combien. Un 4/6 ne dit pas la même chose selon les deux items manqués.
+            if (c.ScoresQuestionnaire.Count > 0)
+            {
+                var bande = c.BandeCode switch
+                {
+                    "3-4"   => BandeAgeCarto.TroisQuatre,
+                    "5-6"   => BandeAgeCarto.CinqSix,
+                    "7-9"   => BandeAgeCarto.SeptNeuf,
+                    _       => BandeAgeCarto.DixOnze
+                };
+
+                sb.AppendLine("## Questionnaire parent");
+                sb.AppendLine();
+                sb.AppendLine($"_Rempli par : {c.InformateurLisible}_");
+                sb.AppendLine();
+                foreach (var axe in CartographieItemsV2.AxeKeys)
+                {
+                    if (!c.ScoresQuestionnaire.TryGetValue(axe, out var score)) continue;
+
+                    var niveau = CartographieItemsV2.NiveauPourScore(score);
+                    sb.AppendLine($"### {CartographieItemsV2.AxeLabel(axe)} — **{score}/6** · {CartographieContent.NiveauLabel(niveau)}");
+                    sb.AppendLine();
+
+                    var enonces = CartographieItemsV2.Items(axe, bande);
+                    c.ReponsesQuestionnaire.TryGetValue(axe, out var reps);
+                    for (int i = 0; i < enonces.Count; i++)
+                    {
+                        var r = reps != null && i < reps.Length ? reps[i] : "";
+                        var marque = r switch { "oui" => "✅", "non" => "❌", _ => "▫️" };
+                        sb.AppendLine($"- {marque} {enonces[i]}");
+                    }
+                    sb.AppendLine();
+                }
+            }
 
             foreach (var profil in ProfilsObservesV2.Profils)
             {
@@ -301,7 +442,42 @@ namespace MedCompanion.Services.Evaluations
                 sb.AppendLine();
             }
 
+            // La synthèse en dernier, sous un titre stable : c'est lui qui permet de la relire.
+            // Elle est en CORPS et non en en-tête YAML — un texte de plusieurs paragraphes n'a
+            // rien à faire dans des métadonnées, et il doit rester lisible tel quel.
+            if (!string.IsNullOrWhiteSpace(c.SyntheseTexte))
+            {
+                sb.AppendLine(TitreSynthese);
+                sb.AppendLine();
+                sb.AppendLine($"_Fiabilité — questionnaire parent : {FiabiliteCartographie.LabelDe(c.FiabiliteQuestionnaire)} · "
+                            + $"profils observés : {FiabiliteCartographie.LabelDe(c.FiabiliteObservation)}_");
+                sb.AppendLine();
+                sb.AppendLine(c.SyntheseTexte.Trim());
+                sb.AppendLine();
+            }
+
             return sb.ToString();
+        }
+
+        private const string TitreSynthese = "## Synthèse de la cartographie";
+
+        /// <summary>Récupère le texte de synthèse, écrit en corps Markdown sous son titre stable.</summary>
+        private static string? ExtraireSynthese(string texte)
+        {
+            var i = texte.IndexOf(TitreSynthese, StringComparison.Ordinal);
+            if (i < 0) return null;
+
+            var apres  = texte[(i + TitreSynthese.Length)..].Replace("\r\n", "\n");
+            var lignes = apres.Split('\n').ToList();
+
+            // La première ligne non vide est le rappel des fiabilités, en italique : elle est
+            // regénérée à l'écriture, on ne la relit pas comme faisant partie du texte.
+            int debut = 0;
+            while (debut < lignes.Count && string.IsNullOrWhiteSpace(lignes[debut])) debut++;
+            if (debut < lignes.Count && lignes[debut].TrimStart().StartsWith("_Fiabilité")) debut++;
+
+            var corps = string.Join("\n", lignes.Skip(debut)).Trim();
+            return string.IsNullOrWhiteSpace(corps) ? null : corps;
         }
     }
 }

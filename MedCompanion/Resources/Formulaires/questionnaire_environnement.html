@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Questionnaire Cartographie de l'environnement</title>
+<style>
+/*
+  CARTOGRAPHIE DE L'ENVIRONNEMENT — feuille remplie par le parent en salle d'attente.
+
+  Ne porte QUE les 22 items destinés au parent. Les 14 autres sont cotés par le médecin
+  depuis l'entretien : ce sont ceux qui mettent en cause celui qui remplit — un parent en
+  difficulté sur le cadre est précisément celui qui répondra « oui ».
+
+  Contrairement au questionnaire de l'enfant, cette feuille N'EST PAS déclinée par tranche
+  d'âge : les items décrivent le milieu, pas le développement.
+
+  Géométrie identique en esprit au questionnaire enfant — repères de calage, jeton, blocs
+  délimités, deux colonnes de cases à abscisse constante — mais les blocs ont des tailles
+  INÉGALES (5 / 6 / 9 / 2). D'où l'importance de la carte de coordonnées : la géométrie est
+  mesurée sur la feuille, jamais supposée.
+*/
+
+@page { size: A4 portrait; margin: 0; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Arial, sans-serif;
+  width: 210mm; height: 297mm;
+  padding: 6mm 10mm;
+  background-color: #ffffff;
+  color: #00264d;
+  display: flex; flex-direction: column; gap: 2.4mm;
+  position: relative;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact;
+}
+
+/* Repères de calage — identiques aux autres feuilles. Le repère bas-droit est plus petit :
+   c'est ce qui permet de détecter une numérisation à 180°. NE PAS DÉPLACER. */
+.fiducial { position: absolute; background-color: #000000;
+  -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.fiducial.tl, .fiducial.tr, .fiducial.bl { width: 4mm; height: 4mm; }
+.fiducial.br { width: 2.5mm; height: 2.5mm; }
+.fiducial.tl { top: 3mm; left: 3mm; }
+.fiducial.tr { top: 3mm; right: 3mm; }
+.fiducial.bl { bottom: 3mm; left: 3mm; }
+.fiducial.br { bottom: 3mm; right: 3mm; }
+
+.header-container { display: flex; justify-content: space-between; align-items: center; }
+.logo-container { display: flex; align-items: center; gap: 8px; }
+.logo-circle { width: 26px; height: 26px; background-color: #1E8449; color: #fff;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 14px; }
+.logo-text h2 { font-size: 14px; color: #1E8449; font-weight: 800; line-height: 1; }
+.logo-text p  { font-size: 8px;  color: #1E8449; font-weight: 600; }
+
+.title-container { text-align: center; }
+.title-container h1 { font-size: 14px; color: #1E8449; font-weight: 800;
+  letter-spacing: 0.5px; text-transform: uppercase; }
+.title-container p { font-size: 8px; color: #1E8449; font-weight: 700; margin-top: 1px; }
+
+/* Jeton : type + version de mise en page, donc géométrie de relecture. Même préfixe que les
+   autres formulaires, pour hériter de la reconnaissance tolérante à l'OCR. */
+.jeton-formulaire { font-family: 'Courier New', Courier, monospace; font-size: 5px;
+  letter-spacing: 0.5px; color: #b8c6d6; font-weight: 400; margin-top: 1px; }
+
+.date-box { border: 1px solid #b8c6d6; border-radius: 3px; padding: 3px 6px;
+  font-size: 8px; text-align: center; min-width: 26mm; }
+.date-box strong { font-size: 10px; display: block; margin-top: 1px; }
+
+.patient-header-info { display: flex; justify-content: space-between; align-items: center;
+  background-color: #EAF6EF; border: 1px solid #C8E6D5; border-radius: 3px;
+  padding: 2mm 3mm; font-size: 10px; }
+.patient-header-info span { color: #4f6d8a; font-size: 8px; }
+
+.informateur-row { display: flex; align-items: center; gap: 4mm;
+  border: 1px solid #C8E6D5; border-radius: 3px; padding: 2mm 3mm; font-size: 9px; }
+.informateur-row .label { font-weight: 700; color: #1E8449; font-size: 9px; }
+.informateur-choix { display: flex; align-items: center; gap: 3mm; }
+.informateur-choix .opt { display: flex; align-items: center; gap: 1.2mm; }
+.ligne-nom { flex: 1; border-bottom: 0.4mm dotted #93a7bd; height: 4mm; }
+
+.consigne { font-size: 8.5px; color: #4f6d8a; text-align: center; font-style: italic; }
+
+/* ── Blocs : une feuille dimensionnelle par bloc ─────────────────────── */
+.blocs-container { display: flex; flex-direction: column; gap: 2mm; }
+.bloc { border: 0.6mm solid #1E8449; border-radius: 3px; overflow: hidden; }
+.bloc-header { background-color: #1E8449; color: #fff; display: flex; align-items: center;
+  padding: 1.2mm 3mm; }
+.bloc-numero { background-color: #fff; color: #1E8449; width: 4.2mm; height: 4.2mm;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 8px; font-weight: 800; margin-right: 2mm; flex-shrink: 0; }
+.bloc-titre { flex: 1; font-size: 10px; font-weight: 800; letter-spacing: 0.3px;
+  text-transform: uppercase; }
+.bloc-soustitre { font-size: 8px; font-weight: 600; opacity: 0.85; margin-right: 3mm; }
+.bloc-colonnes { display: flex; flex-shrink: 0; }
+.bloc-colonnes div { width: 12mm; text-align: center; font-size: 8px; font-weight: 800;
+  letter-spacing: 0.5px; }
+
+.item-row { display: flex; align-items: center; padding: 0.9mm 3mm;
+  border-top: 0.2mm solid #DCEBE2; }
+.item-row:first-of-type { border-top: none; }
+.item-num { width: 4mm; font-size: 8px; color: #93a7bd; font-weight: 700; flex-shrink: 0; }
+.item-texte { flex: 1; font-size: 9px; line-height: 1.25; padding-right: 3mm; }
+
+/* Colonnes de cases à abscisse constante : toutes les cases OUI partagent un x, toutes les
+   NON un autre — la détection de marque n'a qu'un couple de colonnes à connaître. */
+.case-col { width: 12mm; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; }
+.case { width: 4mm; height: 4mm; border: 0.4mm solid #00264d; border-radius: 0.6mm;
+  background-color: #ffffff; }
+
+.footer { margin-top: auto; display: flex; justify-content: space-between;
+  align-items: flex-end; font-size: 7px; color: #93a7bd; }
+.footer .confid { max-width: 130mm; line-height: 1.3; }
+</style>
+</head>
+<body>
+
+  <div class="fiducial tl" data-fiducial="tl"></div>
+  <div class="fiducial tr" data-fiducial="tr"></div>
+  <div class="fiducial bl" data-fiducial="bl"></div>
+  <div class="fiducial br" data-fiducial="br"></div>
+
+  <div class="header-container">
+    <div class="logo-container">
+      <div class="logo-circle">Mc</div>
+      <div class="logo-text">
+        <h2>MedCompanion</h2>
+        <p>Assistant Pédopsychiatrique</p>
+      </div>
+    </div>
+    <div class="title-container">
+      <h1>Cartographie de l'environnement</h1>
+      <p>Questionnaire parent – à remplir pendant le temps d'attente</p>
+      <p class="jeton-formulaire">MEDCOMP-FORM-CARTOENV-V1</p>
+    </div>
+    <div class="date-box">
+      <div>Date</div>
+      <strong>{{date_rdv}}</strong>
+    </div>
+  </div>
+
+  <div class="patient-header-info">
+    <div><span>Enfant :</span> <strong>{{enfant_prenom}} {{enfant_nom}}</strong></div>
+    <div><span>Né(e) le :</span> <strong>{{enfant_dob}}</strong></div>
+    <div><span>Âge :</span> <strong>{{enfant_age}} ans</strong></div>
+  </div>
+
+  <div class="informateur-row" data-zone="informateur">
+    <span class="label">Qui remplit ce questionnaire ?</span>
+    <div class="informateur-choix">
+      <div class="opt"><span class="case" data-champ="informateur_mere"></span> Mère</div>
+      <div class="opt"><span class="case" data-champ="informateur_pere"></span> Père</div>
+      <div class="opt"><span class="case" data-champ="informateur_autre"></span> Autre</div>
+    </div>
+    <span style="font-size:8px;color:#4f6d8a;">Prénom et lien :</span>
+    <div class="ligne-nom" data-champ="informateur_nom"></div>
+  </div>
+
+  <div class="consigne">
+    Cochez OUI ou NON pour chaque phrase, en pensant à la vie de votre enfant aujourd'hui. Répondez à toutes les lignes.
+  </div>
+
+  <!-- ══ BLOCS ══ Une feuille dimensionnelle par bloc. Tailles inégales : la carte de
+       coordonnées les mesure, elles ne sont jamais supposées. -->
+  <div class="blocs-container">
+    {{blocs}}
+  </div>
+
+  <div id="coordmap" style="display: none;"></div>
+
+  <div class="footer">
+    <div class="confid">
+      Document confidentiel — versé au dossier médical de l'enfant. Ce questionnaire est un support
+      d'observation clinique : il n'établit aucun diagnostic et ne remplace pas l'examen du médecin.
+    </div>
+    <div>{{enfant_nom}} · {{date_rdv}}</div>
+  </div>
+
+  <script>
+    window.onload = function () {
+      var LARGEUR_PAGE_MM = 210, HAUTEUR_PAGE_MM = 297;
+      var pxParMm = document.body.getBoundingClientRect().width / LARGEUR_PAGE_MM;
+
+      function rectMm(el) {
+        var r = el.getBoundingClientRect();
+        var round2 = function (v) { return Math.round(v / pxParMm * 100) / 100; };
+        return { x: round2(r.left), y: round2(r.top), w: round2(r.width), h: round2(r.height) };
+      }
+
+      var carte = {
+        template: 'questionnaire_environnement',
+        version: 1,
+        page: { widthMm: LARGEUR_PAGE_MM, heightMm: HAUTEUR_PAGE_MM },
+        fiducials: {},
+        fields: []
+      };
+
+      document.querySelectorAll('[data-fiducial]').forEach(function (el) {
+        carte.fiducials[el.getAttribute('data-fiducial')] = rectMm(el);
+      });
+
+      document.querySelectorAll('[data-zone]').forEach(function (el) {
+        carte.fields.push({ name: 'zone_' + el.getAttribute('data-zone'), type: 'zone', rect: rectMm(el) });
+      });
+
+      document.querySelectorAll('[data-bloc]').forEach(function (el) {
+        carte.fields.push({
+          name: 'bloc_' + el.getAttribute('data-bloc'),
+          type: 'bloc',
+          index: parseInt(el.getAttribute('data-index') || '0', 10),
+          nb: el.querySelectorAll('[data-item]').length,
+          rect: rectMm(el)
+        });
+      });
+
+      document.querySelectorAll('[data-item]').forEach(function (el) {
+        var oui = el.querySelector('[data-case="oui"]');
+        var non = el.querySelector('[data-case="non"]');
+        carte.fields.push({
+          name: el.getAttribute('data-item'),
+          type: 'ligne',
+          rect: rectMm(el),
+          oui: oui ? rectMm(oui) : null,
+          non: non ? rectMm(non) : null
+        });
+      });
+
+      var cible = document.getElementById('coordmap');
+      if (cible) cible.textContent = JSON.stringify(carte);
+    };
+  </script>
+
+</body>
+</html>

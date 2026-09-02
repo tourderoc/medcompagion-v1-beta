@@ -213,13 +213,86 @@ Un bloc à la fois plutôt que la page entière : sur le formulaire, la lecture 
 
 La fenêtre offre aussi, comme celle du formulaire, **le visualiseur PDF d'Edge** (zoom, défilement — c'est de l'écriture manuscrite qu'on relit) et **le sélecteur de modèle de lecture** (`LlamaCppProfiles.VisionCapable`), pour comparer les modèles sur une même feuille. Lire des croix dans de petites cases n'est pas lire des lettres capitales : rien ne dit que le meilleur modèle soit le même que pour le formulaire.
 
+### 4.2.1 Le détail des réponses, pas seulement le score
+
+**Les 30 réponses sont persistées**, six par axe (`oui` / `non` / `vide`), à côté des cinq scores.
+
+Pourquoi : **un 4/6 ne dit pas la même chose selon QUELS items ont échoué.** En Attachement, manquer la séparation et la prudence avec l'inconnu, ou manquer le recours et la consolabilité, ce sont deux enfants différents — même score, même couleur. Les six dimensions de chaque axe sont stables précisément pour qu'on sache *ce qui* accroche ; ne garder que la somme jetterait l'information que cette structure existe pour produire.
+
+- **Sur la carte du dossier**, chaque axe du questionnaire est **cliquable** : il déplie les six réponses du parent, ✓ vert / ✗ rouge / — gris. Replié par défaut — la carte porte déjà 18 axes de profil et 5 scores.
+- **Dans le corps Markdown** de la fiche, chaque axe liste ses six énoncés avec leur réponse : la fiche se lit sans l'application.
+- **La reprise d'un dépouillement retrouve l'exact contenu coché.** Auparavant, seul le score étant stocké, elle reconstituait « les N premiers items en oui » — faux dès que les oui n'étaient pas les premiers.
+
+⚠️ Les fiches dépouillées avant ce changement n'ont que leurs scores. Le scan étant archivé, il suffit de rouvrir le crayon et de relancer la lecture pour reconstituer le détail.
+
+### 4.2.2 Qui a rempli la feuille
+
+La règle était posée dès le §3.2 : *un 5/6 rempli par le parent qui vit avec l'enfant ne se lit pas comme un 5/6 rempli par celui qui le voit deux week-ends par mois.* La feuille posait la question, **rien ne recueillait la réponse** — l'information était collectée puis jetée, ce qui est le pire des deux.
+
+Elle est maintenant capturée à trois niveaux :
+- **Lue automatiquement** : le bandeau « Qui remplit ce questionnaire ? » est une **zone** de la carte de coordonnées (`data-zone="informateur"`, mesurée à 29,5 → 38,0 mm), découpée et lue comme les blocs d'axes. Case cochée + prénom manuscrit.
+- **Corrigeable** en tête du dépouillement : Mère / Père / Autre + prénom et lien.
+- **Stockée** dans la fiche (`informateur`, `informateur_nom`) et affichée sous le titre du questionnaire, dans la carte comme dans le corps Markdown.
+
+La lecture de l'informateur est **indépendante de celle des axes** : elle est reprise même si les blocs échouent, et son échec ne fait pas tomber les trente réponses.
+
 ### 4.3 Le bloc est fonctionnel ✅
 
 Le parcours complet tourne, éprouvé de bout en bout sur un patient réel le 1er septembre 2026 : impression → observation → scan → lecture automatique → dépouillement vérifié → carte au dossier avec les deux moitiés.
 
-**Pas d'étape de synthèse dans ce bloc — décision explicite.** La cartographie *produit* les deux moitiés de l'observation ; l'interprétation appartient aux étapes suivantes du parcours (Évaluation, Synthèse), où elle existe déjà. En ajouter une ici créerait un second endroit où s'écrit la même lecture clinique — précisément le défaut retiré de la V1 tout au long de cette reconstruction.
+**Une synthèse qui présente, et ne conclut pas — carte 4.** Elle a d'abord été écartée (« l'interprétation appartient aux étapes suivantes »), puis reprise sous une forme différente : ce n'est pas une seconde interprétation, c'est **le pont** qui manquait vers l'étape qui raisonne.
 
-Ce que cela suppose en retour, et qui n'est pas encore fait : **l'étape d'interprétation devra lire la fiche de cartographie.** Sans ça, les deux moitiés resteront visibles au dossier sans jamais atteindre le raisonnement. C'est le lien à établir quand ce travail viendra — il rend caduc le « manque identifié » du §3.3, qui n'en était un que faute d'aval.
+La ligne est fine et posée explicitement : cette synthèse dit *« voici les deux moitiés, voilà ce qu'elles valent, prêtes à être croisées »* — jamais *« cet enfant présente un trouble de X »*. Le jour où elle conclurait, il y aurait deux endroits où s'écrit le même diagnostic, et ils divergeraient. Le prompt l'interdit nommément : aucun diagnostic même sous forme d'hypothèse, aucune orientation, aucun recalcul de score.
+
+### 4.3.1 Les deux curseurs de fiabilité
+
+Le médecin qualifie **les deux moitiés**, pas seulement le questionnaire parent. Pondérer la seule feuille reviendrait à traiter implicitement les dix-huit axes observés comme certains — or un enfant vu vingt minutes, malade ou figé lors d'une première rencontre, ça se pondère aussi. La dissymétrie aurait été un jugement caché.
+
+Ce que ça apporte : **rendre auditable ce qui reste sinon dans la tête du médecin.** Il sait, en récupérant la feuille, si elle a été remplie posément ou cochée en quatre-vingt-dix secondes dans le couloir. Cette information oriente déjà sa lecture ; sans elle, dans six mois, personne ne saura pourquoi tel 5/6 a pesé peu.
+
+- **Quatre niveaux nommés** — Fiable (1,00) · Moyennement fiable (0,65) · Peu fiable (0,30) · Non exploitable. Le médecin choisit un **mot**, le système tient le **nombre** : on ne distingue pas 0,6 de 0,7 de façon reproductible, mais « fiable » de « peu fiable », oui.
+- **Échelle 0-1**, la même que `SynthesisWeightTracker` et que le poids des documents importés — le modèle ne voit qu'une seule notion de poids.
+- **Zéro n'est pas un poids, c'est un état.** « Non exploitable » porte un poids `null` : la source est **écartée et dite comme telle**, jamais pesée à zéro dans un calcul.
+- **La fiabilité ne modifie jamais une valeur.** Un 4/6 reste un 4/6, sa couleur ne bouge pas. Elle qualifie la source, pas la mesure — sinon on obtiendrait des scores « ajustés » que plus personne ne pourrait retracer.
+- **Les deux fiabilités sont exigées avant de rédiger** : une synthèse non qualifiée est précisément celle qu'on voulait éviter.
+
+### 4.3.2 Un signal objectif en plus du jugement
+
+Les **axes incomplets** sont affichés à côté des curseurs : un axe avec deux items sans réponse est mécaniquement plus faible, indépendamment de tout jugement. C'est une fiabilité **par axe**, que le curseur global ne peut pas produire — les deux se complètent au lieu de se répéter.
+
+### 4.3.3 Le croisement appartient à la Synthèse Globale
+
+**Décision : le croisement de cette synthèse avec l'interrogatoire et les bilans ne se fait PAS ici**, mais dans la phase **Synthèse Globale**, où il est plus pertinent — c'est là que toutes les sources sont réunies.
+
+La carte 4 s'arrête donc à sa mission : présenter et qualifier les deux moitiés de la cartographie. Elle produit un matériau pondéré, prêt à être croisé ; le croisement est un autre geste, à un autre moment du parcours.
+
+Ce qui reste à faire en aval : **la Synthèse Globale devra lire cette synthèse et ses deux poids.** Sans ça, la cartographie restera visible au dossier sans jamais atteindre le raisonnement.
+
+### 4.3.35 Le modèle qui rédige la synthèse
+
+L'étape **`cartographie_synthese`** est entrée au catalogue `EtapesConsultation`, dans une phase propre — **Cartographie de l'enfant** — placée entre le 1er entretien et le suivi, comme dans le parcours réel. Elle apparaît donc dans « Affectation par étape » du moteur local, avec son sélecteur de modèle, et la génération bascule dessus via `PreparerModeleAsync` comme les autres étapes de raisonnement.
+
+Non affectée, elle hérite simplement du modèle courant — aucune bascule, aucun redémarrage de serveur.
+
+**Pas d'entrée pour la lecture des cases de la feuille**, volontairement : c'est une tâche de **vision**, servie par `LlamaCppProfiles.VisionCapable` et choisie dans la fenêtre de dépouillement elle-même. La mêler aux modèles de texte laisserait croire qu'un modèle sans projecteur peut lire une image.
+
+### 4.3.4 Où vit la synthèse dans le dossier
+
+Elle apparaît dans l'onglet **SYNTHESE**, **juste après la Synthèse Initiale** — à sa place chronologique : la cartographie suit la 1ère consultation et précède le bilan final de l'évaluation.
+
+Le bloc porte **le texte et ce qui le qualifie** — l'informateur et les deux fiabilités — mais **pas les scores ni les axes** : ils vivent dans BILANS, et les répéter ferait deux endroits à tenir à jour. Une synthèse lue sans savoir ce qu'elle vaut est une synthèse mal lue ; une synthèse doublée de données déjà affichées ailleurs est une source de divergence.
+
+Seules les cartographies **qui ont un texte** y figurent : une cartographie sans synthèse n'a rien à dire à cet endroit.
+
+### 4.3.5 Clôture de la séance
+
+Un bouton **🔒 Clôturer la séance**, sous les quatre cartes, fige la cartographie en **lecture seule**. Irréversible, avec confirmation.
+
+Ce n'est pas un geste de publication — la carte est au dossier dès la première sauvegarde. C'est un geste de **fermeture** : ce qui a été observé ce jour-là cesse de bouger. Une cartographie indéfiniment modifiable ne serait plus le témoin d'une séance.
+
+La garde est posée **dans l'écriture** (`EcrireCartoV2` refuse toute écriture sur une fiche close), et non sur chaque bouton : un chemin oublié — le crayon du dossier bleu, par exemple — passerait sinon à travers. Les pastilles des profils cessent aussi de répondre, par leur commande et non par leur apparence : un axe grisé mais cliquable laisserait croire à une saisie enregistrée.
+
+Un bandeau `🔒 Séance clôturée — lecture seule` s'affiche en tête du bloc.
 
 ### 4.4 Reste à faire, par ordre d'utilité
 
@@ -783,7 +856,234 @@ Le travail axe par axe a mis au jour que **les sphères de la V1 n'avaient pas d
 | Emplacement des cartographies V2 | ✅ Onglet BILANS du dossier bleu, qui héberge déjà des cartographies générées |
 | Moment du versement au dossier | ✅ **Dès la sauvegarde** — renversé à l'usage : c'est l'état de complétude porté par la carte, et non un moment de publication, qui dit où en est la cartographie |
 | Lecture automatique des cases | ✅ Éprouvée sur feuille manuscrite réelle : **29 réponses sur 30**, la trentième laissée vide par prudence |
-| Étape de synthèse dans le bloc | ❌ Refusée — l'interprétation appartient aux étapes suivantes, où elle existe déjà ; l'ajouter ici dupliquerait la lecture clinique |
+| Étape de synthèse dans le bloc | ✅ **Retenue** (après avoir été écartée) — mais elle PRÉSENTE et QUALIFIE sans jamais conclure : c'est le pont vers l'étape qui raisonne, pas une seconde interprétation |
+| Fiabilité des sources | ✅ **Deux curseurs**, un par moitié — pondérer la seule feuille parent traiterait implicitement l'observation du médecin comme certaine |
+| Échelle de fiabilité | ✅ Quatre niveaux nommés → poids 0-1, la même échelle que les documents importés. « Non exploitable » = poids null, source écartée, jamais pesée à zéro |
+| Effet de la fiabilité sur les scores | ❌ Aucun — elle qualifie la source, jamais la valeur. Un 4/6 reste un 4/6 |
+| Croisement avec interrogatoire et bilans | ⏭ **Reporté à la phase Synthèse Globale**, où toutes les sources sont réunies — la carte 4 s'arrête à produire un matériau pondéré |
+| Clôture de la séance | ✅ Bouton dédié, irréversible, lecture seule — garde posée dans l'écriture et non sur les boutons |
 | « V2 » dans le titre de la carte | ❌ Refusé — la version vit dans le fichier, pas dans le libellé lu par un tiers |
 | Fenêtre séparée pour agrandir | ❌ Refusée — `Focus Travail` (F1) existait déjà ; la contrainte réelle est la hauteur, d'où le repli de la frise |
 | Cohabitation avec le bloc Évaluation | ⏸ Aucune pour l'instant — on construit à côté, on branchera une fois testé |
+
+## Séance 3 — carte 3 : Évaluation ciblée
+
+Med dérive de l'orientation validée **au plus 5 axes** d'observation. Chaque axe porte son
+intitulé, **ce qu'il vient trancher** (repris mot pour mot de l'orientation), **4 à 6 constats
+cochables OUI / NON**, et sa propre zone de remarques.
+
+Deux temps de génération, pour la même raison que l'orientation : un appel pose les axes, puis un
+appel par axe produit ses constats — chacun sachant ce que son axe sert, et voyant les constats
+déjà posés pour ne pas les redire sous un autre nom.
+
+| Décision | État |
+|---|---|
+| Origine des axes | ✅ L'orientation **telle qu'à l'écran**, pas celle enregistrée — le médecin vient souvent de l'affiner sans cliquer Enregistrer |
+| Axe sans rattachement | ❌ Refusé dans le prompt — un axe qui ne se rattache à rien est un inventaire qui revient par la fenêtre |
+| Nombre d'axes | ✅ 5 maximum — un axe, c'est du temps d'observation dans une séance qui en a peu |
+| Formulation des constats | ✅ **Constat, jamais inférence** — « se retourne quand on entre » se coche ; « trouble de l'attention » se conclut |
+| Portée des constats | ✅ Observable dans le cabinet, pendant cette séance — rien qui suppose l'école ou le récit d'un tiers |
+| Troisième état | ✅ **Case vide = non observé**, jamais « non » — la fiche l'écrit `- [ ]` et le dit en toutes lettres |
+| Se dédire | ✅ Recliquer une case la décoche — sinon une erreur de clic en séance devient une donnée qu'on ne peut plus qu'inverser en mentant |
+| Remarques | ✅ **Une zone par axe** — une phrase orpheline ne dirait plus, à la synthèse, sur quoi elle portait |
+| Chiffre affiché | ✅ Constats **renseignés** sur constats proposés — jamais un score : compter les oui donnerait un chiffre qui ressemble à une gravité |
+| Orientation vide | ✅ Refus explicite, **sans dépenser d'appel** — plutôt que produire des axes génériques |
+| Axe dont les constats échouent | ✅ Il reste, avec sa charpente ; l'échec est nommé |
+| Réécriture des axes | ❌ Bloquée si des axes existent — les remplacer laisserait les coches sans leurs constats |
+| Écriture de la fiche | ✅ Les **deux** rubriques écrites quel que soit le bouton — sinon enregistrer l'orientation effacerait les coches sans rien dire |
+| Modèle | ✅ Étape `evaluation_ciblee` au catalogue, phase Environnement & évaluation ciblée |
+
+## Séance 3 — carte 4 : Cartographie de l'environnement, versant médecin
+
+Les **14 items** qui mettent en cause l'adulte qui remplit ne peuvent pas lui être posés : le
+médecin les cote depuis l'entretien, dans les 4 feuilles et leurs 11 nervures. Les 22 autres
+partent en salle d'attente sur la feuille parents.
+
+| Décision | État |
+|---|---|
+| Échelle | ✅ **OUI / NON**, la même que la feuille parents — les deux moitiés doivent se lire ensemble |
+| Troisième état | ✅ **Case vide = non renseigné**, jamais « non ». Ces items sont des affirmations favorables : un « non » y est un signal, en faire le défaut peindrait en rouge tout ce qui n'a pas été abordé |
+| Items du parent à l'écran | ✅ **Affichés en grisé**, non cliquables, étiquetés « feuille parents » — sinon le médecin coterait 3 lignes en croyant qu'elles font toute la nervure |
+| Couleur des nervures | ⏭ **Attend les deux moitiés** — colorer sur les seuls items du médecin donnerait une teinte qui a l'air d'un résultat. La nervure annonce ce qui lui manque (`0/2 cotés · 2 de la feuille parent`) |
+| Texte des items | ❌ Non éditable — questions fixes, communes à tous les patients : c'est ce qui rend une feuille comparable d'un dossier à l'autre |
+| Se dédire | ✅ Recliquer une case la décoche |
+| Écriture dans la fiche | ✅ Seuls les items **répondus** — écrire les vides remplirait la fiche de lignes qui ressembleraient à un travail fait |
+| Clé de relecture | ✅ **Le texte de l'item**. Un item reformulé perd son ancienne réponse : la faire glisser attribuerait au médecin une réponse à une question qu'on ne lui a pas posée |
+
+## Séance 3 — carte 5 : feuille parents, scan et dépouillement
+
+Deux gestes séparés : **scanner** en fin de séance (deux minutes, la famille est encore là),
+**dépouiller** après (sans elle). Le scan est archivé à côté de la fiche ET versé aux Documents du
+dossier bleu, où son crayon rouvre le dépouillement.
+
+| Décision | État |
+|---|---|
+| Nombre de lignes par bloc | ✅ **Lu dans la carte de coordonnées** (`nb`), jamais supposé — les blocs font 5/6/9/2 items, coder « six » ferait inventer des réponses dans *Cadre & repères* |
+| Désaccord gabarit / catalogue | ✅ Le bloc est **refusé**, pas lu — un décalage d'une ligne fausserait toute une feuille en silence |
+| Case douteuse | ✅ Le modèle répond `null` — une case vide se corrige à la main, une case devinée passe inaperçue |
+| Pré-remplissage | ✅ Ne touche que les lignes **encore vides** : une correction manuelle n'est pas reprise par une seconde lecture |
+| Informateur | ✅ Lu indépendamment, conservé même si les blocs échouent, et **nommé dans la fiche** |
+| Score / couleur au dépouillement | ❌ **Aucun**, contrairement à la feuille de l'enfant : une feuille d'environnement se lit sur ses deux moitiés, un chiffre sur la seule part du parent aurait l'air d'un résultat. Chaque bloc annonce à la place `+ 5 cotés par vous` |
+| Avertissement « bloc incomplet » | ❌ Retiré : là-bas il protégeait un SCORE creux ; ici rien n'est scoré, et un retour partiel est un fait clinique — c'est même le cas prévu quand la feuille ne revient pas complète |
+| Chemin du scan | ✅ Retenu dans la fiche — sans lui, « reprendre le dépouillement » n'a aucune image à montrer |
+| Versement aux Documents | ✅ Formulaire **déclaré** (`CARTOENV`), pas reconnu : une feuille manuscrite scannée n'a pas de couche texte et finirait classée « bilans » |
+| Fenêtre de dépouillement | ✅ Jumelle de celle de l'enfant, mais **séparée** — fondre les deux aurait obligé à masquer ce qui n'a pas de sens dans l'une ou l'autre |
+
+## Séance 3 — carte 6 : Synthèse de la séance
+
+Trois temps, dans cet ordre : les réponses **réunies et montrées**, les **deux fiabilités**, puis
+le **texte** rédigé en conséquence.
+
+| Décision | État |
+|---|---|
+| Réunion des deux moitiés | ✅ C'est ici que la feuille parents et vos 14 items se rejoignent — nulle part avant |
+| Couleur d'une nervure | ✅ **Seulement si elle est complète.** 2 à 4 items : un seul manquant déplace la teinte d'un tiers. Le gris n'est pas un défaut d'affichage, il dit qu'on ne sait pas encore |
+| Couleur d'une feuille | ✅ Seulement si TOUTES ses nervures sont lisibles — une feuille dont une tige manque n'est pas « un peu moins sûre » |
+| Deux blocs | ✅ Environnement et évaluation ciblée restent **séparés jusqu'au bout** |
+| Deux fiabilités | ✅ Un curseur chacun. L'environnement repose pour moitié sur une feuille de salle d'attente, l'évaluation ciblée sur ce que le médecin a vu : un seul poids traiterait l'un comme l'autre |
+| Effet du poids | ✅ Il module la **prudence des formulations**, jamais un chiffre — aucun compte n'est corrigé |
+| Source « non exploitable » | ✅ **Écartée** du texte et son absence DITE, jamais pesée à zéro |
+| Les deux écartées | ✅ Refus explicite, **sans dépenser d'appel** |
+| Rédaction avant fiabilités | ❌ Bloquée — sans poids, la synthèse affirmerait du même ton une feuille remplie avec soin et une feuille griffonnée dans le couloir |
+| Structure de l'appel | ✅ Trois appels courts : environnement, évaluation ciblée, puis mise en regard. La mise en regard est un plus — si elle échoue, les deux présentations sont gardées |
+| Nervures non lisibles dans le prompt | ✅ **Dites**, jamais omises — les taire laisserait croire que la feuille a été lue en entier |
+| Conclusion | ❌ Aucune. La synthèse présente et qualifie ; le croisement avec l'interrogatoire et les bilans reste à la **Synthèse Globale** |
+| Fiabilités dans le texte | ✅ Écrites **en tête**, pas en note de bas de page : elles conditionnent la lecture de ce qui suit |
+| Modèle | ✅ Étape `seance3_synthese` au catalogue |
+
+## Séance 3 — versement au dossier bleu
+
+Trois entrées, et non une : deux cartes dans **BILANS**, un bloc dans **SYNTHÈSE**.
+
+| Décision | État |
+|---|---|
+| Cartographie et évaluation ciblée | ✅ **Deux cartes distinctes** — les fondre laisserait croire qu'un même regard les a produites, alors que l'une repose pour moitié sur une feuille de salle d'attente |
+| Moment du versement | ✅ **Dès l'enregistrement**, sans attendre la fin de la séance — c'est l'état porté par la carte qui dit où en est le travail, pas sa présence |
+| Cartographie incomplète | ✅ Versée telle quelle, avec son compte de nervures lisibles — la présenter comme une cartographie complète ferait fonder plus tard un raisonnement sur du gris |
+| Nervure dépliable | ✅ Le clic ouvre ses réponses, avec leur **source** (feuille parents / entretien) — un état seul ne dit pas ce qui accroche |
+| Couleur d'un axe ciblé | ❌ Aucune — trois « oui » sur quatre ne valent pas un score, ils disent trois faits |
+| Remarques du médecin | ✅ Affichées sous les constats de l'axe : c'est ce qu'il a vu, ça pèse plus qu'une case |
+| Synthèse au dossier | ✅ Onglet SYNTHÈSE, après celle de la cartographie de l'enfant — le dossier suit l'ordre des séances |
+| Fiabilités | ✅ Elles **voyagent avec le texte**, en encart — sans elles, la synthèse se relirait dans six mois avec l'assurance d'une source jugée douteuse |
+
+## Séance 3 — carte 7 : Terminer la séance
+
+| Décision | État |
+|---|---|
+| Ce que fait le bouton | ✅ Enregistre **tout** (les six cartes), puis fige la fiche en lecture seule |
+| Ordre | ✅ Enregistrer **puis** clôturer — la garde d'écriture refuse une fiche déjà close, poser la date d'abord empêcherait d'enregistrer le travail qu'on est en train de clore |
+| Garde-fou | ✅ Il **nomme** ce qui manque, partie par partie, avec le compte exact (« 9 de vos items non cotés », « 20 réponses manquantes sur 22 ») |
+| Blocage | ❌ Aucun — une feuille qui ne revient pas de la salle d'attente est un fait clinique, pas une négligence. Bloquer obligerait à inventer des réponses pour pouvoir fermer |
+| Où vit le garde-fou | ✅ Sur la **fiche**, pas sur les écrans : on enregistre d'abord, et c'est de ce qui a été écrit qu'on doit répondre |
+| « Non revenue » vs « non dépouillée » | ✅ Distingués — ce ne sont pas les mêmes suites à donner |
+| Irréversibilité | ✅ Assumée, comme à la séance 2 : une séance indéfiniment modifiable ne serait plus le témoin d'un jour donné |
+| Synthèse reprise à l'enregistrement | ✅ Seulement si l'écran en porte une — sinon enregistrer depuis une autre carte effacerait une synthèse déjà rédigée |
+
+## Retrait du bloc Évaluation V1 — étape 1 : couper l'entrée
+
+Les deux nouveaux blocs couvrent 4 des 5 étapes de la V1. La 5ᵉ — le **Bilan Final** — n'a pas
+de remplaçant, et c'est la seule sortie que l'aval consomme (Synthèse Globale, Projet
+thérapeutique, Restitution). Le retrait se fait donc en trois temps, dont voici le premier.
+
+### Ce que disent les dossiers (relevé du 02/09/2026)
+
+37 fiches d'évaluation V1, sur 35 patients, **toutes clôturées**. 16 patients portent un
+diagnostic retenu. Leur Synthèse Globale :
+
+| Situation | Nombre |
+|---|---|
+| Synthèse **validée et remplie** — la conclusion y est déjà | 12 |
+| Synthèse brouillon, vide | 1 (ANGELETTI) |
+| Aucune synthèse | 3 (JUANICO, MAKOUAR, SAINT-LUC) |
+
+**La migration en masse a donc été écartée.** 15 des 17 synthèses sont validées, et chez MANCINI
+la synthèse dit *trouble de l'adaptation avec anxiété* là où la V1 disait *trouble anxieux
+généralisé* : réinjecter le V1 y remettrait une conclusion que le médecin avait remplacée.
+Restent **4 dossiers** à traiter à la main, avec un brouillon proposé par Med.
+
+### Étape 1 — faite
+
+| Décision | État |
+|---|---|
+| Jalon « Évaluation » dans la frise | ✅ Devient **« Évaluation (archive) »**, affiché **uniquement** pour les dossiers qui en portent une, et sans chemin de création |
+| Bouton « Commencer » | ✅ Retiré — l'écran dit à la place où le travail se fait désormais |
+| Entrée du menu « + » | ✅ Offerte aux seuls dossiers portant une V1, libellée « archive » |
+| `StartCommand` | ✅ `CanExecute` forcé à `false` — garde de dernier recours si un binding réapparaît |
+| `CanStart` | ✅ Laissé intact : il pilote aussi l'affichage du panneau archive |
+| Verrou de la Synthèse Globale | ✅ **`evalCompleted || SeanceEnvAchevee`** — sans ce relais, tout patient évalué par les séances 2 et 3 resterait devant un jalon verrouillé par une étape qui n'existe plus pour lui. Strictement plus permissif : aucun dossier ne perd l'accès |
+| Code de lecture V1 | ✅ **Intact** — les 37 fiches restent lisibles et l'aval continue de les lire |
+
+### Étape 2 — les dossiers dont la conclusion n'est pas encore reprise
+
+**Aucun moteur de migration n'a été écrit, et c'est le résultat de la vérification :**
+`SyntheseGlobaleSuggesterService` filtre les évaluations sur `!IsActive` seulement — pas sur
+`IsValidated`. Les 37 fiches étant toutes clôturées, le flux existant lit déjà leur Bilan Final.
+Générer une Synthèse Globale sur ces dossiers reprend donc leur conclusion sans code nouveau.
+
+Ce qui manquait n'était pas un moteur, mais **de savoir lesquels restent à faire**.
+
+| Décision | État |
+|---|---|
+| Marqueur | ✅ Sur le jalon archive : `⚠ conclusion à reprendre en Synthèse` |
+| Critère de reprise | ✅ Une synthèse **validée**. Un brouillon ne compte pas — le seul brouillon relevé était vide, le compter aurait effacé le marqueur d'un dossier où rien n'avait été repris |
+| Effacement | ✅ **Automatique** — le marqueur disparaît dès la validation. Pas de liste à tenir ni à penser à effacer |
+| Vérification | ✅ Règle passée sur les 35 dossiers réels : **4 marqués** (ANGELETTI, JUANICO, MAKOUAR, SAINT-LUC), **12 déjà repris** |
+| Nouveau champ | ✅ `FriseStageViewModel.Note` — remplace la ligne d'état quand il y a plus important à dire que « Clôturée » |
+
+### Étape 3a — la Synthèse Globale voit enfin les deux séances
+
+**Un trou, pas une dette.** `PatientContextService.ClinicalContext` = synthèse existante OU notes ;
+les évaluations lues étaient V1 uniquement. Un enfant évalué par les séances 2 et 3 obtenait donc
+une Synthèse Globale **qui ignorait ses deux cartographies** — le travail était au dossier, mais
+invisible de la chaîne qui en dépend.
+
+`EvaluationV2ContextService` restitue les deux séances sous une forme lisible par un modèle, et
+sera réutilisé tel quel pour repointer les trois autres consommateurs.
+
+| Décision | État |
+|---|---|
+| Ce qui est transmis | ✅ Les **synthèses** d'abord, avec leurs fiabilités, puis un résumé par axe et par nervure |
+| Ce qui ne l'est pas | ❌ Les 156 items un par un — le prompt porte déjà tout le dossier, et noyer une conclusion sous ses justificatifs la rend moins lisible. Mesuré : **1 152 caractères** pour une séance complète |
+| Feuille non lisible | ✅ **Dite**, jamais omise, avec la consigne « ne pas l'interpréter » |
+| Case non cochée | ✅ **Absente** du contexte — jamais transmise comme un « non » |
+| Orientation diagnostique | ✅ Étiquetée « mise au point de l'attention, PAS un diagnostic » — sans quoi un modèle la lit comme une conclusion |
+| Fiabilités | ✅ Transmises, avec la consigne qu'elles qualifient la source et jamais la valeur |
+| Garde « dossier vide » | ✅ Les séances V2 comptent comme matière : un dossier sans V1 mais avec deux cartographies n'est plus refusé |
+| Chemins câblés | ✅ Création (`GenerateInitialAsync`) **et** relecture incrémentale (`SuggestPatchAsync`) |
+| Bloc V1 dans le prompt | ✅ Conservé, renommé « ancien parcours » — les dossiers anciens continuent d'être lus |
+
+**Restent à repointer :** `ProjetTherapeutiqueSuggesterService`, `SyntheseGlobaleRelectureService`,
+`DossierReaderService` + `RestitutionHtmlPreviewService`.
+
+### Étape 3b — les trois autres consommateurs
+
+`EvaluationV2ContextService` a été écrit une fois ; le brancher a coûté quelques lignes par moteur.
+
+| Consommateur | État | Note |
+|---|---|---|
+| `SyntheseGlobaleSuggesterService` — création | ✅ Bloc `[C]` | + garde « dossier vide » corrigée |
+| `SyntheseGlobaleSuggesterService` — patch | ✅ Bloc `[D]` | |
+| `SyntheseGlobaleRelectureService` | ✅ Bloc `[D]` | **Le plus important** : la relecture vérifie que chaque affirmation est SOURCÉE. Sans les cartographies, elle aurait signalé « non sourcé » tout ce que la synthèse en tire à juste titre. La consigne précise qu'une feuille NON LISIBLE ou une source « non exploitable » reste, elle, une source invalide |
+| `ProjetTherapeutiqueSuggesterService` — création | ✅ Bloc `[D]` | Consigne ajoutée : les cartographies disent aussi **ce qui tient**, ce sur quoi un projet s'appuie |
+| `ProjetTherapeutiqueSuggesterService` — patch | ✅ Bloc `[C bis]` | + garde « dossier vide » corrigée |
+| `DossierReaderService` + `RestitutionHtmlPreviewService` | ⏭ **Non fait — et c'est délibéré** | |
+
+**Pourquoi la Restitution n'a pas été branchée.** Ce n'est pas un câblage : ses pages sont des
+maquettes construites autour des FORMES V1 — `BuildCartoEnfantPageA/B/C` dessine la chenille à 6
+segments, `BuildEnvEduPage1/2/3` les 5 feuilles, sur ~250 lignes de HTML mis en page. La V2 n'a ni
+la même structure (5 axes + 18 profils observés) ni le même découpage (4 feuilles, 36 items).
+
+Les brancher mécaniquement produirait un document faux pour les parents. C'est une **refonte
+graphique du document de restitution**, pas un repointage — et le ton destiné aux parents relève
+d'une décision clinique, pas technique. À traiter comme un chantier à part.
+
+### Où en est le retrait du bloc V1
+
+| | |
+|---|---|
+| Entrée coupée | ✅ |
+| 4 dossiers à reprendre en Synthèse | ⏳ marqués dans la frise, à faire par le médecin |
+| Synthèse Globale (création, patch, relecture) | ✅ repointée |
+| Projet thérapeutique (création, patch) | ✅ repointé |
+| Restitution | ⏭ refonte graphique à part |
+| Suppression des ~7 300 lignes | ⏸ **bloquée par la Restitution**, qui reste le seul consommateur des formes V1 |

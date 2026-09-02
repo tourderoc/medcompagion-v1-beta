@@ -104,6 +104,15 @@ namespace MedCompanion.Models
                 TitreNormalise   = "cartographie de l enfant",
                 VersionSansJeton = 1,
             },
+            new FormulaireDefinition
+            {
+                Id               = "CARTOENV",
+                Libelle          = "Cartographie de l'environnement — questionnaire parent",
+                VersionCourante  = 1,
+                Template         = "questionnaire_environnement.html",
+                TitreNormalise   = "cartographie de l environnement",
+                VersionSansJeton = 1,
+            },
         };
 
         public static FormulaireDefinition? Par(string id) =>
@@ -156,26 +165,38 @@ namespace MedCompanion.Models
 
             var jetonNormalise = PrefixeJeton.ToLowerInvariant().Replace("-", " ");
 
+            // TROIS PASSES COMPLÈTES, et non trois essais par définition.
+            //
+            // Un identifiant peut être le PRÉFIXE d'un autre — « CARTO » et « CARTOENV ». En
+            // parcourant les définitions d'abord, la reconnaissance approchée de CARTO était
+            // tentée avant le jeton exact de CARTOENV : une lettre d'écart suffisait alors à
+            // faire passer la feuille de l'environnement pour celle de l'enfant. Un jeton lu
+            // exactement doit toujours l'emporter sur un jeton deviné, quelle que soit la
+            // définition à laquelle il appartient.
+
+            // 1. Jeton exact : « medcomp form completion v2 » après normalisation.
             foreach (var def in Tous)
             {
-                // 1. Jeton exact : "medcomp form completion v2" après normalisation.
                 var racine = jetonNormalise + def.Id.ToLowerInvariant() + " v";
                 var i = texteNormalise.IndexOf(racine, StringComparison.Ordinal);
-                if (i >= 0)
-                {
-                    var apres = texteNormalise[(i + racine.Length)..];
-                    var chiffres = new string(apres.TakeWhile(char.IsDigit).ToArray());
-                    if (int.TryParse(chiffres, out var v) && v > 0) return (def, v);
-                }
+                if (i < 0) continue;
 
-                // 2. Jeton approché, pour un scan océrisé.
+                var apres = texteNormalise[(i + racine.Length)..];
+                var chiffres = new string(apres.TakeWhile(char.IsDigit).ToArray());
+                if (int.TryParse(chiffres, out var v) && v > 0) return (def, v);
+            }
+
+            // 2. Jeton approché, pour un scan océrisé.
+            foreach (var def in Tous)
+            {
                 var versionApprochee = VersionParJetonApproche(texteNormalise, def);
                 if (versionApprochee > 0) return (def, versionApprochee);
+            }
 
-                // 3. Titre seul : exemplaire imprimé avant le jeton.
+            // 3. Titre seul : exemplaire imprimé avant que le jeton existe.
+            foreach (var def in Tous)
                 if (texteNormalise.Contains(def.TitreNormalise, StringComparison.Ordinal))
                     return (def, def.VersionSansJeton);
-            }
 
             return (null, 0);
         }

@@ -119,13 +119,53 @@ namespace MedCompanion.ViewModels
         public string? ImagePath   { get; }
         public string  TrancheText { get; }
 
+        // ── Qui a rempli la feuille ───────────────────────────────────────────
+        // Sans cette information, les scores sont comparés entre eux comme s'ils venaient tous
+        // du même regard. La feuille pose la question ; encore faut-il recueillir la réponse.
+
+        private string? _informateur;
+        public string? Informateur
+        {
+            get => _informateur;
+            set
+            {
+                if (_informateur == value) return;
+                _informateur = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(EstMere));
+                OnPropertyChanged(nameof(EstPere));
+                OnPropertyChanged(nameof(EstAutre));
+            }
+        }
+
+        public bool EstMere  => _informateur == "mere";
+        public bool EstPere  => _informateur == "pere";
+        public bool EstAutre => _informateur == "autre";
+
+        private string _informateurNom = "";
+        public string InformateurNom
+        {
+            get => _informateurNom;
+            set { if (_informateurNom != value) { _informateurNom = value; OnPropertyChanged(); } }
+        }
+
+        public ICommand ChoisirInformateurCommand { get; }
+
         public ObservableCollection<AxeSaisieViewModel> Axes { get; } = new();
 
         public CartographieSaisieViewModel(string? imagePath, BandeAgeCarto bande,
-                                           IReadOnlyDictionary<string, int>? scoresExistants = null)
+                                           IReadOnlyDictionary<string, string[]>? reponsesExistantes = null)
         {
             ImagePath   = imagePath;
             TrancheText = CartographieItemsV2.BandeLabel(bande);
+
+            // Recliquer le choix déjà posé le retire : c'est ainsi qu'on revient à
+            // « non renseigné » quand on s'est trompé.
+            ChoisirInformateurCommand = new RelayCommand(p =>
+            {
+                var v = p as string;
+                Informateur = (Informateur == v) ? null : v;
+            });
 
             foreach (var axeKey in CartographieItemsV2.AxeKeys)
             {
@@ -145,16 +185,22 @@ namespace MedCompanion.ViewModels
                 Axes.Add(axe);
             }
 
-            // Reprise d'un dépouillement déjà fait : on ne repart pas de zéro. Faute de savoir
-            // QUELS items étaient à oui, on restaure les N premiers — le médecin corrige. C'est
-            // une reprise, pas une vérité : le score, lui, est exact.
-            if (scoresExistants != null)
+            // Reprise d'un dépouillement déjà fait : on retrouve exactement ce que le parent
+            // avait coché, item par item. Les réponses sont désormais persistées — auparavant
+            // seul le score l'était, et la reprise reconstituait « les N premiers en oui »,
+            // ce qui était faux dès que les oui n'étaient pas les premiers.
+            if (reponsesExistantes != null)
             {
                 foreach (var axe in Axes)
                 {
-                    if (!scoresExistants.TryGetValue(axe.Key, out var score)) continue;
-                    for (int i = 0; i < axe.Items.Count; i++)
-                        axe.Items[i].Reponse = i < score ? ReponseItem.Oui : ReponseItem.Non;
+                    if (!reponsesExistantes.TryGetValue(axe.Key, out var reps)) continue;
+                    for (int i = 0; i < axe.Items.Count && i < reps.Length; i++)
+                        axe.Items[i].Reponse = reps[i] switch
+                        {
+                            "oui" => ReponseItem.Oui,
+                            "non" => ReponseItem.Non,
+                            _     => ReponseItem.NonRepondu
+                        };
                     axe.Refresh();
                 }
             }
@@ -167,6 +213,27 @@ namespace MedCompanion.ViewModels
         /// <summary>Les 5 scores, prêts à rejoindre les 18 axes observés dans la fiche de séance.</summary>
         public Dictionary<string, int> ToScores()
             => Axes.ToDictionary(a => a.Key, a => a.Score);
+
+        /// <summary>
+        /// Les 30 réponses, six par axe. Enregistrées à côté des scores : c'est le détail qui
+        /// permet l'analyse, le score n'en est que le résumé.
+        /// </summary>
+        public Dictionary<string, string[]> ToReponses()
+            => Axes.ToDictionary(
+                a => a.Key,
+                a => a.Items.Select(i => i.Reponse switch
+                {
+                    ReponseItem.Oui => "oui",
+                    ReponseItem.Non => "non",
+                    _               => "vide"
+                }).ToArray());
+
+        /// <summary>Pré-remplit l'informateur depuis la lecture automatique du bandeau.</summary>
+        public void PrefillInformateur(string? qui, string? nom)
+        {
+            if (!string.IsNullOrEmpty(qui)) Informateur = qui;
+            if (!string.IsNullOrWhiteSpace(nom)) InformateurNom = nom.Trim();
+        }
 
         /// <summary>Pré-remplit depuis une lecture automatique (clé = axe, valeur = 6 réponses).</summary>
         public void Prefill(IReadOnlyDictionary<string, ReponseItem[]> lecture)

@@ -170,11 +170,17 @@ namespace MedCompanion.Views.Consultation
             suivi.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("suivi");
             menu.Items.Add(suivi);
 
-            // Phase d'évaluation — toujours visible (la zone Actions affiche Commencer / Poursuivre selon l'état)
-            menu.Items.Add(new Separator());
-            var evaluation = new MenuItem { Header = "📋  Phase d'évaluation" };
-            evaluation.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("evaluation");
-            menu.Items.Add(evaluation);
+            // Phase d'évaluation V1 — ARCHIVE, offerte aux seuls dossiers qui en portent une.
+            // Ce bloc ne crée plus rien : le proposer à un patient sans évaluation V1 mènerait
+            // à un écran qui ne peut rien démarrer. L'évaluation se fait désormais dans les deux
+            // blocs Cartographie de l'enfant et Environnement & évaluation ciblée.
+            if (_viewModel.HasEvaluationV1)
+            {
+                menu.Items.Add(new Separator());
+                var evaluation = new MenuItem { Header = "📋  Phase d'évaluation (archive)" };
+                evaluation.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("evaluation");
+                menu.Items.Add(evaluation);
+            }
 
             // Synthèse Globale — document de référence du patient, versionné, source de vérité
             var synthese = new MenuItem { Header = "🧭  Synthèse Globale" };
@@ -726,6 +732,56 @@ categorie: {document.Category ?? "Documents"}
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.OuvrirDepouillementCartographie();
+        }
+
+        // ── Séance 3 : feuille environnement ─────────────────────────────────
+        // Même enchaînement que la feuille de l'enfant — archivage à côté de la fiche, puis
+        // versement aux Documents du dossier bleu.
+
+        private void EnvScanBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            if (_viewModel == null || _scannerService == null || _viewModel.CurrentPatient == null)
+            {
+                MessageBox.Show("Scanner non disponible ou patient non sélectionné.",
+                    "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var dlg = new ScanDocumentDialog(_scannerService) { Owner = Window.GetWindow(this) };
+            if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.ScannedFilePath)) return;
+
+            _viewModel.EnregistrerScanFeuilleEnv(dlg.ScannedFilePath);
+            _ = ImporterFeuilleEnvDansDocumentsAsync(dlg.ScannedFilePath);
+        }
+
+        /// <summary>
+        /// Verse la feuille environnement dans les Documents du patient.
+        ///
+        /// Le formulaire est DÉCLARÉ, pas reconnu : l'utilisateur vient de cliquer « Scanner la
+        /// feuille » sur cette carte précise, il n'y a aucune ambiguïté. Passer par la
+        /// reconnaissance de contenu échouerait — une feuille manuscrite scannée n'a pas de couche
+        /// texte — et le document finirait classé « bilans », sans son crayon de saisie.
+        /// </summary>
+        private async System.Threading.Tasks.Task ImporterFeuilleEnvDansDocumentsAsync(string scannedPath)
+        {
+            if (_viewModel?.CurrentPatient == null || _documentService == null) return;
+
+            var def = MedCompanion.Models.FormulairesConnus.Par("CARTOENV");
+            if (def == null) return;
+
+            var (ok, _, message) = await _documentService.ImportFormulaireConnuAsync(
+                scannedPath, _viewModel.CurrentPatient.NomComplet, def, def.VersionCourante);
+
+            if (ok) _viewModel.LoadPatientDocumentsFromDisk();
+            else    _viewModel.FeuilleEnvStatus =
+                        $"⚠ Feuille archivée, mais non ajoutée aux Documents : {message}";
+        }
+
+        private void EnvDepouillerBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            _viewModel?.OuvrirDepouillementEnv();
         }
     }
 }

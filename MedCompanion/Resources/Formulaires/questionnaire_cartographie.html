@@ -291,7 +291,7 @@ body {
   </div>
 
   <!-- Informateur -->
-  <div class="informateur-row">
+  <div class="informateur-row" data-zone="informateur">
     <span class="label">Qui remplit ce questionnaire ?</span>
     <div class="informateur-choix">
       <div class="opt"><span class="case" data-champ="informateur_mere"></span> Mère</div>
@@ -544,6 +544,16 @@ body {
 
       document.querySelectorAll('[data-fiducial]').forEach(function (el) {
         carte.fiducials[el.getAttribute('data-fiducial')] = rectMm(el);
+      });
+
+      // Zones hors axes à découper pour la lecture — l'identité de l'informateur en fait
+      // partie : qui a rempli la feuille change la lecture des scores.
+      document.querySelectorAll('[data-zone]').forEach(function (el) {
+        carte.fields.push({
+          name: 'zone_' + el.getAttribute('data-zone'),
+          type: 'zone',
+          rect: rectMm(el)
+        });
       });
 
       // Un bloc par axe : c'est l'unité de découpe envoyée à la lecture.

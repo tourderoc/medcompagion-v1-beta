@@ -35,8 +35,10 @@ namespace MedCompanion.Models
     /// <summary>Catalogue des étapes affectables, dans l'ordre du parcours.</summary>
     public static class EtapesConsultation
     {
-        public const string PhasePremiere = "1er entretien";
-        public const string PhaseSuivi    = "Suivi";
+        public const string PhasePremiere    = "1er entretien";
+        public const string PhaseCartographie = "Cartographie de l'enfant";
+        public const string PhaseEnvironnement = "Environnement & évaluation ciblée";
+        public const string PhaseSuivi       = "Suivi";
 
         public static readonly IReadOnlyList<EtapeConsultation> Toutes = new[]
         {
@@ -74,6 +76,42 @@ namespace MedCompanion.Models
                 Libelle = "Restitution 1er entretien",
                 Description = "Rédaction destinée aux parents. Étape de raisonnement et de ton."
             },
+            new EtapeConsultation
+            {
+                Id = "cartographie_synthese", Phase = PhaseCartographie,
+                Libelle = "Synthèse de la cartographie",
+                Description = "Présente et qualifie les deux moitiés — questionnaire parent et profils observés — "
+                            + "en tenant compte des fiabilités déclarées. Étape de raisonnement, sans conclusion."
+            },
+            // Pas d'entrée pour la lecture des cases de la feuille : c'est une tâche de VISION,
+            // servie par LlamaCppProfiles.VisionCapable et choisie dans la fenêtre de
+            // dépouillement elle-même. La mêler aux modèles de texte laisserait croire qu'un
+            // modèle sans projecteur peut lire une image.
+
+            new EtapeConsultation
+            {
+                Id = "orientation_diagnostique", Phase = PhaseEnvironnement,
+                Libelle = "Orientation diagnostique",
+                Description = "Lit tout le dossier bleu (synthèse, dernière note, synthèses de bilans, cartographie) "
+                            + "et propose au plus 3 éléments par rubrique à observer dans la séance. "
+                            + "Longue entrée, sortie courte et contrainte."
+            },
+            new EtapeConsultation
+            {
+                Id = "evaluation_ciblee", Phase = PhaseEnvironnement,
+                Libelle = "Évaluation ciblée",
+                Description = "Dérive de l'orientation les axes que le médecin ira observer, puis les constats "
+                            + "cochables de chaque axe. Un appel court par axe, tous sur le même modèle."
+            },
+            new EtapeConsultation
+            {
+                Id = "seance3_synthese", Phase = PhaseEnvironnement,
+                Libelle = "Synthèse de la séance",
+                Description = "Présente et qualifie les deux blocs — environnement réuni, évaluation ciblée — "
+                            + "selon leurs fiabilités déclarées, puis les met en regard. "
+                            + "Étape de raisonnement, sans conclusion."
+            },
+
             new EtapeConsultation
             {
                 Id = "suivi_extraction", Phase = PhaseSuivi,

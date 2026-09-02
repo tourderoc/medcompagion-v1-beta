@@ -3,44 +3,40 @@ using System.Collections.Generic;
 using System.IO;
 using System.Windows;
 using Microsoft.Web.WebView2.Core;
-using MedCompanion.Models.Evaluations;
 using MedCompanion.Services.LLM;
 using MedCompanion.ViewModels;
 
 namespace MedCompanion.Dialogs
 {
     /// <summary>
-    /// Fenêtre de dépouillement du questionnaire parent, ouverte APRÈS la séance.
+    /// Dépouillement de la feuille « Cartographie de l'environnement », ouvert APRÈS la séance.
     ///
-    /// Elle est la contrepartie de la règle « rien ne s'affiche pendant la séance » : comme le
-    /// résultat n'est jamais montré à la famille au moment du scan, le contrôle est déplacé ici.
-    /// Sans elle, archiver l'image ne servirait à rien — il n'y aurait aucun moyen de corriger
-    /// une lecture fausse.
+    /// Contrepartie de la règle « rien ne s'affiche pendant la séance » : comme le résultat n'est
+    /// jamais montré à la famille au moment du scan, le contrôle est déplacé ici. Sans cette
+    /// fenêtre, archiver l'image ne servirait à rien — aucun moyen de corriger une lecture fausse.
     ///
-    /// La lecture automatique des cases se branchera sur <see cref="CartographieSaisieViewModel.Prefill"/> :
-    /// elle pré-remplira les 30 réponses, que le médecin vérifiera sur l'image affichée à gauche.
-    /// La fenêtre est donc utile avant même que la détection existe.
+    /// Jumelle de <see cref="CartographieSaisieDialog"/>, mais séparée plutôt que factorisée : le
+    /// volet de droite n'a ni score ni couleur, parce qu'une feuille d'environnement se lit sur ses
+    /// deux moitiés et que celle du médecin n'est pas ici. Fondre les deux fenêtres aurait obligé à
+    /// masquer ce qui n'a pas de sens dans l'une ou dans l'autre.
     /// </summary>
-    public partial class CartographieSaisieDialog : Window
+    public partial class EnvSaisieDialog : Window
     {
-        private readonly CartographieSaisieViewModel _vm;
+        private readonly EnvSaisieViewModel _vm;
 
-        /// <summary>Les 5 scores 0-6, disponibles après un enregistrement (DialogResult == true).</summary>
-        public Dictionary<string, int> Scores { get; private set; } = new();
-
-        /// <summary>Les 30 réponses, six par axe — le détail dont le score n'est que le résumé.</summary>
+        /// <summary>Les 22 réponses du parent, par clé de feuille — « oui », « non », ou vide.</summary>
         public Dictionary<string, string[]> Reponses { get; private set; } = new();
 
         /// <summary>Qui a rempli la feuille : « mere », « pere », « autre », ou null.</summary>
         public string? Informateur    { get; private set; }
         public string? InformateurNom { get; private set; }
 
-        public CartographieSaisieDialog(string? imagePath, BandeAgeCarto bande,
-                                        IReadOnlyDictionary<string, string[]>? reponsesExistantes = null,
-                                        string? informateur = null, string? informateurNom = null)
+        public EnvSaisieDialog(string? imagePath,
+                               IReadOnlyDictionary<string, string[]>? reponsesExistantes = null,
+                               string? informateur = null, string? informateurNom = null)
         {
             InitializeComponent();
-            _vm = new CartographieSaisieViewModel(imagePath, bande, reponsesExistantes);
+            _vm = new EnvSaisieViewModel(imagePath, reponsesExistantes);
             _vm.PrefillInformateur(informateur, informateurNom);
             DataContext = _vm;
         }
@@ -89,11 +85,11 @@ namespace MedCompanion.Dialogs
             {
                 var bmp = new System.Windows.Media.Imaging.BitmapImage();
                 bmp.BeginInit();
-                bmp.CacheOption  = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
-                bmp.UriSource    = new Uri(chemin);
+                bmp.CacheOption = System.Windows.Media.Imaging.BitmapCacheOption.OnLoad;
+                bmp.UriSource   = new Uri(chemin);
                 bmp.EndInit();
-                ScanImage.Source     = bmp;
-                ScanImage.Visibility = Visibility.Visible;
+                ScanImage.Source       = bmp;
+                ScanImage.Visibility   = Visibility.Visible;
                 PdfFallback.Visibility = Visibility.Collapsed;
             }
             catch
@@ -105,9 +101,8 @@ namespace MedCompanion.Dialogs
         private bool _suspendVisionChange;
 
         /// <summary>
-        /// Alimente le sélecteur de modèle de lecture. Mêmes profils que le formulaire — seuls
-        /// ceux réellement installés sont listés : proposer un modèle absent ne produirait qu'un
-        /// échec au moment de lire.
+        /// Alimente le sélecteur de modèle de lecture. Seuls les profils réellement installés sont
+        /// listés : proposer un modèle absent ne produirait qu'un échec au moment de lire.
         /// </summary>
         private void PopulateVisionModels()
         {
@@ -151,26 +146,11 @@ namespace MedCompanion.Dialogs
 
         private void Enregistrer_Click(object sender, RoutedEventArgs e)
         {
-            // Un axe partiellement rempli sous-estime mécaniquement l'enfant : son score compte
-            // les « oui » sur six items dont certains n'ont pas de réponse. On le signale avant
-            // d'enregistrer plutôt que de laisser un score creux devenir une couleur.
-            var incomplets = new List<string>();
-            foreach (var axe in _vm.Axes)
-                if (axe.NbRepondus > 0 && !axe.EstComplet)
-                    incomplets.Add($"{axe.Label} ({axe.NbRepondus}/6)");
-
-            if (incomplets.Count > 0)
-            {
-                var r = MessageBox.Show(
-                    "Ces axes sont incomplets — leur score sous-estimera l'enfant :\n\n  • "
-                    + string.Join("\n  • ", incomplets)
-                    + "\n\nEnregistrer quand même ?",
-                    "Axes incomplets",
-                    MessageBoxButton.YesNo, MessageBoxImage.Warning);
-                if (r != MessageBoxResult.Yes) return;
-            }
-
-            Scores         = _vm.ToScores();
+            // Pas d'avertissement sur les blocs incomplets, à la différence de la feuille de
+            // l'enfant. Là-bas, un axe à demi rempli produisait un SCORE creux qui devenait une
+            // couleur. Ici on n'enregistre aucun score : une ligne vide reste une ligne vide, et
+            // un retour partiel est un fait clinique en soi — c'est même le cas prévu quand la
+            // feuille ne revient pas complète de la salle d'attente.
             Reponses       = _vm.ToReponses();
             Informateur    = _vm.Informateur;
             InformateurNom = _vm.InformateurNom;
@@ -186,22 +166,22 @@ namespace MedCompanion.Dialogs
 
         /// <summary>
         /// Lecture automatique : découpe la feuille bloc par bloc et fait lire les cases par le
-        /// modèle vision — la méthode du formulaire de complétion.
+        /// modèle vision.
         ///
-        /// Le résultat PRÉ-REMPLIT la saisie, il ne la remplace pas. Rien n'est enregistré tant
-        /// que le médecin n'a pas vérifié : c'est le sens même de cette fenêtre, puisque rien
-        /// n'est montré au moment du scan.
+        /// Le résultat PRÉ-REMPLIT la saisie, il ne la remplace pas — et il ne touche que les
+        /// lignes encore vides. Rien n'est enregistré tant que le médecin n'a pas vérifié : c'est
+        /// le sens même de cette fenêtre.
         /// </summary>
         private async void Lire_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(_vm.ImagePath) || !System.IO.File.Exists(_vm.ImagePath))
+            if (string.IsNullOrEmpty(_vm.ImagePath) || !File.Exists(_vm.ImagePath))
             {
                 MessageBox.Show("Aucune feuille scannée à lire.",
                     "Lecture automatique", MessageBoxButton.OK, MessageBoxImage.Information);
                 return;
             }
 
-            var service = new MedCompanion.Services.Evaluations.CartographieLectureService();
+            var service = new MedCompanion.Services.Evaluations.CartographieEnvLectureService();
             if (!service.EstDisponible)
             {
                 MessageBox.Show(
@@ -217,7 +197,7 @@ namespace MedCompanion.Dialogs
             {
                 var (ok, lecture, informateur, message) = await service.LireAsync(_vm.ImagePath!);
 
-                // L'informateur est repris même si les axes ont échoué : c'est une lecture
+                // L'informateur est repris même si les blocs ont échoué : c'est une lecture
                 // indépendante, et la perdre obligerait à ressaisir ce que le modèle avait vu.
                 if (informateur != null)
                     _vm.PrefillInformateur(informateur.Qui, informateur.Nom);
@@ -230,12 +210,11 @@ namespace MedCompanion.Dialogs
 
                 _vm.Prefill(lecture);
 
-                var lus = lecture.Count;
                 PiedTb.Text = message == null
-                    ? $"⚡ {lus} axes lus — VÉRIFIEZ chaque ligne sur l'image avant d'enregistrer."
-                    : $"⚡ {lus} axes lus. {message}. Vérifiez chaque ligne sur l'image.";
+                    ? $"⚡ {lecture.Count} blocs lus — VÉRIFIEZ chaque ligne sur l'image avant d'enregistrer."
+                    : $"⚡ {lecture.Count} blocs lus. {message}. Vérifiez chaque ligne sur l'image.";
             }
-            catch (System.Exception ex)
+            catch (Exception ex)
             {
                 PiedTb.Text = $"❌ Lecture impossible : {ex.Message}";
             }

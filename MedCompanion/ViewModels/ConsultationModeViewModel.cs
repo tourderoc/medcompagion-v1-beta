@@ -791,6 +791,62 @@ namespace MedCompanion.ViewModels
             set => SetProperty(ref _cartoV2Versee, value);
         }
 
+        private bool _cartoV2Cloturee;
+        /// <summary>Séance clôturée : tout le bloc passe en lecture seule.</summary>
+        public bool CartoV2Cloturee
+        {
+            get => _cartoV2Cloturee;
+            set
+            {
+                if (SetProperty(ref _cartoV2Cloturee, value))
+                {
+                    OnPropertyChanged(nameof(CartoV2Modifiable));
+                    ProfilsObserves.IsReadOnly = value;
+                }
+            }
+        }
+
+        public bool CartoV2Modifiable => !_cartoV2Cloturee;
+
+        /// <summary>
+        /// Clôture la séance : ce qui a été observé ce jour-là cesse de bouger. Irréversible —
+        /// une cartographie indéfiniment modifiable ne serait plus le témoin d'une séance.
+        /// </summary>
+        private void CloturerSeanceCarto()
+        {
+            if (_cartoV2Courante == null)
+            {
+                CartographieStatusMessage = "❌ Rien à clôturer — la cartographie n'a pas encore été enregistrée.";
+                return;
+            }
+            if (_cartoV2Courante.EstCloturee) return;
+
+            var r = System.Windows.MessageBox.Show(
+                "Clôturer la séance de cartographie ?\n\n"
+                + $"{_cartoV2Courante.EtatLisible}.\n\n"
+                + "La fiche passera en lecture seule et ne pourra plus être modifiée.",
+                "Clôturer la séance",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Question);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            // La date est posée APRÈS l'écriture : la garde d'EcrireCartoV2 refuserait une fiche
+            // déjà marquée close.
+            if (!EcrireCartoV2(verser: true, out var err))
+            {
+                CartographieStatusMessage = $"❌ {err}";
+                return;
+            }
+
+            _cartoV2Courante.DateCloture = DateTime.Now;
+            var dir = CurrentPatient?.DirectoryPath;
+            if (!string.IsNullOrEmpty(dir)) _cartoV2.Save(dir, _cartoV2Courante);
+
+            CartoV2Cloturee = true;
+            LoadCartographieV2Bilans();
+            CartographieStatusMessage = "🔒 Séance clôturée — la cartographie est en lecture seule.";
+        }
+
         /// <summary>Ouvre le bloc Cartographie dans la zone de travail.</summary>
         private void EnterCartographieMode()
         {
@@ -805,6 +861,7 @@ namespace MedCompanion.ViewModels
             // y revenir en cours de consultation sans reperdre ses cotations.
             _cartoV2Courante = null;
             CartoV2Versee    = false;
+            CartoV2Cloturee  = false;
             ProfilsObserves.Reset();
 
             var dir = CurrentPatient?.DirectoryPath;
@@ -815,6 +872,7 @@ namespace MedCompanion.ViewModels
 
             _cartoV2Courante = fiche;
             CartoV2Versee    = fiche.VerseeAuDossier;
+            CartoV2Cloturee  = fiche.EstCloturee;
             ProfilsObserves.LoadFrom(fiche.Axes);
             ProfilsStatusMessage = $"Reprise de la séance du {fiche.Date:dd/MM/yyyy}.";
             OnPropertyChanged(nameof(CartographieEtatFeuille));
@@ -836,6 +894,15 @@ namespace MedCompanion.ViewModels
             erreur = null;
             var dir = CurrentPatient?.DirectoryPath;
             if (string.IsNullOrEmpty(dir)) { erreur = "Aucun patient sélectionné."; return false; }
+
+            // Garde unique : une séance clôturée n'accepte plus AUCUNE écriture, par aucun
+            // chemin. Le poser ici plutôt que sur chaque bouton évite qu'un chemin oublié
+            // — le crayon du dossier bleu, par exemple — passe à travers.
+            if (_cartoV2Courante?.EstCloturee == true)
+            {
+                erreur = "Séance clôturée — la cartographie est en lecture seule.";
+                return false;
+            }
 
             var bande = Models.Evaluations.CartographieItemsV2.Bande(_confirmedAge);
 
@@ -880,6 +947,14 @@ namespace MedCompanion.ViewModels
 
         public ObservableCollection<CartographieV2CardViewModel> CartographieV2Bilans { get; } = new();
         public bool HasCartographieV2Bilans => CartographieV2Bilans.Count > 0;
+
+        /// <summary>
+        /// Les synthèses de cartographie, pour l'onglet SYNTHESE — à la suite de la Synthèse
+        /// Initiale. Seules celles qui ont un texte y figurent : une cartographie sans synthèse
+        /// n'a rien à dire à cet endroit, elle vit dans BILANS.
+        /// </summary>
+        public ObservableCollection<CartographieSyntheseBlocViewModel> CartographieSyntheseBlocs { get; } = new();
+        public bool HasCartographieSyntheseBlocs => CartographieSyntheseBlocs.Count > 0;
 
         /// <summary>
         /// Recharge les cartographies V2 versées au dossier. Les fiches non versées (séance en
@@ -946,7 +1021,7 @@ namespace MedCompanion.ViewModels
         }
 
         /// <summary>Éléments nécessaires au dépouillement : l'image, la tranche, les scores déjà saisis.</summary>
-        public (string? imagePath, BandeAgeCarto? bande, IReadOnlyDictionary<string, int>? scores)
+        public (string? imagePath, BandeAgeCarto? bande, IReadOnlyDictionary<string, string[]>? reponses)
             GetDepouillementContexte()
         {
             // La tranche vient de la fiche quand elle y est : c'est la version RÉELLEMENT
@@ -963,21 +1038,29 @@ namespace MedCompanion.ViewModels
                 }
                 : CartographieItemsV2.Bande(_confirmedAge);
 
-            var scores = _cartoV2Courante != null && _cartoV2Courante.ScoresQuestionnaire.Count > 0
-                ? _cartoV2Courante.ScoresQuestionnaire
+            var reponses = _cartoV2Courante != null && _cartoV2Courante.ReponsesQuestionnaire.Count > 0
+                ? _cartoV2Courante.ReponsesQuestionnaire
                 : null;
 
-            return (_cartoV2Courante?.ScanImagePath, bande, scores);
+            return (_cartoV2Courante?.ScanImagePath, bande, reponses);
         }
 
         /// <summary>
         /// Écrit les 5 scores dans la fiche de séance. C'est ce geste — et pas le scan — qui rend
         /// la cartographie complète : une feuille archivée mais non dépouillée n'apporte aucun score.
         /// </summary>
-        public void EnregistrerScoresQuestionnaire(Dictionary<string, int> scores, string? imageUtilisee = null)
+        public void EnregistrerScoresQuestionnaire(
+            Dictionary<string, int> scores,
+            Dictionary<string, string[]>? reponses = null,
+            string? imageUtilisee = null,
+            string? informateur = null,
+            string? informateurNom = null)
         {
             _cartoV2Courante ??= new Services.Evaluations.CartographieV2 { Date = DateTime.Today };
             _cartoV2Courante.ScoresQuestionnaire = scores;
+            if (reponses != null) _cartoV2Courante.ReponsesQuestionnaire = reponses;
+            _cartoV2Courante.Informateur    = informateur;
+            _cartoV2Courante.InformateurNom = informateurNom;
             _cartoV2Courante.EtatQuestionnaire   = Services.Evaluations.EtatQuestionnaireParent.Scanne;
             if (string.IsNullOrEmpty(_cartoV2Courante.ScanImagePath) && !string.IsNullOrEmpty(imageUtilisee))
                 _cartoV2Courante.ScanImagePath = imageUtilisee;
@@ -999,6 +1082,903 @@ namespace MedCompanion.ViewModels
         /// <summary>Vrai dès qu'une feuille a été scannée : le dépouillement devient possible.</summary>
         public bool PeutDepouiller => !string.IsNullOrEmpty(_cartoV2Courante?.ScanImagePath);
 
+        // ── Séance 3 : Cartographie de l'environnement ────────────────────────
+        // Construite à côté, comme la séance 2 : le bloc Évaluation V1 n'est pas touché, bien
+        // qu'il contienne déjà une préparation et une évaluation ciblée. On branchera plus tard.
+
+        private bool _isCartoEnvMode;
+        public bool IsCartoEnvMode
+        {
+            get => _isCartoEnvMode;
+            set => SetProperty(ref _isCartoEnvMode, value);
+        }
+
+        private string _cartoEnvStatusMessage = "";
+        public string CartoEnvStatusMessage
+        {
+            get => _cartoEnvStatusMessage;
+            set => SetProperty(ref _cartoEnvStatusMessage, value);
+        }
+
+        /// <summary>« 22 questions — 4 feuilles » : ce que le parent va réellement recevoir.</summary>
+        public string CartoEnvVolumeText =>
+            $"{Models.Evaluations.CartographieEnvironnementV2.NbItemsParent} questions — "
+            + $"{Models.Evaluations.CartographieEnvironnementV2.Feuilles.Length} feuilles";
+
+        private readonly Services.Evaluations.SeanceEnvironnementService _seanceEnv = new();
+        private Services.Evaluations.SeanceEnvironnement? _seanceEnvCourante;
+
+        public OrientationDiagnostiqueViewModel Orientation { get; } = new();
+
+        private bool _showOrientation;
+        public bool ShowOrientation
+        {
+            get => _showOrientation;
+            set => SetProperty(ref _showOrientation, value);
+        }
+
+        private void EnterCartoEnvMode()
+        {
+            ResetWorkspaceModes();
+            IsCartoEnvMode = true;
+            ShowOrientation = false;
+            ShowEvaluationCiblee = false;
+            ShowCartoEnvMedecin = false;
+            ShowSyntheseSeance3 = false;
+            CartoEnvStatusMessage = "";
+
+            // Reprise de la séance du jour si elle existe.
+            _seanceEnvCourante = null;
+            Orientation.Charger(null);
+            EvaluationCiblee.Charger(null);
+            CartoEnvMedecin.Charger(null);
+            SyntheseSeance3.Charger(null);
+            SeanceEnvCloturee = false;
+            SeanceEnvClotureStatus = "";
+
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir)) return;
+
+            _seanceEnvCourante = _seanceEnv.LoadForDate(dir, DateTime.Today);
+            Orientation.Charger(_seanceEnvCourante);
+            EvaluationCiblee.Charger(_seanceEnvCourante);
+            CartoEnvMedecin.Charger(_seanceEnvCourante);
+            FeuilleEnvStatus = "";
+            OnPropertyChanged(nameof(FeuilleEnvEtatText));
+            OnPropertyChanged(nameof(SyntheseSeance3EtatText));
+            SeanceEnvCloturee = _seanceEnvCourante?.EstCloturee == true;
+            SeanceEnvClotureStatus = SeanceEnvCloturee
+                ? "🔒 Séance clôturée — la fiche est en lecture seule."
+                : "";
+        }
+
+        private void OuvrirOrientation()
+        {
+            Orientation.Status = "";
+            ShowOrientation = true;
+        }
+
+        // ── Évaluation ciblée (carte 3 de la séance 3) ────────────────────────
+
+        public EvaluationCibleeV2ViewModel EvaluationCiblee { get; } = new();
+
+        private bool _showEvaluationCiblee;
+        public bool ShowEvaluationCiblee
+        {
+            get => _showEvaluationCiblee;
+            set => SetProperty(ref _showEvaluationCiblee, value);
+        }
+
+        private void OuvrirEvaluationCiblee()
+        {
+            EvaluationCiblee.Status = "";
+            ShowEvaluationCiblee = true;
+        }
+
+        /// <summary>
+        /// Demande à Med les axes d'observation, dérivés de l'orientation TELLE QU'ELLE EST À
+        /// L'ÉCRAN — pas de celle enregistrée. Le médecin vient souvent d'affiner ses hypothèses
+        /// sans avoir cliqué Enregistrer, et lui construire des axes sur une version périmée serait
+        /// le meilleur moyen de lui faire observer ce qu'il ne pense déjà plus.
+        /// </summary>
+        private async System.Threading.Tasks.Task SuggererAxesCiblesAsync()
+        {
+            if (CurrentPatient == null || _llmService == null)
+            {
+                EvaluationCiblee.Status = "❌ Aucun patient sélectionné, ou LLM indisponible.";
+                return;
+            }
+
+            // On n'écrase jamais un travail en cours : les axes déjà cochés resteraient sans leurs
+            // réponses si on les remplaçait.
+            if (EvaluationCiblee.HasAxes)
+            {
+                EvaluationCiblee.Status =
+                    "Des axes sont déjà en place — supprimez-les pour en faire construire d'autres.";
+                return;
+            }
+
+            EvaluationCiblee.IsSuggesting = true;
+            EvaluationCiblee.Status = "⏳ Lecture de l'orientation…";
+            try
+            {
+                await PreparerModeleAsync("evaluation_ciblee", s => EvaluationCiblee.Status = s);
+
+                var orientation = new Services.Evaluations.AxesCiblesSuggesterService.Orientation
+                {
+                    Hypotheses    = Orientation.Hypotheses.ToList(),
+                    Differentiels = Orientation.Differentiels.ToList(),
+                    AEliminer     = Orientation.AEliminer.ToList(),
+                    Vigilance     = Orientation.Vigilance.ToList(),
+                    Questions     = Orientation.Questions.ToList()
+                };
+
+                var svc = new Services.Evaluations.AxesCiblesSuggesterService(_llmService);
+                var (ok, axes, err) = await svc.SuggestAsync(
+                    _confirmedAge, _detectedMotif ?? "", orientation,
+                    LireCartographieEnfantPourPrompt(),
+                    onAxe:     a   => Dispatch(() => EvaluationCiblee.AjouterSuggestion(a)),
+                    onProgres: msg => Dispatch(() => EvaluationCiblee.Status = msg));
+
+                if (!ok || axes == null)
+                {
+                    EvaluationCiblee.Status = $"❌ {err}";
+                    return;
+                }
+
+                EvaluationCiblee.Status = err == null
+                    ? "✨ Axes construits — à affiner, puis à cocher pendant la séance."
+                    : $"✨ Axes construits — {err}";
+            }
+            catch (Exception ex) { EvaluationCiblee.Status = $"❌ {ex.Message}"; }
+            finally { EvaluationCiblee.IsSuggesting = false; }
+        }
+
+        // ── Cartographie de l'environnement, versant médecin (carte 4) ───────
+
+        public CartographieEnvMedecinViewModel CartoEnvMedecin { get; } = new();
+
+        private bool _showCartoEnvMedecin;
+        public bool ShowCartoEnvMedecin
+        {
+            get => _showCartoEnvMedecin;
+            set => SetProperty(ref _showCartoEnvMedecin, value);
+        }
+
+        private void OuvrirCartoEnvMedecin()
+        {
+            CartoEnvMedecin.Status = "";
+            ShowCartoEnvMedecin = true;
+        }
+
+        private void EnregistrerCotationEnv()
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir))
+            {
+                CartoEnvMedecin.Status = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            var (ok, err) = SauverSeanceEnv(dir, cotationEnv: true);
+            CartoEnvMedecin.Status = ok
+                ? $"💾 Enregistré — {_seanceEnvCourante!.EtatCotationEnvLisible}."
+                : $"❌ {err}";
+        }
+
+        // ── Terminer la séance 3 (carte 7) ───────────────────────────────────
+
+        private bool _seanceEnvCloturee;
+        public bool SeanceEnvCloturee
+        {
+            get => _seanceEnvCloturee;
+            set => SetProperty(ref _seanceEnvCloturee, value);
+        }
+
+        private string _seanceEnvClotureStatus = "";
+        public string SeanceEnvClotureStatus
+        {
+            get => _seanceEnvClotureStatus;
+            set => SetProperty(ref _seanceEnvClotureStatus, value);
+        }
+
+        /// <summary>
+        /// Enregistre TOUT, puis fige la séance. Irréversible — une séance indéfiniment
+        /// modifiable ne serait plus le témoin d'un jour donné.
+        ///
+        /// L'enregistrement précède la clôture et non l'inverse : la garde d'écriture refuse une
+        /// fiche déjà marquée close, et poser la date d'abord empêcherait d'enregistrer le travail
+        /// qu'on est justement en train de clore.
+        /// </summary>
+        private void TerminerSeanceEnv()
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir))
+            {
+                SeanceEnvClotureStatus = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            if (_seanceEnvCourante?.EstCloturee == true)
+            {
+                SeanceEnvClotureStatus = "🔒 Cette séance est déjà clôturée.";
+                return;
+            }
+
+            var (okSave, errSave) = SauverSeanceEnv(dir);
+            if (!okSave)
+            {
+                SeanceEnvClotureStatus = $"❌ {errSave}";
+                return;
+            }
+
+            // Le garde-fou porte sur ce qui vient d'être ÉCRIT, pas sur ce qui était affiché.
+            var manquants = _seanceEnvCourante!.PartiesManquantes();
+
+            var message = new System.Text.StringBuilder();
+            message.AppendLine("Terminer la séance ?");
+            message.AppendLine();
+            if (manquants.Count > 0)
+            {
+                message.AppendLine("Ces parties ne sont pas complètes :");
+                message.AppendLine();
+                foreach (var x in manquants) message.AppendLine($"   •  {x}");
+                message.AppendLine();
+                message.AppendLine("Ce qui manque sera consigné tel quel — un retour partiel est une");
+                message.AppendLine("information clinique, pas une erreur.");
+                message.AppendLine();
+            }
+            else
+            {
+                message.AppendLine("Toutes les parties sont renseignées.");
+                message.AppendLine();
+            }
+            message.Append("La fiche passera en lecture seule et ne pourra plus être modifiée.");
+
+            var r = System.Windows.MessageBox.Show(
+                message.ToString(), "Terminer la séance",
+                System.Windows.MessageBoxButton.YesNo,
+                manquants.Count > 0 ? System.Windows.MessageBoxImage.Warning
+                                    : System.Windows.MessageBoxImage.Question);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            _seanceEnvCourante!.DateCloture = DateTime.Now;
+            var (okC, _, errC) = _seanceEnv.Save(dir, _seanceEnvCourante);
+            if (!okC)
+            {
+                _seanceEnvCourante.DateCloture = null;   // la clôture n'a pas eu lieu
+                SeanceEnvClotureStatus = $"❌ {errC}";
+                return;
+            }
+
+            SeanceEnvCloturee = true;
+            LoadSeanceEnvBilans();
+
+            SeanceEnvClotureStatus = manquants.Count == 0
+                ? "🔒 Séance terminée et enregistrée — la fiche est en lecture seule."
+                : $"🔒 Séance terminée — {manquants.Count} partie(s) restée(s) incomplète(s), consignée(s) comme telles.";
+        }
+
+        // ── Synthèse de la séance 3 (carte 6) ────────────────────────────────
+
+        public SyntheseSeance3ViewModel SyntheseSeance3 { get; } = new();
+
+        private bool _showSyntheseSeance3;
+        public bool ShowSyntheseSeance3
+        {
+            get => _showSyntheseSeance3;
+            set => SetProperty(ref _showSyntheseSeance3, value);
+        }
+
+        /// <summary>
+        /// Ouvre la synthèse en RECONSTRUISANT la lecture depuis la fiche à l'instant.
+        ///
+        /// C'est le seul écran de la séance qui n'a pas d'état propre : tout ce qu'il montre est
+        /// dérivé des quatre cartes précédentes. Le recharger à l'ouverture évite d'afficher une
+        /// réunion périmée après un dépouillement ou une cotation faits entre-temps.
+        /// </summary>
+        private void OuvrirSyntheseSeance3()
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (!string.IsNullOrEmpty(dir))
+                _seanceEnvCourante ??= _seanceEnv.LoadForDate(dir, DateTime.Today);
+
+            // Les deux moitiés telles qu'elles sont À L'ÉCRAN, et non telles qu'elles ont été
+            // enregistrées : le médecin vient peut-être de coter sans cliquer Enregistrer.
+            if (_seanceEnvCourante != null)
+            {
+                _seanceEnvCourante.CotationsEnv = CartoEnvMedecin.ToDictionary();
+                _seanceEnvCourante.Axes         = EvaluationCiblee.ToList();
+            }
+
+            SyntheseSeance3.Charger(_seanceEnvCourante);
+            SyntheseSeance3.Status = "";
+            ShowSyntheseSeance3 = true;
+        }
+
+        private async System.Threading.Tasks.Task RedigerSyntheseSeance3Async()
+        {
+            if (CurrentPatient == null || _llmService == null)
+            {
+                SyntheseSeance3.Status = "❌ Aucun patient sélectionné, ou LLM indisponible.";
+                return;
+            }
+
+            SyntheseSeance3.IsRedaction = true;
+            SyntheseSeance3.Status = "⏳ Lecture des deux blocs…";
+            try
+            {
+                await PreparerModeleAsync("seance3_synthese", s => SyntheseSeance3.Status = s);
+
+                var entree = new Services.Evaluations.SyntheseSeance3Service.Entree
+                {
+                    PatientNom     = PatientDisplayName,
+                    Age            = _confirmedAge,
+                    Environnement  = SyntheseSeance3.Feuilles.ToList(),
+                    Axes           = SyntheseSeance3.Axes.ToList(),
+                    FiabiliteEnv   = SyntheseSeance3.FiabiliteEnv.Selection,
+                    FiabiliteAxes  = SyntheseSeance3.FiabiliteAxes.Selection,
+                    Informateur    = _seanceEnvCourante?.InformateurEnv,
+                    InformateurNom = _seanceEnvCourante?.InformateurEnvNom
+                };
+
+                var svc = new Services.Evaluations.SyntheseSeance3Service(_llmService);
+                var (ok, texte, err) = await svc.RedigerAsync(
+                    entree, msg => Dispatch(() => SyntheseSeance3.Status = msg));
+
+                if (!ok || texte == null)
+                {
+                    SyntheseSeance3.Status = $"❌ {err}";
+                    return;
+                }
+
+                SyntheseSeance3.Texte = texte;
+                SyntheseSeance3.Status = "✨ Synthèse rédigée — relisez-la, elle est modifiable avant d'être enregistrée.";
+            }
+            catch (Exception ex) { SyntheseSeance3.Status = $"❌ {ex.Message}"; }
+            finally { SyntheseSeance3.IsRedaction = false; }
+        }
+
+        private void EnregistrerSyntheseSeance3()
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir))
+            {
+                SyntheseSeance3.Status = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            _seanceEnvCourante ??= new Services.Evaluations.SeanceEnvironnement { Date = DateTime.Today };
+            _seanceEnvCourante.FiabiliteEnv  = SyntheseSeance3.FiabiliteEnv.Selection;
+            _seanceEnvCourante.FiabiliteAxes = SyntheseSeance3.FiabiliteAxes.Selection;
+            _seanceEnvCourante.SyntheseTexte = SyntheseSeance3.Texte;
+            _seanceEnvCourante.SyntheseDate  = DateTime.Now;
+
+            var (ok, err) = SauverSeanceEnv(dir);
+            SyntheseSeance3.Status = ok
+                ? "💾 Synthèse enregistrée dans la fiche de la séance."
+                : $"❌ {err}";
+
+            OnPropertyChanged(nameof(SyntheseSeance3EtatText));
+        }
+
+        public string SyntheseSeance3EtatText =>
+            _seanceEnvCourante?.EtatSyntheseLisible ?? "synthèse non rédigée";
+
+        // ── Feuille parents : scan et dépouillement (carte 5) ────────────────
+
+        private string _feuilleEnvStatus = "";
+        public string FeuilleEnvStatus
+        {
+            get => _feuilleEnvStatus;
+            set => SetProperty(ref _feuilleEnvStatus, value);
+        }
+
+        public string FeuilleEnvEtatText =>
+            _seanceEnvCourante?.EtatFeuilleParentLisible ?? "feuille parents non revenue";
+
+        /// <summary>
+        /// Archive la feuille scannée à côté de la fiche de séance. On retient le CHEMIN dans la
+        /// fiche : sans lui, « reprendre le dépouillement » n'aurait aucune image à montrer, et
+        /// vérifier une lecture deviendrait impossible.
+        /// </summary>
+        public void EnregistrerScanFeuilleEnv(string scanPath)
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir))
+            {
+                FeuilleEnvStatus = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            _seanceEnvCourante ??= new Services.Evaluations.SeanceEnvironnement { Date = DateTime.Today };
+            _seanceEnvCourante.ScanEnvImage = scanPath;
+
+            var (ok, err) = SauverSeanceEnv(dir);
+            FeuilleEnvStatus = ok
+                ? "📄 Feuille archivée — dépouillez-la quand vous voulez, la séance peut se terminer."
+                : $"❌ {err}";
+
+            OnPropertyChanged(nameof(FeuilleEnvEtatText));
+        }
+
+        /// <summary>
+        /// Ouvre le dépouillement de la feuille parents, sur une image donnée ou sur celle que la
+        /// fiche a retenue. Rien n'est enregistré sans que le médecin ait vérifié : c'est la
+        /// contrepartie de la règle « rien ne s'affiche pendant la séance ».
+        /// </summary>
+        public void OuvrirDepouillementEnv(string? imagePath = null)
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir))
+            {
+                FeuilleEnvStatus = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            var utilisee = imagePath ?? _seanceEnvCourante?.ScanEnvImage;
+
+            var dlg = new MedCompanion.Dialogs.EnvSaisieDialog(
+                utilisee,
+                _seanceEnvCourante?.ReponsesParent,
+                _seanceEnvCourante?.InformateurEnv,
+                _seanceEnvCourante?.InformateurEnvNom);
+
+            if (dlg.ShowDialog() != true) return;
+
+            _seanceEnvCourante ??= new Services.Evaluations.SeanceEnvironnement { Date = DateTime.Today };
+            _seanceEnvCourante.ReponsesParent     = dlg.Reponses;
+            _seanceEnvCourante.InformateurEnv     = dlg.Informateur;
+            _seanceEnvCourante.InformateurEnvNom  = dlg.InformateurNom;
+            _seanceEnvCourante.ReponsesParentDate = DateTime.Now;
+
+            // La feuille réellement dépouillée est retenue : un dépouillement lancé depuis le
+            // dossier bleu porte sur un fichier que la fiche ne connaissait pas encore.
+            if (utilisee != null) _seanceEnvCourante.ScanEnvImage = utilisee;
+
+            var (ok, err) = SauverSeanceEnv(dir);
+            FeuilleEnvStatus = ok
+                ? $"💾 {_seanceEnvCourante.EtatFeuilleParentLisible}."
+                : $"❌ {err}";
+
+            OnPropertyChanged(nameof(FeuilleEnvEtatText));
+        }
+
+        private void EnregistrerEvaluationCiblee()
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir))
+            {
+                EvaluationCiblee.Status = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            var (ok, err) = SauverSeanceEnv(dir, evaluation: true);
+            EvaluationCiblee.Status = ok
+                ? $"💾 Évaluation enregistrée — {_seanceEnvCourante!.EtatEvaluationLisible}."
+                : $"❌ {err}";
+        }
+
+        /// <summary>
+        /// Demande à Med une proposition d'orientation, à partir du dossier bleu : synthèse,
+        /// dernière note, synthèses des bilans, et la cartographie de l'enfant avec ses fiabilités.
+        /// </summary>
+        private async System.Threading.Tasks.Task SuggererOrientationAsync()
+        {
+            if (CurrentPatient == null || _llmService == null)
+            {
+                Orientation.Status = "❌ Aucun patient sélectionné, ou LLM indisponible.";
+                return;
+            }
+
+            Orientation.IsSuggesting = true;
+            Orientation.Status = "⏳ Lecture du dossier…";
+            try
+            {
+                await PreparerModeleAsync("orientation_diagnostique", s => Orientation.Status = s);
+
+                var svc = new Services.Evaluations.PreparationSuggesterService(_llmService);
+
+                // Les rubriques arrivent une par une : chaque bloc se remplit dès qu'il est prêt,
+                // au lieu que l'écran reste figé jusqu'à la dernière. L'état courant part avec la
+                // demande — ce que le médecin a déjà écrit n'est ni régénéré ni ignoré, il nourrit
+                // les rubriques suivantes.
+                var (ok, sug, err) = await svc.SuggestAsync(
+                    PatientDisplayName, _confirmedAge, _detectedMotif ?? "",
+                    LireSyntheseDossier(), LireDerniereNote(),
+                    LireSynthesesBilans(), LireCartographieEnfantPourPrompt(),
+                    dejaPosees: Orientation.EtatCourant(),
+                    onRubrique: (cle, items) => Dispatch(() => Orientation.Poser(cle, items)),
+                    onProgres:  msg          => Dispatch(() => Orientation.Status = msg));
+
+                if (!ok || sug == null)
+                {
+                    Orientation.Status = $"❌ {err}";
+                    return;
+                }
+
+                Orientation.Status = sug.Echecs.Count == 0
+                    ? "✨ Proposition posée — à affiner : modifiez, supprimez, ajoutez."
+                    : $"✨ Proposition posée — {string.Join(", ", sug.Echecs)} n'a pas abouti, à renseigner à la main.";
+            }
+            catch (Exception ex) { Orientation.Status = $"❌ {ex.Message}"; }
+            finally { Orientation.IsSuggesting = false; }
+        }
+
+        private string LireSyntheseDossier()
+        {
+            try
+            {
+                var dir = CurrentPatient?.DirectoryPath;
+                if (string.IsNullOrEmpty(dir)) return "";
+                var sd = System.IO.Path.Combine(dir, "synthese");
+                if (!System.IO.Directory.Exists(sd)) return "";
+                var f = System.IO.Directory.GetFiles(sd, "*.md").FirstOrDefault();
+                return f == null ? "" : System.IO.File.ReadAllText(f, System.Text.Encoding.UTF8);
+            }
+            catch { return ""; }
+        }
+
+        private string LireDerniereNote()
+        {
+            try
+            {
+                var dir = CurrentPatient?.DirectoryPath;
+                if (string.IsNullOrEmpty(dir)) return "";
+                var nd = System.IO.Path.Combine(dir, DateTime.Now.Year.ToString(), "notes");
+                if (!System.IO.Directory.Exists(nd)) return "";
+                var f = System.IO.Directory.GetFiles(nd, "*.md")
+                    .Where(p => !System.IO.Path.GetFileName(p).Contains("signal"))
+                    .OrderByDescending(p => p).FirstOrDefault();
+                return f == null ? "" : System.IO.File.ReadAllText(f, System.Text.Encoding.UTF8);
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
+        /// Les bilans du dossier — leur SYNTHÈSE seulement, jamais le rapport entier : c'est ce
+        /// que le médecin lit lui-même quand il prépare, et un rapport complet noierait le reste.
+        /// </summary>
+        private string LireSynthesesBilans()
+        {
+            try
+            {
+                var dir = CurrentPatient?.DirectoryPath;
+                if (string.IsNullOrEmpty(dir)) return "";
+                var sd = System.IO.Path.Combine(dir, DateTime.Now.Year.ToString(),
+                                                "documents", "syntheses_documents");
+                if (!System.IO.Directory.Exists(sd)) return "";
+
+                var sb = new StringBuilder();
+                foreach (var f in System.IO.Directory.GetFiles(sd, "*.md").OrderBy(p => p))
+                {
+                    sb.AppendLine($"— {System.IO.Path.GetFileNameWithoutExtension(f)}");
+                    sb.AppendLine(System.IO.File.ReadAllText(f, System.Text.Encoding.UTF8).Trim());
+                    sb.AppendLine();
+                }
+                return sb.ToString();
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
+        /// La cartographie de l'enfant la plus récente, AVEC ses fiabilités déclarées : c'est la
+        /// source la plus fraîche du dossier, mais sa portée dépend de ce que le médecin a jugé
+        /// de ses deux moitiés.
+        /// </summary>
+        private string LireCartographieEnfantPourPrompt()
+        {
+            try
+            {
+                var dir = CurrentPatient?.DirectoryPath;
+                if (string.IsNullOrEmpty(dir)) return "";
+                var fiche = _cartoV2.LoadAll(dir).FirstOrDefault(c => c.VerseeAuDossier);
+                if (fiche == null) return "";
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"Cartographie du {fiche.Date:dd/MM/yyyy} — {fiche.EtatLisible}");
+                sb.AppendLine($"Rempli par : {fiche.InformateurLisible}");
+                sb.AppendLine($"FIABILITÉ questionnaire parent : "
+                    + Models.Evaluations.FiabiliteCartographie.LabelDe(fiche.FiabiliteQuestionnaire));
+                sb.AppendLine($"FIABILITÉ profils observés : "
+                    + Models.Evaluations.FiabiliteCartographie.LabelDe(fiche.FiabiliteObservation));
+                sb.AppendLine();
+
+                foreach (var axe in Models.Evaluations.CartographieItemsV2.AxeKeys)
+                    if (fiche.ScoresQuestionnaire.TryGetValue(axe, out var sc))
+                        sb.AppendLine($"{Models.Evaluations.CartographieItemsV2.AxeLabel(axe)} : {sc}/6");
+
+                foreach (var profil in Models.Evaluations.ProfilsObservesV2.Profils)
+                    foreach (var ax in profil.Axes)
+                        if (fiche.Axes.TryGetValue($"{profil.Key}.{ax.Key}", out var v) && v > 0)
+                            sb.AppendLine($"{profil.Label} · {ax.Label} : {v}/5");
+
+                if (!string.IsNullOrWhiteSpace(fiche.SyntheseTexte))
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("Synthèse de la cartographie :");
+                    sb.AppendLine(fiche.SyntheseTexte.Trim());
+                }
+                return sb.ToString();
+            }
+            catch { return ""; }
+        }
+
+        private void EnregistrerOrientation()
+        {
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir))
+            {
+                Orientation.Status = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            var (ok, err) = SauverSeanceEnv(dir, orientation: true);
+            Orientation.Status = ok
+                ? $"💾 Orientation enregistrée — {_seanceEnvCourante!.NbOrientation} éléments."
+                : $"❌ {err}";
+        }
+
+        /// <summary>
+        /// Écrit la fiche de séance 3 depuis les DEUX écrans, quel que soit le bouton cliqué.
+        ///
+        /// La séance a une seule fiche pour deux rubriques éditées dans deux écrans. Si chaque
+        /// bouton n'écrivait que sa moitié, enregistrer l'orientation après avoir coché des
+        /// constats réécrirait la fiche avec les axes tels qu'ils étaient au dernier enregistrement
+        /// de l'évaluation — donc effacerait les coches, sans rien dire.
+        ///
+        /// <paramref name="orientation"/> et <paramref name="evaluation"/> ne disent pas QUOI
+        /// écrire — tout est écrit — mais quelle date d'étape horodater.
+        /// </summary>
+        private (bool ok, string? err) SauverSeanceEnv(string dir, bool orientation = false,
+                                                      bool evaluation = false, bool cotationEnv = false)
+        {
+            _seanceEnvCourante ??= new Services.Evaluations.SeanceEnvironnement { Date = DateTime.Today };
+            _seanceEnvCourante.PatientNom = PatientDisplayName;
+            _seanceEnvCourante.Age        = _confirmedAge;
+
+            _seanceEnvCourante.HypothesesPrincipales = Orientation.Hypotheses.ToList();
+            _seanceEnvCourante.Differentiels         = Orientation.Differentiels.ToList();
+            _seanceEnvCourante.AEliminer             = Orientation.AEliminer.ToList();
+            _seanceEnvCourante.PointsVigilance       = Orientation.Vigilance.ToList();
+            _seanceEnvCourante.QuestionsCliniques    = Orientation.Questions.ToList();
+            _seanceEnvCourante.Axes                  = EvaluationCiblee.ToList();
+            _seanceEnvCourante.CotationsEnv          = CartoEnvMedecin.ToDictionary();
+
+            // La synthèse n'est reprise de l'écran que s'il en porte une. Sans cette garde,
+            // enregistrer depuis une autre carte — l'orientation, une cotation — effacerait une
+            // synthèse déjà rédigée, simplement parce que l'écran de synthèse n'a pas été ouvert.
+            if (SyntheseSeance3.HasTexte)
+            {
+                _seanceEnvCourante.SyntheseTexte = SyntheseSeance3.Texte;
+                _seanceEnvCourante.SyntheseDate ??= DateTime.Now;
+            }
+            if (SyntheseSeance3.FiabiliteEnv.Selection  != null) _seanceEnvCourante.FiabiliteEnv  = SyntheseSeance3.FiabiliteEnv.Selection;
+            if (SyntheseSeance3.FiabiliteAxes.Selection != null) _seanceEnvCourante.FiabiliteAxes = SyntheseSeance3.FiabiliteAxes.Selection;
+
+            if (orientation) _seanceEnvCourante.OrientationDate = DateTime.Now;
+            if (evaluation)  _seanceEnvCourante.EvaluationDate  = DateTime.Now;
+            if (cotationEnv) _seanceEnvCourante.CotationEnvDate = DateTime.Now;
+
+            var (ok, _, err) = _seanceEnv.Save(dir, _seanceEnvCourante);
+
+            // Le dossier bleu suit CHAQUE enregistrement, sans attendre la fin de la séance :
+            // c'est l'état porté par la carte qui dit où en est le travail, pas le moment où elle
+            // apparaît. Règle posée à la séance 2, et qui vaut ici pour les mêmes raisons.
+            if (ok) LoadSeanceEnvBilans();
+
+            return (ok, err);
+        }
+
+        /// <summary>
+        /// Génère la feuille environnement — les 22 items destinés au parent seulement. Les 14
+        /// autres seront cotés par le médecin depuis l'entretien.
+        ///
+        /// Feuille VIERGE : générée en temporaire, pas versée au dossier. C'est le scan de la
+        /// feuille remplie qui sera archivé.
+        /// </summary>
+        private async System.Threading.Tasks.Task PrintQuestionnaireEnvAsync()
+        {
+            if (CurrentPatient == null)
+            {
+                CartoEnvStatusMessage = "❌ Aucun patient sélectionné.";
+                return;
+            }
+
+            var meta = _patientIndex?.GetMetadata(CurrentPatient.Id);
+            if (meta == null)
+            {
+                CartoEnvStatusMessage = "❌ Métadonnées patient introuvables.";
+                return;
+            }
+
+            var svc = new Services.Evaluations.QuestionnaireEnvironnementService();
+            if (!svc.TemplateExists)
+            {
+                CartoEnvStatusMessage = "❌ Template absent (Resources/Formulaires/questionnaire_environnement.html).";
+                return;
+            }
+
+            CartoEnvStatusMessage = "⏳ Génération du questionnaire…";
+
+            var outputDir = System.IO.Path.Combine(
+                System.IO.Path.GetTempPath(), "MedCompanion", "questionnaires");
+
+            var (ok, pdfPath, error) = await svc.GenerateAsync(meta, _confirmedAge, outputDir);
+
+            if (ok && !string.IsNullOrEmpty(pdfPath))
+            {
+                CartoEnvStatusMessage = "✅ Questionnaire environnement généré — à imprimer et remettre au parent.";
+                try
+                {
+                    System.Diagnostics.Process.Start(
+                        new System.Diagnostics.ProcessStartInfo(pdfPath) { UseShellExecute = true });
+                }
+                catch { /* ouverture best-effort */ }
+            }
+            else
+            {
+                CartoEnvStatusMessage = $"❌ {error}";
+            }
+        }
+
+        // ── Carte 4 : synthèse de la cartographie ─────────────────────────────
+
+        public CartographieSyntheseViewModel SyntheseCarto { get; } = new();
+
+        private bool _showSyntheseCarto;
+        public bool ShowSyntheseCarto
+        {
+            get => _showSyntheseCarto;
+            set => SetProperty(ref _showSyntheseCarto, value);
+        }
+
+        private void OuvrirSyntheseCarto()
+        {
+            SyntheseCarto.Charger(_cartoV2Courante);
+            ShowSyntheseCarto = true;
+        }
+
+        /// <summary>
+        /// Produit la synthèse de la cartographie. Elle PRÉSENTE et QUALIFIE les deux moitiés ;
+        /// elle ne conclut pas — le diagnostic appartient aux étapes suivantes, et deux endroits
+        /// où s'écrirait la même conclusion finiraient par diverger.
+        /// </summary>
+        private async System.Threading.Tasks.Task GenererSyntheseCartoAsync()
+        {
+            if (_cartoV2Courante == null || _llmService == null)
+            {
+                SyntheseCarto.Status = "❌ Aucune cartographie enregistrée, ou LLM indisponible.";
+                return;
+            }
+
+            SyntheseCarto.IsGenerating = true;
+            SyntheseCarto.Status = "⏳ Rédaction de la synthèse…";
+            try
+            {
+                // Bascule sur le modèle affecté à cette étape, comme les autres étapes de
+                // raisonnement du parcours.
+                await PreparerModeleAsync("cartographie_synthese", s => SyntheseCarto.Status = s);
+
+                var (ok, texte, err) = await _llmService.GenerateTextAsync(
+                    ConstruirePromptSyntheseCarto(_cartoV2Courante), maxTokens: 1200);
+
+                if (!ok || string.IsNullOrWhiteSpace(texte))
+                {
+                    SyntheseCarto.Status = $"❌ {err ?? "réponse vide"}";
+                    return;
+                }
+
+                SyntheseCarto.Texte  = texte.Trim();
+                SyntheseCarto.Status = "✅ Synthèse rédigée — relisez-la et corrigez avant d'enregistrer.";
+            }
+            catch (Exception ex)
+            {
+                SyntheseCarto.Status = $"❌ {ex.Message}";
+            }
+            finally { SyntheseCarto.IsGenerating = false; }
+        }
+
+        private string ConstruirePromptSyntheseCarto(Services.Evaluations.CartographieV2 c)
+        {
+            var fq = Models.Evaluations.FiabiliteCartographie.Par(SyntheseCarto.Questionnaire.Selection);
+            var fo = Models.Evaluations.FiabiliteCartographie.Par(SyntheseCarto.Observation.Selection);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("Tu es pédopsychiatre. Voici la cartographie d'un enfant, en deux moitiés recueillies séparément.");
+            sb.AppendLine();
+            sb.AppendLine($"ENFANT : {c.Age} ans — questionnaire version {c.BandeCode} ans.");
+            sb.AppendLine();
+
+            sb.AppendLine("── MOITIÉ PARENT — questionnaire rempli en salle d'attente ──");
+            sb.AppendLine($"Rempli par : {c.InformateurLisible}");
+            sb.AppendLine($"Fiabilité déclarée par le médecin : {fq?.Label ?? "non renseignée"}"
+                        + (fq?.Poids is double pq ? $" (poids {pq:0.00})" : " — À ÉCARTER du raisonnement"));
+            sb.AppendLine();
+            foreach (var axe in Models.Evaluations.CartographieItemsV2.AxeKeys)
+            {
+                if (!c.ScoresQuestionnaire.TryGetValue(axe, out var score)) continue;
+                var niveau = Models.Evaluations.CartographieItemsV2.NiveauPourScore(score);
+                sb.AppendLine($"{Models.Evaluations.CartographieItemsV2.AxeLabel(axe)} : {score}/6 — {Models.Evaluations.CartographieContent.NiveauLabel(niveau)}");
+
+                // Ce qui ACCROCHE, pas seulement combien : un 4/6 ne dit pas la même chose
+                // selon les items manqués. C'est toute la raison d'être des 6 dimensions stables.
+                var enonces = Models.Evaluations.CartographieItemsV2.Items(axe, ParseBande(c.BandeCode));
+                if (c.ReponsesQuestionnaire.TryGetValue(axe, out var reps))
+                {
+                    for (int i = 0; i < enonces.Count && i < reps.Length; i++)
+                    {
+                        if (reps[i] == "non")  sb.AppendLine($"   NON — {enonces[i]}");
+                        if (reps[i] != "oui" && reps[i] != "non") sb.AppendLine($"   SANS RÉPONSE — {enonces[i]}");
+                    }
+                }
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("── MOITIÉ MÉDECIN — profils observés pendant la séance ──");
+            sb.AppendLine($"Fiabilité déclarée par le médecin : {fo?.Label ?? "non renseignée"}"
+                        + (fo?.Poids is double po ? $" (poids {po:0.00})" : " — À ÉCARTER du raisonnement"));
+            sb.AppendLine();
+            foreach (var profil in Models.Evaluations.ProfilsObservesV2.Profils)
+            {
+                var lignes = profil.Axes
+                    .Select(ax => (ax, val: c.Axes.TryGetValue($"{profil.Key}.{ax.Key}", out var v) ? v : 0))
+                    .Where(t => t.val > 0).ToList();
+                if (lignes.Count == 0) continue;
+
+                var nature = profil.Nature == Models.Evaluations.ProfilNature.Portrait
+                    ? "portrait — aucun pôle n'est meilleur que l'autre"
+                    : "compétence — 5 est le bon côté";
+                sb.AppendLine($"{profil.Label} ({nature}) :");
+                foreach (var (ax, val) in lignes)
+                    sb.AppendLine($"   {ax.Label} : {val}/5 — {(val >= 3 ? ax.Pole5 : ax.Pole1)}");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("── CE QUE TU DOIS ÉCRIRE ──");
+            sb.AppendLine("Une synthèse de 15 à 25 lignes, en français, ton clinique sobre, qui :");
+            sb.AppendLine("1. décrit ce que chaque moitié montre, sans les mélanger ;");
+            sb.AppendLine("2. signale où elles CONVERGENT et où elles DIVERGENT — la divergence est le matériau le plus utile ;");
+            sb.AppendLine("3. tient compte des fiabilités déclarées : ce qui vient d'une source peu fiable se dit avec réserve, et une source à écarter n'est pas utilisée ;");
+            sb.AppendLine("4. nomme ce qui reste à explorer.");
+            sb.AppendLine();
+            sb.AppendLine("INTERDITS ABSOLUS :");
+            sb.AppendLine("- ne pose AUCUN diagnostic, même sous forme d'hypothèse nommée ;");
+            sb.AppendLine("- ne recommande AUCUN bilan ni orientation ;");
+            sb.AppendLine("- n'invente rien qui ne soit pas dans les données ci-dessus ;");
+            sb.AppendLine("- ne recalcule aucun score : les chiffres donnés sont définitifs.");
+            sb.AppendLine();
+            sb.AppendLine("Cette synthèse sera ensuite croisée avec l'interrogatoire et les bilans par une autre étape.");
+            sb.AppendLine("Ton rôle ici est de PRÉSENTER et QUALIFIER, pas de conclure.");
+            sb.AppendLine("Écris le texte seul, sans titre ni préambule.");
+            return sb.ToString();
+        }
+
+        private static Models.Evaluations.BandeAgeCarto ParseBande(string? code) => code switch
+        {
+            "3-4"  => Models.Evaluations.BandeAgeCarto.TroisQuatre,
+            "5-6"  => Models.Evaluations.BandeAgeCarto.CinqSix,
+            "7-9"  => Models.Evaluations.BandeAgeCarto.SeptNeuf,
+            _      => Models.Evaluations.BandeAgeCarto.DixOnze
+        };
+
+        private void EnregistrerSyntheseCarto()
+        {
+            if (_cartoV2Courante == null) return;
+
+            _cartoV2Courante.FiabiliteQuestionnaire = SyntheseCarto.Questionnaire.Selection;
+            _cartoV2Courante.FiabiliteObservation   = SyntheseCarto.Observation.Selection;
+            _cartoV2Courante.SyntheseTexte          = SyntheseCarto.Texte;
+            _cartoV2Courante.SyntheseDate           = DateTime.Now;
+
+            if (!EcrireCartoV2(verser: true, out var err))
+            {
+                SyntheseCarto.Status = $"❌ {err}";
+                return;
+            }
+            SyntheseCarto.Status = "💾 Synthèse enregistrée — visible dans l'onglet BILANS.";
+        }
+
         /// <summary>
         /// Purge tout ce qui appartient à la séance de cartographie du patient précédent, et
         /// recharge les cartes du nouveau. Appelé depuis le setter de <see cref="CurrentPatient"/>,
@@ -1009,12 +1989,14 @@ namespace MedCompanion.ViewModels
         {
             _cartoV2Courante = null;
             CartoV2Versee    = false;
+            CartoV2Cloturee  = false;
             ProfilsObserves.Reset();
             ProfilsStatusMessage      = "";
             CartographieStatusMessage = "";
             // Le bloc se referme : rester ouvert sur un enfant en affichant l'écran d'un autre
             // est précisément le risque qu'on veut supprimer.
             ShowProfilsObserves = false;
+            ShowSyntheseCarto   = false;
             IsCartographieMode  = false;
             LoadCartographieV2Bilans();
         }
@@ -1053,16 +2035,88 @@ namespace MedCompanion.ViewModels
             LoadCartographieV2Bilans();
         }
 
+        // ── Séance 3 dans le dossier bleu ────────────────────────────────────
+        //
+        // Trois entrées, et non une : la cartographie de l'environnement et l'évaluation ciblée
+        // sont deux cartes distinctes de l'onglet BILANS, la synthèse est un bloc de l'onglet
+        // SYNTHÈSE. Les fondre laisserait croire qu'un même regard les a produites — alors que
+        // l'une repose pour moitié sur une feuille de salle d'attente et l'autre sur ce que le
+        // médecin a vu de ses yeux, et qu'elles portent chacune leur fiabilité.
+
+        public ObservableCollection<SeanceEnvCardViewModel>        SeanceEnvBilans      { get; } = new();
+        public ObservableCollection<EvaluationCibleeCardViewModel> EvaluationCibleeBilans { get; } = new();
+        public ObservableCollection<SeanceEnvSyntheseBlocViewModel> SeanceEnvSyntheseBlocs { get; } = new();
+
+        public bool HasSeanceEnvBilans        => SeanceEnvBilans.Count > 0;
+        public bool HasEvaluationCibleeBilans => EvaluationCibleeBilans.Count > 0;
+        public bool HasSeanceEnvSyntheseBlocs => SeanceEnvSyntheseBlocs.Count > 0;
+
+        /// <summary>
+        /// La phase d'évaluation est achevée par le NOUVEAU parcours : une séance 3 clôturée, ou
+        /// sa synthèse rédigée.
+        ///
+        /// Existe pour déverrouiller la Synthèse Globale, qui était jusqu'ici conditionnée à une
+        /// évaluation V1 clôturée. Sans ce relais, un patient évalué par les séances 2 et 3 —
+        /// c'est-à-dire tous les nouveaux — resterait bloqué devant un jalon Synthèse verrouillé
+        /// par une étape qui n'existe plus pour lui.
+        /// </summary>
+        private bool _seanceEnvAchevee;
+        public bool SeanceEnvAchevee
+        {
+            get => _seanceEnvAchevee;
+            private set => SetProperty(ref _seanceEnvAchevee, value);
+        }
+
         private void LoadCartographieV2Bilans()
         {
             CartographieV2Bilans.Clear();
+            CartographieSyntheseBlocs.Clear();
             var dir = CurrentPatient?.DirectoryPath;
             if (!string.IsNullOrEmpty(dir))
             {
                 foreach (var c in _cartoV2.LoadAll(dir).Where(c => c.VerseeAuDossier))
+                {
                     CartographieV2Bilans.Add(new CartographieV2CardViewModel(c));
+                    if (!string.IsNullOrWhiteSpace(c.SyntheseTexte))
+                        CartographieSyntheseBlocs.Add(new CartographieSyntheseBlocViewModel(c));
+                }
             }
             OnPropertyChanged(nameof(HasCartographieV2Bilans));
+            OnPropertyChanged(nameof(HasCartographieSyntheseBlocs));
+
+            LoadSeanceEnvBilans();
+        }
+
+        /// <summary>
+        /// Verse au dossier ce que la 3ᵉ séance a produit. Chaque partie apparaît DÈS QU'ELLE
+        /// EXISTE, sans attendre que la séance soit terminée — la carte porte son propre état
+        /// d'avancement, c'est lui qui dit où en est le travail, pas sa présence ou son absence.
+        /// </summary>
+        private void LoadSeanceEnvBilans()
+        {
+            SeanceEnvBilans.Clear();
+            EvaluationCibleeBilans.Clear();
+            SeanceEnvSyntheseBlocs.Clear();
+
+            var achevee = false;
+
+            var dir = CurrentPatient?.DirectoryPath;
+            if (!string.IsNullOrEmpty(dir))
+            {
+                foreach (var s in _seanceEnv.LoadAll(dir))
+                {
+                    if (s.HasReponsesParent || s.HasCotationEnv) SeanceEnvBilans.Add(new SeanceEnvCardViewModel(s));
+                    if (s.HasEvaluation)  EvaluationCibleeBilans.Add(new EvaluationCibleeCardViewModel(s));
+                    if (s.HasSynthese)    SeanceEnvSyntheseBlocs.Add(new SeanceEnvSyntheseBlocViewModel(s));
+                    if (s.EstCloturee || s.HasSynthese) achevee = true;
+                }
+            }
+
+            SeanceEnvAchevee = achevee;
+
+            OnPropertyChanged(nameof(HasSeanceEnvBilans));
+            OnPropertyChanged(nameof(HasEvaluationCibleeBilans));
+            OnPropertyChanged(nameof(HasSeanceEnvSyntheseBlocs));
         }
 
         /// <summary>
@@ -2180,6 +3234,7 @@ namespace MedCompanion.ViewModels
             IsRestitutionReviewMode = false;
             IsEvaluationPhaseMode = false;
             IsCartographieMode = false;
+            IsCartoEnvMode = false;
             IsSyntheseGlobaleMode = false;
             IsProjetTherapeutiqueMode = false;
             IsSelectingRestitutionTypeMode = false;
@@ -6613,11 +7668,34 @@ source: ""MedCompanion""
         public ICommand CancelPastPremiereEditCommand { get; private set; } = null!;
         public ICommand OpenEvaluationCardCommand { get; }    // param : EvaluationCardViewModel
         public ICommand PrintQuestionnaireCartographieCommand { get; private set; } = null!;
+        public ICommand PrintQuestionnaireEnvCommand { get; private set; } = null!;
+        public ICommand CloseCartoEnvCommand { get; private set; } = null!;
+        public ICommand OpenOrientationCommand { get; private set; } = null!;
+        public ICommand CloseOrientationCommand { get; private set; } = null!;
+        public ICommand SuggererOrientationCommand { get; private set; } = null!;
+        public ICommand EnregistrerOrientationCommand { get; private set; } = null!;
+        public ICommand OpenEvaluationCibleeCommand { get; private set; } = null!;
+        public ICommand CloseEvaluationCibleeCommand { get; private set; } = null!;
+        public ICommand SuggererAxesCiblesCommand { get; private set; } = null!;
+        public ICommand EnregistrerEvaluationCibleeCommand { get; private set; } = null!;
+        public ICommand OpenCartoEnvMedecinCommand { get; private set; } = null!;
+        public ICommand CloseCartoEnvMedecinCommand { get; private set; } = null!;
+        public ICommand EnregistrerCotationEnvCommand { get; private set; } = null!;
+        public ICommand OpenSyntheseSeance3Command { get; private set; } = null!;
+        public ICommand CloseSyntheseSeance3Command { get; private set; } = null!;
+        public ICommand RedigerSyntheseSeance3Command { get; private set; } = null!;
+        public ICommand EnregistrerSyntheseSeance3Command { get; private set; } = null!;
+        public ICommand TerminerSeanceEnvCommand { get; private set; } = null!;
         public ICommand CloseCartographieCommand { get; private set; } = null!;
         public ICommand OpenProfilsObservesCommand { get; private set; } = null!;
         public ICommand CloseProfilsObservesCommand { get; private set; } = null!;
         public ICommand SaveProfilsObservesCommand { get; private set; } = null!;
         public ICommand DeleteCartographieV2Command { get; private set; } = null!;  // param : CartographieV2CardViewModel
+        public ICommand CloturerSeanceCartoCommand { get; private set; } = null!;
+        public ICommand OpenSyntheseCartoCommand { get; private set; } = null!;
+        public ICommand CloseSyntheseCartoCommand { get; private set; } = null!;
+        public ICommand GenererSyntheseCartoCommand { get; private set; } = null!;
+        public ICommand EnregistrerSyntheseCartoCommand { get; private set; } = null!;
         public ICommand DeleteEvaluationCardCommand { get; }  // param : EvaluationCardViewModel
         public ICommand OpenSyntheseGlobaleCardCommand { get; private set; } = null!;  // param : SyntheseGlobaleCardViewModel
         public ICommand OpenProjetTherapeutiqueCardCommand { get; private set; } = null!;  // param : ProjetTherapeutiqueCardViewModel
@@ -6914,6 +7992,49 @@ source: ""MedCompanion""
                 async _ => await PrintQuestionnaireCartographieAsync(),
                 _ => CurrentPatient != null && Models.Evaluations.CartographieItemsV2.IsApplicable(_confirmedAge));
 
+            PrintQuestionnaireEnvCommand = new RelayCommand(
+                async _ => await PrintQuestionnaireEnvAsync(),
+                _ => CurrentPatient != null);
+
+            CloseCartoEnvCommand = new RelayCommand(_ => { ShowOrientation = false; ShowEvaluationCiblee = false; ShowCartoEnvMedecin = false; ShowSyntheseSeance3 = false; IsCartoEnvMode = false; });
+
+            OpenOrientationCommand  = new RelayCommand(_ => OuvrirOrientation());
+            CloseOrientationCommand = new RelayCommand(_ => ShowOrientation = false);
+            SuggererOrientationCommand = new RelayCommand(
+                async _ => await SuggererOrientationAsync(),
+                _ => CurrentPatient != null && !Orientation.IsSuggesting);
+            EnregistrerOrientationCommand = new RelayCommand(
+                _ => EnregistrerOrientation(),
+                _ => CurrentPatient != null);
+
+            OpenEvaluationCibleeCommand  = new RelayCommand(_ => OuvrirEvaluationCiblee());
+            CloseEvaluationCibleeCommand = new RelayCommand(_ => ShowEvaluationCiblee = false);
+            SuggererAxesCiblesCommand = new RelayCommand(
+                async _ => await SuggererAxesCiblesAsync(),
+                _ => CurrentPatient != null && !EvaluationCiblee.IsSuggesting);
+            EnregistrerEvaluationCibleeCommand = new RelayCommand(
+                _ => EnregistrerEvaluationCiblee(),
+                _ => CurrentPatient != null);
+
+            OpenCartoEnvMedecinCommand  = new RelayCommand(_ => OuvrirCartoEnvMedecin());
+            CloseCartoEnvMedecinCommand = new RelayCommand(_ => ShowCartoEnvMedecin = false);
+            EnregistrerCotationEnvCommand = new RelayCommand(
+                _ => EnregistrerCotationEnv(),
+                _ => CurrentPatient != null);
+
+            OpenSyntheseSeance3Command  = new RelayCommand(_ => OuvrirSyntheseSeance3());
+            CloseSyntheseSeance3Command = new RelayCommand(_ => ShowSyntheseSeance3 = false);
+            RedigerSyntheseSeance3Command = new RelayCommand(
+                async _ => await RedigerSyntheseSeance3Async(),
+                _ => CurrentPatient != null && !SyntheseSeance3.IsRedaction && SyntheseSeance3.PeutRediger);
+            EnregistrerSyntheseSeance3Command = new RelayCommand(
+                _ => EnregistrerSyntheseSeance3(),
+                _ => CurrentPatient != null);
+
+            TerminerSeanceEnvCommand = new RelayCommand(
+                _ => TerminerSeanceEnv(),
+                _ => CurrentPatient != null && !SeanceEnvCloturee);
+
             CloseCartographieCommand = new RelayCommand(_ =>
             {
                 ShowProfilsObserves = false;
@@ -6927,6 +8048,19 @@ source: ""MedCompanion""
                 _ => SaveProfilsObserves(),
                 _ => CurrentPatient != null && ProfilsObserves.NbRenseignes > 0);
 
+
+            CloturerSeanceCartoCommand = new RelayCommand(
+                _ => CloturerSeanceCarto(),
+                _ => _cartoV2Courante != null && !CartoV2Cloturee);
+
+            OpenSyntheseCartoCommand  = new RelayCommand(_ => OuvrirSyntheseCarto());
+            CloseSyntheseCartoCommand = new RelayCommand(_ => ShowSyntheseCarto = false);
+            GenererSyntheseCartoCommand = new RelayCommand(
+                async _ => await GenererSyntheseCartoAsync(),
+                _ => SyntheseCarto.PeutGenerer);
+            EnregistrerSyntheseCartoCommand = new RelayCommand(
+                _ => EnregistrerSyntheseCarto(),
+                _ => _cartoV2Courante != null);
 
             DeleteCartographieV2Command = new RelayCommand(param =>
             {
@@ -7253,6 +8387,30 @@ source: ""MedCompanion""
         // Frise chronologique (cards d'évaluation — active + clôturées, en parallèle des consultations)
         public ObservableCollection<EvaluationCardViewModel> EvaluationCards { get; } = new();
 
+        /// <summary>
+        /// Ce patient porte une évaluation V1. Sert à n'offrir le bloc archive qu'à ceux qui en
+        /// ont une : le proposer aux autres mènerait à un écran qui ne peut rien démarrer.
+        /// </summary>
+        public bool HasEvaluationV1 => EvaluationCards.Count > 0;
+
+        /// <summary>La fiche V1 de ce dossier porte des diagnostics ou une synthèse intégrative.</summary>
+        private bool _v1PorteUneConclusion;
+        public bool V1PorteUneConclusion
+        {
+            get => _v1PorteUneConclusion;
+            private set { if (SetProperty(ref _v1PorteUneConclusion, value)) OnPropertyChanged(nameof(ConclusionV1ARepriser)); }
+        }
+
+        /// <summary>
+        /// La conclusion V1 de ce dossier n'a pas encore été reprise en Synthèse Globale.
+        ///
+        /// Le critère de reprise est une synthèse VALIDÉE. Un brouillon ne compte pas : sur les
+        /// dossiers relevés, le seul brouillon existant était vide — le prendre pour une reprise
+        /// aurait fait disparaître le marqueur d'un dossier où rien n'avait été repris.
+        /// </summary>
+        public bool ConclusionV1ARepriser
+            => _v1PorteUneConclusion && !SyntheseGlobaleCards.Any(c => c.IsValidee);
+
         // Frise chronologique (cards de Synthèse Globale — brouillon courant + versions validées)
         public ObservableCollection<SyntheseGlobaleCardViewModel> SyntheseGlobaleCards { get; } = new();
 
@@ -7413,33 +8571,67 @@ source: ""MedCompanion""
                 ActivateCommand = new Commands.RelayCommand(_ => EnterCartographieMode())
             });
 
-            // ── Étape 3 : Évaluation ────────────────────────────────────────────────────
-            bool evalCompleted  = EvaluationCards.Any(c => c.IsClosed);
-            bool evalInProgress = EvaluationCards.Any(c => c.IsActive);
-            var  evalDate       = evalCompleted
-                ? EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault()?.DateCloture
-                : EvaluationCards.FirstOrDefault(c => c.IsActive)?.Date;
-
-            // Évaluation : Completed/InProgress → ouvre la carte existante ; Available → nouvelle
-            var closedEvalCard  = EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault();
-            var activeEvalCard  = EvaluationCards.FirstOrDefault(c => c.IsActive);
-            System.Windows.Input.ICommand evalCmd =
-                evalCompleted  && closedEvalCard != null ? new Commands.RelayCommand(_ => OpenEvaluationCard(closedEvalCard)) :
-                evalInProgress && activeEvalCard  != null ? new Commands.RelayCommand(_ => OpenEvaluationCard(activeEvalCard))  :
-                new Commands.RelayCommand(_ => NewConsultationCommand.Execute("evaluation"));
-
+            // ── Étape 3 : Cartographie de l'environnement + évaluation ciblée ───────────
+            // 3ᵉ séance. Même forme que la cartographie de l'enfant : la feuille part en salle
+            // d'attente pendant que le médecin travaille avec l'enfant et la famille.
             FriseStages.Add(new FriseStageViewModel
             {
-                Key    = "evaluation",
-                Label  = "Évaluation",
-                Icon   = "📋",
-                Status = evalCompleted  ? FriseStageStatus.Completed :
-                         evalInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
-                Date   = evalDate,
-                ActivateCommand = evalCmd
+                Key    = "cartographie_env",
+                Label  = "Environnement & évaluation",
+                Icon   = "🌳",
+                Status = FriseStageStatus.Available,
+                ActivateCommand = new Commands.RelayCommand(_ => EnterCartoEnvMode())
             });
 
-            // ── Étape 4 : Synthèse ──────────────────────────────────────────────────────
+            // ── Étape 4 : Évaluation (V1) — ARCHIVE, plus une étape du parcours ─────────
+            //
+            // Les deux blocs Cartographie de l'enfant et Environnement & évaluation ciblée
+            // couvrent désormais ce que ce bloc faisait. Le jalon n'est donc plus une étape à
+            // franchir : il ne s'affiche QUE pour les patients qui portent déjà une évaluation V1,
+            // et uniquement pour la relire.
+            //
+            // Aucune création : le chemin « Available → nouvelle évaluation » est retiré. C'est ce
+            // qui empêche la V1 de repartir, sans rien casser des 37 fiches existantes ni de ce
+            // que l'aval en lit.
+            bool evalCompleted  = EvaluationCards.Any(c => c.IsClosed);
+            bool evalInProgress = EvaluationCards.Any(c => c.IsActive);
+
+            if (EvaluationCards.Count > 0)
+            {
+                var evalDate = evalCompleted
+                    ? EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault()?.DateCloture
+                    : EvaluationCards.FirstOrDefault(c => c.IsActive)?.Date;
+
+                var closedEvalCard = EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault();
+                var activeEvalCard = EvaluationCards.FirstOrDefault(c => c.IsActive);
+                var carteAOuvrir   = closedEvalCard ?? activeEvalCard;
+
+                FriseStages.Add(new FriseStageViewModel
+                {
+                    Key    = "evaluation",
+                    Label  = "Évaluation (archive)",
+                    Icon   = "📋",
+                    Status = evalCompleted  ? FriseStageStatus.Completed :
+                             evalInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
+                    Date   = evalDate,
+                    // Le seul cas qui mérite qu'on dise autre chose que « Clôturée » : la
+                    // conclusion de cette fiche n'existe nulle part ailleurs, et le bloc V1 est
+                    // destiné à disparaître.
+                    Note   = ConclusionV1ARepriser ? "⚠ conclusion à reprendre en Synthèse" : null,
+                    ActivateCommand = new Commands.RelayCommand(
+                        _ => { if (carteAOuvrir != null) OpenEvaluationCard(carteAOuvrir); },
+                        _ => carteAOuvrir != null)
+                });
+            }
+
+            // ── Étape 5 : Synthèse ──────────────────────────────────────────────────────
+            //
+            // La phase d'évaluation est achevée par L'UN OU L'AUTRE des deux parcours : une
+            // évaluation V1 clôturée (dossiers anciens), ou une séance 3 clôturée / synthétisée
+            // (dossiers d'aujourd'hui). Ne garder que le premier verrouillerait la Synthèse pour
+            // tous les patients évalués par les nouveaux blocs.
+            bool evaluationAchevee = evalCompleted || SeanceEnvAchevee;
+
             bool synthCompleted  = SyntheseGlobaleCards.Any(c => c.IsValidee);
             bool synthInProgress = SyntheseGlobaleCards.Any(c => c.IsActive);
             var  synthDate       = synthCompleted
@@ -7451,21 +8643,21 @@ source: ""MedCompanion""
             System.Windows.Input.ICommand synthCmd =
                 synthCompleted  && validSynthCard  != null ? new Commands.RelayCommand(_ => OpenSyntheseGlobaleCard(validSynthCard))  :
                 synthInProgress && activeSynthCard != null ? new Commands.RelayCommand(_ => OpenSyntheseGlobaleCard(activeSynthCard)) :
-                new Commands.RelayCommand(_ => NewConsultationCommand.Execute("synthese_globale"), _ => evalCompleted);
+                new Commands.RelayCommand(_ => NewConsultationCommand.Execute("synthese_globale"), _ => evaluationAchevee);
 
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "synthese",
                 Label  = "Synthèse",
                 Icon   = "🧭",
-                Status = !evalCompleted  ? FriseStageStatus.Locked :
+                Status = !evaluationAchevee  ? FriseStageStatus.Locked :
                          synthCompleted  ? FriseStageStatus.Completed :
                          synthInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
                 Date   = synthDate,
                 ActivateCommand = synthCmd
             });
 
-            // ── Étape 5 : Projet thérapeutique ──────────────────────────────────────────
+            // ── Étape 6 : Projet thérapeutique ──────────────────────────────────────────
             bool projetCompleted  = ProjetTherapeutiqueCards.Any(c => c.IsValidee);
             bool projetInProgress = ProjetTherapeutiqueCards.Any(c => c.IsActive);
             var  projetDate       = projetCompleted
@@ -7491,7 +8683,7 @@ source: ""MedCompanion""
                 ActivateCommand = projetCmd
             });
 
-            // ── Étape 6 : Restitution ────────────────────────────────────────────────────
+            // ── Étape 7 : Restitution ────────────────────────────────────────────────────
             bool restitutionCompleted = false;
             if (CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
             {
@@ -7518,7 +8710,7 @@ source: ""MedCompanion""
                                                             _ => projetCompleted)
             });
 
-            // ── Étape 7 : Bilan semestriel ───────────────────────────────────────────────
+            // ── Étape 8 : Bilan semestriel ───────────────────────────────────────────────
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "bilan_s",
@@ -7528,7 +8720,7 @@ source: ""MedCompanion""
                 ActivateCommand = new Commands.RelayCommand(_ => { }, _ => false)
             });
 
-            // ── Étape 8 : Bilan annuel ────────────────────────────────────────────────────
+            // ── Étape 9 : Bilan annuel ────────────────────────────────────────────────────
             FriseStages.Add(new FriseStageViewModel
             {
                 Key       = "bilan_a",
@@ -7564,6 +8756,16 @@ source: ""MedCompanion""
             var phases = _evaluationPhaseService.LoadAll(CurrentPatient.DirectoryPath);
             foreach (var p in phases)
                 EvaluationCards.Add(new EvaluationCardViewModel(p));
+
+            // Ce dossier porte-t-il une conclusion diagnostique dans sa fiche V1 ?
+            //
+            // Sert au retrait du bloc V1 : tant qu'une conclusion n'a pas été reprise en Synthèse
+            // Globale, supprimer la V1 la perdrait. Le marquage se pose sur le jalon archive et
+            // disparaît de lui-même dès que la synthèse est validée — il n'y a donc pas de liste
+            // à tenir, ni à penser à effacer.
+            V1PorteUneConclusion = phases.Any(p => !p.IsActive
+                && (p.BilanFinal.DiagnosticsRetenus.Any(s => !string.IsNullOrWhiteSpace(s?.Value))
+                    || p.BilanFinal.HasSyntheseIntegrative));
 
             // Synthèses : uniquement les évaluations clôturées avec au moins un diagnostic
             // retenu OU une certitude renseignée OU un élément en faveur OU un écarté.
@@ -8204,9 +9406,17 @@ source: ""MedCompanion""
         {
             if (param is not PatientDocumentItem item) return;
 
-            // Deux feuilles, deux lectures. Le questionnaire de cartographie se dépouille par
-            // trente cases à cocher ; le formulaire de complétion se lit champ par champ sur sa
-            // géométrie. Ouvrir l'un avec la fenêtre de l'autre ne rendrait rien.
+            // Trois feuilles, trois lectures. La cartographie de l'enfant se dépouille par trente
+            // cases réparties en axes ; celle de l'environnement par vingt-deux, en blocs de
+            // tailles inégales ; le formulaire de complétion se lit champ par champ sur sa
+            // géométrie. Ouvrir l'une avec la fenêtre d'une autre n'affiche que des lignes qui
+            // n'existent pas sur la page posée à côté.
+            if (item.IsQuestionnaireEnvironnement)
+            {
+                OuvrirDepouillementEnv(item.FilePath);
+                return;
+            }
+
             if (item.IsQuestionnaireCartographie)
             {
                 OuvrirDepouillementCartographie(item.FilePath);
@@ -8225,7 +9435,7 @@ source: ""MedCompanion""
         /// </summary>
         public void OuvrirDepouillementCartographie(string? imagePath = null)
         {
-            var (imageFiche, bande, scores) = GetDepouillementContexte();
+            var (imageFiche, bande, reponses) = GetDepouillementContexte();
             if (bande == null)
             {
                 System.Windows.MessageBox.Show(
@@ -8236,13 +9446,16 @@ source: ""MedCompanion""
 
             var utilisee = imagePath ?? imageFiche;
             var saisie = new MedCompanion.Dialogs.CartographieSaisieDialog(
-                utilisee, bande.Value, scores);
+                utilisee, bande.Value, reponses,
+                _cartoV2Courante?.Informateur, _cartoV2Courante?.InformateurNom);
 
             // La feuille utilisée pour dépouiller est retenue dans la fiche. Sans ça, un
             // dépouillement lancé depuis le crayon du dossier — donc sur un fichier que la fiche
             // ne connaissait pas — laissait « Reprendre le dépouillement » sans image à montrer.
             if (saisie.ShowDialog() == true)
-                EnregistrerScoresQuestionnaire(saisie.Scores, utilisee);
+                EnregistrerScoresQuestionnaire(
+                    saisie.Scores, saisie.Reponses, utilisee,
+                    saisie.Informateur, saisie.InformateurNom);
         }
 
         // ── BILANS du dossier bleu (cartes cliquables, une par bilan) ──

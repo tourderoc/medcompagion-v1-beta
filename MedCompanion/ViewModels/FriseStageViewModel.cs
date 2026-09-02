@@ -45,7 +45,19 @@ namespace MedCompanion.ViewModels
             set { _date = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusText)); }
         }
 
-        public string StatusText => Status switch
+        /// <summary>
+        /// Remplace la ligne d'état quand il y a quelque chose de plus important à dire que
+        /// « Clôturée ». Sert au marquage transitoire des dossiers dont la conclusion V1 n'a pas
+        /// encore été reprise en Synthèse Globale.
+        /// </summary>
+        private string? _note;
+        public string? Note
+        {
+            get => _note;
+            set { _note = value; OnPropertyChanged(); OnPropertyChanged(nameof(StatusText)); }
+        }
+
+        public string StatusText => !string.IsNullOrWhiteSpace(_note) ? _note! : Status switch
         {
             FriseStageStatus.Locked     => "À venir",
             FriseStageStatus.Available  => "Disponible",

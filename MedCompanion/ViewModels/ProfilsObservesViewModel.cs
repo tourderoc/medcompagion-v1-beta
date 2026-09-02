@@ -57,6 +57,13 @@ namespace MedCompanion.ViewModels
 
         public ObservableCollection<PastilleViewModel> Pastilles { get; } = new();
 
+        /// <summary>
+        /// Garde de lecture seule, fournie par l'écran : une séance clôturée ne se recote pas.
+        /// Portée par la commande plutôt que par l'affichage — un axe grisé mais cliquable
+        /// laisserait croire à une saisie enregistrée.
+        /// </summary>
+        internal System.Func<bool>? PeutEditer;
+
         private int _valeur = ProfilsObservesV2.NonRenseigne;
         /// <summary>0 = non renseigné. C'est l'état de départ : on ne note que ce qu'on a vu.</summary>
         public int Valeur
@@ -86,7 +93,9 @@ namespace MedCompanion.ViewModels
                 // Recliquer la valeur déjà choisie la retire : c'est le seul moyen de corriger
                 // une cotation posée par erreur sans quitter l'écran, et ça ne coûte pas un clic
                 // de plus que d'en choisir une autre.
-                p.ClickCommand = new RelayCommand(_ => Valeur = (Valeur == valeur ? 0 : valeur));
+                p.ClickCommand = new RelayCommand(
+                    _ => Valeur = (Valeur == valeur ? 0 : valeur),
+                    _ => PeutEditer?.Invoke() ?? true);
                 Pastilles.Add(p);
             }
             RefreshPastilles();
@@ -149,10 +158,28 @@ namespace MedCompanion.ViewModels
 
         public ObservableCollection<ProfilObserveViewModel> Profils { get; } = new();
 
+        private bool _isReadOnly;
+        /// <summary>Séance clôturée : les pastilles ne répondent plus.</summary>
+        public bool IsReadOnly
+        {
+            get => _isReadOnly;
+            set
+            {
+                if (_isReadOnly == value) return;
+                _isReadOnly = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(IsEditable));
+                System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+            }
+        }
+        public bool IsEditable => !_isReadOnly;
+
         public ProfilsObservesViewModel()
         {
             foreach (var def in ProfilsObservesV2.Profils)
                 Profils.Add(new ProfilObserveViewModel(def));
+
+            foreach (var axe in AllAxes) axe.PeutEditer = () => !_isReadOnly;
 
             foreach (var axe in AllAxes)
                 axe.PropertyChanged += (_, e) =>

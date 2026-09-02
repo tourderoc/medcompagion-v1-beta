@@ -53,7 +53,17 @@ namespace MedCompanion.ViewModels
             _brancheLecture    = brancheLecture;
             _whisper           = whisper;
 
-            StartCommand                  = new RelayCommand(_ => StartNew(),                _ => CanStart);
+            // Verrou de création de la V1.
+            //
+            // Le bouton « Commencer » a été retiré de l'écran, et l'entrée du menu « + » n'est plus
+            // offerte qu'aux dossiers qui portent déjà une évaluation. Ce `false` est la garde de
+            // dernier recours : elle tient même si un binding vers StartCommand réapparaît par
+            // inadvertance. Il ne doit plus se créer d'évaluation V1 — le parcours passe par les
+            // blocs Cartographie de l'enfant et Environnement & évaluation ciblée.
+            //
+            // CanStart reste inchangé : il sert aussi à afficher le panneau « archive », et le
+            // forcer à false masquerait le message qui explique où le travail se fait désormais.
+            StartCommand                  = new RelayCommand(_ => StartNew(),                _ => false);
             ResumeCommand                 = new RelayCommand(_ => Resume(),                  _ => CanResume);
             SuggestPreparationCommand     = new RelayCommand(async _ => await SuggestPreparationAsync(), _ => IsWorkingPreparation && !IsBusy);
             ValidatePreparationCommand    = new RelayCommand(_ => ValidatePreparation(),    _ => CanValidatePreparation);
