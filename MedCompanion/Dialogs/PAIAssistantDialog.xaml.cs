@@ -135,7 +135,48 @@ namespace MedCompanion.Dialogs
                 await _webView.EnsureCoreWebView2Async(env);
 
                 _webViewInitialized = true;
-                _webView.CoreWebView2.Navigate(_tempPdfPath);
+
+                // COLLER DANS LES CHAMPS DU PDF — c'est ce qui a cessé de marcher.
+                //
+                // Le visualiseur PDF d'Edge lit le presse-papier pour honorer un Ctrl+V dans un
+                // champ de formulaire. WebView2 gouverne cet accès par une PERMISSION : sans
+                // gestionnaire, la demande est refusée en silence, et le collage ne fait
+                // simplement rien — aucun message, aucune erreur. Le comportement a changé avec
+                // une mise à jour du runtime WebView2, ce qui explique qu'il ait marché avant sans
+                // que le code bouge.
+                //
+                // On autorise la seule lecture du presse-papier, et uniquement elle : les autres
+                // permissions (caméra, micro, géolocalisation…) gardent leur refus par défaut.
+                _webView.CoreWebView2.PermissionRequested += (_, args) =>
+                {
+                    if (args.PermissionKind != CoreWebView2PermissionKind.ClipboardRead) return;
+                    args.State   = CoreWebView2PermissionState.Allow;
+                    args.Handled = true;   // supprime aussi la bannière de demande
+                };
+
+                // « Coller » AU CLIC DROIT.
+                //
+                // Le visualiseur PDF embarqué construit son propre menu contextuel, et il n'y met
+                // pas d'entrée Coller — Ctrl+V fonctionne, le clic droit ne propose rien. On ajoute
+                // donc l'entrée nous-mêmes, en tête du menu.
+                _webView.CoreWebView2.ContextMenuRequested += (_, args) =>
+                {
+                    // Rien à proposer si le presse-papier est vide : une entrée qui ne fait rien
+                    // est pire qu'une entrée absente, elle fait douter du champ visé.
+                    if (!LirePressePapier(out var contenu)) return;
+
+                    var apercu = contenu.Length > 28 ? contenu[..28] + "…" : contenu;
+                    var item = _webView.CoreWebView2.Environment.CreateContextMenuItem(
+                        $"Coller « {apercu} »", null, CoreWebView2ContextMenuItemKind.Command);
+
+                    item.CustomItemSelected += (_, _) => CollerDansLeFormulaire();
+                    args.MenuItems.Insert(0, item);
+                };
+
+                // URI file:// en bonne et due forme plutôt qu'un chemin Windows brut. Un chemin nu
+                // est parfois normalisé par WebView2, parfois interprété comme une recherche —
+                // et le visualiseur n'est alors pas dans son mode « document local ».
+                _webView.CoreWebView2.Navigate(new Uri(_tempPdfPath).AbsoluteUri);
 
                 PdfFallbackMessage.Visibility = Visibility.Collapsed;
                 PdfZoomInButton.IsEnabled = true;
@@ -269,19 +310,101 @@ namespace MedCompanion.Dialogs
             }
         }
 
-        private void CopyPrenomButton_Click(object sender, RoutedEventArgs e)
+        // ── Coller dans un champ du PDF ──────────────────────────────────────
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+        private const byte VK_CONTROL      = 0x11;
+        private const byte VK_V            = 0x56;
+        private const uint KEYEVENTF_KEYUP = 0x0002;
+
+        private static bool LirePressePapier(out string contenu)
         {
-            Clipboard.SetText(PatientPrenomText.Text);
+            contenu = "";
+            try
+            {
+                if (!Clipboard.ContainsText()) return false;
+                contenu = (Clipboard.GetText() ?? "").Trim();
+                return contenu.Length > 0;
+            }
+            catch { return false; }   // presse-papier occupé : on n'ajoute pas l'entrée
         }
+
+        /// <summary>
+        /// Rejoue un Ctrl+V dans le visualiseur.
+        ///
+        /// Détour assumé : le champ à remplir vit à l'intérieur du visualiseur PDF, hors d'atteinte
+        /// depuis l'application — on ne peut ni lui écrire, ni lui envoyer une commande. Le seul
+        /// chemin qui aboutit est celui que le médecin emprunte à la main, et qui fonctionne.
+        ///
+        /// La frappe est envoyée APRÈS fermeture du menu et retour du focus au visualiseur : jouée
+        /// immédiatement, elle partirait dans le menu contextuel encore ouvert.
+        /// </summary>
+        private void CollerDansLeFormulaire()
+        {
+            Dispatcher.BeginInvoke(new Action(async () =>
+            {
+                _webView?.Focus();
+                await Task.Delay(80);
+
+                keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+                keybd_event(VK_V, 0, 0, UIntPtr.Zero);
+                keybd_event(VK_V, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+            }), System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        private void CopyPrenomButton_Click(object sender, RoutedEventArgs e)
+            => CopierDansPressePapier(PatientPrenomText.Text, "Prénom");
 
         private void CopyNomButton_Click(object sender, RoutedEventArgs e)
-        {
-            Clipboard.SetText(PatientNomText.Text);
-        }
+            => CopierDansPressePapier(PatientNomText.Text, "Nom");
 
         private void CopyDobButton_Click(object sender, RoutedEventArgs e)
+            => CopierDansPressePapier(PatientDobText.Text, "Date de naissance");
+
+        /// <summary>
+        /// Copie, en réessayant, et en le DISANT.
+        ///
+        /// <c>Clipboard.SetText</c> échoue par une COMException dès qu'une autre application tient
+        /// le presse-papier une fraction de seconde — un gestionnaire de presse-papier, une
+        /// session de bureau à distance, un antivirus. L'appel nu laissait alors le médecin cliquer
+        /// sur 📋 puis coller l'ancien contenu sans qu'aucun signe ne le prévienne, ce qui, sur un
+        /// nom d'enfant recopié dans un document officiel, est exactement l'erreur qu'on ne veut
+        /// pas rendre silencieuse.
+        /// </summary>
+        private void CopierDansPressePapier(string texte, string quoi)
         {
-            Clipboard.SetText(PatientDobText.Text);
+            if (string.IsNullOrWhiteSpace(texte))
+            {
+                StatusText.Text = $"⚠ {quoi} non renseigné — rien à copier.";
+                return;
+            }
+
+            for (var essai = 0; essai < 5; essai++)
+            {
+                try
+                {
+                    // SetDataObject(copy: true) plutôt que SetText : le contenu survit à la
+                    // fermeture de l'application, ce qui compte quand on colle dans un PDF ouvert
+                    // à côté.
+                    Clipboard.SetDataObject(texte, true);
+                    StatusText.Text = $"✅ {quoi} copié — collez dans le champ du PDF (Ctrl+V).";
+                    return;
+                }
+                catch (System.Runtime.InteropServices.COMException)
+                {
+                    System.Threading.Thread.Sleep(60);
+                }
+                catch (Exception ex)
+                {
+                    StatusText.Text = $"❌ Copie impossible : {ex.Message}";
+                    return;
+                }
+            }
+
+            StatusText.Text = "❌ Presse-papier occupé par une autre application — réessayez.";
         }
 
         private void CloseButton_Click(object sender, RoutedEventArgs e)
