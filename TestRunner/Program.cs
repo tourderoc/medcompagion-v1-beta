@@ -39,9 +39,15 @@ class FauxMoteur : ILLMService, IStructuredOutputService
     public Task<(bool isConnected, string message)> CheckConnectionAsync() => Task.FromResult((true, ""));
     public Task<(bool success, string message)> WarmupAsync() => Task.FromResult((true, ""));
     public Task<(bool success, string message)> UnloadAsync() => Task.FromResult((true, ""));
+    // ChatAsync enregistre aussi : c'est le chemin qu'emprunte le suggester de restitution.
+    // Sans ça, une génération réelle passait pour « aucun appel » et renvoyait du vide.
     public Task<(bool success, string result, string? error)> ChatAsync(string s, List<(string role, string content)> m,
         int mt = 1500, CancellationToken ct = default, string? fm = null, int? nc = null)
-        => Task.FromResult((true, "", (string?)null));
+    {
+        Prompts.Add(string.Join("\n", m.Select(x => x.content)));
+        var (ok, json) = Reponse!(Prompts.Count - 1);
+        return Task.FromResult(ok ? (true, json, (string?)null) : (false, "", (string?)"panne simulée"));
+    }
     public Task<(bool success, string fullResponse, string? error)> ChatStreamAsync(string s,
         List<(string role, string content)> m, Action<string> cb, int mt = 1500, CancellationToken ct = default)
         => Task.FromResult((true, "", (string?)null));
@@ -914,6 +920,632 @@ class Program
             Console.WriteLine(ctx[..Math.Min(ctx.Length, 900)]);
 
             try { Directory.Delete(racine, true); } catch { }
+        }
+
+        // ── 14. Année scolaire et bascule de rentrée ──────────────────────────
+        Console.WriteLine();
+        Console.WriteLine("── rentrée scolaire ──");
+        {
+            static DateTime D(int a, int m, int j) => new(a, m, j);
+
+            Verifie("septembre bascule sur la nouvelle année",
+                MedCompanion.Models.Scolarite.AnneeScolaireDe(D(2026, 9, 1)) == "2026-2027",
+                MedCompanion.Models.Scolarite.AnneeScolaireDe(D(2026, 9, 1)));
+            Verifie("31 août appartient encore à l'année précédente",
+                MedCompanion.Models.Scolarite.AnneeScolaireDe(D(2026, 8, 31)) == "2025-2026",
+                MedCompanion.Models.Scolarite.AnneeScolaireDe(D(2026, 8, 31)));
+            Verifie("janvier appartient à l'année commencée en septembre",
+                MedCompanion.Models.Scolarite.AnneeScolaireDe(D(2027, 1, 15)) == "2026-2027",
+                MedCompanion.Models.Scolarite.AnneeScolaireDe(D(2027, 1, 15)));
+            Verifie("le défaut codé en dur a disparu",
+                MedCompanion.Models.Scolarite.AnneeScolaireDe(DateTime.Today) != "2025-2026"
+                || DateTime.Today < D(2026, 9, 1),
+                MedCompanion.Models.Scolarite.AnneeScolaireDe(DateTime.Today));
+
+            // La question se pose une fois par année scolaire, pas à chaque séance.
+            var aujourdhui = D(2026, 9, 3);
+            Verifie("jamais confirmée → on demande",
+                MedCompanion.Models.Scolarite.DoitConfirmer(null, aujourdhui));
+            Verifie("confirmée avant la rentrée → on demande",
+                MedCompanion.Models.Scolarite.DoitConfirmer(D(2026, 6, 12), aujourdhui));
+            Verifie("confirmée après la rentrée → on ne demande plus",
+                !MedCompanion.Models.Scolarite.DoitConfirmer(D(2026, 9, 2), aujourdhui));
+            Verifie("confirmée le jour même de la rentrée → on ne demande plus",
+                !MedCompanion.Models.Scolarite.DoitConfirmer(D(2026, 9, 1), aujourdhui));
+            Verifie("une confirmation de septembre tient jusqu'en août suivant",
+                !MedCompanion.Models.Scolarite.DoitConfirmer(D(2026, 9, 2), D(2027, 8, 31)));
+            Verifie("et cesse de tenir à la rentrée suivante",
+                MedCompanion.Models.Scolarite.DoitConfirmer(D(2026, 9, 2), D(2027, 9, 1)));
+
+            // Un patient créé en cours d'année n'est pas questionné avant la rentrée suivante.
+            Verifie("patient créé en octobre : pas de question avant septembre suivant",
+                !MedCompanion.Models.Scolarite.DoitConfirmer(D(2026, 10, 5), D(2027, 6, 30))
+                && MedCompanion.Models.Scolarite.DoitConfirmer(D(2026, 10, 5), D(2027, 9, 10)));
+        }
+
+        // ── 15. Page 2 : la feuille de route attend le projet de soins ────────
+        Console.WriteLine();
+        Console.WriteLine("── restitution page 2 : feuille de route différée ──");
+        {
+            var moteur = new FauxMoteur { Reponse = _ => (true, "1. **Étape :** contenu généré.") };
+            var svc = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteur, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            var lecture = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "GOBLET Adrien",
+                PatientJson = "{\"prenom\":\"Adrien\",\"nom\":\"GOBLET\"}",
+                PremiereConsultation = "Motif : agitation scolaire."
+            };
+
+            var dossier = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+
+            // Projet de soins encore vide : la section attend, sans appeler le modèle.
+            var enAttente = await svc.SuggestRestitution1PageSectionAsync(
+                MedCompanion.Services.Restitutions.RestitutionSuggesterService.IndexFeuilleDeRoute,
+                lecture, default, dossier);
+
+            Verifie("projet vide → la feuille de route attend",
+                enAttente == MedCompanion.Services.Restitutions.RestitutionSuggesterService.FeuilleDeRouteEnAttente,
+                enAttente);
+            Verifie("aucun appel au modèle tant que le projet est vide",
+                moteur.Prompts.Count == 0, $"{moteur.Prompts.Count}");
+
+            // Le médecin remplit le projet de soins.
+            foreach (var b in dossier.Blocs.Where(b => b.Key.StartsWith("pt_")))
+                b.ContenuValide = b.Key switch
+                {
+                    "pt_s1" => "Consultation de suivi dans 3 mois. Pas de traitement pour l'instant.",
+                    "pt_s2" => "Les parents prendront rendez-vous chez un psychologue.",
+                    _       => ""
+                };
+
+            var redigee = await svc.SuggestRestitution1PageSectionAsync(
+                MedCompanion.Services.Restitutions.RestitutionSuggesterService.IndexFeuilleDeRoute,
+                lecture, default, dossier);
+
+            Verifie("projet rempli → la feuille de route est rédigée",
+                redigee.Contains("contenu généré"), redigee);
+            Verifie("un seul appel au modèle", moteur.Prompts.Count == 1, $"{moteur.Prompts.Count}");
+
+            var p = moteur.Prompts[0];
+            Verifie("elle lit le PROJET DE SOINS, pas le dossier bleu",
+                p.Contains("PROJET DE SOINS qui vient d'être décidé")
+                && p.Contains("Consultation de suivi dans 3 mois")
+                && p.Contains("prendront rendez-vous chez un psychologue"));
+            Verifie("les blocs de projet vides ne sont pas transmis", !p.Contains("pt_s3"));
+            Verifie("interdiction d'ajouter des étapes", p.Contains("Tu n'ajoutes aucune étape"));
+            Verifie("consigne « qui fait quoi »",
+                p.Contains("Dis QUI fait quoi") && p.Contains("n'attribue la responsabilité à personne"));
+
+            // Sans dossier fourni, on n'invente pas non plus.
+            var sansDossier = await svc.SuggestRestitution1PageSectionAsync(
+                MedCompanion.Services.Restitutions.RestitutionSuggesterService.IndexFeuilleDeRoute,
+                lecture);
+            Verifie("sans dossier, la section attend au lieu d'inventer",
+                sansDossier == MedCompanion.Services.Restitutions.RestitutionSuggesterService.FeuilleDeRouteEnAttente);
+
+            // « Ce qui peut aider » ne doit plus proposer d'orientation.
+            var aider = await svc.SuggestRestitution1PageSectionAsync(3, lecture);
+            Verifie("« Ce qui peut aider » interdit les orientations",
+                moteur.Prompts.Last().Contains("INTERDIT ici : toute orientation"));
+        }
+
+        // ── 16. Page 3 — identification, contexte familial, antécédents ──────
+        Console.WriteLine();
+        Console.WriteLine("── restitution page 3 : identité admin, figures d'attachement, bilans en cours ──");
+        {
+            var patientJson = """
+                {"prenom":"Adrien","nom":"GOBLET","dob":"2018-07-24",
+                 "perePrenom":"Julien","pereNom":"GOBLET",
+                 "merePrenom":"Sophie","mereNom":"MARTIN",
+                 "accompagnantPrenom":"Sophie","accompagnantNom":"MARTIN","accompagnantLien":"Mère",
+                 "situationParentale":"Parents séparés, garde alternée"}
+                """;
+
+            var lecture = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "GOBLET Adrien",
+                PatientJson = patientJson,
+                PremiereConsultation = "Reçu en présence de la mère et du beau-père.",
+                DatePremierEntretien = new DateTime(2025, 12, 10)
+            };
+
+            // ── Identification : déterministe + une seule question au modèle ──
+            var moteurIdent = new FauxMoteur { Reponse = _ => (true, "Il s'agit de l'enfant Adrien GOBLET, 8 ans.") };
+            var svcIdent = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurIdent, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+
+            var identification = await svcIdent.SuggerIdentificationAsync(lecture);
+
+            Verifie("un seul appel au modèle pour l'identification",
+                moteurIdent.Prompts.Count == 1, $"{moteurIdent.Prompts.Count}");
+            Verifie("l'identité des parents est transmise en clair, pas en JSON brut",
+                moteurIdent.Prompts[0].Contains("Père : Julien GOBLET")
+                && moteurIdent.Prompts[0].Contains("Mère : Sophie MARTIN"));
+            Verifie("la situation parentale est transmise",
+                moteurIdent.Prompts[0].Contains("Parents séparés, garde alternée"));
+            Verifie("la consigne distingue accompagnant habituel et présent au 1er entretien",
+                moteurIdent.Prompts[0].Contains("PAS d'après") && moteurIdent.Prompts[0].Contains("l'accompagnant habituel"));
+            Verifie("dates, évaluateur, lieu sont déterministes (pas dans le prompt du modèle)",
+                !moteurIdent.Prompts[0].Contains("Dr Lassoued"));
+            Verifie("le bloc final porte les 5 champs attendus",
+                identification.Contains("**Présentation**") && identification.Contains("**Période d'évaluation**")
+                && identification.Contains("**Date de restitution**") && identification.Contains("**Évaluateur** : Dr Lassoued Nair")
+                && identification.Contains("**Lieu**"));
+            Verifie("la présentation générée est reprise telle quelle",
+                identification.Contains("Il s'agit de l'enfant Adrien GOBLET, 8 ans."));
+
+            // Sans formulaire de complétion rempli : rien à transmettre, pas de bloc vide trompeur.
+            var lectureSansAdmin = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = lecture.PatientNomComplet,
+                PatientJson = """{"prenom":"X","nom":"Y"}""",
+                PremiereConsultation = lecture.PremiereConsultation
+            };
+            var moteurVide = new FauxMoteur { Reponse = _ => (true, "présentation.") };
+            var svcVide = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurVide, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcVide.SuggerIdentificationAsync(lectureSansAdmin);
+            Verifie("sans identité admin, on dit qu'elle n'est pas renseignée plutôt que de deviner",
+                moteurVide.Prompts[0].Contains("identité des parents non renseignée"));
+
+            // ── Contexte familial : ADMIN priorisé, professionnels exclus des figures ──
+            var moteurCf = new FauxMoteur { Reponse = _ => (true, "contenu.") };
+            var svcCf = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurCf, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+
+            var sections = new List<string>();
+            await svcCf.SuggestContexteFamilialProgressiveAsync(lecture, s => sections.Add(s));
+
+            Verifie("6 appels séquentiels (récit, père, mère, fratrie, autres figures, points à retenir)",
+                moteurCf.Prompts.Count == 6, $"{moteurCf.Prompts.Count}");
+            Verifie("l'identité admin est injectée en tête de TOUS les appels, pas seulement Père/Mère",
+                moteurCf.Prompts.All(p => p.Contains("IDENTITÉ DES PARENTS")));
+            Verifie("Père et Mère priorisent l'ADMIN, avec repli sur les notes seulement si absent",
+                moteurCf.Prompts[1].Contains("EN PRIORITÉ du bloc « IDENTITÉ DES PARENTS »")
+                && moteurCf.Prompts[1].Contains("SEULEMENT si ce bloc ne mentionne")
+                && moteurCf.Prompts[2].Contains("EN PRIORITÉ du bloc « IDENTITÉ DES PARENTS »")
+                && moteurCf.Prompts[2].Contains("SEULEMENT si ce bloc ne mentionne"));
+
+            var promptAutresFigures = moteurCf.Prompts[4];
+            Verifie("« Autres figures » exclut explicitement les professionnels",
+                promptAutresFigures.Contains("EXCLUS, MÊME S'ILS SONT PROCHES DE L'ENFANT")
+                && promptAutresFigures.Contains("orthophoniste")
+                && promptAutresFigures.Contains("psychomotricien"));
+            Verifie("la règle distingue lien affectif et intervention professionnelle",
+                promptAutresFigures.Contains("LIEN AFFECTIF DURABLE"));
+            Verifie("le doute penche vers l'exclusion, pas l'inclusion",
+                promptAutresFigures.Contains("EXCLUS — ne classe comme figure d'attachement"));
+
+            // ── Antécédents : le bilan en cours ne doit pas se citer lui-même ──
+            var moteurAt = new FauxMoteur { Reponse = _ => (true, "contenu.") };
+            var svcAt = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurAt, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+
+            var sectionsAt = new List<string>();
+            await svcAt.SuggestAntecedentsProgressiveAsync(lecture, s => sectionsAt.Add(s));
+
+            Verifie("6 appels pour les antécédents", moteurAt.Prompts.Count == 6, $"{moteurAt.Prompts.Count}");
+
+            var promptSuiviResume = moteurAt.Prompts[3];
+            var promptBilansResume = moteurAt.Prompts[4];
+            Verifie("« Suivi résumé » exclut le suivi du médecin lui-même",
+                promptSuiviResume.Contains("N'INCLUS JAMAIS le suivi assuré par vous-même"));
+            Verifie("« Suivi résumé » exclut l'évaluation en cours",
+                promptSuiviResume.Contains("N'INCLUS PAS non plus l'évaluation en"));
+            Verifie("« Bilans résumé » exclut explicitement l'évaluation en cours",
+                promptBilansResume.Contains("N'INCLUS JAMAIS l'évaluation EN COURS"));
+            Verifie("« Bilans résumé » précise qu'elle sert de base à CE dossier",
+                promptBilansResume.Contains("le bilan que tu es en train de restituer"));
+            Verifie("« Bilans résumé » exclut aussi le suivi du médecin",
+                promptBilansResume.Contains("N'INCLUS PAS non plus votre propre suivi"));
+        }
+
+        // ── 17. Le trou transversal : les cartographies atteignent enfin le modèle ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : cartographies transmises au modèle (V1 + V2) ──");
+        {
+            // Une cartographie V1 réelle : 4 des 6 affirmations d'Attachement cochées,
+            // tempérament renseigné, le reste vide (comme une fiche en cours d'observation).
+            var cartoEnfant = new CartographieEnfant();
+            for (int i = 0; i < 4; i++) cartoEnfant.Attachement.Items[i].IsChecked = true;
+            cartoEnfant.Temperament.NiveauActivite = 4;
+            cartoEnfant.Temperament.Regularite = 3;
+            cartoEnfant.Temperament.ReactiviteSensorielle = 2;
+            cartoEnfant.Temperament.IntensiteEmotionnelle = 4;
+            cartoEnfant.Temperament.Adaptabilite = 3;
+
+            var lecture = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "GOBLET Adrien",
+                PatientJson = """{"prenom":"Adrien","nom":"GOBLET"}""",
+                LatestCartographieEnfant = cartoEnfant,
+                EvaluationsV2Contexte = "■ ENVIRONNEMENT & ÉVALUATION CIBLÉE — séance du 02/09/2026\n  Fiabilité — environnement : Moyennement fiable"
+            };
+
+            var rendu = lecture.RenderForLlm();
+
+            Verifie("la cartographie V1 de l'enfant apparaît dans le texte transmis",
+                rendu.Contains("[CARTOGRAPHIE DE L'ENFANT — V1"));
+            Verifie("le score d'Attachement (4 cochés) est transmis",
+                rendu.Contains("Attachement : 4/6"));
+            Verifie("un segment non renseigné (Langage à 0) est transmis tel quel, pas omis",
+                rendu.Contains("Langage : 0/6"));
+            Verifie("le tempérament détaillé est transmis",
+                rendu.Contains("activité=4/5") && rendu.Contains("adaptabilité=3/5"));
+            Verifie("l'attention non renseignée n'apparaît pas (IsRenseigne = false)",
+                !rendu.Contains("Attention & FE"));
+
+            Verifie("les séances V2 (nouveau parcours) apparaissent aussi",
+                rendu.Contains("SÉANCES D'ÉVALUATION") && rendu.Contains("environnement : Moyennement fiable"));
+
+            // Une cartographie totalement vierge ne doit produire AUCUNE section — pas de bloc
+            // "[CARTOGRAPHIE DE L'ENFANT]" rempli de zéros qui laisserait croire à une évaluation
+            // faite alors que rien n'a encore été observé.
+            var lectureVierge = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "X",
+                PatientJson = "{}",
+                LatestCartographieEnfant = new CartographieEnfant()
+            };
+            Verifie("une cartographie entièrement vide ne produit aucune section trompeuse",
+                !lectureVierge.RenderForLlm().Contains("[CARTOGRAPHIE DE L'ENFANT"));
+
+            // Sans cartographie du tout (patient encore au 1er entretien) : pas de section non plus.
+            var lectureSansCarto = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "X", PatientJson = "{}"
+            };
+            Verifie("sans cartographie chargée, aucune section n'est générée",
+                !lectureSansCarto.RenderForLlm().Contains("[CARTOGRAPHIE"));
+        }
+
+        // ── 18. Le détail des bilans devient une annexe LOCALE (page D), juste
+        //        après la situation actuelle — pas mêlé au résumé, pas reporté
+        //        à la toute fin du dossier ──────────────────────────────────
+        Console.WriteLine();
+        Console.WriteLine("── restitution : le détail du parcours de soins se lit juste après, pas mêlé au résumé ni en toute fin ──");
+        {
+            var dossier = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+
+            var blocAt = dossier.Blocs.First(b => b.Key == "patient_antecedents");
+            blocAt.ContenuValide = """
+                **Antécédents médicaux**
+                - Grossesse et accouchement sans particularité.
+
+                **Antécédents développementaux**
+                - Marche à 14 mois.
+
+                **Antécédents familiaux**
+                - Non connu.
+
+                **Suivi résumé**
+                - Suivi CMP — En cours.
+
+                **Bilans résumé**
+                - Bilan neuropsychologique — avril 2026.
+
+                **Parcours — détail**
+                **Suivi antérieur**
+                - CMP de secteur, depuis janvier 2026, motif : agitation scolaire, évolution favorable.
+
+                **Bilans réalisés**
+                - Bilan neuropsychologique et psychologique — avril 2026 — psychologue.
+                  QI total : 106 (moyenne). Points forts : compréhension verbale.
+                  Fragilités : fonctions visuospatiales et exécutives.
+                  Hypothèses diagnostiques formulées : TDAH, présentation combinée.
+                  Recommandations : évaluation pédopsychiatrique, bilan en ergothérapie.
+                """;
+
+            var blocConclusion = dossier.Blocs.First(b => b.Key == "conclusion");
+            blocConclusion.ContenuValide = """{"syntheseFinale":"Texte de conclusion."}""";
+
+            var previewSvc = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService());
+            var html = previewSvc.BuildPreviewHtml(dossier, "GOBLET Adrien");
+
+            var iAntecedentsResume = html.IndexOf("Bilan neuropsychologique — avril 2026", StringComparison.Ordinal);
+            var iSituationActuelle = html.IndexOf("SITUATION ACTUELLE", StringComparison.Ordinal);
+            var iQiDetail          = html.IndexOf("QI total", StringComparison.Ordinal);
+            var iConclusion        = html.IndexOf("CONCLUSION ET PERSPECTIVES", StringComparison.Ordinal);
+            // Sans accent : WebUtility.HtmlEncode rend "é" en entité numérique (&#233;), ce que
+            // le navigateur affiche correctement mais qu'une comparaison littérale ne trouve pas.
+            var iAnnexeHeader      = html.IndexOf("Parcours de soins", StringComparison.Ordinal);
+
+            Verifie("le résumé compact (page B) est présent", iAntecedentsResume > 0);
+
+            // Cas réel signalé : le modèle a bien séparé résumé (1 ligne, sans mot-clé) et détail
+            // (« Parcours — détail » > « Bilans réalisés », avec hypothèses diagnostiques) — le
+            // résumé compact doit quand même porter le mot-clé, allé chercher dans l'annexe.
+            var iTdahDansResume = html.IndexOf("TDAH", StringComparison.Ordinal);
+            Verifie("le résumé déjà compact est enrichi avec le mot-clé trouvé dans l'annexe (TDAH)",
+                iTdahDansResume > iAntecedentsResume && iTdahDansResume < iAnnexeHeader,
+                $"résumé={iAntecedentsResume} mot-clé={iTdahDansResume} annexe={iAnnexeHeader}");
+
+            Verifie("la situation actuelle (page C) est présente", iSituationActuelle > 0);
+            Verifie("le détail (QI, fragilités…) est présent quelque part", iQiDetail > 0);
+            Verifie("la conclusion est présente", iConclusion > 0);
+            Verifie("l'annexe existe", iAnnexeHeader > 0);
+
+            Verifie("le résumé compact précède l'annexe — B avant D",
+                iAntecedentsResume < iAnnexeHeader, $"résumé={iAntecedentsResume} annexe={iAnnexeHeader}");
+            Verifie("l'annexe (page D) vient COLLÉE juste après le résumé, AVANT la situation actuelle (page C)",
+                iAnnexeHeader < iSituationActuelle, $"annexe={iAnnexeHeader} situation={iSituationActuelle}");
+            Verifie("le DÉTAIL (QI, fragilités) est dans cette annexe locale, AVANT la situation actuelle",
+                iQiDetail < iSituationActuelle, $"détail={iQiDetail} situation={iSituationActuelle}");
+            Verifie("l'annexe (et son détail) vient AVANT la conclusion — pas reportée en toute fin de dossier",
+                iAnnexeHeader < iConclusion && iQiDetail < iConclusion,
+                $"annexe={iAnnexeHeader} détail={iQiDetail} conclusion={iConclusion}");
+
+            // Le renvoi depuis la page B doit pointer vers la page D, collée juste après —
+            // PAS vers la toute dernière page du dossier (qui contient la conclusion, pas l'annexe).
+            var derniereMention = System.Text.RegularExpressions.Regex.Match(html, @"Annexe, p\.(\d+)");
+            var totalPagesMatch = System.Text.RegularExpressions.Regex.Matches(html, @"Page (\d+)/(\d+)")
+                .Cast<System.Text.RegularExpressions.Match>().FirstOrDefault();
+
+            Verifie("le renvoi \"Annexe, p.N\" est présent sur la page des antécédents",
+                derniereMention.Success, html.Contains("Détail des suivis et bilans") ? "libellé présent, motif introuvable" : "libellé absent");
+            if (derniereMention.Success && totalPagesMatch != null)
+            {
+                var nRenvoi = int.Parse(derniereMention.Groups[1].Value);
+                var nTotal  = int.Parse(totalPagesMatch.Groups[2].Value);
+                Verifie("le renvoi pointe vers une page LOCALE (juste après le résumé), pas la dernière page du dossier",
+                    nRenvoi < nTotal, $"renvoi=p.{nRenvoi} total={nTotal}");
+            }
+
+            // Un dossier SANS détail de parcours ne doit générer aucune annexe — la page ne doit
+            // pas apparaître "vide" à la fin de chaque restitution.
+            var dossierSansDetail = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            var blocAt2 = dossierSansDetail.Blocs.First(b => b.Key == "patient_antecedents");
+            blocAt2.ContenuValide = "**Bilans résumé**\n- Aucun bilan formel.\n\n**Suivi résumé**\n- Aucun suivi spécialisé.";
+            var htmlSansDetail = previewSvc.BuildPreviewHtml(dossierSansDetail, "X Y");
+            Verifie("sans contenu détaillé, aucune annexe n'est générée",
+                !htmlSansDetail.Contains("Parcours de soins"));
+        }
+
+        // ── 19. Filet de sécurité : détail écrit DIRECTEMENT sous « résumé »,
+        //        sans section « Parcours — détail » séparée (cas réel Gemma) ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : le résumé reste compact même quand le LLM n'a pas séparé le détail ──");
+        {
+            var dossier = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+
+            var blocAt = dossier.Blocs.First(b => b.Key == "patient_antecedents");
+            // Structure réelle observée avec Gemma : PAS de section "Parcours — détail" du tout ;
+            // le modèle écrit le titre du bilan puis ses sous-puces courtes (chacune < 80 car.)
+            // directement sous "Bilans résumé" — la détection par longueur de ligne ne voit rien.
+            blocAt.ContenuValide = """
+                **Antécédents médicaux**
+                - RAS.
+
+                **Antécédents développementaux**
+                - RAS.
+
+                **Antécédents familiaux**
+                - Non connu.
+
+                **Suivi résumé**
+                - Suivi psychologique — en cours.
+                - Traitement par méthylphénidate — débuté le 18/08/2026.
+
+                **Bilans résumé**
+                Bilan neuropsychologique et psychologique — avril 2026.
+                - QI total : 106 (moyenne).
+                - Points forts : compréhension verbale, raisonnement abstrait.
+                - Fragilités : fonctions visuospatiales et exécutives.
+                - Hypothèses diagnostiques formulées : TDAH, présentation combinée.
+                - Recommandations : évaluation pédopsychiatrique, bilan en ergothérapie.
+
+                Analyses hématologiques — 30/07/2026, laboratoire SYNERGIE.
+                - NFS dans les normes pour l'âge.
+                - Conclusion : aucune anomalie majeure.
+                """;
+
+            var blocConclusion = dossier.Blocs.First(b => b.Key == "conclusion");
+            blocConclusion.ContenuValide = """{"syntheseFinale":"Texte de conclusion."}""";
+
+            var previewSvc = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService());
+            var html = previewSvc.BuildPreviewHtml(dossier, "GOBLET Adrien");
+
+            var iBilanTitreCompact = html.IndexOf("Bilan neuropsychologique et psychologique", StringComparison.Ordinal);
+            var iSituationActuelle = html.IndexOf("SITUATION ACTUELLE", StringComparison.Ordinal);
+            var iQiDetail          = html.IndexOf("QI total", StringComparison.Ordinal);
+            var iAnnexeHeader      = html.IndexOf("Parcours de soins", StringComparison.Ordinal);
+
+            Verifie("le titre du bilan reste visible dans le résumé compact, avant l'annexe",
+                iBilanTitreCompact > 0 && iBilanTitreCompact < iAnnexeHeader,
+                $"titre={iBilanTitreCompact} annexe={iAnnexeHeader}");
+            Verifie("le QI n'apparaît PAS avant l'annexe (donc pas dans le résumé compact)",
+                !(iQiDetail > 0 && iQiDetail < iAnnexeHeader),
+                $"QI trouvé avant l'annexe : détail={iQiDetail} annexe={iAnnexeHeader}");
+            Verifie("une annexe EST générée malgré l'absence de section « Parcours — détail », collée juste après le résumé",
+                iAnnexeHeader > iBilanTitreCompact && iAnnexeHeader < iSituationActuelle,
+                $"annexe={iAnnexeHeader} titre={iBilanTitreCompact} situation={iSituationActuelle}");
+            Verifie("le détail (QI) se retrouve bien dans cette annexe locale, avant la situation actuelle",
+                iQiDetail > iAnnexeHeader && iQiDetail < iSituationActuelle,
+                $"QI={iQiDetail} annexe={iAnnexeHeader} situation={iSituationActuelle}");
+
+            // Une puce isolée déjà courte (format attendu) ne doit ni disparaître ni être dupliquée.
+            Verifie("une puce déjà compacte (Suivi psychologique) reste telle quelle dans le résumé",
+                html.IndexOf("Suivi psychologique", StringComparison.Ordinal) is var iSuivi && iSuivi > 0 && iSuivi < iAnnexeHeader);
+
+            // Vue rapide : le résumé compact doit porter un mot-clé de conclusion (ou, à défaut,
+            // d'hypothèse diagnostique), pas seulement le type de bilan et sa date.
+            var iCompactHint = html.IndexOf("TDAH", StringComparison.Ordinal);
+            Verifie("le résumé compact du bilan neuropsy porte un mot-clé (hypothèse diagnostique) avant l'annexe",
+                iCompactHint > 0 && iCompactHint < iAnnexeHeader && iCompactHint > iBilanTitreCompact,
+                $"mot-clé={iCompactHint} titre={iBilanTitreCompact} annexe={iAnnexeHeader}");
+
+            // Accent-free : WebUtility.HtmlEncode rend "é" en entité numérique (&#233;).
+            var iAnalysesTitre = html.IndexOf("laboratoire SYNERGIE", StringComparison.Ordinal);
+            var iAnomalieHint  = html.IndexOf("aucune anomalie majeure", StringComparison.Ordinal);
+            Verifie("le résumé compact des analyses porte le mot-clé de sa propre conclusion, avant l'annexe",
+                iAnomalieHint > 0 && iAnomalieHint < iAnnexeHeader && iAnomalieHint > iAnalysesTitre,
+                $"mot-clé={iAnomalieHint} titre={iAnalysesTitre} annexe={iAnnexeHeader}");
+
+            // Lecture rapide DANS l'annexe elle-même : chaque entrée de "BILANS RÉALISÉS" doit
+            // porter son propre rappel de mot-clé, pas seulement le résumé compact de la page B —
+            // sinon la seule façon de savoir "ce qu'il faut retenir" est de tout relire.
+            var iBilansRealises = html.IndexOf("BILANS R", StringComparison.Ordinal); // accent-free
+            // WebUtility.HtmlEncode rend "→" en entité numérique — on cherche la forme encodée.
+            var flecheEncodee = System.Net.WebUtility.HtmlEncode("→");
+            var iAnnexeQuickRead = html.IndexOf(flecheEncodee, iBilansRealises, StringComparison.Ordinal);
+            Verifie("l'annexe (BILANS RÉALISÉS) porte elle aussi un rappel de mot-clé par entrée",
+                iBilansRealises > 0 && iAnnexeQuickRead > iBilansRealises,
+                $"BILANS RÉALISÉS={iBilansRealises} rappel={iAnnexeQuickRead}");
+        }
+
+        // ── 20. Puces consécutives sans ligne vide (cas réel Joan BOKO) :
+        //        tous les items du résumé restent visibles, synthèses ancrées sur le
+        //        bon label, phrases complètes sans pointillés ──────────────────────
+        Console.WriteLine();
+        Console.WriteLine("── restitution : items en puces consécutives — rien d'avalé, bonnes synthèses, pas de troncature ──");
+        {
+            var dossier = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+
+            var blocAt = dossier.Blocs.First(b => b.Key == "patient_antecedents");
+            // Structure réelle observée : résumés en puces consécutives SANS ligne vide entre
+            // elles, et détail en items d'une seule ligne chacun (`*   **Titre** : tout inline`).
+            blocAt.ContenuValide = """
+                **Antécédents médicaux**
+                - RAS.
+
+                **Suivi résumé**
+                - Psychomotricité — En cours
+                - Guidance parentale — En cours
+                - Traitement Medikinet — Actif
+
+                **Bilans résumé**
+                - Bilan psychomoteur — 2023
+                - Compte-rendu PCO — 2024
+
+                **Parcours — détail**
+
+                **Suivi antérieur**
+
+                *   **Psychomotricité** : 2019 – 2022. Fréquence bimensuelle. Motif : Troubles de l'attention et de la graphomotricité. Évolution : Amélioration significative de la vitesse et de la qualité de la production écrite.
+                *   **Suivi psychologique et pédopsychiatrique** : Période non précisée. Motif : Difficultés d'attention. Résultat : Diagnostic de **TDAH**.
+                *   **Guidance parentale (type Barkley)** : Début en 2024. Motif : Accompagnement des parents.
+
+                **Bilans réalisés**
+
+                *   **Bilan psychomoteur** : Octobre 2023. Résultats : Déficits marqués en précision visuo-motrice et en vitesse graphique.
+                *   **Bilan psychomoteur (PCO)** : Juin 2024. Résultats : Absence de trouble développemental de la coordination.
+                """;
+
+            var blocConclusion = dossier.Blocs.First(b => b.Key == "conclusion");
+            blocConclusion.ContenuValide = """{"syntheseFinale":"Texte de conclusion."}""";
+
+            var previewSvc = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService());
+            var html = previewSvc.BuildPreviewHtml(dossier, "BOKO Joan");
+
+            var iAnnexe = html.IndexOf("Parcours de soins", StringComparison.Ordinal);
+            Verifie("l'annexe existe (le détail séparé est bien détecté)", iAnnexe > 0);
+
+            // 1) AUCUN item du résumé n'est avalé : les 3 suivis et les 2 bilans sont tous
+            //    visibles AVANT l'annexe (donc sur la page compacte).
+            foreach (var attendu in new[] { "Guidance parentale", "Traitement Medikinet", "Compte-rendu PCO" })
+            {
+                var i = html.IndexOf(attendu, StringComparison.Ordinal);
+                Verifie($"« {attendu} » est présent dans le résumé compact, avant l'annexe",
+                    i > 0 && i < iAnnexe, $"index={i} annexe={iAnnexe}");
+            }
+
+            // 2) La synthèse est ancrée sur le BON label du BON item : la puce compacte
+            //    « Psychomotricité » porte son Évolution, pas le contenu d'un autre suivi.
+            var iPsychomot = html.IndexOf("Psychomotricit", StringComparison.Ordinal); // sans accent final
+            var iEvolution = html.IndexOf("de la vitesse et de la qualit", StringComparison.Ordinal);
+            Verifie("la puce Psychomotricité porte sa propre évolution (bonne extraction, bon item)",
+                iEvolution > iPsychomot && iEvolution < iAnnexe,
+                $"psychomot={iPsychomot} évolution={iEvolution} annexe={iAnnexe}");
+            var iMauvaisAppariement = html.IndexOf("riode non pr", StringComparison.Ordinal); // « Période non précisée »
+            Verifie("le contenu d'un autre item (Période non précisée) n'est PAS accroché avant l'annexe",
+                !(iMauvaisAppariement > 0 && iMauvaisAppariement < iAnnexe),
+                $"trouvé avant l'annexe : index={iMauvaisAppariement} annexe={iAnnexe}");
+
+            // 3) Aucune troncature : pas de pointillés entre la carte « PARCOURS DE SOINS »
+            //    (page B) et la fin de l'annexe (bornée par la situation actuelle, page C).
+            //    (D'autres pages du dossier ont des « … » légitimes dans leurs libellés fixes.)
+            var iParcoursCompact = html.IndexOf("PARCOURS DE SOINS", StringComparison.Ordinal);
+            var iSituation20     = html.IndexOf("SITUATION ACTUELLE", StringComparison.Ordinal);
+            var zoneParcours     = html.Substring(iParcoursCompact, iSituation20 - iParcoursCompact);
+            Verifie("aucun pointillé de troncature (…) dans le résumé ni dans l'annexe",
+                !zoneParcours.Contains("…") && !zoneParcours.Contains("&#8230;"));
+
+            // 4) Pas de puce « → » orpheline dans l'annexe : les items d'une seule ligne se
+            //    lisent déjà d'un coup d'œil, aucun rappel n'est injecté pour eux.
+            var flecheEncodee2 = System.Net.WebUtility.HtmlEncode("→");
+            var iFlecheAnnexe = html.IndexOf(flecheEncodee2, iAnnexe, StringComparison.Ordinal);
+            // (la flèche du lien « Détail des suivis et bilans → Annexe » est AVANT iAnnexe... elle est sur la page B)
+            Verifie("aucun rappel → injecté dans l'annexe pour des items d'une seule ligne",
+                iFlecheAnnexe < 0, $"flèche trouvée à {iFlecheAnnexe}");
+        }
+
+        // ── 21. Cartographie V2 : la sphère 1 (Attachement) lit la feuille parents ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : sphère 1 recâblée sur la cartographie V2 (axe attachement) ──");
+        {
+            var cartoV2 = new MedCompanion.Services.Evaluations.CartographieV2
+            {
+                PatientNom = "L'ECHARPE Aaron",
+                Date = new DateTime(2026, 8, 20),
+                Age = 10,
+                VerseeAuDossier = true,
+                Informateur = "mere",
+                InformateurNom = "Sophie",
+                ScoresQuestionnaire = new() { ["attachement"] = 4 },
+                ReponsesQuestionnaire = new() { ["attachement"] = new[] { "oui", "non", "oui", "oui", "vide", "oui" } },
+            };
+
+            var lecture21 = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "L'ECHARPE Aaron",
+                PatientJson = "{}",
+                LatestCartographieV2 = cartoV2,
+            };
+
+            var moteur21 = new FauxMoteur { Reponse = _ => (true, "**Observations**\n- test.\n\n**Niveau clinique** : À surveiller (test).") };
+            var svc21 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteur21, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+
+            string? contenu21 = null;
+            await svc21.SuggestCartoSphereAsync(1, lecture21, s => contenu21 = s);
+
+            Verifie("un seul appel au modèle pour l'axe attachement V2", moteur21.Prompts.Count == 1, $"{moteur21.Prompts.Count}");
+            var prompt21 = moteur21.Prompts.Count > 0 ? moteur21.Prompts[0] : "";
+            Verifie("le score /6 et son niveau couleur (grille unique) sont transmis",
+                prompt21.Contains("4/6") && prompt21.Contains("Jaune clair"));
+            Verifie("les réponses par dimension sont transmises (Séparation ✓, Recours ✗)",
+                prompt21.Contains("✓ Séparation") && prompt21.Contains("✗ Recours"));
+            Verifie("une réponse vide est marquée « ? » et explicitement distinguée du non",
+                prompt21.Contains("? Confiance en la disponibilité") && prompt21.Contains("n'est PAS un non"));
+            Verifie("l'informateur est transmis (feuille remplie par la mère)",
+                prompt21.Contains("Mère"));
+            Verifie("la voix est celle du parent (« le parent rapporte », pas « on observe »)",
+                prompt21.Contains("le parent rapporte"));
+            Verifie("le contenu généré est repris tel quel",
+                contenu21 != null && contenu21.Contains("**Observations**"));
+
+            // Sans score pour l'axe (feuille non recueillie) : message statique, AUCUN appel.
+            var cartoSansFeuille = new MedCompanion.Services.Evaluations.CartographieV2 { VerseeAuDossier = true, Age = 10 };
+            var lectureSansFeuille = new MedCompanion.Services.Restitutions.DossierReading
+            { PatientNomComplet = "X", PatientJson = "{}", LatestCartographieV2 = cartoSansFeuille };
+            var moteurSansF = new FauxMoteur { Reponse = _ => (true, "ne doit pas être appelé") };
+            var svcSansF = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurSansF, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            string? contenuSansF = null;
+            await svcSansF.SuggestCartoSphereAsync(1, lectureSansFeuille, s => contenuSansF = s);
+            Verifie("sans feuille lue : texte statique « non recueilli », aucun appel au modèle",
+                moteurSansF.Prompts.Count == 0 && contenuSansF != null && contenuSansF.Contains("non recueilli"));
+
+            // Ancien dossier (aucune V2) : l'ancien chemin V1 reste actif, inchangé.
+            var moteurV1 = new FauxMoteur { Reponse = _ => (true, "ok") };
+            var svcV1 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurV1, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcV1.SuggestCartoSphereAsync(1,
+                new MedCompanion.Services.Restitutions.DossierReading { PatientNomComplet = "X", PatientJson = "{}" },
+                _ => { });
+            Verifie("sans V2, l'ancien chemin V1 reste actif (pas de régression)",
+                moteurV1.Prompts.Count == 1 && moteurV1.Prompts[0].Contains("Aucune cartographie enfant disponible"));
         }
 
         Console.WriteLine();

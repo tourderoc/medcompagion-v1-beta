@@ -69,7 +69,90 @@ namespace MedCompanion.Services.Restitutions
                 LatestCartographieEnfant        = ReadLatestCartographieEnfant(patientNomComplet),
                 LatestCartographieEnvironnement = ReadLatestCartographieEnvironnement(patientNomComplet),
                 LatestBilanFinal                = ReadLatestBilanFinal(patientNomComplet),
+
+                DatePremierEntretien   = notes.FirstOrDefault(n => n.Type.Contains("premiere", StringComparison.OrdinalIgnoreCase))?.Date,
+                DatesSeancesEvaluation = LireDatesSeancesEvaluation(patientNomComplet),
+                EvaluationsV2Contexte  = LireEvaluationsV2(patientNomComplet),
+                LatestCartographieV2   = LireCartographieV2(patientNomComplet),
+                LatestSeanceEnvironnement = LireSeanceEnvironnement(patientNomComplet),
             };
+        }
+
+        /// <summary>
+        /// Les deux séances d'évaluation mises en texte, avec leurs fiabilités déclarées.
+        /// Même lecteur que la Synthèse Globale et le Projet thérapeutique — pour que les trois
+        /// documents s'appuient sur la même description du dossier.
+        /// </summary>
+        private string LireEvaluationsV2(string patientNomComplet)
+        {
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patientNomComplet);
+                return string.IsNullOrWhiteSpace(dir) ? "" : new Evaluations.EvaluationV2ContextService().PourPrompt(dir);
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
+        /// Dates des séances du nouveau parcours — cartographie de l'enfant (séance 2) et
+        /// environnement &amp; évaluation ciblée (séance 3).
+        ///
+        /// Lues sur les fiches elles-mêmes plutôt que déduites des notes : ce sont ces fiches qui
+        /// font foi sur la date à laquelle l'évaluation a eu lieu.
+        /// </summary>
+        private List<DateTime> LireDatesSeancesEvaluation(string patientNomComplet)
+        {
+            var dates = new List<DateTime>();
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patientNomComplet);
+                if (string.IsNullOrWhiteSpace(dir)) return dates;
+
+                foreach (var c in new Evaluations.CartographieV2Service().LoadAll(dir).Where(c => c.VerseeAuDossier))
+                    dates.Add(c.Date);
+
+                foreach (var s in new Evaluations.SeanceEnvironnementService().LoadAll(dir))
+                    if (s.HasOrientation || s.HasEvaluation || s.HasCotationEnv || s.HasReponsesParent)
+                        dates.Add(s.Date);
+            }
+            catch { /* une fiche illisible ne doit pas faire échouer la lecture du dossier */ }
+            return dates;
+        }
+
+        /// <summary>
+        /// Dernière cartographie V2 versée au dossier — la source structurée des blocs
+        /// carto_s* du Dossier de Restitution. La plus récente fait foi.
+        /// </summary>
+        private Evaluations.CartographieV2? LireCartographieV2(string patientNomComplet)
+        {
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patientNomComplet);
+                if (string.IsNullOrWhiteSpace(dir)) return null;
+                return new Evaluations.CartographieV2Service().LoadAll(dir)
+                    .Where(c => c.VerseeAuDossier)
+                    .OrderByDescending(c => c.Date)
+                    .FirstOrDefault();
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Dernière séance 3 portant des données d'environnement — la source structurée des
+        /// blocs env_edu_* du Dossier de Restitution. La plus récente fait foi.
+        /// </summary>
+        private Evaluations.SeanceEnvironnement? LireSeanceEnvironnement(string patientNomComplet)
+        {
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patientNomComplet);
+                if (string.IsNullOrWhiteSpace(dir)) return null;
+                return new Evaluations.SeanceEnvironnementService().LoadAll(dir)
+                    .Where(s => s.HasCotationEnv || s.HasReponsesParent)
+                    .OrderByDescending(s => s.Date)
+                    .FirstOrDefault();
+            }
+            catch { return null; }
         }
 
         // ── Étape 3 — Cartographie de l'enfant (dernière validée/clôturée) ──

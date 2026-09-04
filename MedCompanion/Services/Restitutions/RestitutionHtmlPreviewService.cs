@@ -31,6 +31,10 @@ namespace MedCompanion.Services.Restitutions
         // Évite de relire et reparser le YAML à chaque refresh de la preview live.
         private string? _cachedEvalPatient;
         private EvaluationPhase? _cachedEvalPhase;
+        private string? _cachedV2Patient;
+        private CartographieV2? _cachedV2;
+        private string? _cachedEnvV2Patient;
+        private SeanceEnvironnement? _cachedEnvV2;
 
         /// <summary>
         /// Invalide le cache cartographie (à appeler après modification d'une sphère via popup).
@@ -38,8 +42,12 @@ namespace MedCompanion.Services.Restitutions
         /// </summary>
         public void InvalidateCartoCache()
         {
-            _cachedEvalPatient = null;
-            _cachedEvalPhase   = null;
+            _cachedEvalPatient  = null;
+            _cachedEvalPhase    = null;
+            _cachedV2Patient    = null;
+            _cachedV2           = null;
+            _cachedEnvV2Patient = null;
+            _cachedEnvV2        = null;
         }
 
         // Cache des assets binaires lus une fois (fonts + image arbre + logo) — économise des
@@ -393,10 +401,11 @@ namespace MedCompanion.Services.Restitutions
             var sb = new StringBuilder();
             int pageNumber = 2;
 
-            // Les 5 blocs patient_* sont rendus ensemble sur 2 pages dédiées (A : identification +
-            // motif + contexte familial / B : antécédents + situation actuelle). On les capture
-            // au passage de la boucle puis on consomme l'ensemble en une seule fois, en sautant
-            // les 4 occurrences suivantes pour ne pas générer de pages brouillon parasites.
+            // Les 5 blocs patient_* sont rendus ensemble sur 3 pages dédiées (A : identification +
+            // motif + contexte familial / B : antécédents / C : situation actuelle), plus une
+            // 4e page D en annexe locale si le parcours de soins a du détail à y renvoyer. On les
+            // capture au passage de la boucle puis on consomme l'ensemble en une seule fois, en
+            // sautant les 4 occurrences suivantes pour ne pas générer de pages brouillon parasites.
             var patientBlocs = new Dictionary<string, RestitutionBloc>();
             foreach (var b in dossier.Blocs)
             {
@@ -409,9 +418,11 @@ namespace MedCompanion.Services.Restitutions
             // contiennent des détails (lignes > 80 car = ancien format LLM trop verbeux).
             patientBlocs.TryGetValue("patient_antecedents", out var _atBlocPre);
             var _atPre = ParseAntecedents(_atBlocPre?.ContenuValide ?? "");
+            SplitResumeItems(_atPre.SuiviResume,  out _, out var _suiviDetailAuto);
+            SplitResumeItems(_atPre.BilansResume, out _, out var _bilansDetailAuto);
             bool hasParcoursDetailPage = HasParcoursDetail(_atPre.ParcoursDetail)
-                                       || HasDetailedBullets(_atPre.SuiviResume)
-                                       || HasDetailedBullets(_atPre.BilansResume);
+                                       || !string.IsNullOrWhiteSpace(_suiviDetailAuto)
+                                       || !string.IsNullOrWhiteSpace(_bilansDetailAuto);
 
             // Calcul dynamique du nombre total de pages réelles
             int totalPages = 1; // La couverture (page 1)
@@ -488,24 +499,25 @@ namespace MedCompanion.Services.Restitutions
                 {
                     // On rend les pages Patient & Contexte la première fois qu'on rencontre
                     // un bloc patient_*. Les autres sont absorbés silencieusement.
+                    //
+                    // A, B, puis D (détail du parcours de soins) juste après B si elle existe —
+                    // collée à la page qui la mentionne (Antécédents / Parcours de soins), pour
+                    // rester lisible d'un coup d'œil — puis C (situation actuelle).
                     if (!patientPagesRendered)
                     {
+                        // La page D, si elle existe, suit immédiatement la page B : son numéro
+                        // réel est donc connu dès maintenant, sans attendre d'y arriver.
+                        int pageDNumber = hasParcoursDetailPage ? pageNumber + 2 : 0;
+                        sb.Append(BuildPatientContextePageA(patientBlocs, coverFields, pageNumber, totalPages));
+                        sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages, hasParcoursDetailPage, pageDNumber));
+                        pageNumber += 2;
                         if (hasParcoursDetailPage)
                         {
-                            int pageDNumber = pageNumber + 2;
-                            sb.Append(BuildPatientContextePageA(patientBlocs, coverFields, pageNumber, totalPages));
-                            sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages, hasParcoursDetailPage, pageDNumber));
-                            sb.Append(BuildPatientContextePageD(patientBlocs, pageNumber + 2, totalPages));
-                            sb.Append(BuildPatientContextePageC(patientBlocs, pageNumber + 3, totalPages));
-                            pageNumber += 4;
+                            sb.Append(BuildPatientContextePageD(patientBlocs, pageNumber, totalPages));
+                            pageNumber++;
                         }
-                        else
-                        {
-                            sb.Append(BuildPatientContextePageA(patientBlocs, coverFields, pageNumber, totalPages));
-                            sb.Append(BuildPatientContextePageB(patientBlocs, pageNumber + 1, totalPages, false, 0));
-                            sb.Append(BuildPatientContextePageC(patientBlocs, pageNumber + 2, totalPages));
-                            pageNumber += 3;
-                        }
+                        sb.Append(BuildPatientContextePageC(patientBlocs, pageNumber, totalPages));
+                        pageNumber++;
                         patientPagesRendered = true;
                     }
                     continue;
@@ -515,10 +527,11 @@ namespace MedCompanion.Services.Restitutions
                 if (bloc.Key == "carto_s1")
                 {
                     var carto     = LoadLatestCartographieEnfant(patientNomComplet);
+                    var cartoV2   = LoadLatestCartographieV2(patientNomComplet);
                     var perSphere = BuildPerSphereFromBlocs(dossier.Blocs);
-                    sb.Append(BuildCartoEnfantPageA(carto, perSphere, pageNumber,     totalPages));
-                    sb.Append(BuildCartoEnfantPageB(carto, perSphere, pageNumber + 1, totalPages));
-                    sb.Append(BuildCartoEnfantPageC(carto, perSphere, pageNumber + 2, totalPages));
+                    sb.Append(BuildCartoEnfantPageA(carto, cartoV2, perSphere, pageNumber,     totalPages));
+                    sb.Append(BuildCartoEnfantPageB(carto, cartoV2, perSphere, pageNumber + 1, totalPages));
+                    sb.Append(BuildCartoEnfantPageC(carto, cartoV2, perSphere, pageNumber + 2, totalPages));
                     pageNumber += 3;
                     continue;
                 }
@@ -529,8 +542,9 @@ namespace MedCompanion.Services.Restitutions
                 if (bloc.Key == "env_edu_f1")
                 {
                     var envCarto  = LoadLatestCartographieEnvironnement(patientNomComplet);
+                    var envV2     = LoadLatestSeanceEnvironnement(patientNomComplet);
                     var envBlocs  = BuildEnvEduBlocsDict(dossier.Blocs);
-                    sb.Append(BuildEnvEduPage1(envCarto, envBlocs, pageNumber,     totalPages));
+                    sb.Append(BuildEnvEduPage1(envCarto, envV2, envBlocs, pageNumber,     totalPages));
                     sb.Append(BuildEnvEduPage2(envCarto, envBlocs, pageNumber + 1, totalPages));
                     sb.Append(BuildEnvEduPage3(envCarto, envBlocs, pageNumber + 2, totalPages));
                     pageNumber += 3;
@@ -601,6 +615,7 @@ namespace MedCompanion.Services.Restitutions
                 sb.AppendLine("</div>");
                 pageNumber++;
             }
+
             return sb.ToString();
         }
 
@@ -761,15 +776,28 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-            // Parcours compact : étiquettes courtes uniquement (1 phrase par puce).
+            // Parcours compact : étiquettes courtes uniquement (1 phrase par puce), mais avec un
+            // mot-clé de conclusion — pour une vue rapide sans devoir ouvrir l'annexe.
+            // SplitResumeItems() sert de filet de sécurité : si le LLM a mis du détail
+            // (sous-puces) directement dans le résumé au lieu de « Parcours — détail »,
+            // seul le titre de chaque item reste ici (avec SON PROPRE mot-clé) — le détail part
+            // vers l'annexe. Quand le résumé est déjà bien compact (une ligne, sans mot-clé),
+            // EnrichCompactWithExternalKeywords va chercher ce mot-clé dans l'annexe elle-même.
 
-            var suiviBody  = string.IsNullOrWhiteSpace(at.SuiviResume)  ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(TruncateBulletsToLabel(at.SuiviResume));
+            SplitResumeItems(at.SuiviResume,  out var suiviCompact,  out _);
+            SplitResumeItems(at.BilansResume, out var bilansCompact, out _);
 
-            var bilansBody = string.IsNullOrWhiteSpace(at.BilansResume) ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(TruncateBulletsToLabel(at.BilansResume));
+            var (suiviDetailForKeywords, bilansDetailForKeywords) = ResolveParcoursDetailSections(at);
+            suiviCompact  = EnrichCompactWithExternalKeywords(suiviCompact,  suiviDetailForKeywords);
+            bilansCompact = EnrichCompactWithExternalKeywords(bilansCompact, bilansDetailForKeywords);
+
+            var suiviBody  = string.IsNullOrWhiteSpace(suiviCompact)  ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(suiviCompact);
+
+            var bilansBody = string.IsNullOrWhiteSpace(bilansCompact) ? "<p class='pc-placeholder'><em>—</em></p>" : MarkdownToHtmlLite(bilansCompact);
 
             var detailLink = hasDetailPage
 
-                ? $"<div class='pc-parcours-detail-link'>📄 Détail complet → p.{detailPageNumber}</div>"
+                ? $"<div class='pc-parcours-detail-link'>📄 Détail des suivis et bilans → Annexe, p.{detailPageNumber}</div>"
 
                 : "";
 
@@ -907,43 +935,7 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-            string suiviDetail  = "";
-
-            string bilansDetail = "";
-
-            if (HasParcoursDetail(at.ParcoursDetail))
-
-            {
-
-                var detailSections = SplitByBoldTitles(at.ParcoursDetail);
-
-                foreach (var (title, content) in detailSections)
-
-                {
-
-                    var t = title.ToLowerInvariant();
-
-                    if      (t.Contains("suivi") || t.Contains("antérieur") || t.Contains("anterieur")) suiviDetail  = content;
-
-                    else if (t.Contains("bilan") || t.Contains("réalisé")   || t.Contains("realise"))   bilansDetail = content;
-
-                }
-
-                if (string.IsNullOrWhiteSpace(suiviDetail) && string.IsNullOrWhiteSpace(bilansDetail))
-
-                    suiviDetail = at.ParcoursDetail;
-
-            }
-
-            else
-
-            {
-
-                suiviDetail  = at.SuiviResume;
-
-                bilansDetail = at.BilansResume;
-
-            }
+            var (suiviDetail, bilansDetail) = ResolveParcoursDetailSections(at);
 
 
 
@@ -975,7 +967,7 @@ namespace MedCompanion.Services.Restitutions
 
             else
 
-                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(suiviDetail)}</div>");
+                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(InjectQuickReadKeyword(suiviDetail))}</div>");
 
             sb.AppendLine("    </div>");
 
@@ -1003,7 +995,7 @@ namespace MedCompanion.Services.Restitutions
 
             else
 
-                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(bilansDetail)}</div>");
+                sb.AppendLine($"      <div class='pc-detail-content'>{MarkdownToHtmlLite(InjectQuickReadKeyword(bilansDetail))}</div>");
 
             sb.AppendLine("    </div>");
 
@@ -1075,6 +1067,54 @@ namespace MedCompanion.Services.Restitutions
                 _cachedEvalPatient = patientNomComplet;
                 _cachedEvalPhase   = phase;
                 return phase?.CartographieEnfant;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Dernière cartographie V2 versée au dossier — source des pies des sphères recâblées.
+        /// Cache par patient, comme la V1 : la preview se rafraîchit à chaque frappe.
+        /// </summary>
+        private CartographieV2? LoadLatestCartographieV2(string patientNomComplet)
+        {
+            if (string.IsNullOrWhiteSpace(patientNomComplet)) return null;
+            if (_cachedV2Patient == patientNomComplet) return _cachedV2;
+
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patientNomComplet);
+                if (string.IsNullOrEmpty(dir)) return null;
+
+                _cachedV2 = new CartographieV2Service().LoadAll(dir)
+                    .Where(c => c.VerseeAuDossier)
+                    .OrderByDescending(c => c.Date)
+                    .FirstOrDefault();
+                _cachedV2Patient = patientNomComplet;
+                return _cachedV2;
+            }
+            catch { return null; }
+        }
+
+        /// <summary>
+        /// Dernière séance 3 portant des données d'environnement (cotations médecin ou
+        /// réponses parents) — source des cartes de feuilles V2. Cache par patient.
+        /// </summary>
+        private SeanceEnvironnement? LoadLatestSeanceEnvironnement(string patientNomComplet)
+        {
+            if (string.IsNullOrWhiteSpace(patientNomComplet)) return null;
+            if (_cachedEnvV2Patient == patientNomComplet) return _cachedEnvV2;
+
+            try
+            {
+                var dir = _pathService.GetPatientRootDirectory(patientNomComplet);
+                if (string.IsNullOrEmpty(dir)) return null;
+
+                _cachedEnvV2 = new SeanceEnvironnementService().LoadAll(dir)
+                    .Where(s => s.HasCotationEnv || s.HasReponsesParent)
+                    .OrderByDescending(s => s.Date)
+                    .FirstOrDefault();
+                _cachedEnvV2Patient = patientNomComplet;
+                return _cachedEnvV2;
             }
             catch { return null; }
         }
@@ -2491,7 +2531,7 @@ namespace MedCompanion.Services.Restitutions
             return d;
         }
 
-        private string BuildEnvEduPage1(CartographieEnvironnement? carto, Dictionary<string, string> blocs, int pageNumber, int totalPages)
+        private string BuildEnvEduPage1(CartographieEnvironnement? carto, SeanceEnvironnement? envV2, Dictionary<string, string> blocs, int pageNumber, int totalPages)
 
         {
 
@@ -2509,22 +2549,35 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-            if (carto != null)
+            // Feuilles V2 (séance 3) prioritaires, feuille par feuille — la V1 reste le repli
+            // des anciens dossiers. Recâblées : feuille 1 (Famille).
+            var feuillesV2 = envV2 != null
+                ? Models.Evaluations.LectureEnvironnementV2.Construire(envV2.CotationsEnv, envV2.ReponsesParent)
+                : null;
+            var familleV2 = feuillesV2?.FirstOrDefault(f => f.Key == "famille" && f.NbTotal > 0 && f.NbManquants < f.NbTotal);
 
+            bool auMoinsUneCarte = false;
+
+            if (familleV2 != null)
             {
-
+                sb.Append(BuildFeuilleCardV2(1, familleV2, blocs.GetValueOrDefault("env_edu_f1")));
+                auMoinsUneCarte = true;
+            }
+            else if (carto != null)
+            {
                 sb.Append(BuildFeuilleCard(1, carto.Famille, blocs.GetValueOrDefault("env_edu_f1")));
-
-                sb.Append(BuildFeuilleCard(2, carto.EcolePairs, blocs.GetValueOrDefault("env_edu_f2")));
-
+                auMoinsUneCarte = true;
             }
 
-            else
-
+            if (carto != null)
             {
+                sb.Append(BuildFeuilleCard(2, carto.EcolePairs, blocs.GetValueOrDefault("env_edu_f2")));
+                auMoinsUneCarte = true;
+            }
 
+            if (!auMoinsUneCarte)
+            {
                 sb.AppendLine("<p class='placeholder'><em>Aucune évaluation Cartographie de l'environnement disponible — complétez l'Étape 4 de l'évaluation.</em></p>");
-
             }
 
 
@@ -2741,6 +2794,136 @@ namespace MedCompanion.Services.Restitutions
 
 </div>";
 
+        }
+
+        /// <summary>
+        /// Carte d'une feuille V2 (séance 3) — MÊME habillage que la carte V1 (en-tête coloré,
+        /// SVG des nervures à gauche, observations à droite), seules les données changent.
+        /// La couleur suit la règle V2 : une feuille n'a de couleur que si TOUTES ses nervures
+        /// sont complètes — le gris dit qu'on ne sait pas encore, il n'est pas une valeur.
+        /// Le badge du LLM (niveau validé par Med dans le bloc) reste prioritaire, comme en V1.
+        /// </summary>
+        private static string BuildFeuilleCardV2(int num, FeuilleLue feuille, string? contenu)
+        {
+            var llmNiveau = TryExtractNiveauClinicFromBloc(contenu);
+            string couleur, niveauLabel;
+            if (llmNiveau.HasValue)
+            {
+                (couleur, niveauLabel) = llmNiveau.Value;
+            }
+            else
+            {
+                couleur     = feuille.Couleur;
+                niveauLabel = feuille.Niveau.HasValue
+                    ? CartographieContent.NiveauLabel(feuille.Niveau.Value)
+                    : "non lisible";
+            }
+
+            var svg = BuildAxesSvgV2(feuille);
+
+            var contenuHtml = string.IsNullOrWhiteSpace(contenu)
+                ? "<p class='placeholder'><em>(Observations à générer — bouton ✨ Suggérer)</em></p>"
+                : ParseEnvFeuilleHtml(contenu);
+
+            return $@"
+<div class='env-feuille-card'>
+  <div class='env-feuille-header' style='border-left:4px solid {couleur}'>
+    <div class='env-feuille-num' style='background:{couleur}'>{num}</div>
+    <div class='env-feuille-titres'>
+      <div class='env-feuille-label'>{WebUtility.HtmlEncode(feuille.Label)}</div>
+      <div class='env-feuille-sous'>{WebUtility.HtmlEncode(feuille.SousTitre)}</div>
+    </div>
+    <div class='env-feuille-badge' style='background:{couleur}'>{WebUtility.HtmlEncode(niveauLabel)}</div>
+  </div>
+  <div class='env-feuille-body'>
+    <div class='env-feuille-svg'>{svg}</div>
+    <div class='env-feuille-content'>{contenuHtml}</div>
+  </div>
+</div>";
+        }
+
+        /// <summary>
+        /// SVG des nervures d'une feuille V2 — même dessin que la V1 (axes en étoile, ticks,
+        /// flèches, labels), alimenté par les NervureLue : longueur = part de oui, couleur =
+        /// celle de la nervure (grise tant qu'elle est incomplète — le gris est l'information).
+        /// </summary>
+        private static string BuildAxesSvgV2(FeuilleLue feuille)
+        {
+            var nervures = feuille.Nervures;
+            int n = nervures.Count;
+            if (n == 0) return "";
+
+            const double cx = 158, cy = 122, maxR = 78;
+            double stepAngle = 360.0 / n;
+
+            var sb = new StringBuilder();
+            sb.Append("<svg width='300' height='240' xmlns='http://www.w3.org/2000/svg' viewBox='0 0 300 240'>");
+
+            sb.Append($"<circle cx='{F(cx)}' cy='{F(cy)}' r='3' fill='#AAAAAA'/>");
+
+            for (int i = 0; i < n; i++)
+            {
+                double angle = (-90 + stepAngle * i) * Math.PI / 180;
+                double ex = cx + maxR * Math.Cos(angle);
+                double ey = cy + maxR * Math.Sin(angle);
+                sb.Append($"<line x1='{F(cx)}' y1='{F(cy)}' x2='{F(ex)}' y2='{F(ey)}' stroke='#DEDEDE' stroke-width='1.5' stroke-dasharray='3,3'/>");
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                var nervure = nervures[i];
+                double angle = (-90 + stepAngle * i) * Math.PI / 180;
+                var color    = nervure.Couleur;
+                int score    = nervure.NbOui;
+                int maxScore = nervure.NbTotal;
+
+                double r = maxScore > 0 ? maxR * score / maxScore : 0;
+                double ex = cx + r * Math.Cos(angle);
+                double ey = cy + r * Math.Sin(angle);
+
+                if (score > 0)
+                {
+                    sb.Append($"<line x1='{F(cx)}' y1='{F(cy)}' x2='{F(ex)}' y2='{F(ey)}' stroke='{color}' stroke-width='2.5' stroke-linecap='round'/>");
+                    double perpA = angle + Math.PI / 2;
+                    double pw = 4, tip = r + 7;
+                    double tipX = cx + tip * Math.Cos(angle), tipY = cy + tip * Math.Sin(angle);
+                    string pts = $"{F(tipX)},{F(tipY)} {F(ex - pw * Math.Cos(perpA))},{F(ey - pw * Math.Sin(perpA))} {F(ex + pw * Math.Cos(perpA))},{F(ey + pw * Math.Sin(perpA))}";
+                    sb.Append($"<polygon points='{pts}' fill='{color}'/>");
+                }
+
+                for (int t = 1; t <= maxScore; t++)
+                {
+                    double tr = maxR * t / maxScore;
+                    double tx2 = cx + tr * Math.Cos(angle);
+                    double ty2 = cy + tr * Math.Sin(angle);
+                    double perpA = angle + Math.PI / 2;
+                    double tw = 3.5;
+                    string tickColor = t <= score ? color : "#CCCCCC";
+                    sb.Append($"<line x1='{F(tx2 - tw * Math.Cos(perpA))}' y1='{F(ty2 - tw * Math.Sin(perpA))}' x2='{F(tx2 + tw * Math.Cos(perpA))}' y2='{F(ty2 + tw * Math.Sin(perpA))}' stroke='{tickColor}' stroke-width='1.5'/>");
+                }
+
+                double lr = maxR + 16;
+                double lx = cx + lr * Math.Cos(angle);
+                double ly = cy + lr * Math.Sin(angle);
+                string anchor = Math.Abs(Math.Cos(angle)) < 0.25 ? "middle"
+                              : Math.Cos(angle) > 0                ? "start" : "end";
+                var (l1, l2) = SplitAxisLabel(nervure.Label);
+                if (l2 == null)
+                {
+                    sb.Append($"<text x='{F(lx)}' y='{F(ly + 4)}' font-size='9' fill='#2C3E50' font-weight='600' text-anchor='{anchor}' font-family='Segoe UI,sans-serif'>{WebUtility.HtmlEncode(l1)}</text>");
+                }
+                else
+                {
+                    double dy0 = -4;
+                    sb.Append($"<text font-size='9' fill='#2C3E50' font-weight='600' text-anchor='{anchor}' font-family='Segoe UI,sans-serif'>");
+                    sb.Append($"<tspan x='{F(lx)}' y='{F(ly + dy0)}'>{WebUtility.HtmlEncode(l1)}</tspan>");
+                    sb.Append($"<tspan x='{F(lx)}' dy='11'>{WebUtility.HtmlEncode(l2)}</tspan>");
+                    sb.Append("</text>");
+                }
+            }
+
+            sb.Append("</svg>");
+            return sb.ToString();
         }
 
         /// <summary>
@@ -2978,7 +3161,7 @@ namespace MedCompanion.Services.Restitutions
         /// Langage, Tempérament). Sphère 1 (Attachement) est câblée sur les données réelles
         /// (Étape 3 de la dernière évaluation), les autres restent en placeholder pour V0.2.
         /// </summary>
-        private string BuildCartoEnfantPageA(CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
+        private string BuildCartoEnfantPageA(CartographieEnfant? carto, CartographieV2? cartoV2, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
 
         {
 
@@ -2998,7 +3181,7 @@ namespace MedCompanion.Services.Restitutions
 
             for (int i = 0; i < 3; i++)
 
-                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, perSphere));
+                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, cartoV2, perSphere));
 
 
 
@@ -3012,7 +3195,7 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-        private string BuildCartoEnfantPageB(CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
+        private string BuildCartoEnfantPageB(CartographieEnfant? carto, CartographieV2? cartoV2, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
 
         {
 
@@ -3032,7 +3215,7 @@ namespace MedCompanion.Services.Restitutions
 
             for (int i = 3; i < 5; i++)
 
-                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, perSphere));
+                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, cartoV2, perSphere));
 
 
 
@@ -3046,7 +3229,7 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-        private string BuildCartoEnfantPageC(CartographieEnfant? carto, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
+        private string BuildCartoEnfantPageC(CartographieEnfant? carto, CartographieV2? cartoV2, Dictionary<int, CeSphereContent> perSphere, int pageNumber, int totalPages)
 
         {
 
@@ -3066,7 +3249,7 @@ namespace MedCompanion.Services.Restitutions
 
             for (int i = 5; i < 8; i++)
 
-                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, perSphere));
+                sb.Append(BuildCeSphereCard(_ceSpheres[i], carto, cartoV2, perSphere));
 
 
 
@@ -3088,10 +3271,14 @@ namespace MedCompanion.Services.Restitutions
         private static string BuildCeSphereCard(
             (int Num, string Title, string Subtitle, string CssClass, bool HasRadar) sphere,
             CartographieEnfant? carto,
+            CartographieV2? cartoV2,
             Dictionary<int, CeSphereContent> perSphere)
         {
-            // (a) Données numériques de l'étape 3 (uniquement câblé pour Attachement en V0.2).
-            var segmentData = carto != null ? GetSegmentData(sphere.Num, carto) : null;
+            // (a) Données numériques : la cartographie V2 (feuille parents, nouveau parcours)
+            // est prioritaire quand une carte est versée au dossier ; la V1 reste le repli
+            // des anciens dossiers. Recâblage sphère par sphère — cf. GetSegmentDataV2.
+            var segmentData = (cartoV2 != null ? GetSegmentDataV2(sphere.Num, cartoV2) : null)
+                           ?? (carto != null ? GetSegmentData(sphere.Num, carto) : null);
             // (b) Contenu rédactionnel de Med pour cette sphère, parsé depuis le bloc.
             perSphere.TryGetValue(sphere.Num, out var medContent);
 
@@ -3111,8 +3298,18 @@ namespace MedCompanion.Services.Restitutions
             // Corps : chart à gauche, observation + niveau à droite
             sb.AppendLine("    <div class='ce-card-body'>");
 
-            // Zone chart : pie SVG si la sphère est câblée, sinon placeholder
-            if (sphere.Num == 4)
+            // Zone chart : pie SVG si la sphère est câblée, sinon placeholder.
+            // Profils (4/5/8) : la roue V2 (observation médecin, nouvelle cartographie) est
+            // prioritaire ; les roues V1 restent le repli des anciens dossiers.
+            var profilKeyV2 = ProfilV2KeyPourSphere(sphere.Num);
+            var defV2 = profilKeyV2 != null ? Array.Find(ProfilsObservesV2.Profils, p => p.Key == profilKeyV2) : null;
+            bool hasProfilV2 = defV2 != null && cartoV2 != null && ProfilV2ARenseigne(cartoV2, defV2);
+
+            if (hasProfilV2)
+            {
+                sb.Append(BuildCeProfilV2Block(defV2!, cartoV2!));
+            }
+            else if (sphere.Num == 4)
             {
                 if (carto != null && carto.Temperament.IsRenseigne)
                 {
@@ -3361,6 +3558,138 @@ namespace MedCompanion.Services.Restitutions
             if (!niveau.HasValue) return null;
 
             return new CeSegmentData { Score = seg.Score, Niveau = niveau.Value };
+        }
+
+        /// <summary>
+        /// Même mapping, côté cartographie V2 : le score de l'axe parent alimente la pie via
+        /// la grille unique score → couleur (indépendante de l'âge). Les 5 axes parents sont
+        /// branchés ; les profils (4/5/8) ont leur propre roue — cf. BuildCeProfilV2Block.
+        /// </summary>
+        private static CeSegmentData? GetSegmentDataV2(int sphereNum, CartographieV2 cartoV2)
+        {
+            string? axeKey = sphereNum switch
+            {
+                1 => "attachement",
+                2 => "emotions",
+                3 => "langage",
+                6 => "imaginaire",
+                7 => "pensee",
+                _ => null
+            };
+            if (axeKey == null) return null;
+            if (!cartoV2.ScoresQuestionnaire.TryGetValue(axeKey, out var score)) return null;
+
+            return new CeSegmentData { Score = score, Niveau = CartographieItemsV2.NiveauPourScore(score) };
+        }
+
+        /// <summary>Clé du profil V2 correspondant à une sphère profil, ou null.</summary>
+        private static string? ProfilV2KeyPourSphere(int sphereNum) => sphereNum switch
+        {
+            4 => "temperament",
+            5 => "psychomotricite",
+            8 => "attention",
+            _ => null
+        };
+
+        /// <summary>
+        /// Le profil V2 a-t-il au moins un axe coté ? (0 = non renseigné : on ne dessine que
+        /// ce qui a été observé.)
+        /// </summary>
+        private static bool ProfilV2ARenseigne(CartographieV2 cartoV2, ProfilDef def)
+        {
+            foreach (var ax in def.Axes)
+                if (cartoV2.Axes.TryGetValue($"{def.Key}.{ax.Key}", out var v) && v > 0) return true;
+            return false;
+        }
+
+        /// <summary>
+        /// Habillage graphique d'une roue de profil V2 — MÊME STYLE que les roues V1 (validé à
+        /// l'usage : secteurs pleins de couleurs vives, lettres blanches, badges de score sur
+        /// le pourtour, légende à deux colonnes). Les couleurs identifient l'AXE, pas la
+        /// valeur : elles ne jugent rien, ce qui les rend compatibles avec le principe du
+        /// portrait autant qu'avec les compétences. Seules les données sont V2 (axes du
+        /// nouveau modèle), l'ordre suit ProfilsObservesV2.Profils[..].Axes.
+        /// </summary>
+        private static (string[] Letters, string[] Labels, string[] Colors, string[] BadgeColors) ProfilV2Style(string profilKey) => profilKey switch
+        {
+            "temperament" => (
+                new[] { "A", "Ap", "S", "I", "Ad", "H" },
+                new[] { "Activité", "Approche/retrait", "Sensorialité", "Intensité émot.", "Adaptabilité", "Humeur de fond" },
+                new[] { "#2ECC71", "#9ACD32", "#F1C40F", "#00A8B5", "#9B59B6", "#E74C3C" },
+                new[] { "#27AE60", "#7CB342", "#D68910", "#008B9B", "#8E44AD", "#C0392B" }),
+            "psychomotricite" => (
+                new[] { "A", "G", "T", "C", "R", "P" },
+                new[] { "Aisance globale", "Gestes fins", "Tonus", "Contrôle moteur", "Repérage", "Praxies" },
+                new[] { "#3498DB", "#1ABC9C", "#E67E22", "#9B59B6", "#27AE60", "#E74C3C" },
+                new[] { "#2980B9", "#16A085", "#D35400", "#8E44AD", "#229954", "#C0392B" }),
+            _ => ( // attention
+                new[] { "S", "D", "M", "I", "P", "E" },
+                new[] { "Soutenue", "Distraction", "Mém. travail", "Inhibition", "Planification", "Effort" },
+                new[] { "#5B8DEF", "#A259E6", "#F4A261", "#E76F51", "#2A9D8F", "#E9C46A" },
+                new[] { "#3A6ED8", "#8544CC", "#D4843C", "#C25436", "#21867A", "#C9A43A" }),
+        };
+
+        private static string BuildCeProfilV2Block(ProfilDef def, CartographieV2 cartoV2)
+        {
+            var (letters, labels, _, _) = ProfilV2Style(def.Key);
+
+            var sb = new StringBuilder();
+            sb.AppendLine("      <div style='display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0;'>");
+            sb.AppendLine("        <div class='ce-chart ce-chart-pie' style='width: 140px; height: 140px; margin-left: -10px;'>");
+            sb.AppendLine(BuildCeProfilV2WheelSvg(def, cartoV2));
+            sb.AppendLine("        </div>");
+            sb.AppendLine("        <div class='ce-temperament-legend' style='font-size: 8px; color: #4B5563; line-height: 1.35; text-align: left; width: 140px; border-top: 1px solid #E5E7EB; padding-top: 4px; display: grid; grid-template-columns: 1fr 1fr; gap: 2px 6px; margin-left: -10px;'>");
+            for (int i = 0; i < def.Axes.Length; i++)
+                sb.AppendLine($"          <div><strong>{letters[i]}</strong> : {WebUtility.HtmlEncode(labels[i])}</div>");
+            sb.AppendLine("        </div>");
+            sb.AppendLine("      </div>");
+            return sb.ToString();
+        }
+
+        private static string BuildCeProfilV2WheelSvg(ProfilDef def, CartographieV2 cartoV2)
+        {
+            var (letters, _, colors, badgeColors) = ProfilV2Style(def.Key);
+
+            const double cx = 70, cy = 70, r = 48, rText = 28, rBadge = 50;
+            const double tau = 2 * Math.PI;
+            int n = def.Axes.Length;
+
+            var sb = new System.Text.StringBuilder();
+            sb.Append("<svg viewBox='0 0 140 140' width='140' height='140' xmlns='http://www.w3.org/2000/svg' style='overflow:visible'>");
+
+            for (int i = 0; i < n; i++)
+            {
+                double a0 = -Math.PI / 2 + i * tau / n;
+                double a1 = a0 + tau / n;
+                double p0x = cx + r * Math.Cos(a0); double p0y = cy + r * Math.Sin(a0);
+                double p1x = cx + r * Math.Cos(a1); double p1y = cy + r * Math.Sin(a1);
+                var path = string.Format(System.Globalization.CultureInfo.InvariantCulture,
+                    "M {0:F2} {1:F2} L {2:F2} {3:F2} A {4:F2} {4:F2} 0 0 1 {5:F2} {6:F2} Z",
+                    cx, cy, p0x, p0y, r, p1x, p1y);
+                sb.Append($"<path d='{path}' fill='{colors[i]}' stroke='white' stroke-width='1.5'/>");
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                double mid = -Math.PI / 2 + i * tau / n + tau / (2 * n);
+                double tx = cx + rText * Math.Cos(mid); double ty = cy + rText * Math.Sin(mid);
+                sb.Append($"<text x='{tx:F1}' y='{ty:F1}' dy='4' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='10' font-weight='bold' fill='white'>{letters[i]}</text>");
+            }
+
+            for (int i = 0; i < n; i++)
+            {
+                cartoV2.Axes.TryGetValue($"{def.Key}.{def.Axes[i].Key}", out var v);
+                if (v > 0)
+                {
+                    double mid = -Math.PI / 2 + i * tau / n + tau / (2 * n);
+                    double bx = cx + rBadge * Math.Cos(mid); double by = cy + rBadge * Math.Sin(mid);
+                    sb.Append($"<circle cx='{bx:F1}' cy='{by:F1}' r='7.5' fill='white' stroke='{badgeColors[i]}' stroke-width='1.5'/>");
+                    sb.Append($"<text x='{bx:F1}' y='{by:F1}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColors[i]}'>{v}</text>");
+                }
+            }
+
+            sb.Append("</svg>");
+            return sb.ToString();
         }
 
         /// <summary>
@@ -3839,21 +4168,58 @@ namespace MedCompanion.Services.Restitutions
             public string ParcoursDetail = "";
         }
 
+        /// <summary>
+        /// Découpe le markdown des antécédents en ses SIX sous-sections de premier niveau, et
+        /// elles seules.
+        ///
+        /// « Parcours — détail » porte lui-même deux titres en gras imbriqués (« Suivi
+        /// antérieur », « Bilans réalisés » — voir <see cref="BuildPatientContextePageD"/>, qui
+        /// les re-découpe). Un split générique sur TOUT titre en gras les traitait comme de
+        /// nouvelles sous-sections de PREMIER NIVEAU : « Suivi antérieur » contient le mot
+        /// « suivi » et écrasait silencieusement le résumé compact « Suivi résumé », « Bilans
+        /// réalisés » écrasait « Bilans résumé » de la même façon — et « Parcours — détail »
+        /// se retrouvait vide, puisque son propre contenu commence immédiatement par un autre
+        /// titre. C'est ce qui faisait apparaître un QI, des valeurs biologiques et des
+        /// hypothèses diagnostiques sur la page « Antécédents » à la place d'une étiquette
+        /// courte : le contenu détaillé n'était pas mal placé, il était mal ATTRIBUÉ.
+        ///
+        /// On n'ancre donc que sur les six titres canoniques ; tout titre en gras qui ne
+        /// correspond à aucun d'eux reste une partie du contenu de l'ancre précédente — c'est
+        /// exactement ce qui range « Suivi antérieur »/« Bilans réalisés » sous
+        /// « Parcours — détail », où ils appartiennent.
+        /// </summary>
         private static Antecedents ParseAntecedents(string md)
         {
             var result = new Antecedents();
             if (string.IsNullOrWhiteSpace(md)) return result;
 
-            var sections = SplitByBoldTitles(md);
-            foreach (var (title, content) in sections)
+            // Chaque ancre retenue : où commence son titre (pour borner la fin de la section
+            // PRÉCÉDENTE), où commence son contenu (juste après le titre), et où l'écrire.
+            var ancres = new List<(int titleStart, int contentStart, Action<string> assign)>();
+
+            foreach (System.Text.RegularExpressions.Match m in _sectionTitleRx.Matches(md))
             {
-                var t = title.ToLowerInvariant();
-                if      (t.Contains("médicaux")   || t.Contains("medicaux"))                 result.Medicaux = content;
-                else if (t.Contains("développ")   || t.Contains("developp"))                 result.Developpement = content;
-                else if (t.Contains("familiaux"))                                             result.Familiaux = content;
-                else if (t.Contains("suivi"))                                                 result.SuiviResume = content;
-                else if (t.Contains("bilan"))                                                 result.BilansResume = content;
-                else if (t.Contains("parcours") || t.Contains("détail") || t.Contains("detail") || t.Contains("soins")) result.ParcoursDetail = content;
+                var t = m.Groups[1].Value.Trim().TrimEnd(':', ' ').ToLowerInvariant();
+                bool estResume = t.Contains("résumé") || t.Contains("resume");
+
+                Action<string>? assign =
+                    (t.Contains("médicaux") || t.Contains("medicaux"))                 ? v => result.Medicaux = v :
+                    (t.Contains("développ") || t.Contains("developp"))                 ? v => result.Developpement = v :
+                    t.Contains("familiaux")                                            ? v => result.Familiaux = v :
+                    (estResume && t.Contains("suivi"))                                 ? v => result.SuiviResume = v :
+                    (estResume && t.Contains("bilan"))                                 ? v => result.BilansResume = v :
+                    (!estResume && (t.Contains("parcours") || t.Contains("soins") || t.Contains("détail") || t.Contains("detail")))
+                                                                                         ? v => result.ParcoursDetail = v :
+                    null;
+
+                if (assign != null) ancres.Add((m.Index, m.Index + m.Length, assign));
+            }
+
+            for (int i = 0; i < ancres.Count; i++)
+            {
+                var end = (i + 1 < ancres.Count) ? ancres[i + 1].titleStart : md.Length;
+                var content = md.Substring(ancres[i].contentStart, Math.Max(0, end - ancres[i].contentStart)).Trim();
+                ancres[i].assign(content);
             }
             return result;
         }
@@ -3867,17 +4233,309 @@ namespace MedCompanion.Services.Restitutions
         }
 
         /// <summary>
-        /// Retourne true si au moins une puce du markdown dépasse 80 caractères —
-        /// signe que le LLM a généré du contenu détaillé (Motif, Évolution…) au lieu
-        /// d'une étiquette courte.
+        /// Sépare un texte « résumé » (Suivi résumé / Bilans résumé) en deux vues :
+        /// - compact : une ligne courte par item (le titre seul, sans les sous-puces de détail)
+        /// - detail  : le contenu complet de chaque item qui comportait des sous-puces
+        ///             (QI, résultats, hypothèses…) — ce que le LLM aurait dû réserver
+        ///             à la section « Parcours — détail ».
+        /// Filet de sécurité : un modèle local (ex. Gemma) ne respecte pas toujours la
+        /// consigne de concision et écrit directement le détail complet sous « résumé »,
+        /// sous forme d'un titre suivi de puces courtes — chacune trop courte pour être
+        /// détectée par une simple longueur de ligne.
         /// </summary>
-        private static bool HasDetailedBullets(string markdown)
+        /// <summary>
+        /// Détermine le contenu de détail « Suivi antérieur » / « Bilans réalisés » à afficher en
+        /// annexe (page D) : la section « Parcours — détail » si le modèle l'a produite (découpée
+        /// par ses deux sous-titres), sinon le filet de sécurité <see cref="SplitResumeItems"/>
+        /// appliqué directement aux résumés. Centralisé ici pour que la page B (résumé compact)
+        /// et la page D (annexe) lisent exactement la même source.
+        /// </summary>
+        private static (string suiviDetail, string bilansDetail) ResolveParcoursDetailSections(Antecedents at)
         {
-            if (string.IsNullOrWhiteSpace(markdown)) return false;
-            foreach (var line in markdown.Split('\n'))
-                if ((line.TrimStart().StartsWith("- ") || line.TrimStart().StartsWith("* ")) && line.Length > 80)
-                    return true;
-            return false;
+            string suiviDetail  = "";
+            string bilansDetail = "";
+
+            if (HasParcoursDetail(at.ParcoursDetail))
+            {
+                var detailSections = SplitByBoldTitles(at.ParcoursDetail);
+                foreach (var (title, content) in detailSections)
+                {
+                    var t = title.ToLowerInvariant();
+                    if      (t.Contains("suivi") || t.Contains("antérieur") || t.Contains("anterieur")) suiviDetail  = content;
+                    else if (t.Contains("bilan") || t.Contains("réalisé")   || t.Contains("realise"))   bilansDetail = content;
+                }
+                if (string.IsNullOrWhiteSpace(suiviDetail) && string.IsNullOrWhiteSpace(bilansDetail))
+                    suiviDetail = at.ParcoursDetail;
+            }
+            else
+            {
+                SplitResumeItems(at.SuiviResume,  out _, out var suiviAuto);
+                SplitResumeItems(at.BilansResume, out _, out var bilansAuto);
+                suiviDetail  = !string.IsNullOrWhiteSpace(suiviAuto)  ? suiviAuto  : at.SuiviResume;
+                bilansDetail = !string.IsNullOrWhiteSpace(bilansAuto) ? bilansAuto : at.BilansResume;
+            }
+
+            return (suiviDetail, bilansDetail);
+        }
+
+        /// <summary>
+        /// Découpe un texte markdown de parcours de soins en ITEMS cliniques (un suivi, un
+        /// bilan) — ligne par ligne, et non par blocs séparés de lignes vides : les modèles
+        /// écrivent souvent les items en puces CONSÉCUTIVES sans ligne vide entre eux, et un
+        /// découpage par blocs fusionnait alors tous les items en un seul (items « avalés »
+        /// dans le résumé, mots-clés extraits du mauvais item).
+        /// Règles : une puce non indentée ouvre un nouvel item, SAUF si elle suit directement
+        /// une ligne-titre sans puce — elle en est alors un sous-détail. Une ligne-titre
+        /// (non puce, après une ligne vide ou en tête de texte) ouvre un nouvel item. Une ligne
+        /// indentée, ou du texte qui suit directement du contenu, prolonge l'item courant.
+        /// </summary>
+        private static List<List<string>> ParseParcoursItems(string markdown)
+        {
+            var items = new List<List<string>>();
+            if (string.IsNullOrWhiteSpace(markdown)) return items;
+
+            List<string>? courant = null;
+            bool courantOuvertParTitre = false;
+            bool ligneVideAvant = true; // le début du texte compte comme après une ligne vide
+
+            foreach (var raw in markdown.Replace("\r\n", "\n").Split('\n'))
+            {
+                var line = raw.TrimEnd();
+                var trimmed = line.TrimStart();
+
+                if (trimmed.Length == 0)
+                {
+                    ligneVideAvant = true;
+                    courantOuvertParTitre = false; // une ligne vide clôt le rattachement au titre
+                    continue;
+                }
+
+                bool estPuce  = trimmed.StartsWith("- ") || trimmed.StartsWith("* ");
+                bool indentee = line.Length > trimmed.Length;
+
+                if (estPuce && !indentee && !courantOuvertParTitre)
+                {
+                    // Puce de premier niveau hors contexte de titre : item autonome.
+                    courant = new List<string> { line };
+                    items.Add(courant);
+                }
+                else if (!estPuce && ligneVideAvant)
+                {
+                    // Ligne-titre : nouvel item ; les puces qui suivent directement (sans ligne
+                    // vide) en sont les sous-détails.
+                    courant = new List<string> { line };
+                    items.Add(courant);
+                    courantOuvertParTitre = true;
+                }
+                else if (courant != null)
+                {
+                    // Sous-puce d'un titre, ligne indentée, ou texte de continuation.
+                    courant.Add(line);
+                }
+                else
+                {
+                    courant = new List<string> { line };
+                    items.Add(courant);
+                }
+
+                ligneVideAvant = false;
+            }
+
+            return items;
+        }
+
+        // Labels de synthèse cherchés dans un item, par priorité : ce qui conclut d'abord,
+        // ce qui suppose ensuite. « résultat » couvre « Résultats », « conclusion » couvre
+        // « Conclusions », « évolution » sert surtout aux suivis.
+        private static readonly string[] _kwLabelsPrimaires   = { "conclusion", "résultat", "resultat", "évolution", "evolution" };
+        private static readonly string[] _kwLabelsSecondaires = { "hypothèse", "hypothese", "diagnostic" };
+
+        /// <summary>
+        /// Extrait la phrase de synthèse d'UN item (conclusion, résultat ou évolution — à
+        /// défaut, hypothèse/diagnostic), ancrée sur le LABEL lui-même : le texte commence
+        /// après le « : » qui SUIT le mot-clé — jamais après le premier « : » de la ligne,
+        /// qui est souvent celui du titre (« **Bilan X** : juin 2024. Résultats : ... »).
+        /// Phrase COMPLÈTE, sans troncature ni pointillés — exigence de lisibilité du dossier.
+        /// </summary>
+        private static string? ExtractConclusionKeyword(IReadOnlyList<string> lines)
+        {
+            static string? ExtraitApresLabel(string ligne, string label)
+            {
+                var iLabel = ligne.ToLowerInvariant().IndexOf(label, StringComparison.Ordinal);
+                if (iLabel < 0) return null;
+                var iDeuxPoints = ligne.IndexOf(':', iLabel);
+                if (iDeuxPoints < 0) return null;
+                var extrait = ligne.Substring(iDeuxPoints + 1).Trim().Replace("**", "").TrimEnd();
+                return string.IsNullOrWhiteSpace(extrait) ? null : extrait;
+            }
+
+            string? ChercherLabel(string label)
+            {
+                // Les sous-lignes de l'item d'abord ; la ligne-titre seulement quand l'item
+                // tient sur une seule ligne (tout son contenu y est inline).
+                for (int i = 1; i < lines.Count; i++)
+                {
+                    var r = ExtraitApresLabel(lines[i].Trim(), label);
+                    if (r != null) return r;
+                }
+                return lines.Count == 1 ? ExtraitApresLabel(lines[0].Trim(), label) : null;
+            }
+
+            foreach (var label in _kwLabelsPrimaires)   { var r = ChercherLabel(label); if (r != null) return r; }
+            foreach (var label in _kwLabelsSecondaires) { var r = ChercherLabel(label); if (r != null) return r; }
+            return null;
+        }
+
+        /// <summary>
+        /// Complète, sur la page B, chaque puce compacte sans mot-clé avec la phrase de
+        /// synthèse de l'item CORRESPONDANT dans la section de détail (« Parcours — détail »).
+        /// Appariement par TITRE (le nom de la puce doit se retrouver dans le titre de l'item
+        /// de détail), avec l'année comme départage quand plusieurs items portent le même nom.
+        /// Jamais par rang seul : résumé et détail n'ont pas toujours le même nombre d'items
+        /// (un traitement listé au résumé sans fiche de détail, par exemple) — un appariement
+        /// positionnel accroche alors la synthèse d'un item au titre d'un autre.
+        /// </summary>
+        private static string EnrichCompactWithExternalKeywords(string compact, string externalDetailSource)
+        {
+            if (string.IsNullOrWhiteSpace(compact) || string.IsNullOrWhiteSpace(externalDetailSource)) return compact;
+
+            var externes = ParseParcoursItems(externalDetailSource);
+            if (externes.Count == 0) return compact;
+            var consommes = new bool[externes.Count];
+
+            static string NomDeLigne(string ligne)
+            {
+                var t = ligne.TrimStart();
+                if (t.StartsWith("- ") || t.StartsWith("* ")) t = t.Substring(2);
+                t = t.Replace("**", "").Trim();
+                foreach (var sep in new[] { " — ", " – ", " : ", ":" })
+                {
+                    var i = t.IndexOf(sep, StringComparison.Ordinal);
+                    if (i > 0) { t = t.Substring(0, i); break; }
+                }
+                return t.Trim().ToLowerInvariant();
+            }
+
+            var result = new List<string>();
+            foreach (var rawLine in compact.Split('\n'))
+            {
+                var line = rawLine.TrimEnd();
+                var trimmed = line.TrimStart();
+                bool estPuce = trimmed.StartsWith("- ") || trimmed.StartsWith("* ");
+
+                // Une puce portant déjà deux tirets cadratins (titre — date — synthèse) a déjà
+                // son mot-clé, posé par SplitResumeItems : ne pas y toucher.
+                var iPremier = line.IndexOf(" — ", StringComparison.Ordinal);
+                var dejaEnrichie = iPremier >= 0 && line.IndexOf(" — ", iPremier + 1, StringComparison.Ordinal) >= 0;
+
+                if (estPuce && !dejaEnrichie)
+                {
+                    var nom = NomDeLigne(line);
+                    if (nom.Length >= 4)
+                    {
+                        int choisi = -1;
+                        var annee = Regex.Match(line, @"\b(19|20)\d{2}\b").Value;
+                        for (int i = 0; i < externes.Count; i++)
+                        {
+                            if (consommes[i]) continue;
+                            var titreExt = externes[i][0].Replace("**", "").ToLowerInvariant();
+                            if (!titreExt.Contains(nom)) continue;
+                            if (choisi < 0) choisi = i;
+                            if (annee.Length > 0 && string.Join(" ", externes[i]).Contains(annee)) { choisi = i; break; }
+                        }
+                        if (choisi >= 0)
+                        {
+                            consommes[choisi] = true;
+                            var keyword = ExtractConclusionKeyword(externes[choisi]);
+                            if (!string.IsNullOrWhiteSpace(keyword))
+                                line = line.TrimEnd('.', ' ') + $" — {keyword.TrimEnd('.')}.";
+                        }
+                    }
+                }
+
+                result.Add(line);
+            }
+
+            return string.Join("\n", result);
+        }
+
+        private static void SplitResumeItems(string markdown, out string compact, out string detail)
+        {
+            compact = "";
+            detail = "";
+            if (string.IsNullOrWhiteSpace(markdown)) return;
+
+            var compactLines = new List<string>();
+            var detailItems  = new List<string>();
+
+            foreach (var item in ParseParcoursItems(markdown))
+            {
+                if (item.Count == 1)
+                {
+                    var ligne = item[0].Trim();
+                    if (!ligne.StartsWith("- ") && !ligne.StartsWith("* ")) ligne = "- " + ligne;
+                    var etiquette = TruncateBulletsToLabel(ligne);
+
+                    if (ligne.Length <= 160 || etiquette.Length == ligne.Length)
+                    {
+                        // Une puce, une ligne courte : déjà le format attendu du résumé.
+                        compactLines.Add(etiquette);
+                    }
+                    else
+                    {
+                        // Ligne longue portant tout le détail inline (« **Bilan X** : juin 2024.
+                        // Résultats : ... ») : étiquette + synthèse au résumé, ligne complète
+                        // en annexe — rien n'est perdu.
+                        var lbl = etiquette.TrimEnd('.', ' ');
+                        var kw  = ExtractConclusionKeyword(item);
+                        lbl += string.IsNullOrWhiteSpace(kw) ? "." : $" — {kw.TrimEnd('.')}.";
+                        compactLines.Add(lbl);
+                        detailItems.Add(item[0].Trim());
+                    }
+                    continue;
+                }
+
+                // Item détaillé (titre + sous-lignes) : l'étiquette reste au résumé — avec sa
+                // phrase de synthèse, complète — le corps entier part vers l'annexe.
+                var label = item[0].Trim();
+                if (!label.StartsWith("- ") && !label.StartsWith("* ")) label = "- " + label;
+                label = TruncateBulletsToLabel(label).TrimEnd('.', ' ');
+
+                var keyword = ExtractConclusionKeyword(item);
+                label += string.IsNullOrWhiteSpace(keyword) ? "." : $" — {keyword.TrimEnd('.')}.";
+
+                compactLines.Add(label);
+                detailItems.Add(string.Join("\n", item));
+            }
+
+            compact = string.Join("\n", compactLines);
+            detail = string.Join("\n\n", detailItems);
+        }
+
+        /// <summary>
+        /// Insère, juste après le titre de chaque item MULTI-LIGNES de l'annexe, une puce de
+        /// rappel en gras portant sa phrase de synthèse — pour une lecture rapide du détail
+        /// complet. Un item qui tient sur une seule ligne se lit déjà d'un coup d'œil : pas
+        /// de rappel pour lui (le lui ajouter dupliquerait sa propre fin de ligne).
+        /// </summary>
+        private static string InjectQuickReadKeyword(string markdown)
+        {
+            if (string.IsNullOrWhiteSpace(markdown)) return markdown;
+
+            var result = new List<string>();
+            foreach (var item in ParseParcoursItems(markdown))
+            {
+                if (item.Count < 2) { result.Add(string.Join("\n", item)); continue; }
+
+                var keyword = ExtractConclusionKeyword(item);
+                if (string.IsNullOrWhiteSpace(keyword)) { result.Add(string.Join("\n", item)); continue; }
+
+                var avecRappel = new List<string> { item[0], $"- **→ {keyword.TrimEnd('.')}.**" };
+                for (int i = 1; i < item.Count; i++) avecRappel.Add(item[i]);
+                result.Add(string.Join("\n", avecRappel));
+            }
+
+            return string.Join("\n\n", result);
         }
 
         /// <summary>

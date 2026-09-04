@@ -302,6 +302,11 @@ public partial class PatientInfoDialog : Window
             _metadata.Classe = string.IsNullOrWhiteSpace(ClasseTextBox.Text)
                 ? null : ClasseTextBox.Text.Trim();
 
+            // Enregistrer la fiche EST une confirmation de la scolarité : le médecin vient de
+            // regarder ces deux champs. Sans cette marque, la question de rentrée se reposerait
+            // à la séance suivante alors qu'il vient d'y répondre ici.
+            MedCompanion.Services.ScolariteRentreeService.MarquerConfirmee(_metadata);
+
             // Sauvegarder dans patient.json
             SaveMetadataToJson();
 

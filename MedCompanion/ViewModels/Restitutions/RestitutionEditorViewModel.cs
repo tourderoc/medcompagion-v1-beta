@@ -1469,7 +1469,7 @@ namespace MedCompanion.ViewModels.Restitutions
                 else // restitution_1page (défaut)
                 {
                     newContent = string.IsNullOrWhiteSpace(instruction)
-                        ? await _suggesterService.SuggestRestitution1PageSectionAsync(sectionIndex, _currentReading!, ct)
+                        ? await _suggesterService.SuggestRestitution1PageSectionAsync(sectionIndex, _currentReading!, ct, _dossier)
                         : await _suggesterService.SuggestRestitution1PageSectionWithInstructionAsync(
                             sectionIndex, section.Content, instruction, _currentReading!, ct);
                 }
@@ -1522,6 +1522,24 @@ namespace MedCompanion.ViewModels.Restitutions
                         }
                         else
                             StatusMessage = "⚠ Couverture : données insuffisantes — remplissez manuellement.";
+                        break;
+                    }
+
+                    case "patient_identification":
+                    {
+                        // Déterministe pour tout ce qui est un fait (identité, dates, évaluateur) ;
+                        // le modèle ne rédige plus que la phrase de présentation. Évite que
+                        // couverture et identification se contredisent sur une date ou un âge.
+                        StatusMessage = "✍ Identification — extraction + présentation...";
+                        var content = await _suggesterService.SuggerIdentificationAsync(_currentReading!, ct);
+                        if (!string.IsNullOrWhiteSpace(content))
+                        {
+                            blocVm.Contenu = content;
+                            await SaveAsync();
+                            StatusMessage = "✓ Identification renseignée.";
+                        }
+                        else
+                            StatusMessage = "⚠ Identification : données insuffisantes — remplissez manuellement.";
                         break;
                     }
 
@@ -1729,6 +1747,20 @@ namespace MedCompanion.ViewModels.Restitutions
                                 }
                                 else
                                     StatusMessage = "⚠ Couverture : données insuffisantes — remplissez manuellement.";
+                                break;
+                            }
+
+                            case "patient_identification":
+                            {
+                                // Voir GenerateBlocAsync : déterministe + une phrase de présentation.
+                                var content = await _suggesterService.SuggerIdentificationAsync(_currentReading!, ct);
+                                if (!string.IsNullOrWhiteSpace(content))
+                                {
+                                    blocVm.Contenu = content;
+                                    await SaveAsync();
+                                }
+                                else
+                                    StatusMessage = "⚠ Identification : données insuffisantes — remplissez manuellement.";
                                 break;
                             }
 

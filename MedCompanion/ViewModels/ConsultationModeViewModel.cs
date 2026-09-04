@@ -850,6 +850,10 @@ namespace MedCompanion.ViewModels
         /// <summary>Ouvre le bloc Cartographie dans la zone de travail.</summary>
         private void EnterCartographieMode()
         {
+            // Question de rentrée AVANT d'entrer dans la séance : le parent est là, et la classe
+            // alimentera la couverture du dossier de restitution.
+            Services.ScolariteRentreeService.DemanderSiNecessaire(CurrentPatient?.DirectoryPath);
+
             ResetWorkspaceModes();
             IsCartographieMode = true;
             ShowProfilsObserves = false;
@@ -1119,6 +1123,8 @@ namespace MedCompanion.ViewModels
 
         private void EnterCartoEnvMode()
         {
+            Services.ScolariteRentreeService.DemanderSiNecessaire(CurrentPatient?.DirectoryPath);
+
             ResetWorkspaceModes();
             IsCartoEnvMode = true;
             ShowOrientation = false;
@@ -3426,6 +3432,10 @@ namespace MedCompanion.ViewModels
                     break;
 
                 case "suivi":
+                    // Question de rentrée : une consultation de suivi suppose quelqu'un en face,
+                    // donc quelqu'un à qui demander la classe de cette année.
+                    Services.ScolariteRentreeService.DemanderSiNecessaire(CurrentPatient?.DirectoryPath);
+
                     // Si une consultation de suivi est déjà en cours, proposer de la reprendre
                     if (HasSuiviInProgress)
                     {
@@ -6483,6 +6493,84 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                 {
                     if (_currentPatient == null) return Task.FromResult(false);
 
+                    // ── Cartographie V2 prioritaire. Compléter édite soit les six réponses de
+                    // la feuille parents (axes 1/2/3/6/7 — le score est recalculé), soit les
+                    // six cotations 0-5 d'un profil observé (4/5/8). La fiche V2 est réécrite —
+                    // même liberté de correction qu'en V1.
+                    string? axeV2 = sphereNum switch
+                    {
+                        1 => "attachement",
+                        2 => "emotions",
+                        3 => "langage",
+                        6 => "imaginaire",
+                        7 => "pensee",
+                        _ => null
+                    };
+                    string? profilV2 = sphereNum switch
+                    {
+                        4 => "temperament",
+                        5 => "psychomotricite",
+                        8 => "attention",
+                        _ => null
+                    };
+                    if (axeV2 != null || profilV2 != null)
+                    {
+                        var cartoSvc = new MedCompanion.Services.Evaluations.CartographieV2Service();
+                        var cartoV2 = cartoSvc.LoadAll(_currentPatient.DirectoryPath)
+                            .Where(c => c.VerseeAuDossier)
+                            .OrderByDescending(c => c.Date)
+                            .FirstOrDefault();
+                        if (cartoV2 != null)
+                        {
+                            if (axeV2 != null)
+                            {
+                                var dlgV2 = new MedCompanion.Dialogs.AxeV2EvaluationDialog(cartoV2, axeV2)
+                                {
+                                    Owner = System.Windows.Application.Current?.MainWindow
+                                };
+                                if (dlgV2.ShowDialog() == true)
+                                {
+                                    cartoSvc.Save(_currentPatient.DirectoryPath, cartoV2);
+                                    return Task.FromResult(true);
+                                }
+                                return Task.FromResult(false);
+                            }
+
+                            // Profil observé : réutilise le dialogue à curseurs (0 = non renseigné),
+                            // avec les axes V2 du profil — jamais les anciens axes V1.
+                            var defV2 = System.Array.Find(
+                                MedCompanion.Models.Evaluations.ProfilsObservesV2.Profils,
+                                p => p.Key == profilV2);
+                            if (defV2 == null) return Task.FromResult(false);
+
+                            var itemsV2 = new System.Collections.Generic.List<(string, int)>();
+                            foreach (var ax in defV2.Axes)
+                            {
+                                cartoV2.Axes.TryGetValue($"{profilV2}.{ax.Key}", out var v);
+                                itemsV2.Add((ax.Label, v));
+                            }
+
+                            var profilVm2 = new ProfileEvaluationViewModel(
+                                $"{defV2.Icon} {defV2.Label}",
+                                itemsV2,
+                                values =>
+                                {
+                                    for (int i = 0; i < defV2.Axes.Length && i < values.Count; i++)
+                                        cartoV2.Axes[$"{profilV2}.{defV2.Axes[i].Key}"] = values[i];
+                                });
+                            var dlgProfil = new MedCompanion.Dialogs.ProfileEvaluationDialog(profilVm2)
+                            {
+                                Owner = System.Windows.Application.Current?.MainWindow
+                            };
+                            if (dlgProfil.ShowDialog() == true)
+                            {
+                                cartoSvc.Save(_currentPatient.DirectoryPath, cartoV2);
+                                return Task.FromResult(true);
+                            }
+                            return Task.FromResult(false);
+                        }
+                    }
+
                     var phase = _evaluationPhaseService?.LoadActive(_currentPatient.DirectoryPath);
                     if (phase == null)
                     {
@@ -6614,6 +6702,37 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                 Func<int, Task<bool>> editFeuilleAsync = (feuilleIdx) =>
                 {
                     if (_currentPatient == null) return Task.FromResult(false);
+
+                    // ── Cartographie de l'environnement V2 prioritaire (recâblage feuille par
+                    // feuille : 1 = Famille). Compléter édite les items des deux sources
+                    // (feuille parents + cotations d'entretien) ; la fiche de séance 3 est
+                    // réécrite — même liberté de correction qu'en V1.
+                    string? feuilleKeyV2 = feuilleIdx switch
+                    {
+                        1 => "famille",
+                        _ => null
+                    };
+                    if (feuilleKeyV2 != null)
+                    {
+                        var envSvc = new MedCompanion.Services.Evaluations.SeanceEnvironnementService();
+                        var seanceV2 = envSvc.LoadAll(_currentPatient.DirectoryPath)
+                            .Where(s => s.HasCotationEnv || s.HasReponsesParent)
+                            .OrderByDescending(s => s.Date)
+                            .FirstOrDefault();
+                        if (seanceV2 != null)
+                        {
+                            var dlgEnvV2 = new MedCompanion.Dialogs.FeuilleEnvV2EvaluationDialog(seanceV2, feuilleKeyV2)
+                            {
+                                Owner = System.Windows.Application.Current?.MainWindow
+                            };
+                            if (dlgEnvV2.ShowDialog() == true)
+                            {
+                                envSvc.Save(_currentPatient.DirectoryPath, seanceV2);
+                                return Task.FromResult(true);
+                            }
+                            return Task.FromResult(false);
+                        }
+                    }
 
                     var phase = _evaluationPhaseService?.LoadActive(_currentPatient.DirectoryPath);
                     if (phase == null)
@@ -7770,6 +7889,11 @@ source: ""MedCompanion""
 
             RestitutionsHub = new RestitutionsHubViewModel(new RestitutionService(new PathService()));
             RestitutionsHub.RequestCreateNew += () => {
+                // La séance de restitution est celle où la couverture s'imprime : sans cette
+                // question, la classe de l'an dernier partirait sur le document que la famille
+                // emporte et transmet à l'école.
+                Services.ScolariteRentreeService.DemanderSiNecessaire(CurrentPatient?.DirectoryPath);
+
                 if (SwitchToRestitutionCommand?.CanExecute(null) == true)
                     SwitchToRestitutionCommand.Execute(null);
             };

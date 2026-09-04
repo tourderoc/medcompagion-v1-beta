@@ -26,6 +26,20 @@ namespace MedCompanion.Models
         public string? Ecole { get; set; }  // École/Établissement
         public string? Classe { get; set; }  // Classe/Niveau
 
+        /// <summary>
+        /// Date à laquelle le médecin a CONFIRMÉ l'école et la classe — pas celle du dernier
+        /// changement.
+        ///
+        /// La nuance est voulue : ce qu'on veut savoir, c'est quand il a regardé. Un enfant qui
+        /// redouble garde la même classe, et pourtant l'information a bien été vérifiée. Détecter
+        /// un « changement » aurait fait redemander toute l'année dans ce cas.
+        ///
+        /// Posée à chaque enregistrement de la fiche administrative et à chaque réponse à la
+        /// question de rentrée. Nulle sur les dossiers antérieurs — ils seront questionnés une
+        /// fois, à leur prochaine séance.
+        /// </summary>
+        public DateTime? DateConfirmationScolarite { get; set; }
+
         // === Coordonnées de l'école (Annuaire Éducation Nationale) ===
         public string? EcoleCommune { get; set; }     // Ville/commune de l'école
         public string? EcoleAdresse { get; set; }      // Adresse postale

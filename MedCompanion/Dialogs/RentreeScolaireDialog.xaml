@@ -1,0 +1,68 @@
+<Window x:Class="MedCompanion.Dialogs.RentreeScolaireDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Rentrée scolaire"
+        SizeToContent="Height" Width="520"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        Background="#F5F7FA">
+    <StackPanel Margin="22,18,22,16">
+
+        <TextBlock Text="Rentrée scolaire" FontSize="16" FontWeight="Bold" Foreground="#1A3A6A"/>
+        <TextBlock x:Name="SousTitreTb" FontSize="11.5" Foreground="#7B8FA5" Margin="0,3,0,0"
+                   TextWrapping="Wrap"/>
+
+        <Border Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                CornerRadius="6" Padding="16" Margin="0,14,0,0">
+            <StackPanel>
+                <TextBlock Text="École" FontSize="10.5" Foreground="#7B8FA5"/>
+                <TextBox x:Name="EcoleTb" FontSize="12.5" Padding="8,6" Margin="0,4,0,0"
+                         BorderBrush="#D6E2EC" BorderThickness="1"/>
+
+                <TextBlock Text="Classe" FontSize="10.5" Foreground="#7B8FA5" Margin="0,12,0,0"/>
+                <TextBox x:Name="ClasseTb" FontSize="12.5" Padding="8,6" Margin="0,4,0,0"
+                         BorderBrush="#D6E2EC" BorderThickness="1"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Les valeurs affichées sont celles ENREGISTREES, jamais une classe devinee : une
+             suggestion pre-remplie serait validee d'un clic sans etre verifiee, et on retomberait
+             sur l'automatique par la petite porte. -->
+        <TextBlock FontSize="10.5" Foreground="#93A7BD" Margin="0,10,0,0" TextWrapping="Wrap"
+                   Text="Ces valeurs sont celles du dossier. Corrigez-les avec le parent — redoublement, changement d'établissement, orientation."/>
+
+        <Grid Margin="0,18,0,0">
+            <Button x:Name="PlusTardBtn" Click="PlusTard_Click"
+                    Content="Plus tard" Padding="14,7" FontSize="11.5"
+                    HorizontalAlignment="Left" Cursor="Hand"
+                    Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                    ToolTip="N'enregistre rien — la question reviendra à la prochaine séance"/>
+
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button x:Name="InchangeBtn" Click="Inchange_Click"
+                        Content="Rien n'a changé" Padding="14,7" FontSize="11.5"
+                        Margin="0,0,8,0" Cursor="Hand"
+                        Background="#EBF3FA" Foreground="#1A3A6A"
+                        BorderBrush="#B8CFE6" BorderThickness="1"
+                        ToolTip="Confirme les valeurs actuelles — la question ne reviendra plus cette année"/>
+
+                <Button x:Name="MajBtn" Click="MettreAJour_Click" Cursor="Hand"
+                        Background="Transparent" BorderThickness="0">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border x:Name="Mb" Background="#004098" CornerRadius="5" Padding="16,8">
+                                <TextBlock Text="Mettre à jour" Foreground="White"
+                                           FontSize="11.5" FontWeight="SemiBold"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter TargetName="Mb" Property="Background" Value="#1A5296"/>
+                                </Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
+            </StackPanel>
+        </Grid>
+    </StackPanel>
+</Window>

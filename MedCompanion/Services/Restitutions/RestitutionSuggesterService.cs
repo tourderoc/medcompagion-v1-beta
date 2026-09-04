@@ -109,6 +109,18 @@ namespace MedCompanion.Services.Restitutions
             {
                 if (ct.IsCancellationRequested) break;
 
+                // La feuille de route attend le projet de soins : on pose sa place et son attente,
+                // sans rien inventer.
+                if (instruction == InstructionDifferee)
+                {
+                    if (accumulated.Length > 0) accumulated.AppendLine();
+                    accumulated.AppendLine(title);
+                    accumulated.AppendLine();
+                    accumulated.AppendLine(FeuilleDeRouteEnAttente);
+                    onSectionReady(accumulated.ToString());
+                    continue;
+                }
+
                 var userPrompt = BuildSubsectionPrompt(context, instruction, blocp2.VoixCible);
                 var messages   = new List<(string role, string content)> { ("user", userPrompt) };
                 var result     = await _llmService.ChatAsync(systemPrompt, messages, 800, ct);
@@ -173,6 +185,20 @@ namespace MedCompanion.Services.Restitutions
             return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
         }
 
+        /// <summary>
+        /// Marque une sous-section que la génération groupée doit SAUTER. Repérée par sa valeur
+        /// plutôt que par son indice : les indices de la page 2 sont utilisés par l'écran pour le
+        /// bouton « Reformuler » de chaque section, et les décaler les casserait tous.
+        /// </summary>
+        private const string InstructionDifferee = "__differee_apres_projet__";
+
+        /// <summary>Indice de la feuille de route dans la page 2.</summary>
+        public const int IndexFeuilleDeRoute = 4;
+
+        /// <summary>Texte affiché tant que le projet de soins n'est pas écrit.</summary>
+        public const string FeuilleDeRouteEnAttente =
+            "_À rédiger une fois le projet de soins établi — elle en sera la traduction pour les parents._";
+
         private static (string Title, string Instruction)[] GetRestitution1PageSubsections() => new[]
         {
             ("**Ce que nous avons compris**",
@@ -199,17 +225,24 @@ namespace MedCompanion.Services.Restitutions
 
             ("**Ce qui peut aider**",
              "Rédige UNIQUEMENT le contenu de la section « Ce qui peut aider » : " +
-             "liste de 3-4 actions pratiques et concrètes que les parents peuvent faire à la maison " +
+             "liste de 3-4 gestes du QUOTIDIEN À LA MAISON que les parents peuvent mettre en place eux-mêmes " +
              "(- **Action :** description courte et actionnable en 1-2 lignes). " +
+             "INTERDIT ici : toute orientation, tout rendez-vous, tout suivi, tout bilan à faire réaliser, " +
+             "toute démarche administrative ou scolaire. Ces décisions appartiennent au projet de soins et " +
+             "seront reprises dans « Notre feuille de route » — les écrire ici les annoncerait avant qu'elles " +
+             "soient décidées avec la famille. " +
              "Ton encourageant, positif. Pas de jargon. " +
              "Commence directement par la liste, sans titre."),
 
-            ("**Notre feuille de route**",
-             "Rédige UNIQUEMENT le contenu de la section « Notre feuille de route » : " +
-             "liste numérotée de 3-5 prochaines étapes concrètes du suivi " +
-             "(1. **Étape :** description courte en 1-2 lignes). " +
-             "Ton collaboratif (« Nous allons… », « Ensemble nous… »). Sans jargon. " +
-             "Commence directement par la liste numérotée, sans titre."),
+            // DIFFÉRÉE — voir RedigerFeuilleDeRouteAsync.
+            //
+            // Cette section décrit les prochaines étapes du suivi. Générée avec les cinq autres,
+            // elle était écrite AVANT que le projet de soins soit décidé : la seule source de plan
+            // du contexte est « PROJET THÉRAPEUTIQUE — dernière version validée », qui n'existe pas
+            // sur un bilan initial. Le modèle inventait donc le parcours, et vingt-cinq pages plus
+            // loin le médecin décidait le vrai — sans que les deux se rencontrent jamais. Or c'est
+            // cette page-ci que les parents gardent et relisent.
+            ("**Notre feuille de route**", InstructionDifferee),
 
             ("**Son environnement : points clés**",
              "Rédige UNIQUEMENT le contenu de la section « Son environnement : points clés » : " +
@@ -220,22 +253,142 @@ namespace MedCompanion.Services.Restitutions
              "Commence directement par le texte, sans titre.")
         };
 
-        /// <summary>Génère une seule section de la Restitution 1-page parents (index 0-5).</summary>
-        public async Task<string> SuggestRestitution1PageSectionAsync(
-            int sectionIndex,
+        /// <summary>
+        /// Rédige « Notre feuille de route » — la seule section de la page 2 qui ne se rédige pas
+        /// depuis le dossier, mais depuis LE PROJET DE SOINS que le médecin vient d'établir.
+        ///
+        /// C'est le sens même de son report : elle traduit pour les parents ce qui a été décidé,
+        /// elle ne l'anticipe pas. Tant que les blocs du projet sont vides, elle reste en attente
+        /// plutôt que d'inventer un parcours.
+        /// </summary>
+        /// <summary>
+        /// Construit le bloc « Identification » — déterministe pour tout ce qui est un FAIT
+        /// (identité, dates, évaluateur), rédigé par le modèle pour la seule phrase de
+        /// présentation clinique.
+        ///
+        /// CE QUI A CHANGÉ, ET POURQUOI. Ce bloc demandait auparavant au modèle de reconstituer
+        /// prénom, âge, scolarité et dates d'évaluation depuis le texte des notes — des faits
+        /// pourtant déjà posés dans patient.json et dans les fiches de séance. Sur un modèle
+        /// modeste, cette reconstitution dérivait facilement. Seule la présentation — « il
+        /// s'agit de l'enfant… » — demande une vraie rédaction ; le reste est repris de
+        /// <see cref="BuildCouvertureFromData"/>, pour que couverture et identification ne
+        /// puissent jamais se contredire sur une date ou un âge.
+        /// </summary>
+        public async Task<string> SuggerIdentificationAsync(
             DossierReading reading,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) return "(Aucun contenu source disponible.)";
+            var identiteAdmin = ExtraireIdentiteParentsAdmin(reading.PatientJson);
+            var dates          = CovBuildDatesEvaluation(reading);
 
+            var consigne = new System.Text.StringBuilder();
+            consigne.AppendLine(identiteAdmin.Length > 0 ? identiteAdmin : "(identité des parents non renseignée dans la fiche administrative)");
+            consigne.AppendLine();
+            consigne.AppendLine("1ÈRE CONSULTATION (pour savoir qui accompagnait l'enfant CE JOUR-LÀ — l'accompagnant");
+            consigne.AppendLine("habituel ci-dessus peut différer de qui était présent lors de ce premier entretien) :");
+            consigne.AppendLine(string.IsNullOrWhiteSpace(reading.PremiereConsultation) ? "(non renseignée)" : reading.PremiereConsultation.Trim());
+            consigne.AppendLine();
+            consigne.AppendLine("Rédige UNE phrase de 2-3 lignes commençant par « Il s'agit de l'enfant… », mentionnant :");
+            consigne.AppendLine("prénom NOM, âge en années, scolarité (niveau + établissement), et qui accompagnait");
+            consigne.AppendLine("l'enfant lors du 1er entretien (d'après la 1ère consultation ci-dessus — PAS d'après");
+            consigne.AppendLine("l'accompagnant habituel, qui peut être une autre personne).");
+            consigne.AppendLine("L'identité des parents, quand tu la mentionnes, vient EXCLUSIVEMENT du bloc ADMIN");
+            consigne.AppendLine("ci-dessus — jamais reconstituée depuis la 1ère consultation.");
+            consigne.AppendLine("Réponds par cette seule phrase, sans titre, sans guillemets.");
+
+            var blocIdent = new RestitutionBloc("patient_identification", "Identification", 3, "clinique");
+            var messages  = new List<(string role, string content)> { ("user", consigne.ToString()) };
+            var result    = await _llmService.ChatAsync(BuildSystemPrompt(blocIdent), messages, 300, ct);
+
+            var presentation = result.success && !string.IsNullOrWhiteSpace(result.result)
+                ? result.result.Trim()
+                : "(présentation non générée)";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"**Présentation** : {presentation}");
+            sb.AppendLine($"**Période d'évaluation** : {CovOr(dates, "Non renseignées")}");
+            sb.AppendLine($"**Date de restitution** : {DateTime.Today:dd/MM/yyyy}");
+            sb.AppendLine("**Évaluateur** : Dr Lassoued Nair, Pédopsychiatre.");
+            sb.AppendLine("**Lieu** : Cabinet de pédopsychiatrie.");
+            return sb.ToString().Trim();
+        }
+
+        public async Task<string> RedigerFeuilleDeRouteAsync(
+            RestitutionBase dossier,
+            CancellationToken ct = default)
+        {
+            var projet = new System.Text.StringBuilder();
+            foreach (var b in dossier.Blocs
+                        .Where(b => b.Key.StartsWith("pt_", StringComparison.Ordinal))
+                        .OrderBy(b => b.Ordre))
+            {
+                var contenu = string.IsNullOrWhiteSpace(b.ContenuValide) ? b.ContenuPreremplit : b.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu)) continue;
+                projet.AppendLine($"### {b.Titre}");
+                projet.AppendLine(contenu.Trim());
+                projet.AppendLine();
+            }
+
+            if (projet.Length == 0) return FeuilleDeRouteEnAttente;
+
+            var blocp2 = new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre");
+
+            var consigne = new System.Text.StringBuilder();
+            consigne.AppendLine("Voici le PROJET DE SOINS qui vient d'être décidé avec cette famille :");
+            consigne.AppendLine();
+            consigne.AppendLine(projet.ToString().TrimEnd());
+            consigne.AppendLine();
+            consigne.AppendLine("Rédige UNIQUEMENT la section « Notre feuille de route » de la page destinée aux parents :");
+            consigne.AppendLine("une liste numérotée de 3 à 5 prochaines étapes (1. **Étape :** description en 1-2 lignes).");
+            consigne.AppendLine();
+            consigne.AppendLine("RÈGLES :");
+            consigne.AppendLine("- Tu ne reprends QUE ce qui figure dans le projet ci-dessus. Tu n'ajoutes aucune étape.");
+            consigne.AppendLine("- Si le projet en contient plus de cinq, tu gardes les plus proches dans le temps.");
+            consigne.AppendLine("- Langage des parents, sans jargon. Ce qu'ils doivent retenir en sortant.");
+            // Le « nous allons » indifférencié laissait croire que le médecin prenait tout en
+            // charge — les rendez-vous, les bilans, le suivi. Une famille attend alors un appel
+            // qui ne viendra pas, et l'école suspend ses propres démarches.
+            consigne.AppendLine("- Dis QUI fait quoi quand le projet le précise : « vous prendrez rendez-vous… »,");
+            consigne.AppendLine("  « je revois votre enfant… », « l'école mettra en place… ». N'écris « nous » que");
+            consigne.AppendLine("  pour ce qui est réellement fait ensemble.");
+            consigne.AppendLine("- Si le projet ne dit pas qui porte une action, reste neutre : « un rendez-vous est à");
+            consigne.AppendLine("  prendre chez… » — n'attribue la responsabilité à personne.");
+            consigne.AppendLine();
+            consigne.AppendLine("Commence directement par la liste numérotée, sans titre.");
+
+            var messages = new List<(string role, string content)> { ("user", consigne.ToString()) };
+            var result   = await _llmService.ChatAsync(BuildSystemPrompt(blocp2), messages, 800, ct);
+            return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
+        }
+
+        /// <summary>Génère une seule section de la Restitution 1-page parents (index 0-5).</summary>
+        /// <param name="dossier">
+        /// Le dossier en cours d'édition. Nécessaire à la seule feuille de route, qui se rédige
+        /// depuis les blocs du projet de soins et non depuis le dossier bleu.
+        /// </param>
+        public async Task<string> SuggestRestitution1PageSectionAsync(
+            int sectionIndex,
+            DossierReading reading,
+            CancellationToken ct = default,
+            RestitutionBase? dossier = null)
+        {
             var subsections = GetRestitution1PageSubsections();
             if (sectionIndex < 0 || sectionIndex >= subsections.Length)
                 return $"(Index {sectionIndex} invalide)";
 
+            var (_, instruction) = subsections[sectionIndex];
+
+            // La feuille de route ne lit pas le dossier bleu : elle traduit le projet de soins.
+            if (instruction == InstructionDifferee)
+                return dossier == null
+                    ? FeuilleDeRouteEnAttente
+                    : await RedigerFeuilleDeRouteAsync(dossier, ct);
+
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context)) return "(Aucun contenu source disponible.)";
+
             var blocp2 = new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre");
             var systemPrompt = BuildSystemPrompt(blocp2);
-            var (_, instruction) = subsections[sectionIndex];
             var userPrompt = BuildSubsectionPrompt(context, instruction, blocp2.VoixCible);
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(systemPrompt, messages, 800, ct);
@@ -325,6 +478,13 @@ namespace MedCompanion.Services.Restitutions
             var context = reading.RenderForLlm();
             if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
 
+            // L'identité des parents, EN CLAIR et en tête — pas seulement dans le JSON brut
+            // noyé plus bas dans le dossier. Sur un modèle modeste, patient.json au milieu de
+            // plusieurs milliers de mots de notes se lisait mal ; les champs Père/Mère
+            // finissaient reconstitués depuis le texte plutôt que lus dans la fiche.
+            var identiteAdmin = ExtraireIdentiteParentsAdmin(reading.PatientJson);
+            if (identiteAdmin.Length > 0) context = identiteAdmin + "\n" + context;
+
             var blocCf = new RestitutionBloc("patient_contexte_familial", "Contexte familial", 6, "clinique");
             var systemPrompt = BuildSystemPrompt(blocCf);
 
@@ -337,14 +497,26 @@ namespace MedCompanion.Services.Restitutions
                  "PAS de listes. Commence directement par le récit, sans titre."),
 
                 ("**Père**",
-                 "Rédige UNIQUEMENT la fiche signalétique du père sous forme de liste à puces : " +
-                 "prénom et âge si renseignés, activité professionnelle, lieu de vie, statut conjugal/familial " +
-                 "(célibataire, en couple avec X, recomposition…). Format : `- Item : valeur.` " +
-                 "Si une donnée manque écrire « Non renseigné ». Commence directement par la liste."),
+                 "Rédige UNIQUEMENT la fiche signalétique du père sous forme de liste à puces. " +
+                 "Le PRÉNOM ET LE NOM viennent EN PRIORITÉ du bloc « IDENTITÉ DES PARENTS » en tête du " +
+                 "dossier ci-dessus — c'est la source à privilégier. SEULEMENT si ce bloc ne mentionne " +
+                 "PAS de père (champ absent, formulaire non rempli), cherche comment le père est nommé " +
+                 "ailleurs dans le dossier (notes, contexte patient) et utilise ce que tu y trouves. " +
+                 "Si aucune des deux sources ne le nomme, écris « Non renseigné » — n'invente jamais. " +
+                 "Complète avec ce que les notes disent de lui : âge, activité professionnelle, lieu de vie, " +
+                 "statut conjugal/familial (célibataire, en couple avec X, recomposition…). " +
+                 "Format : `- Item : valeur.` Si une donnée manque écrire « Non renseigné ». " +
+                 "Commence directement par la liste."),
 
                 ("**Mère**",
-                 "Rédige UNIQUEMENT la fiche signalétique de la mère sous forme de liste à puces : " +
-                 "prénom et âge si renseignés, activité professionnelle, lieu de vie, statut conjugal/familial. " +
+                 "Rédige UNIQUEMENT la fiche signalétique de la mère sous forme de liste à puces. " +
+                 "Le PRÉNOM ET LE NOM viennent EN PRIORITÉ du bloc « IDENTITÉ DES PARENTS » en tête du " +
+                 "dossier ci-dessus — c'est la source à privilégier. SEULEMENT si ce bloc ne mentionne " +
+                 "PAS de mère (champ absent, formulaire non rempli), cherche comment la mère est nommée " +
+                 "ailleurs dans le dossier (notes, contexte patient) et utilise ce que tu y trouves. " +
+                 "Si aucune des deux sources ne la nomme, écris « Non renseigné » — n'invente jamais. " +
+                 "Complète avec ce que les notes disent d'elle : âge, activité professionnelle, lieu de vie, " +
+                 "statut conjugal/familial. " +
                  "Format : `- Item : valeur.` Si une donnée manque écrire « Non renseigné ». " +
                  "Commence directement par la liste."),
 
@@ -356,9 +528,17 @@ namespace MedCompanion.Services.Restitutions
 
                 ("**Autres figures**",
                  "Rédige UNIQUEMENT la liste des figures d'attachement TIERCES — c'est-à-dire HORS parents et fratrie " +
-                 "(déjà traités dans leurs propres sections). Exemples : grands-parents, oncle/tante, grand-mère paternelle, " +
-                 "cousin proche, éducateur référent, assistante maternelle, famille d'accueil, tuteur légal, " +
-                 "voisin ou adulte de confiance mentionné. " +
+                 "(déjà traités dans leurs propres sections). " +
+                 "Une figure d'attachement est quelqu'un avec qui l'enfant a un LIEN AFFECTIF DURABLE et VIT ou " +
+                 "PASSE DU TEMPS RÉGULIÈREMENT — pas quelqu'un qui intervient professionnellement auprès de lui. " +
+                 "Exemples ADMIS : grands-parents, oncle/tante, cousin proche, famille d'accueil, tuteur légal, " +
+                 "voisin ou adulte de confiance mentionné dans un contexte de vie quotidienne. " +
+                 "EXCLUS, MÊME S'ILS SONT PROCHES DE L'ENFANT : tout professionnel — enseignant, éducateur, " +
+                 "assistante maternelle, psychologue, orthophoniste, psychomotricien, médecin, tout intervenant " +
+                 "ayant réalisé un suivi ou un bilan. Un professionnel appartient au parcours de soins, pas à " +
+                 "l'entourage affectif de l'enfant : il figure dans le bloc « Antécédents », jamais ici. " +
+                 "En cas de doute sur la nature du lien (ex. « éducateur référent », « assistante maternelle »), " +
+                 "EXCLUS — ne classe comme figure d'attachement que ce qui est sans ambiguïté familial ou amical. " +
                  "Format : `- Figure (prénom si connu) : rôle dans la vie de l'enfant.` " +
                  "NE PAS répéter le père, la mère ou les frères/sœurs déjà listés. " +
                  "Si aucune figure tierce n'est mentionnée dans le dossier, écrire UNIQUEMENT : `- Aucune figure tierce identifiée.` " +
@@ -416,16 +596,24 @@ namespace MedCompanion.Services.Restitutions
                  "Format STRICT : `- [Nom du suivi] — [statut court]`\n" +
                  "Exemples autorisés : `- Suivi CMP — En cours`, `- Psychomotricité — Terminé 2024`, `- Traitement SLENYTO — Actif`\n" +
                  "Maximum 8 mots par ligne. Une ligne par suivi. Pas de tiret secondaire, pas de parenthèse longue.\n" +
+                 "N'INCLUS JAMAIS le suivi assuré par vous-même (Dr Lassoued, pédopsychiatre) : c'est le cadre de " +
+                 "cette consultation, pas un antécédent externe à lister. N'INCLUS PAS non plus l'évaluation en " +
+                 "cours (cartographie, séances d'évaluation actuelles) : elle sert de base à ce dossier, elle n'en " +
+                 "est pas un antécédent.\n" +
                  "Les détails (motifs, évolution, comptes rendus) sont réservés à la section « Parcours — détail ».\n" +
-                 "Si aucun suivi, écrire UNIQUEMENT : `- Aucun suivi spécialisé.`"),
+                 "Si aucun AUTRE suivi, écrire UNIQUEMENT : `- Aucun suivi spécialisé.`"),
 
                 ("**Bilans résumé**",
                  "Génère UNIQUEMENT des étiquettes courtes — INTERDIT d'écrire résultats, conclusions, scores.\n" +
                  "Format STRICT : `- [Type de bilan] — [année ou statut court]`\n" +
-                 "Exemples autorisés : `- Bilan neuropsychologique — 2025`, `- Évaluation pédopsychiatrique — 06/2026`, `- Bilan orthophonique — À programmer`\n" +
+                 "Exemples autorisés : `- Bilan neuropsychologique — 2025`, `- Bilan orthophonique — À programmer`\n" +
                  "Maximum 8 mots par ligne. Une ligne par bilan. Pas de résumé des résultats ici.\n" +
+                 "N'INCLUS JAMAIS l'évaluation EN COURS — celle qui sert de base à ce dossier de restitution " +
+                 "(cartographie de l'enfant, environnement, ou toute évaluation pédopsychiatrique actuelle) : " +
+                 "elle n'est pas un antécédent, c'est le bilan que tu es en train de restituer. N'INCLUS PAS non " +
+                 "plus votre propre suivi (Dr Lassoued) — ce n'est pas un bilan d'un tiers.\n" +
                  "Les résultats et conclusions sont réservés à la section « Parcours — détail ».\n" +
-                 "Si aucun bilan, écrire UNIQUEMENT : `- Aucun bilan formel.`"),
+                 "Si aucun AUTRE bilan, écrire UNIQUEMENT : `- Aucun bilan formel.`"),
 
                 ("**Parcours — détail**",
                  "Rédige le détail COMPLET du parcours de soins — c'est ici ET UNIQUEMENT ici que tu mets " +
@@ -995,6 +1183,41 @@ namespace MedCompanion.Services.Restitutions
             Action<string> onSectionReady,
             CancellationToken ct = default)
         {
+            // ── Cartographie V2 (nouveau parcours) — PRIORITAIRE quand une carte est versée.
+            // Les 8 sphères sont recâblées : 5 axes parents (feuille en salle d'attente) et
+            // 3 profils observés par le médecin. La V1 reste le repli des anciens dossiers.
+            var cartoV2 = reading.LatestCartographieV2;
+            if (cartoV2 != null)
+            {
+                string? axeV2 = sphereNum switch
+                {
+                    1 => "attachement",
+                    2 => "emotions",
+                    3 => "langage",
+                    6 => "imaginaire",
+                    7 => "pensee",
+                    _ => null
+                };
+                if (axeV2 != null)
+                {
+                    await SuggestAxeV2Async(axeV2, cartoV2, onSectionReady, ct);
+                    return;
+                }
+
+                string? profilV2 = sphereNum switch
+                {
+                    4 => "temperament",
+                    5 => "psychomotricite",
+                    8 => "attention",
+                    _ => null
+                };
+                if (profilV2 != null)
+                {
+                    await SuggestProfilV2Async(profilV2, cartoV2, onSectionReady, ct);
+                    return;
+                }
+            }
+
             var carto = reading.LatestCartographieEnfant;
 
             // Sphères ChenilleSegment (1/2/3/6/7) : si non explorée → texte statique, pas de LLM.
@@ -1040,6 +1263,189 @@ namespace MedCompanion.Services.Restitutions
             var userPrompt   = "INSTRUCTION STRICTE — génère UNIQUEMENT ce qui est demandé ci-dessous, " +
                                "sans introduction, sans commentaire, sans titre supplémentaire :\n" +
                                instruction + "\n\n" +
+                               "RAPPEL TON OBLIGATOIRE : Voix clinique. Utilise la terminologie pédopsychiatrique précise. " +
+                               "Rigueur et concision clinique. Réponds directement en Markdown.";
+            var messages     = new List<(string role, string content)> { ("user", userPrompt) };
+            var result       = await _llmService.ChatAsync(systemPrompt, messages, 450, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        /// <summary>
+        /// Génère le contenu d'un AXE PARENT de la cartographie V2 (attachement, langage,
+        /// emotions, imaginaire, pensee). Écrit générique : chaque sphère recâblée s'y branche
+        /// avec sa clé. Sans score pour cet axe (feuille non recueillie ou non lue), texte
+        /// statique — pas d'appel LLM : « non recueilli » est un fait à respecter, pas une
+        /// absence à combler.
+        /// </summary>
+        private async Task SuggestAxeV2Async(
+            string axeKey,
+            Services.Evaluations.CartographieV2 carto,
+            Action<string> onSectionReady,
+            CancellationToken ct)
+        {
+            if (!carto.ScoresQuestionnaire.TryGetValue(axeKey, out var score))
+            {
+                onSectionReady("**Observations** : non disponibles (questionnaire parent non recueilli pour cet axe).\n\n**Niveau clinique** : Non évalué.");
+                return;
+            }
+
+            var instruction  = BuildAxeV2Instruction(axeKey, carto, score);
+            var blocCe       = new RestitutionBloc("carto_enfant", "Cartographie de l'enfant", 8, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocCe);
+            var userPrompt   = "INSTRUCTION STRICTE — génère UNIQUEMENT ce qui est demandé ci-dessous, " +
+                               "sans introduction, sans commentaire, sans titre supplémentaire :\n" +
+                               instruction + "\n\n" +
+                               "RAPPEL TON OBLIGATOIRE : Voix clinique. Utilise la terminologie pédopsychiatrique précise. " +
+                               "Rigueur et concision clinique. Réponds directement en Markdown.";
+            var messages     = new List<(string role, string content)> { ("user", userPrompt) };
+            var result       = await _llmService.ChatAsync(systemPrompt, messages, 450, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        private static string BuildAxeV2Instruction(string axeKey, Services.Evaluations.CartographieV2 carto, int score)
+        {
+            var niveau      = Models.Evaluations.CartographieItemsV2.NiveauPourScore(score);
+            var niveauLabel = Models.Evaluations.CartographieContent.NiveauLabel(niveau);
+            var lecture     = Models.Evaluations.CartographieContent.LectureEmotionnelle(niveau);
+            var axeLabel    = Models.Evaluations.CartographieItemsV2.AxeLabel(axeKey);
+            var ageTxt      = carto.Age?.ToString() ?? "?";
+            var bande       = Models.Evaluations.CartographieItemsV2.Bande(carto.Age);
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== DONNÉES D'ÉVALUATION — {axeLabel.ToUpperInvariant()} (questionnaire parents, cartographie V2, séance du {carto.Date:dd/MM/yyyy}) ===");
+            sb.AppendLine($"Score : {score}/6 à {ageTxt} ans → niveau « {niveauLabel} »");
+            sb.AppendLine($"Fiabilité déclarée du questionnaire : {Models.Evaluations.FiabiliteCartographie.LabelDe(carto.FiabiliteQuestionnaire)}");
+            if (!string.IsNullOrWhiteSpace(carto.InformateurLisible))
+                sb.AppendLine($"Feuille remplie par : {carto.InformateurLisible}");
+
+            // Les réponses item par item : deux enfants au même score ne se ressemblent pas
+            // selon QUELLES dimensions accrochent — c'est la matière première du bloc.
+            var dimensions = Models.Evaluations.CartographieItemsV2.Dimensions(axeKey);
+            var items      = bande.HasValue ? Models.Evaluations.CartographieItemsV2.Items(axeKey, bande.Value) : null;
+            carto.ReponsesQuestionnaire.TryGetValue(axeKey, out var reponses);
+            if (reponses is { Length: > 0 })
+            {
+                sb.AppendLine("Réponses par dimension :");
+                for (int i = 0; i < reponses.Length && i < dimensions.Count; i++)
+                {
+                    var marque = reponses[i] switch { "oui" => "✓", "non" => "✗", _ => "?" };
+                    var texte  = items != null && i < items.Count ? $" — « {items[i]} »" : "";
+                    sb.AppendLine($"{marque} {dimensions[i]}{texte}");
+                }
+                sb.AppendLine("(✓ = oui, ✗ = non, ? = non renseigné sur la feuille — un « ? » n'est PAS un non)");
+            }
+            sb.AppendLine($"Lecture canonique : {lecture}");
+
+            sb.AppendLine();
+            sb.AppendLine($"Rédige UNIQUEMENT la sphère {axeLabel} :");
+            sb.AppendLine();
+            sb.AppendLine("**Observations**");
+            sb.AppendLine("- 2 ou 3 puces COURTES. Appuie-toi D'ABORD sur les réponses ✓/✗ par dimension.");
+            sb.AppendLine($"- Reste STRICTEMENT dans le domaine {axeLabel}.");
+            sb.AppendLine("- Ces réponses viennent du PARENT (feuille remplie en salle d'attente) : écris « le parent rapporte… », jamais « on observe… ».");
+            sb.AppendLine("- NE MENTIONNE PAS les autres sphères. N'INVENTE RIEN.");
+            sb.AppendLine();
+            sb.AppendLine("**Niveau clinique** : 1 SEULE phrase. Format : `Mot-clé (qualifier court sur cet axe).`");
+            sb.AppendLine("Exemples : Vert foncé → `Ressource solide (…)` | Jaune clair → `À surveiller (…)` | Rouge clair → `Alerte (…)`");
+            sb.AppendLine();
+            sb.AppendLine("Commence directement par `**Observations**`.");
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Génère le contenu d'un PROFIL OBSERVÉ de la cartographie V2 (temperament,
+        /// psychomotricite, attention) — les 6 axes cotés par le médecin en séance.
+        /// La nature du profil commande la consigne : un PORTRAIT (Tempérament) se décrit
+        /// sans jugement — aucun pôle n'est meilleur que l'autre ; une COMPÉTENCE
+        /// (Psychomotricité, Attention) se lit avec 5 toujours favorable.
+        /// Sans aucun axe coté, texte statique — pas d'appel LLM.
+        /// </summary>
+        private async Task SuggestProfilV2Async(
+            string profilKey,
+            Services.Evaluations.CartographieV2 carto,
+            Action<string> onSectionReady,
+            CancellationToken ct)
+        {
+            var def = System.Array.Find(Models.Evaluations.ProfilsObservesV2.Profils, p => p.Key == profilKey);
+            if (def == null)
+            {
+                onSectionReady("**Observations** : non disponibles (profil inconnu).");
+                return;
+            }
+
+            var lignes = new System.Text.StringBuilder();
+            bool auMoinsUn = false;
+            foreach (var ax in def.Axes)
+            {
+                carto.Axes.TryGetValue($"{profilKey}.{ax.Key}", out var v);
+                if (v > 0)
+                {
+                    auMoinsUn = true;
+                    lignes.AppendLine($"- {ax.Label} : {v}/5  (1 = {ax.Pole1} ; 5 = {ax.Pole5})");
+                }
+                else
+                {
+                    lignes.AppendLine($"- {ax.Label} : non renseigné — NE PAS interpréter cet axe.");
+                }
+            }
+
+            if (!auMoinsUn)
+            {
+                onSectionReady($"**Observations** : non disponibles (profil {def.Label.ToLowerInvariant()} non renseigné).\n\n**Niveau clinique** : Non évalué.");
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== DONNÉES D'ÉVALUATION — {def.Label.ToUpperInvariant()} (profil observé par le médecin en séance, cartographie V2, séance du {carto.Date:dd/MM/yyyy}) ===");
+            sb.AppendLine($"Fiabilité déclarée de l'observation : {Models.Evaluations.FiabiliteCartographie.LabelDe(carto.FiabiliteObservation)}");
+            sb.Append(lignes);
+            sb.AppendLine();
+
+            if (def.Nature == Models.Evaluations.ProfilNature.Portrait)
+            {
+                sb.AppendLine("IMPORTANT : ce profil est un PORTRAIT, pas une échelle de gravité. Aucun pôle n'est");
+                sb.AppendLine("meilleur que l'autre — 1 et 5 sont deux façons d'être, rien n'y est pathologique.");
+                sb.AppendLine($"Rédige UNIQUEMENT la sphère {def.Label} :");
+                sb.AppendLine();
+                sb.AppendLine("**Observations**");
+                sb.AppendLine();
+                sb.AppendLine("**Profil global**");
+                sb.AppendLine("2 à 3 phrases décrivant la forme tempéramentielle globale, SANS jugement de valeur.");
+                sb.AppendLine();
+                sb.AppendLine("**Points d'appui**");
+                sb.AppendLine("- 1 ou 2 puces : traits sur lesquels s'appuyer au quotidien.");
+                sb.AppendLine();
+                sb.AppendLine("**Points d'attention**");
+                sb.AppendLine("- 1 ou 2 puces : axes extrêmes (1 ou 5) avec une piste d'adaptation de l'environnement — jamais formulés comme des défauts de l'enfant.");
+            }
+            else
+            {
+                sb.AppendLine("Ce profil est une COMPÉTENCE : 5 est toujours favorable, 1-2 signale une difficulté.");
+                sb.AppendLine($"Rédige UNIQUEMENT la sphère {def.Label} :");
+                sb.AppendLine();
+                sb.AppendLine("**Observations**");
+                sb.AppendLine();
+                sb.AppendLine("**Profil global**");
+                sb.AppendLine("2 à 3 phrases sur le profil observé en séance.");
+                sb.AppendLine();
+                sb.AppendLine("**Points d'appui**");
+                sb.AppendLine("- 1 ou 2 puces : axes favorables (4-5).");
+                sb.AppendLine();
+                sb.AppendLine("**Points d'attention**");
+                sb.AppendLine("- 1 ou 2 puces : axes en difficulté (1-2) avec une piste concrète.");
+                if (profilKey == "attention")
+                    sb.AppendLine("- Ce profil est celui qui motive une demande de bilan attentionnel standardisé : si plusieurs axes sont à 1-2, mentionne cette indication.");
+            }
+            sb.AppendLine();
+            sb.AppendLine("Ces cotations viennent de l'OBSERVATION DIRECTE en séance : écris « en séance, on observe… », pas « le parent rapporte… ».");
+            sb.AppendLine("NE MENTIONNE PAS les autres sphères. N'INVENTE RIEN. Un axe non renseigné n'est PAS un axe faible.");
+            sb.AppendLine("Commence directement par `**Observations**`.");
+
+            var blocCe       = new RestitutionBloc("carto_enfant", "Cartographie de l'enfant", 8, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocCe);
+            var userPrompt   = "INSTRUCTION STRICTE — génère UNIQUEMENT ce qui est demandé ci-dessous, " +
+                               "sans introduction, sans commentaire, sans titre supplémentaire :\n" +
+                               sb + "\n\n" +
                                "RAPPEL TON OBLIGATOIRE : Voix clinique. Utilise la terminologie pédopsychiatrique précise. " +
                                "Rigueur et concision clinique. Réponds directement en Markdown.";
             var messages     = new List<(string role, string content)> { ("user", userPrompt) };
@@ -1187,6 +1593,24 @@ namespace MedCompanion.Services.Restitutions
             Action<string> onSectionReady,
             CancellationToken ct = default)
         {
+            // ── Cartographie de l'environnement V2 (séance 3) — PRIORITAIRE quand une séance
+            // porte des données. Recâblage feuille par feuille : seule la feuille 1 (Famille)
+            // lit la V2 pour l'instant. La V1 reste le repli des anciens dossiers.
+            var seanceV2 = reading.LatestSeanceEnvironnement;
+            if (seanceV2 != null)
+            {
+                string? feuilleKeyV2 = feuilleIdx switch
+                {
+                    1 => "famille",
+                    _ => null
+                };
+                if (feuilleKeyV2 != null)
+                {
+                    await SuggestEnvFeuilleV2Async(feuilleKeyV2, seanceV2, onSectionReady, ct);
+                    return;
+                }
+            }
+
             var context = reading.RenderForLlm();
             if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
 
@@ -1197,6 +1621,85 @@ namespace MedCompanion.Services.Restitutions
             var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
             var messages  = new List<(string role, string content)> { ("user", userPrompt) };
             var result    = await _llmService.ChatAsync(sysPrompt, messages, 500, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        /// <summary>
+        /// Génère les observations d'une FEUILLE V2 de la cartographie de l'environnement
+        /// (séance 3). Écrit générique par clé de feuille — chaque feuille recâblée s'y
+        /// branche. Le prompt porte les items ✓/✗/— nervure par nervure AVEC LEUR SOURCE
+        /// (feuille parents / entretien) : sur cette cartographie, qui répond compte autant
+        /// que la réponse. Sans aucun item renseigné : texte statique, pas d'appel LLM.
+        /// </summary>
+        private async Task SuggestEnvFeuilleV2Async(
+            string feuilleKey,
+            Services.Evaluations.SeanceEnvironnement seance,
+            Action<string> onSectionReady,
+            CancellationToken ct)
+        {
+            var feuilles = Models.Evaluations.LectureEnvironnementV2.Construire(seance.CotationsEnv, seance.ReponsesParent);
+            var feuille  = feuilles.FirstOrDefault(f => f.Key == feuilleKey);
+            if (feuille == null || feuille.NbTotal == 0 || feuille.NbManquants == feuille.NbTotal)
+            {
+                onSectionReady("**Observations** : non disponibles (feuille non renseignée).\n\n**Niveau clinique**\nNon évalué.");
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== DONNÉES D'ÉVALUATION — {feuille.Label.ToUpperInvariant()} ({feuille.SousTitre}) — cartographie de l'environnement, séance du {seance.Date:dd/MM/yyyy} ===");
+            sb.AppendLine($"Fiabilité déclarée — environnement : {Models.Evaluations.FiabiliteCartographie.LabelDe(seance.FiabiliteEnv)}");
+            var quiEnv = seance.InformateurEnv switch
+            {
+                "mere" => "la mère", "pere" => "le père", "autre" => "un autre adulte", _ => null
+            };
+            if (quiEnv != null)
+                sb.AppendLine($"Feuille parents remplie par {quiEnv}"
+                            + (string.IsNullOrWhiteSpace(seance.InformateurEnvNom) ? "" : $" ({seance.InformateurEnvNom})"));
+
+            foreach (var nervure in feuille.Nervures)
+            {
+                sb.AppendLine($"Nervure{(nervure.IsCentrale ? " CENTRALE" : "")} : {nervure.Label} — "
+                            + (nervure.EstComplete
+                                ? $"{nervure.NbOui}/{nervure.NbTotal} favorables → « {nervure.NiveauLabel} »"
+                                : $"non lisible ({nervure.EtatText})"));
+                foreach (var ligne in nervure.Lignes)
+                {
+                    var marque = ligne.Reponse switch
+                    {
+                        Models.Evaluations.ReponseProposition.Oui => "✓",
+                        Models.Evaluations.ReponseProposition.Non => "✗",
+                        _                                         => "—"
+                    };
+                    var suffixe = ligne.EstRenseignee ? "" : " (non renseigné)";
+                    sb.AppendLine($"  {marque} {ligne.Texte} [{ligne.SourceLabel}]{suffixe}");
+                }
+            }
+            sb.AppendLine($"Lecture de la feuille : {feuille.EtatText}");
+            sb.AppendLine("(Une nervure incomplète n'a pas de couleur : le gris dit qu'on ne sait pas encore.)");
+            sb.AppendLine();
+            sb.AppendLine($"Rédige UNIQUEMENT les observations pour la feuille « {feuille.Label} » :");
+            sb.AppendLine();
+            sb.AppendLine("**Observations**");
+            sb.AppendLine("- 3 à 5 puces COURTES, ancrées dans les items ✓/✗ de chaque nervure.");
+            sb.AppendLine("- Cite la SOURCE quand elle éclaire : « la feuille parents indique… », « en entretien, on relève… ».");
+            sb.AppendLine("- Un item « — (non renseigné) » n'est NI un oui NI un non : ne l'interprète JAMAIS.");
+            sb.AppendLine("- Reste STRICTEMENT dans le domaine de cette feuille. NE MENTIONNE PAS les autres feuilles. N'INVENTE RIEN.");
+            sb.AppendLine();
+            sb.AppendLine("**Niveau clinique**");
+            sb.AppendLine("1 SEULE phrase courte. Format : `Mot-clé (qualifier court).`");
+            sb.AppendLine("Si la feuille n'est pas entièrement lisible (réponses manquantes), commence la phrase par `Lecture partielle — `.");
+            sb.AppendLine();
+            sb.AppendLine("Commence directement par `**Observations**`.");
+
+            var blocRef      = new RestitutionBloc("env_edu_f1", "Branche Éducative", 16, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocRef);
+            var userPrompt   = "INSTRUCTION STRICTE — génère UNIQUEMENT ce qui est demandé ci-dessous, " +
+                               "sans introduction, sans commentaire, sans titre supplémentaire :\n" +
+                               sb + "\n\n" +
+                               "RAPPEL TON OBLIGATOIRE : Voix clinique. Utilise la terminologie pédopsychiatrique précise. " +
+                               "Rigueur et concision clinique. Réponds directement en Markdown.";
+            var messages     = new List<(string role, string content)> { ("user", userPrompt) };
+            var result       = await _llmService.ChatAsync(systemPrompt, messages, 500, ct);
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
@@ -2302,6 +2805,67 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
         }
 
         /// <summary>
+        /// Lit un champ texte de patient.json, en tolérant les deux variantes de casse
+        /// (camelCase pour les patients récents, PascalCase pour les anciens).
+        /// </summary>
+        private static string? StrAdmin(JsonElement r, string key)
+        {
+            var pascal = char.ToUpper(key[0]) + key[1..];
+            if (r.TryGetProperty(key,   out var a) && a.ValueKind == JsonValueKind.String) return a.GetString()?.Trim();
+            if (r.TryGetProperty(pascal, out var b) && b.ValueKind == JsonValueKind.String) return b.GetString()?.Trim();
+            return null;
+        }
+
+        /// <summary>
+        /// L'identité des parents et de l'accompagnant, telle que déclarée dans la fiche
+        /// administrative — jamais devinée dans les notes.
+        ///
+        /// EXISTE PARCE QUE LE MODÈLE NE LA VOYAIT PAS FIABLEMENT. patient.json était envoyé en
+        /// bloc JSON brut au milieu d'un dossier de plusieurs milliers de mots : sur un modèle
+        /// modeste (Gemma), les champs PerePrenom/MerePrenom/AccompagnantXxx s'y noyaient, et le
+        /// modèle reconstituait l'identité des parents depuis les notes — au risque de la
+        /// déformer. Les extraire en clair, en tête du prompt, retire la devinette.
+        ///
+        /// Vide si le formulaire de complétion n'a pas été rempli : ce n'est pas une absence de
+        /// donnée à combler, c'est un fait à respecter.
+        /// </summary>
+        private static string ExtraireIdentiteParentsAdmin(string patientJson)
+        {
+            if (string.IsNullOrWhiteSpace(patientJson)) return "";
+
+            try
+            {
+                using var doc = JsonDocument.Parse(patientJson);
+                var r = doc.RootElement;
+
+                var perePrenom = StrAdmin(r, "perePrenom");
+                var pereNom    = StrAdmin(r, "pereNom");
+                var merePrenom = StrAdmin(r, "merePrenom");
+                var mereNom    = StrAdmin(r, "mereNom");
+                var accPrenom  = StrAdmin(r, "accompagnantPrenom");
+                var accNom     = StrAdmin(r, "accompagnantNom");
+                var accLien    = StrAdmin(r, "accompagnantLien");
+                var situation  = StrAdmin(r, "situationParentale");
+
+                var pere = $"{perePrenom} {pereNom}".Trim();
+                var mere = $"{merePrenom} {mereNom}".Trim();
+                var acc  = $"{accPrenom} {accNom}".Trim();
+
+                if (pere.Length == 0 && mere.Length == 0 && acc.Length == 0 && string.IsNullOrWhiteSpace(situation))
+                    return "";
+
+                var sb = new System.Text.StringBuilder();
+                sb.AppendLine("IDENTITÉ DES PARENTS (fiche administrative — SOURCE À PRIVILÉGIER, ne pas déduire des notes) :");
+                if (pere.Length > 0) sb.AppendLine($"  Père : {pere}");
+                if (mere.Length > 0) sb.AppendLine($"  Mère : {mere}");
+                if (acc.Length  > 0) sb.AppendLine($"  Accompagnant habituel : {acc}" + (string.IsNullOrWhiteSpace(accLien) ? "" : $" ({accLien})"));
+                if (!string.IsNullOrWhiteSpace(situation)) sb.AppendLine($"  Situation parentale : {situation}");
+                return sb.ToString();
+            }
+            catch { return ""; }
+        }
+
+        /// <summary>
         /// Construit le bloc "couverture" directement depuis les données structurées
         /// du DossierReading. Déterministe — jamais de placeholders [xxx].
         /// </summary>
@@ -2351,11 +2915,18 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
             if (string.IsNullOrEmpty(ecole))  ecole  = CovExtractField(corpus, "école", "ecole", "établissement", "etablissement") ?? "";
             if (string.IsNullOrEmpty(classe)) classe = CovExtractField(corpus, "classe", "niveau scolaire", "niveau") ?? CovExtractClasse(corpus) ?? "";
 
-            var motif    = CovExtractField(corpus, "motif de consultation", "motif") ?? CovExtractMotif(corpus) ?? "";
-            var anneeSco = CovExtractAnneeScolaire(corpus);
+            var motif = CovExtractField(corpus, "motif de consultation", "motif") ?? CovExtractMotif(corpus) ?? "";
 
-            // 3. Dates d'évaluation
-            var dates = CovBuildDatesEvaluation(reading.Evaluations);
+            // Année scolaire CALCULÉE, plus extraite du texte.
+            //
+            // L'extraction cherchait « 20xx/20xx » dans les notes : elle ramenait l'année d'une
+            // note ancienne, et à défaut une valeur codée en dur — « 2025-2026 » s'imprimait sur
+            // une couverture éditée en septembre 2026. L'année scolaire découle de la date, il n'y
+            // a rien à deviner.
+            var anneeSco = Models.Scolarite.AnneeScolaireDe(DateTime.Today);
+
+            // 3. Dates d'évaluation — depuis les séances RÉELLES
+            var dates = CovBuildDatesEvaluation(reading);
 
             // 4. Assemblage markdown (même format qu'attendu par ParseCoverFieldsFromBloc)
             var sb = new StringBuilder();
@@ -2452,7 +3023,41 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
             return m.Success ? $"{m.Groups[1].Value}-{m.Groups[2].Value}" : "";
         }
 
-        private static string CovBuildDatesEvaluation(List<EvaluationEntry> evaluations)
+        /// <summary>
+        /// Les dates de la période d'évaluation, depuis les séances qui ont réellement eu lieu.
+        ///
+        /// CE QUI ÉTAIT CASSÉ — cette méthode ne lisait que les fiches d'évaluation V1. Un enfant
+        /// évalué par les séances 2 et 3 n'en a aucune : sa couverture affichait « Non renseignées »
+        /// sur le document remis à la famille et transmis à l'école.
+        ///
+        /// LE 1er ENTRETIEN EN FAIT PARTIE. Trois blocs entiers du dossier — contexte familial,
+        /// antécédents, situation actuelle — n'en viennent que de là : sans sa date, le dossier
+        /// repose sur des données dont l'origine n'est pas traçable. Et la durée compte : une
+        /// évaluation étalée sur huit mois ne dit pas la même chose qu'une évaluation en quinze
+        /// jours.
+        ///
+        /// Ce qui manque n'est jamais inventé : deux séances sur trois donnent « 2 séances ».
+        /// </summary>
+        private static string CovBuildDatesEvaluation(DossierReading reading)
+        {
+            var dates = new List<DateTime>();
+
+            if (reading.DatePremierEntretien.HasValue) dates.Add(reading.DatePremierEntretien.Value.Date);
+            foreach (var d in reading.DatesSeancesEvaluation) dates.Add(d.Date);
+
+            dates = dates.Distinct().OrderBy(d => d).ToList();
+
+            if (dates.Count == 1) return dates[0].ToString("dd/MM/yyyy");
+            if (dates.Count > 1)
+                return dates.Count <= 3
+                    ? string.Join(" · ", dates.Select(d => d.ToString("dd/MM/yyyy")))
+                    : $"du {dates.First():dd/MM/yyyy} au {dates.Last():dd/MM/yyyy} ({dates.Count} séances)";
+
+            // Repli sur les fiches V1, pour les dossiers évalués par l'ancien parcours.
+            return CovBuildDatesEvaluationV1(reading.Evaluations);
+        }
+
+        private static string CovBuildDatesEvaluationV1(List<EvaluationEntry> evaluations)
         {
             if (evaluations.Count == 0) return "";
             var eval = evaluations[0]; // plus récente en premier

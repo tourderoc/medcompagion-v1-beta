@@ -239,6 +239,12 @@ namespace MedCompanion.Services
                     patientJsonPath = Path.Combine(patientDir, "patient.json");
                 }
                 
+                // Créer ou mettre à jour une fiche, c'est saisir sa scolarité — donc la confirmer.
+                // Sans cette marque, un patient créé aujourd'hui se verrait poser la question de
+                // rentrée à sa toute première séance, alors que la donnée sort d'être saisie.
+                if (!metadata.DateConfirmationScolarite.HasValue)
+                    metadata.DateConfirmationScolarite = DateTime.Today;
+
                 var json = JsonSerializer.Serialize(metadata, new JsonSerializerOptions
                 {
                     WriteIndented = true,

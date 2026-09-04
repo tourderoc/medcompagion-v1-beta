@@ -1087,3 +1087,113 @@ d'une décision clinique, pas technique. À traiter comme un chantier à part.
 | Projet thérapeutique (création, patch) | ✅ repointé |
 | Restitution | ⏭ refonte graphique à part |
 | Suppression des ~7 300 lignes | ⏸ **bloquée par la Restitution**, qui reste le seul consommateur des formes V1 |
+
+## Dossier de restitution — audit page par page
+
+Le dossier de restitution (32 blocs, DossierRestitutionInitial) est le document remis à la
+famille — c'est elle qui décide de sa circulation. Audit mené page par page en situation réelle,
+pas bloc par bloc : plusieurs blocs (`carto_s2..s8`, `env_edu_f2..f5`) ne produisent AUCUNE page,
+absorbés dans le premier bloc de leur groupe.
+
+### Page 1 — Identité & couverture
+
+| Décision | État |
+|---|---|
+| Dates d'évaluation | ✅ Construites depuis les séances RÉELLES (1er entretien + cartographie + environnement), plus les fiches V1 en repli. Avant : vide pour tout patient évalué par les séances 2/3 |
+| Année scolaire | ✅ **Calculée** depuis la date, plus de `"2025-2026"` codé en dur |
+| Bascule de rentrée | ✅ `ScolariteRentreeService` — boîte à 3 réponses (Mettre à jour / Rien n'a changé / Plus tard), déclenchée aux séances qui supposent un parent en face |
+
+### Page 2 — Restitution 1-page parents
+
+| Décision | État |
+|---|---|
+| Feuille de route | ✅ **Différée** — ne se rédige plus depuis le dossier bleu (elle inventait un parcours avant que le projet existe) mais depuis les blocs `pt_s1..s5`, une fois remplis. En attente sinon, sans appel au modèle |
+| Qui porte l'action | ✅ Consigne posée dans la feuille de route : « vous prendrez rendez-vous… », « je revois… », neutre si le projet ne précise pas — en attendant un vrai champ porteur sur `ProjetAction` (à faire aux pages du projet) |
+| « Ce qui peut aider » | ✅ Recentrée sur les gestes du quotidien à la maison — interdiction explicite d'y écrire une orientation, un rendez-vous, un suivi |
+
+### Page 3 — Identification, Motif, Contexte familial
+
+| Décision | État |
+|---|---|
+| `patient_identification` | ✅ Rendu **déterministe** (identité, dates, évaluateur, lieu) — seule la phrase de présentation reste rédigée par le modèle |
+| Identité des parents | ✅ Extraite d'ADMIN et transmise **en clair, en tête du prompt** (`ExtraireIdentiteParentsAdmin`) — plus noyée dans le JSON brut de `patient.json`, où un modèle modeste (Gemma) la reconstituait depuis les notes au lieu de la lire |
+| Accompagnant du 1er entretien | ✅ Distingué de l'accompagnant ADMIN — les notes du 1er entretien font foi sur qui était présent CE jour-là |
+| Père / Mère | ✅ Prénom et nom viennent EXCLUSIVEMENT du bloc ADMIN, jamais reconstitués des notes |
+| « Autres figures » | ✅ **Bug corrigé** — Gemma classait les professionnels ayant fait un bilan parmi les figures d'attachement. Règle posée : lien affectif durable ET vécu partagé, jamais un professionnel ; doute → exclusion |
+
+### Page 4 (Antécédents) — bug identifié en testant, corrigé au passage
+
+| Décision | État |
+|---|---|
+| « Bilans résumé » / « Suivi résumé » | ✅ **Bug corrigé** — l'évaluation en cours (cartographie) et le propre suivi du médecin se retrouvaient listés comme un bilan antérieur. La règle existait déjà dans « Parcours — détail » mais pas dans les deux résumés compacts, générés AVANT lui dans la séquence |
+
+### Trou transversal — corrigé
+
+`RenderForLlm()` ne transmettait **aucune** cartographie au modèle — ni V1 (chargée mais jamais
+mise en texte, seulement utilisée pour les dessins des pages 8-21), ni V2
+(`EvaluationV2ContextService`, déjà écrit et branché ailleurs, mais pas ici). Le bloc
+`patient_situation_actuelle` cite pourtant les cartographies comme sa source principale : il les
+décrivait sans jamais les voir.
+
+| Décision | État |
+|---|---|
+| Cartographie V1 (chenille + 3 profils) | ✅ Textifiée dans `RenderForLlm()`, même format que celui déjà éprouvé dans la Synthèse Globale |
+| Cartographie de l'environnement V1 (5 feuilles) | ✅ Textifiée — couleur calculée par `EnvironnementScoringService` |
+| Séances V2 (cartographie enfant + environnement) | ✅ `EvaluationV2ContextService.PourPrompt()`, même lecteur que la Synthèse Globale et le Projet thérapeutique |
+| Segment ou profil non renseigné | ✅ Transmis à 0, jamais omis — sauf Tempérament et Attention qui disparaissent si `IsRenseigne` est faux |
+| Cartographie entièrement vierge | ✅ Aucune section générée — pas de zéros qui laisseraient croire à une évaluation faite |
+| Seuil de rendu | ✅ Score non nul sur au moins un segment, pas `IsValidated` seul — une cartographie en cours vaut mieux qu'une absence pour « Situation actuelle » |
+
+### Page 4 (Antécédents) — deux bugs, une seule cause
+
+Signalé par l'utilisateur : le détail des bilans (QI, fragilités, hypothèses, valeurs biologiques,
+examen cardiologique) s'affichait au milieu du dossier, dans « Antécédents », au lieu d'une
+annexe. En creusant, la cause réelle était double et plus profonde qu'un problème de position.
+
+**Bug 1 — mauvais endroit.** La page « Parcours — détail » (déjà appelée « annexe » dans son
+propre en-tête HTML) était rendue entre les Antécédents résumés (page B) et la Situation actuelle
+(page C) — au milieu du parcours narratif, pas à la fin.
+
+**Bug 2 — mauvaise attribution (la vraie cause du symptôme visible).** `ParseAntecedents`
+découpait le markdown sur TOUT titre en gras rencontré. Or « Parcours — détail » contient
+lui-même deux titres imbriqués (« Suivi antérieur », « Bilans réalisés »), écrits par
+`RunProgressiveSubsectionsAsync` immédiatement après le titre « Parcours — détail » lui-même. Le
+découpage à plat les traitait comme de NOUVELLES sous-sections de premier niveau : « Suivi
+antérieur » (contient « suivi ») écrasait silencieusement le résumé compact « Suivi résumé »,
+« Bilans réalisés » (contient « bilan ») écrasait « Bilans résumé » — et « Parcours — détail »
+se retrouvait vide. Le détail n'était donc pas seulement mal placé : il remplaçait le résumé
+compact directement sur la page qui devait rester courte.
+
+| Décision | État |
+|---|---|
+| Position de l'annexe | ✅ Déplacée à la **toute fin** du document, après « Conclusion et perspectives » — rendue une seule fois, hors de la boucle principale |
+| Numéro de renvoi (page B → annexe) | ✅ Calculé comme `totalPages` (la vraie dernière page), plus une estimation à `pageNumber + 2` |
+| Libellé du renvoi | ✅ Explicite : « Détail des suivis et bilans → Annexe, p.N » |
+| `ParseAntecedents` | ✅ N'ancre plus que sur les **six titres canoniques** ; tout titre en gras qui n'en est pas un (les titres imbriqués de Parcours — détail) reste le contenu de l'ancre précédente |
+| Cartographie vierge / sans détail | ✅ Aucune annexe générée — pas de page finale vide |
+| Vérification | ✅ Test bout en bout sur `BuildPreviewHtml()` : ordre réel des pages, numéro de renvoi, absence d'annexe quand il n'y a rien à y mettre |
+
+**Bug 3 — le vrai problème persistait quand même (retest utilisateur, même jour).** Après les
+correctifs 1 et 2, le symptôme est resté identique EN PLUS de faire disparaître l'annexe. Cause :
+Gemma (modèle local) n'écrit pas toujours une section « Parcours — détail » séparée — il écrit le
+détail complet (titre du bilan + sous-puces QI/fragilités/hypothèses/recommandations) directement
+sous « Bilans résumé ». La détection de « contenu détaillé » reposait sur la longueur de LIGNE
+(> 80 caractères) : comme le modèle avait découpé le détail en plusieurs puces courtes plutôt
+qu'une seule ligne longue, aucune ligne ne dépassait le seuil — la détection ne se déclenchait
+jamais, et le résumé compact affichait le détail complet tel quel, sans annexe du tout.
+
+Correctif : `SplitResumeItems()` (nouvelle méthode dans `RestitutionHtmlPreviewService`) remplace
+la détection par longueur de ligne par une lecture structurelle, bloc par bloc (séparés par ligne
+vide) : un bloc réduit à une seule puce courte reste tel quel dans le résumé ; un bloc composé d'un
+titre suivi de sous-puces (peu importe leur longueur individuelle) est reconnu comme un « item
+détaillé » — seul son titre reste dans le résumé compact, le bloc entier part vers l'annexe (soit
+sous la section « Parcours — détail » si le modèle l'a produite, soit en fallback direct sinon).
+Filet de sécurité indépendant du modèle utilisé : fonctionne que le LLM respecte ou non la consigne
+de concision, et quelle que soit la longueur des puces individuelles.
+
+| Décision | État |
+|---|---|
+| Détection de détail | ✅ Structurelle (titre + sous-puces), plus par longueur de ligne |
+| Résumé compact (page B) | ✅ N'affiche plus que le titre de chaque item, même sans section « Parcours — détail » explicite |
+| Annexe sans section dédiée du modèle | ✅ Toujours générée en fallback à partir du détail extrait du résumé |
+| Vérification | ✅ Test reproduisant exactement la structure réelle observée (titre + puces courtes sous « Bilans résumé », sans « Parcours — détail ») : le titre reste dans le résumé, le QI n'apparaît qu'en annexe |
