@@ -1548,6 +1548,845 @@ class Program
                 moteurV1.Prompts.Count == 1 && moteurV1.Prompts[0].Contains("Aucune cartographie enfant disponible"));
         }
 
+        // ── 22. La synthèse lit le dossier comme un clinicien : séances INTÉGRALES,
+        //        sans sa propre version antérieure ni le projet qui en découle ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : le rendu réservé à la synthèse (lecture intégrale, sans circularité) ──");
+        {
+            var lecture22 = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "BOKO Joan",
+                PatientJson = """{"prenom":"Joan","nom":"BOKO"}""",
+                EvaluationsV2Contexte = "■ CARTOGRAPHIE — Attachement : 4/6",
+                EvaluationsV2Integral = "■ CARTOGRAPHIE — Attachement : 4/6\n        [NON] Recours\n        [non renseigné] Consolabilité",
+                SyntheseGlobaleMed  = "SYNTHESE-MED-ANTERIEURE",
+                SyntheseGlobaleV05  = "SYNTHESE-V05-ANTERIEURE",
+                ProjetTherapeutique = "PROJET-QUI-DECOULE-DE-LA-SYNTHESE",
+                SyntheseGlobaleDocuments = "META-SYNTHESE-DOCUMENTS",
+            };
+
+            var pourBlocs    = lecture22.RenderForLlm();
+            var pourSynthese = lecture22.RenderForSynthese();
+
+            // 1. Lecture intégrale des séances — réservée à la synthèse.
+            Verifie("la synthèse reçoit le détail item par item des séances",
+                pourSynthese.Contains("[NON] Recours") && pourSynthese.Contains("[non renseigné] Consolabilité"));
+            Verifie("les autres blocs n'en reçoivent que les conclusions (pas de dilution)",
+                !pourBlocs.Contains("[NON] Recours"));
+            Verifie("les deux rendus portent bien la conclusion de l'axe",
+                pourSynthese.Contains("Attachement : 4/6") && pourBlocs.Contains("Attachement : 4/6"));
+
+            // 2. Pas de circularité : la synthèse ne se relit pas elle-même, ni le projet.
+            Verifie("la synthèse ne reçoit PAS sa propre version antérieure",
+                !pourSynthese.Contains("SYNTHESE-MED-ANTERIEURE") && !pourSynthese.Contains("SYNTHESE-V05-ANTERIEURE"));
+            Verifie("la synthèse ne reçoit PAS le projet thérapeutique qui en découle",
+                !pourSynthese.Contains("PROJET-QUI-DECOULE-DE-LA-SYNTHESE"));
+            Verifie("les autres blocs les reçoivent toujours (pas de régression)",
+                pourBlocs.Contains("SYNTHESE-MED-ANTERIEURE") && pourBlocs.Contains("PROJET-QUI-DECOULE-DE-LA-SYNTHESE"));
+
+            // 3. Les sources externes restent lues des deux côtés : ce sont des faits du
+            //    dossier, pas des conclusions de Med.
+            Verifie("les documents importés restent transmis à la synthèse",
+                pourSynthese.Contains("META-SYNTHESE-DOCUMENTS"));
+
+            // Sans lecture intégrale disponible (ancien dossier), la synthèse retombe sur les
+            // conclusions plutôt que de perdre les séances.
+            var lectureSansIntegral = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "X", PatientJson = "{}",
+                EvaluationsV2Contexte = "■ CARTOGRAPHIE — Attachement : 4/6",
+            };
+            Verifie("sans lecture intégrale, la synthèse garde au moins les conclusions",
+                lectureSansIntegral.RenderForSynthese().Contains("Attachement : 4/6"));
+        }
+
+        // ── 23. La synthèse attend les lectures d'amont, puis s'appuie dessus ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : la synthèse ne précède pas les lectures, et les relit ──");
+        {
+            var lecture23 = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "BOKO Joan", PatientJson = "{}",
+                EvaluationsV2Contexte = "■ CARTOGRAPHIE — Attachement : 4/6",
+            };
+
+            // (a) Dossier vierge : aucune lecture faite → message d'attente, AUCUN appel.
+            var dossierVierge = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            var moteurAttente = new FauxMoteur { Reponse = _ => (true, "ne doit pas être appelé") };
+            var svcAttente = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurAttente, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+
+            string? sortieAttente = null;
+            await svcAttente.SuggestSyntheseDiagS1Async(lecture23, s => sortieAttente = s, dossierVierge);
+
+            Verifie("sans lectures d'amont, la synthèse ne lance AUCUN appel au modèle",
+                moteurAttente.Prompts.Count == 0, $"{moteurAttente.Prompts.Count} appel(s)");
+            Verifie("elle dit qu'elle attend, et nomme ce qui manque",
+                sortieAttente != null && sortieAttente.Contains("En attente des lectures")
+                && sortieAttente.Contains("Sphère 1") && sortieAttente.Contains("Lecture globale"),
+                sortieAttente);
+            Verifie("elle n'exige PAS la feuille 5, qui n'existe plus dans le nouveau parcours",
+                sortieAttente != null && !sortieAttente.Contains("feuille 5"));
+
+            // (b) Lectures faites : la synthèse part, et les reçoit en tête de prompt.
+            var dossierLu = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            foreach (var b in dossierLu.Blocs)
+            {
+                if (b.Key.StartsWith("carto_s", StringComparison.Ordinal))
+                    b.ContenuValide = $"**Observations**\n- Lecture de {b.Key}.\n\n**Niveau clinique** : Satisfaisant.";
+                else if (b.Key is "env_edu_f1" or "env_edu_f2" or "env_edu_f3" or "env_edu_f4")
+                    b.ContenuValide = $"**Observations**\n- Lecture de {b.Key}.";
+                else if (b.Key == "env_edu_global")
+                    b.ContenuValide = "**Lecture globale**\nSocle familial solide, vécu scolaire fragile.";
+            }
+
+            var moteurLu = new FauxMoteur { Reponse = _ => (true, "synthèse générée.") };
+            var svcLu = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurLu, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcLu.SuggestSyntheseDiagS1Async(lecture23, _ => { }, dossierLu);
+
+            Verifie("une fois les lectures faites, la synthèse s'exécute", moteurLu.Prompts.Count == 1, $"{moteurLu.Prompts.Count}");
+            var promptLu = moteurLu.Prompts.Count > 0 ? moteurLu.Prompts[0] : "";
+            Verifie("les lectures validées sont mises en tête du prompt",
+                promptLu.Contains("LECTURES DÉJÀ POSÉES ET VALIDÉES DANS CE DOSSIER"));
+            Verifie("la lecture globale de la branche y figure",
+                promptLu.Contains("Socle familial solide, vécu scolaire fragile"));
+            Verifie("les observations de sphères y figurent aussi",
+                promptLu.Contains("Lecture de carto_s1") && promptLu.Contains("Lecture de carto_s8"));
+            Verifie("la consigne interdit de les contredire ou de les réinterpréter",
+                promptLu.Contains("ne les contredis pas") && promptLu.Contains("CROISER"));
+
+            // (c) Sans dossier fourni (appel programmatique) : pas de blocage — le garde-fou
+            //     protège l'usage réel sans casser les appelants qui n'ont pas le dossier.
+            var moteurSansDossier = new FauxMoteur { Reponse = _ => (true, "ok") };
+            var svcSansDossier = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurSansDossier, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcSansDossier.SuggestSyntheseDiagS1Async(lecture23, _ => { });
+            Verifie("sans dossier transmis, l'ancien comportement est préservé",
+                moteurSansDossier.Prompts.Count == 1, $"{moteurSansDossier.Prompts.Count}");
+        }
+
+        // ── 24. Projet 7.1 : actions portées, datées, hiérarchisées ; bilans à
+        //        réaliser seulement ; rôle du médecin fixe ; chaîné à la synthèse ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : projet médical — qui fait quoi, quand, à quel degré ──");
+        {
+            var lecture24 = new MedCompanion.Services.Restitutions.DossierReading
+            {
+                PatientNomComplet = "GOBLET Adrien", PatientJson = "{}",
+                EvaluationsV2Contexte = "■ CARTOGRAPHIE — Attachement : 4/6",
+                ProjetTherapeutique = "PROJET-ANTERIEUR-A-NE-PAS-RELIRE",
+            };
+
+            // (a) Sans synthèse : le projet attend, aucun appel.
+            var dossierSansSynthese = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            var moteurPtAttente = new FauxMoteur { Reponse = _ => (true, "ne doit pas être appelé") };
+            var svcPtAttente = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurPtAttente, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            string? sortiePt = null;
+            await svcPtAttente.SuggestPtS1Async(lecture24, s => sortiePt = s, dossierSansSynthese);
+
+            Verifie("sans synthèse, le projet ne lance AUCUN appel",
+                moteurPtAttente.Prompts.Count == 0, $"{moteurPtAttente.Prompts.Count} appel(s)");
+            Verifie("il dit qu'il attend la synthèse et nomme ce qui manque",
+                sortiePt != null && sortiePt.Contains("En attente de la synthèse")
+                && sortiePt.Contains("Diagnostics retenus"), sortiePt);
+
+            // (b) Synthèse faite : le projet part et la reçoit.
+            var dossierAvecSynthese = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            foreach (var b in dossierAvecSynthese.Blocs)
+                if (b.Key.StartsWith("synthese_diag_", StringComparison.Ordinal))
+                    b.ContenuValide = $"Contenu validé de {b.Key} — hypothèse TDAH à confirmer.";
+
+            var moteurPt = new FauxMoteur { Reponse = _ => (true, "{}") };
+            var svcPt = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurPt, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcPt.SuggestPtS1Async(lecture24, _ => { }, dossierAvecSynthese);
+
+            Verifie("avec la synthèse, le projet s'exécute", moteurPt.Prompts.Count == 1, $"{moteurPt.Prompts.Count}");
+            var pPt = moteurPt.Prompts.Count > 0 ? moteurPt.Prompts[0] : "";
+            Verifie("la synthèse validée est mise en tête du prompt",
+                pPt.Contains("SYNTHÈSE DE CE DOSSIER, DÉJÀ RÉDIGÉE ET VALIDÉE")
+                && pPt.Contains("hypothèse TDAH à confirmer"));
+            Verifie("le projet antérieur n'est PAS relu (plus de circularité)",
+                !pPt.Contains("PROJET-ANTERIEUR-A-NE-PAS-RELIRE"));
+
+            // (c) Le vocabulaire des quatre attributs est imposé.
+            Verifie("les porteurs sont une liste fermée, avec « professionnel à trouver »",
+                pPt.Contains("professionnel à trouver") && pPt.Contains("professionnel en place")
+                && pPt.Contains("les parents") && pPt.Contains("l'école"));
+            Verifie("les échéances sont imposées", pPt.Contains("sans attendre") && pPt.Contains("cette année scolaire"));
+            Verifie("les degrés sont imposés",
+                pPt.Contains("indispensable") && pPt.Contains("utile si possible") && pPt.Contains("à réévaluer plus tard"));
+            Verifie("l'inflation des « indispensable » est bornée", pPt.Contains("AU PLUS 2"));
+            Verifie("degré et certitude diagnostique sont explicitement distincts",
+                pPt.Contains("indépendant de la certitude diagnostique"));
+
+            // (d) Bilans : à réaliser seulement, tous types, avec ce qu'ils tranchent.
+            Verifie("les bilans déjà faits ne sont plus redemandés",
+                pPt.Contains("Ne JAMAIS y remettre les bilans déjà faits"));
+            Verifie("les bilans paramédicaux sont inclus (acte de diagnostic)",
+                pPt.Contains("orthophonique") && pPt.Contains("neuropsychologique"));
+            Verifie("la ligne de partage avec 7.3 est posée (savoir vs faire progresser)",
+                pPt.Contains("sert à SAVOIR") && pPt.Contains("appartiennent aux sections 7.2 et 7.3"));
+            Verifie("chaque bilan doit dire ce qu'il tranche",
+                pPt.Contains("pourTrancher") && pPt.Contains("Un bilan qui ne tranche rien ne se demande pas"));
+
+            // (e) Le rôle du médecin est fixe, jamais généré.
+            Verifie("le modèle a interdiction d'écrire l'engagement",
+                pPt.Contains("NE PAS écrire de phrase d'engagement"));
+            Verifie("le rôle du pédopsychiatre est un texte fixe : préparer, veiller, ajuster, suivre",
+                MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService.RoleDuPedopsychiatre.Contains("préparer")
+                && MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService.RoleDuPedopsychiatre.Contains("veiller")
+                && MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService.RoleDuPedopsychiatre.Contains("ajuster")
+                && MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService.RoleDuPedopsychiatre.Contains("suivre"));
+
+            // (f) Rendu : le tableau d'actions et ses pastilles.
+            var dossierRendu = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            dossierRendu.Blocs.First(b => b.Key == "pt_s1").ContenuValide = """
+                {
+                  "intro": "Pilotage médical du projet.",
+                  "objectifs": ["Confirmer le diagnostic"],
+                  "traitement": { "situationActuelle": "Aucun traitement en cours.", "propositions": [] },
+                  "bilans": [
+                    { "quoi": "Bilan orthophonique", "porteur": "professionnel à trouver", "echeance": "ce trimestre", "degre": "indispensable", "pourTrancher": "trouble du langage ou retentissement attentionnel" }
+                  ],
+                  "surveillance": ["Sommeil"],
+                  "suivi": [ { "quoi": "Consultation de contrôle", "porteur": "le médecin", "echeance": "à 6 mois", "degre": "recommandé" } ]
+                }
+                """;
+            var htmlPt = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossierRendu, "GOBLET Adrien");
+
+            Verifie("le tableau porte le bilan, son porteur, son échéance et son degré",
+                htmlPt.Contains("Bilan orthophonique") && htmlPt.Contains("professionnel")
+                && htmlPt.Contains("ce trimestre") && htmlPt.Contains("indispensable"));
+            Verifie("ce que le bilan tranche est rendu",
+                htmlPt.Contains("retentissement attentionnel"));
+            Verifie("le rôle fixe du pédopsychiatre est affiché sans être généré",
+                htmlPt.Contains("veiller") && htmlPt.Contains("ajuster"));
+            Verifie("l'en-tête dit « à réaliser », plus « déjà réalisés »",
+                htmlPt.Contains("BILANS") && !htmlPt.Contains("DÉJÀ RÉALISÉS"));
+        }
+
+        // ── 25. L'éditeur du projet médical reflète le modèle : actions portées,
+        //        datées, hiérarchisées — et l'aller-retour ne perd rien ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : l'éditeur 7.1 édite des actions, pas des phrases ──");
+        {
+            var dossier25 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            var blocPt = dossier25.Blocs.First(b => b.Key == "pt_s1");
+            blocPt.ContenuValide = """
+                {
+                  "intro": "Pilotage médical.",
+                  "objectifs": ["Confirmer le profil exécutif"],
+                  "traitement": { "situationActuelle": "Aucun traitement en cours.", "propositions": [] },
+                  "bilans": [
+                    { "quoi": "Bilan neuropsychologique", "porteur": "professionnel à trouver", "echeance": "sous 1 mois", "degre": "indispensable", "pourTrancher": "quantifier le déficit exécutif" }
+                  ],
+                  "surveillance": ["Qualité du sommeil"],
+                  "suivi": [
+                    { "quoi": "Consultation de contrôle", "porteur": "le médecin", "echeance": "à 6 mois", "degre": "recommandé" }
+                  ]
+                }
+                """;
+
+            var vm25 = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocPt, _ => Task.CompletedTask);
+
+            var champs = vm25.PtFields.ToDictionary(f => f.JsonPath);
+            Verifie("les bilans déjà réalisés ne s'éditent plus (champ retiré)",
+                !champs.ContainsKey("bilans.realises") && !champs.ContainsKey("bilans.aEnvisager"));
+            Verifie("l'engagement n'est plus un champ (le rôle du médecin est fixe)",
+                !champs.ContainsKey("engagement"));
+            Verifie("« bilans » et « suivi » sont des champs d'ACTIONS",
+                champs["bilans"].IsActions && champs["suivi"].IsActions);
+            Verifie("seuls les bilans portent « pour trancher »",
+                champs["bilans"].ActionsAvecPourTrancher && !champs["suivi"].ActionsAvecPourTrancher);
+
+            // Relecture du JSON : les cinq attributs arrivent dans l'éditeur.
+            var bilan = champs["bilans"].Actions.FirstOrDefault();
+            Verifie("le bilan généré est relu avec ses cinq attributs",
+                bilan != null && bilan.Quoi.Contains("neuropsychologique") && bilan.Porteur == "professionnel à trouver"
+                && bilan.Echeance == "sous 1 mois" && bilan.Degre == "indispensable"
+                && bilan.PourTrancher.Contains("déficit exécutif"));
+
+            // Le vocabulaire proposé à l'écran est CELUI que le prompt impose.
+            Verifie("l'éditeur propose exactement les porteurs du prompt",
+                MedCompanion.ViewModels.Restitutions.PtActionVm.PorteursPossibles.Contains("professionnel à trouver")
+                && MedCompanion.ViewModels.Restitutions.PtActionVm.PorteursPossibles.Contains("les parents")
+                && MedCompanion.ViewModels.Restitutions.PtActionVm.PorteursPossibles.Length == 5);
+            Verifie("les degrés proposés sont les quatre du prompt",
+                MedCompanion.ViewModels.Restitutions.PtActionVm.DegresPossibles.Length == 4
+                && MedCompanion.ViewModels.Restitutions.PtActionVm.DegresPossibles.Contains("utile si possible"));
+
+            // ── L'aller-retour : ce que le médecin saisit doit survivre. ──
+            // Il ajoute un traitement, puis un bilan, comme en consultation.
+            champs["traitement.propositions"].AddItemCommand.Execute(null);
+            champs["traitement.propositions"].Items.Last().Value = "Méthylphénidate LP 18 mg le matin";
+
+            champs["bilans"].AddActionCommand.Execute(null);
+            var ajoute = champs["bilans"].Actions.Last();
+            Verifie("une action ajoutée arrive pré-remplie (saisie rapide en séance)",
+                ajoute.Porteur == "professionnel à trouver" && ajoute.Echeance == "ce trimestre" && ajoute.Degre == "recommandé");
+            ajoute.Quoi = "ECG";
+            ajoute.Degre = "indispensable";
+            ajoute.Echeance = "sans attendre";
+            ajoute.PourTrancher = "éliminer une contre-indication avant stimulant";
+
+            // Le JSON du bloc doit porter la saisie du médecin.
+            var jsonApres = blocPt.ContenuValide ?? "";
+            Verifie("le traitement saisi par le médecin est écrit dans le bloc",
+                jsonApres.Contains("Méthylphénidate LP 18 mg"));
+            Verifie("le bilan ajouté à la main est écrit avec ses attributs",
+                jsonApres.Contains("ECG") && jsonApres.Contains("sans attendre")
+                && jsonApres.Contains("contre-indication avant stimulant"));
+            Verifie("le suivi ne porte pas de clé « pourTrancher » vide",
+                !System.Text.RegularExpressions.Regex.IsMatch(jsonApres, @"""quoi""\s*:\s*""Consultation de contr[^""]*""[^}]*pourTrancher"));
+
+            // Rechargé dans un éditeur neuf, rien n'est perdu : c'est ce qui permet
+            // de modifier puis de faire propager sans craindre l'écrasement.
+            var vmRelu = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocPt, _ => Task.CompletedTask);
+            var bilansRelus = vmRelu.PtFields.First(f => f.JsonPath == "bilans").Actions;
+            Verifie("après rechargement, les deux bilans sont là, dans l'ordre",
+                bilansRelus.Count == 2 && bilansRelus[0].Quoi.Contains("neuropsychologique") && bilansRelus[1].Quoi == "ECG",
+                $"{bilansRelus.Count} bilan(s)");
+            Verifie("après rechargement, les attributs saisis à la main sont intacts",
+                bilansRelus[1].Degre == "indispensable" && bilansRelus[1].Echeance == "sans attendre"
+                && bilansRelus[1].PourTrancher.Contains("contre-indication"));
+            Verifie("après rechargement, le traitement saisi est intact",
+                vmRelu.PtFields.First(f => f.JsonPath == "traitement.propositions")
+                      .Items.Any(i => i.Value.Contains("Méthylphénidate")));
+        }
+
+        // ── 26. Réécrire un bloc structuré PROPAGE — ça n'efface jamais ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : la saisie du médecin survit à la régénération ──");
+        {
+            var lecture26 = new MedCompanion.Services.Restitutions.DossierReading
+            { PatientNomComplet = "GOBLET Adrien", PatientJson = "{}" };
+
+            var blocPt26 = new MedCompanion.Models.Restitutions.RestitutionBloc("pt_s1", "Prise en charge médicale", 27, "clinique");
+            const string saisi = """
+                {
+                  "intro": "La prise en charge vise à stabiliser la régulation émotionnelle.",
+                  "objectifs": ["Réduire l'anxiété scolaire"],
+                  "traitement": { "situationActuelle": "Aucun traitement en cours.", "propositions": ["Mélatonine 2 mg au coucher"] },
+                  "bilans": [],
+                  "surveillance": ["Qualité du sommeil"],
+                  "suivi": []
+                }
+                """;
+
+            // (a) Le bloc JSON ne part PLUS par le chemin texte libre.
+            var moteurFmt = new FauxMoteur { Reponse = _ => (true, "{\"intro\":\"ok\"}") };
+            var svcFmt = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurFmt, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcFmt.ReformuleBlocWithInstructionAsync(blocPt26, saisi, "ajoute un ECG", lecture26);
+
+            var pFmt = moteurFmt.Prompts.Count > 0 ? moteurFmt.Prompts[0] : "";
+            Verifie("la reformulation d'un bloc JSON rappelle son format",
+                pFmt.Contains("JSON valide uniquement") && pFmt.Contains("pourTrancher"));
+            Verifie("elle ne demande plus « commence directement par le contenu » (chemin texte)",
+                !pFmt.Contains("sans titre ni commentaire introductif"));
+            Verifie("elle exige une réponse JSON complète",
+                pFmt.Contains("Réponds UNIQUEMENT par le JSON complet"));
+
+            // (b) La saisie du médecin est transmise et déclarée intouchable.
+            Verifie("l'état actuel est transmis au modèle",
+                pFmt.Contains("Mélatonine 2 mg au coucher") && pFmt.Contains("ÉTAT ACTUEL DE LA SECTION"));
+            Verifie("la règle « ce que le médecin a écrit fait foi » est posée",
+                pFmt.Contains("fait foi") && pFmt.Contains("N'en supprime AUCUN"));
+            Verifie("la propagation des conséquences est demandée",
+                pFmt.Contains("METS À JOUR") && pFmt.Contains("incohérent"));
+            Verifie("l'instruction du médecin est transmise", pFmt.Contains("ajoute un ECG"));
+
+            // (c) Filet : une réponse hors format ne détruit pas la saisie.
+            var moteurProse = new FauxMoteur { Reponse = _ => (true, "La prise en charge médicale sera adaptée au fil du suivi.") };
+            var svcProse = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurProse, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            var apresProse = await svcProse.ReformuleBlocWithInstructionAsync(blocPt26, saisi, "reformule", lecture26);
+            Verifie("une réponse en prose est REFUSÉE — la saisie est conservée",
+                apresProse.Contains("Mélatonine 2 mg au coucher"), apresProse);
+
+            // Une vraie réponse JSON, elle, est acceptée.
+            var moteurJson = new FauxMoteur { Reponse = _ => (true, "{\"intro\":\"nouvelle version\",\"objectifs\":[]}") };
+            var svcJson = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurJson, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            var apresJson = await svcJson.ReformuleBlocWithInstructionAsync(blocPt26, saisi, "reformule", lecture26);
+            Verifie("une réponse JSON valide est bien appliquée", apresJson.Contains("nouvelle version"));
+
+            // (d) « Suggérer » sur une section déjà remplie propage aussi.
+            var dossier26 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            foreach (var b in dossier26.Blocs)
+                if (b.Key.StartsWith("synthese_diag_", StringComparison.Ordinal)) b.ContenuValide = "Synthèse validée.";
+            dossier26.Blocs.First(b => b.Key == "pt_s1").ContenuValide = saisi;
+
+            var moteurSug = new FauxMoteur { Reponse = _ => (true, "{\"intro\":\"ok\"}") };
+            var svcSug = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurSug, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcSug.SuggestPtS1Async(lecture26, _ => { }, dossier26);
+
+            var pSug = moteurSug.Prompts.Count > 0 ? moteurSug.Prompts[0] : "";
+            Verifie("Suggérer sur une section déjà remplie ne repart PAS de zéro",
+                pSug.Contains("ÉTAT ACTUEL DE LA SECTION") && pSug.Contains("Mélatonine 2 mg au coucher"));
+            Verifie("sans instruction, il propage les conséquences de la saisie",
+                pSug.Contains("propage simplement les conséquences"));
+
+            // (e) Le « pour trancher » d'un bilan ajouté à la main est rédigé par Med —
+            //     seule exception à la règle de conservation.
+            Verifie("« pourTrancher » est déclaré comme le SEUL champ réécrivable",
+                pFmt.Contains("SEULE EXCEPTION") && pFmt.Contains("SEUL champ que tu peux écrire ou reformuler"));
+            Verifie("un bilan sans « pourTrancher » doit être rédigé depuis le dossier",
+                pFmt.Contains("rédige-le à partir du dossier"));
+            Verifie("un « pourTrancher » sommaire est précisé, pas remplacé",
+                pFmt.Contains("reformule-le en question clinique précise")
+                && pFmt.Contains("tu la précises, tu ne la remplaces pas"));
+            Verifie("le reste du bilan ajouté par le médecin reste intouchable",
+                pFmt.Contains("son porteur, son échéance et son degré ne changent JAMAIS"));
+
+            // Sur une section vide, il génère normalement.
+            var dossierVide26 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            foreach (var b in dossierVide26.Blocs)
+                if (b.Key.StartsWith("synthese_diag_", StringComparison.Ordinal)) b.ContenuValide = "Synthèse validée.";
+            var moteurVide = new FauxMoteur { Reponse = _ => (true, "{}") };
+            var svcVide = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurVide, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcVide.SuggestPtS1Async(lecture26, _ => { }, dossierVide26);
+            Verifie("sur une section vide, Suggérer génère normalement",
+                moteurVide.Prompts.Count == 1 && !moteurVide.Prompts[0].Contains("ÉTAT ACTUEL DE LA SECTION"));
+        }
+
+        // ── 27. Projet 7.2 : l'indication commande la section ──────────────
+        Console.WriteLine();
+        Console.WriteLine("── restitution : accompagnement psychologique — indiqué ou non, et pour qui ──");
+        {
+            var lecture27 = new MedCompanion.Services.Restitutions.DossierReading
+            { PatientNomComplet = "GOBLET Adrien", PatientJson = "{}" };
+
+            var dossier27 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            foreach (var b in dossier27.Blocs)
+                if (b.Key.StartsWith("synthese_diag_", StringComparison.Ordinal)) b.ContenuValide = "Synthèse validée.";
+            dossier27.Blocs.First(b => b.Key == "pt_s1").ContenuValide =
+                """{"intro":"Pilotage médical.","bilans":[{"quoi":"Bilan neuropsychologique","echeance":"sous 1 mois","degre":"indispensable"}]}""";
+
+            var moteur27 = new FauxMoteur { Reponse = _ => (true, "{}") };
+            var svc27 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteur27, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svc27.SuggestPtS2Async(lecture27, _ => { }, dossier27);
+
+            var p27 = moteur27.Prompts.Count > 0 ? moteur27.Prompts[0] : "";
+
+            // (a) L'indication ouvre la section et la commande.
+            Verifie("l'indication est le premier champ du format",
+                p27.Contains("\"indication\"") && p27.Contains("critereReevaluation"));
+            Verifie("le vocabulaire de l'indication inclut « non indiqué à ce stade »",
+                p27.Contains("non indiqué à ce stade"));
+            Verifie("l'indication commande la section (trois cas exclusifs)",
+                p27.Contains("L'INDICATION COMMANDE TOUTE LA SECTION")
+                && p27.Contains("(A) INDIQUÉ") && p27.Contains("(B) UN PSYCHOLOGUE SUIT DÉJÀ")
+                && p27.Contains("(C) NON INDIQUÉ ou DIFFÉRÉ"));
+            Verifie("un suivi non indiqué ne s'accompagne pas d'objectifs (pas d'auto-contradiction)",
+                p27.Contains("laisse objectifs, modalites, axesTravail, reperesEvolution VIDES"));
+            Verifie("le suivi déjà en place bascule en articulation, pas en projet neuf",
+                p27.Contains("n'écris PAS un projet comme si l'on partait de zéro"));
+
+            // (b) Ce qui a été retiré, et pourquoi.
+            Verifie("la technique du psychologue n'est plus prescrite",
+                p27.Contains("le choix de la") && p27.Contains("appartient au psychologue")
+                && !p27.Contains("outilsUtilises"));
+            Verifie("les deux listes redondantes ont fusionné",
+                !p27.Contains("resultatsAttendus") && !p27.Contains("indicateursPositifs")
+                && p27.Contains("reperesEvolution") && p27.Contains("pointsVigilance"));
+
+            // (c) Le chaînage : 7.2 lit la synthèse ET la section médicale.
+            Verifie("la section lit la synthèse validée", p27.Contains("SYNTHÈSE DE CE DOSSIER"));
+            Verifie("elle lit aussi la prise en charge médicale déjà écrite",
+                p27.Contains("SECTIONS DU PROJET DÉJÀ ÉCRITES") && p27.Contains("Bilan neuropsychologique"));
+            Verifie("elle doit se mettre en phase, sans répéter ni contredire",
+                p27.Contains("mets-la en phase") && p27.Contains("ce qu'elle peut engager de front est limité"));
+
+            // (d) L'éditeur reflète le nouveau modèle.
+            var blocS2 = dossier27.Blocs.First(b => b.Key == "pt_s2");
+            blocS2.ContenuValide = """
+                {
+                  "indication": { "degre": "à réévaluer plus tard", "porteur": "professionnel à trouver",
+                                  "motif": "La régulation émotionnelle s'améliore avec les aménagements scolaires.",
+                                  "critereReevaluation": "Persistance des crises malgré le PAP à 3 mois." },
+                  "intro": "", "objectifs": [], "modalites": [], "axesTravail": [],
+                  "reperesEvolution": [], "pointsVigilance": [], "articulation": []
+                }
+                """;
+            var vmS2 = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocS2, _ => Task.CompletedTask);
+            var champsS2 = vmS2.PtFields.ToDictionary(f => f.JsonPath);
+
+            Verifie("l'éditeur ouvre sur un champ Indication",
+                champsS2.ContainsKey("indication") && champsS2["indication"].IsIndication);
+            Verifie("les champs retirés ne s'éditent plus",
+                !champsS2.ContainsKey("outilsUtilises") && !champsS2.ContainsKey("resultatsAttendus")
+                && !champsS2.ContainsKey("indicateursPositifs") && !champsS2.ContainsKey("engagement"));
+            Verifie("l'indication générée est relue avec ses quatre informations",
+                champsS2["indication"].Indication.Degre == "à réévaluer plus tard"
+                && champsS2["indication"].Indication.Porteur == "professionnel à trouver"
+                && champsS2["indication"].Indication.Motif.Contains("aménagements scolaires")
+                && champsS2["indication"].Indication.CritereReevaluation.Contains("PAP à 3 mois"));
+
+            // Modifiée à la main, elle doit survivre à l'aller-retour.
+            champsS2["indication"].Indication.Degre = "indispensable";
+            champsS2["indication"].Indication.CritereReevaluation = "";
+            var vmS2Relu = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocS2, _ => Task.CompletedTask);
+            Verifie("l'indication corrigée à la main survit au rechargement",
+                vmS2Relu.PtFields.First(f => f.JsonPath == "indication").Indication.Degre == "indispensable");
+
+            // (e) Le rendu : indication en tête, et pas d'objectifs sous une indication écartée.
+            var htmlS2 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossier27, "GOBLET Adrien");
+            Verifie("la page affiche l'indication et son motif",
+                htmlS2.Contains("INDICATION") && htmlS2.Contains("indispensable"));
+        }
+
+        // ── 28. Projet 7.3 : soins et ressources de vie ne se confondent pas ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : soutien développemental — rééducations vs ressources du quotidien ──");
+        {
+            var lecture28 = new MedCompanion.Services.Restitutions.DossierReading
+            { PatientNomComplet = "GOBLET Adrien", PatientJson = "{}" };
+
+            var dossier28 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            foreach (var b in dossier28.Blocs)
+                if (b.Key.StartsWith("synthese_diag_", StringComparison.Ordinal)) b.ContenuValide = "Synthèse validée.";
+            dossier28.Blocs.First(b => b.Key == "pt_s1").ContenuValide =
+                """{"bilans":[{"quoi":"Bilan orthophonique","echeance":"sous 1 mois","degre":"indispensable"}]}""";
+
+            var moteur28 = new FauxMoteur { Reponse = _ => (true, "{}") };
+            var svc28 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteur28, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svc28.SuggestPtS3Async(lecture28, _ => { }, dossier28);
+            var p28 = moteur28.Prompts.Count > 0 ? moteur28.Prompts[0] : "";
+
+            // (a) Les deux natures sont posées, avec des attributs différents.
+            Verifie("le format sépare rééducations et ressources de vie",
+                p28.Contains("\"reeducations\"") && p28.Contains("\"ressourcesVie\""));
+            Verifie("la consigne interdit de les mélanger",
+                p28.Contains("DEUX NATURES À NE JAMAIS MÉLANGER"));
+            Verifie("les rééducations sont des soins : degré et échéance",
+                p28.Contains("= des SOINS") && p28.Contains("degré et une échéance"));
+            Verifie("les ressources de vie n'ont NI degré NI échéance",
+                p28.Contains("NI degré NI échéance") && p28.Contains("une habitude ne se programme pas"));
+            Verifie("leur objectif est obligatoire et précis",
+                p28.Contains("« objectif » y est OBLIGATOIRE") && p28.Contains("judo"));
+            // La frontière avec 7.4 : ici l'enfant pratique, là-bas le parent change sa façon
+            // de faire. Sans elle, « temps d'échange ritualisé » sortait dans les deux sections.
+            Verifie("7.3 privilégie l'engagement corporel de l'enfant",
+                p28.Contains("D'ABORD L'ENGAGEMENT CORPOREL") && p28.Contains("arts") && p28.Contains("natation"));
+            Verifie("7.3 exclut ce que les parents installent ou changent",
+                p28.Contains("c'est l'ENFANT QUI FAIT")
+                && p28.Contains("minuteur visuel") && p28.Contains("temps d'échange ritualisé"));
+
+            Verifie("une ressource doit être CONCRÈTE, pas une catégorie abstraite",
+                p28.Contains("DOIT ÊTRE CONCRET, jamais une catégorie abstraite")
+                && p28.Contains("Activités de structuration temporelle")
+                && p28.Contains("planning imagé du matin"));
+            Verifie("les exemples doivent convenir à cet enfant, pas venir d'un manuel",
+                p28.Contains("son âge, ses centres d'intérêt") && p28.Contains("Pas des exemples de manuel"));
+
+            // (b) La frontière avec les bilans de 7.1.
+            Verifie("aucun bilan n'est proposé ici",
+                p28.Contains("NE PROPOSE PAS DE BILAN ICI") && p28.Contains("appartiennent à la section 7.1"));
+            Verifie("une rééducation qui dépend d'un bilan est différée, pas prescrite",
+                p28.Contains("à réévaluer plus tard") && p28.Contains("on demande d'abord, on décide ensuite"));
+            Verifie("la section lit la prise en charge médicale déjà écrite",
+                p28.Contains("SECTIONS DU PROJET DÉJÀ ÉCRITES") && p28.Contains("Bilan orthophonique"));
+
+            // (c) Ce qui a été retiré.
+            Verifie("les doublons ont disparu du format",
+                !p28.Contains("axesPrioritaires") && !p28.Contains("ressourcesEnfant"));
+
+            // (d) L'éditeur : deux blocs d'actions aux attributs distincts.
+            var blocS3 = dossier28.Blocs.First(b => b.Key == "pt_s3");
+            blocS3.ContenuValide = """
+                {
+                  "intro": "S'appuyer sur ses ressources.",
+                  "objectifs": ["Soutenir la graphomotricité"],
+                  "reeducations": [
+                    { "quoi": "Psychomotricité", "porteur": "professionnel à trouver", "echeance": "ce trimestre",
+                      "degre": "recommandé", "objectif": "améliorer la précision du geste" }
+                  ],
+                  "ressourcesVie": [
+                    { "quoi": "Judo", "porteur": "les parents", "objectif": "canaliser l'excès moteur dans un cadre structuré" }
+                  ],
+                  "reperesEvolution": ["Écriture plus lisible"],
+                  "reevaluation": ["Point à 6 mois"]
+                }
+                """;
+            var vmS3 = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocS3, _ => Task.CompletedTask);
+            var champsS3 = vmS3.PtFields.ToDictionary(f => f.JsonPath);
+
+            Verifie("l'éditeur a deux blocs d'actions distincts",
+                champsS3["reeducations"].IsActions && champsS3["ressourcesVie"].IsActions);
+            Verifie("les rééducations portent échéance et degré, pas les ressources de vie",
+                champsS3["reeducations"].ActionsAvecEcheanceEtDegre
+                && !champsS3["ressourcesVie"].ActionsAvecEcheanceEtDegre);
+            Verifie("les deux portent un objectif visé, aucune ne porte « pour trancher »",
+                champsS3["reeducations"].ActionsAvecObjectif && champsS3["ressourcesVie"].ActionsAvecObjectif
+                && !champsS3["reeducations"].ActionsAvecPourTrancher);
+            Verifie("le judo est relu avec son objectif",
+                champsS3["ressourcesVie"].Actions[0].Objectif.Contains("canaliser l'excès moteur"));
+
+            // Une ressource ajoutée arrive portée par les parents, sans degré.
+            champsS3["ressourcesVie"].AddActionCommand.Execute(null);
+            var res = champsS3["ressourcesVie"].Actions.Last();
+            Verifie("une ressource ajoutée est portée par les parents, sans degré ni échéance",
+                res.Porteur == "les parents" && res.Degre == "" && res.Echeance == "");
+            res.Quoi = "Marche quotidienne";
+            res.Objectif = "améliorer l'endormissement";
+
+            var jsonS3 = blocS3.ContenuValide ?? "";
+            Verifie("le JSON des ressources ne porte ni degré ni échéance",
+                !System.Text.RegularExpressions.Regex.IsMatch(jsonS3, @"""quoi""\s*:\s*""Marche[^}]*""degre"""));
+            var vmS3Relu = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocS3, _ => Task.CompletedTask);
+            Verifie("la ressource saisie survit au rechargement",
+                vmS3Relu.PtFields.First(f => f.JsonPath == "ressourcesVie").Actions
+                        .Any(a => a.Quoi == "Marche quotidienne" && a.Objectif.Contains("endormissement")));
+
+            // (e) Le rendu : deux cartes, la seconde sans colonnes Quand/Degré.
+            var htmlS3 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossier28, "GOBLET Adrien");
+            Verifie("la page distingue les deux blocs",
+                htmlS3.Contains("RÉÉDUCATIONS ET PRISES EN CHARGE") && htmlS3.Contains("RESSOURCES DU QUOTIDIEN"));
+            // Sans accent ni apostrophe : HtmlEncode rend « é » en &#233; et « ' » en &#39;.
+            Verifie("les objectifs des deux natures sont rendus",
+                htmlS3.Contains("cision du geste") && htmlS3.Contains("moteur dans un cadre structur"));
+        }
+
+        // ── 29. Projet 7.4 : trois natures, et un porteur pour chaque ligne ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : accompagnement parental — soutenir, faire intervenir, ajuster ──");
+        {
+            var lecture29 = new MedCompanion.Services.Restitutions.DossierReading
+            { PatientNomComplet = "GOBLET Adrien", PatientJson = "{}" };
+
+            var dossier29 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            foreach (var b in dossier29.Blocs)
+                if (b.Key.StartsWith("synthese_diag_", StringComparison.Ordinal)) b.ContenuValide = "Synthèse validée.";
+            // Une section amont déjà écrite : c'est elle qui déclenche le rappel de non-répétition.
+            dossier29.Blocs.First(b => b.Key == "pt_s3").ContenuValide =
+                """{"ressourcesVie":[{"quoi":"Judo","porteur":"les parents","objectif":"canaliser l'excès moteur"}]}""";
+
+            var moteur29 = new FauxMoteur { Reponse = _ => (true, "{}") };
+            var svc29 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteur29, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svc29.SuggestPtS4Async(lecture29, _ => { }, dossier29);
+            var p29 = moteur29.Prompts.Count > 0 ? moteur29.Prompts[0] : "";
+
+            // (a) Les trois blocs et leur frontière.
+            Verifie("le format sépare les trois natures",
+                p29.Contains("\"accompagnementParents\"") && p29.Contains("\"interventionsEducatives\"")
+                && p29.Contains("\"auQuotidien\""));
+            Verifie("la consigne interdit de se tromper de bloc",
+                p29.Contains("TROIS BLOCS DISTINCTS"));
+
+            // (b) La règle du porteur : le médecin en situation simple, un pro si complexe.
+            Verifie("le médecin porte la guidance quand la situation est simple",
+                p29.Contains("« le médecin » quand la situation est SIMPLE")
+                && p29.Contains("C'est le cas le plus fréquent"));
+            Verifie("un professionnel prend le relais quand elle est complexe",
+                p29.Contains("quand la situation est COMPLEXE")
+                && p29.Contains("conflit conjugal") && p29.Contains("épuisement parental"));
+
+            // (c) L'éducatif : un intervenant, ou pas.
+            Verifie("l'absence d'intervenant éducatif est une réponse valable",
+                p29.Contains("Une liste VIDE est une réponse clinique parfaitement valable"));
+
+            // (d) Le quotidien : concret, et sans hiérarchie.
+            Verifie("les ajustements du quotidien n'ont ni échéance ni degré",
+                p29.Contains("Ni échéance ni degré : ce sont des habitudes"));
+            Verifie("ils doivent être concrets, avec des exemples",
+                p29.Contains("DOIT ÊTRE CONCRET") && p29.Contains("prévenir 5 minutes avant"));
+            Verifie("7.4 tient le registre de la communication et de la pédagogie",
+                p29.Contains("COMMUNICATION") && p29.Contains("PÉDAGOGIE du"));
+            Verifie("7.4 exclut les activités que l'enfant pratique",
+                p29.Contains("c'est le PARENT QUI CHANGE SA")
+                && p29.Contains("Ne propose aucune activité extrascolaire dans cette section"));
+            Verifie("aucune proposition ne doit figurer deux fois dans le projet",
+                p29.Contains("AUCUNE PROPOSITION NE DOIT FIGURER DEUX FOIS"));
+
+            // (e) Le ton — cette page ne doit pas se lire comme un reproche.
+            Verifie("les stratégies s'écrivent comme des ajustements, pas des reproches",
+                p29.Contains("AJUSTEMENTS DE L'ENVIRONNEMENT")
+                && p29.Contains("sonne comme un reproche"));
+            Verifie("les tournures culpabilisantes sont interdites",
+                p29.Contains("Pas de « il faudrait que les parents"));
+
+            // (f) Ce qui a été retiré.
+            Verifie("les doublons d'objectifs ont disparu",
+                !p29.Contains("axesPrioritaires") && !p29.Contains("objectifsCourtTerme")
+                && !p29.Contains("forcesFamiliales"));
+
+            // (g) L'éditeur : trois blocs d'actions, attributs et défauts distincts.
+            var blocS4 = dossier29.Blocs.First(b => b.Key == "pt_s4");
+            blocS4.ContenuValide = """
+                {
+                  "intro": "Cette famille s'appuie sur un cadre stable.",
+                  "objectifs": ["Réduire les tensions du soir"],
+                  "accompagnementParents": [
+                    { "quoi": "Guidance parentale en consultation", "porteur": "le médecin", "echeance": "ce trimestre",
+                      "degre": "recommandé", "objectif": "outiller la gestion des transitions" }
+                  ],
+                  "interventionsEducatives": [],
+                  "auQuotidien": [
+                    { "quoi": "Annoncer les changements à l'avance (minuteur visible, rituel de fin)",
+                      "porteur": "les parents", "objectif": "réduire les crises de transition" }
+                  ],
+                  "reperesEvolution": ["Moins de crises au coucher"]
+                }
+                """;
+            // Rendu capturé AVANT toute manipulation de l'éditeur : les ajouts ci-dessous
+            // réécrivent le bloc et rempliraient la liste qu'on veut justement voir vide.
+            var htmlS4 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossier29, "GOBLET Adrien");
+
+            var vmS4 = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocS4, _ => Task.CompletedTask);
+            var champsS4 = vmS4.PtFields.ToDictionary(f => f.JsonPath);
+
+            Verifie("les trois blocs sont éditables comme des actions",
+                champsS4["accompagnementParents"].IsActions && champsS4["interventionsEducatives"].IsActions
+                && champsS4["auQuotidien"].IsActions);
+            Verifie("seul « au quotidien » est sans échéance ni degré",
+                champsS4["accompagnementParents"].ActionsAvecEcheanceEtDegre
+                && champsS4["interventionsEducatives"].ActionsAvecEcheanceEtDegre
+                && !champsS4["auQuotidien"].ActionsAvecEcheanceEtDegre);
+            Verifie("la guidance est relue avec son porteur et son objectif",
+                champsS4["accompagnementParents"].Actions[0].Porteur == "le médecin"
+                && champsS4["accompagnementParents"].Actions[0].Objectif.Contains("transitions"));
+
+            // Les défauts traduisent la règle : médecin pour la guidance, pro pour l'éducatif.
+            champsS4["accompagnementParents"].AddActionCommand.Execute(null);
+            champsS4["interventionsEducatives"].AddActionCommand.Execute(null);
+            champsS4["auQuotidien"].AddActionCommand.Execute(null);
+            Verifie("une guidance ajoutée est portée par le médecin",
+                champsS4["accompagnementParents"].Actions.Last().Porteur == "le médecin");
+            Verifie("une intervention éducative ajoutée est à trouver",
+                champsS4["interventionsEducatives"].Actions.Last().Porteur == "professionnel à trouver");
+            Verifie("un ajustement du quotidien est porté par les parents, sans degré",
+                champsS4["auQuotidien"].Actions.Last().Porteur == "les parents"
+                && champsS4["auQuotidien"].Actions.Last().Degre == "");
+
+            // (h) Le rendu : l'absence d'intervenant est écrite, pas laissée vide.
+            Verifie("la page affiche les trois blocs",
+                htmlS4.Contains("ACCOMPAGNEMENT DES PARENTS") && htmlS4.Contains("INTERVENTIONS")
+                && htmlS4.Contains("AU QUOTIDIEN"));
+            Verifie("l'absence d'intervention éducative est dite explicitement",
+                htmlS4.Contains("Aucune intervention"));
+        }
+
+        // ── 30. Projet 7.5 : le médecin pose le cadre, le modèle ne propose rien ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : école — aucun dispositif suggéré par le modèle ──");
+        {
+            var lecture30 = new MedCompanion.Services.Restitutions.DossierReading
+            { PatientNomComplet = "GOBLET Adrien", PatientJson = "{}" };
+
+            var dossier30 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            foreach (var b in dossier30.Blocs)
+                if (b.Key.StartsWith("synthese_diag_", StringComparison.Ordinal)) b.ContenuValide = "Synthèse validée.";
+
+            var moteur30 = new FauxMoteur { Reponse = _ => (true, "{}") };
+            var svc30 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteur30, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svc30.SuggestPtS5Async(lecture30, _ => { }, dossier30);
+            var p30 = moteur30.Prompts.Count > 0 ? moteur30.Prompts[0] : "";
+
+            // (a) L'interdit central.
+            Verifie("le modèle ne propose AUCUN dispositif scolaire",
+                p30.Contains("TU NE PROPOSES AUCUN DISPOSITIF SCOLAIRE"));
+            Verifie("la raison est dite : c'est une décision administrative qui circule",
+                p30.Contains("DÉCISION ADMINISTRATIVE") && p30.Contains("remis aux parents")
+                && p30.Contains("circule et engage"));
+            Verifie("les circuits distincts sont rappelés",
+                p30.Contains("médecin scolaire") && p30.Contains("MDPH"));
+
+            // (b) Cadre posé : on décline, on ne transforme pas.
+            Verifie("un dispositif posé est conservé à l'identique",
+                p30.Contains("N'en ajoute AUCUN") && p30.Contains("un PAP ne devient jamais un PPS"));
+            Verifie("les aménagements sont déclinés pour CE dispositif",
+                p30.Contains("n'ouvrent pas les mêmes droits"));
+            Verifie("un dispositif déjà en place ne se redemande pas",
+                p30.Contains("ne se redemande pas") && p30.Contains("S'APPUIE dessus"));
+
+            // (c) Cadre vide : conseils applicables sans procédure, et rien d'autre.
+            Verifie("sans cadre, aucun dispositif n'est cité, même au conditionnel",
+                p30.Contains("Ne propose AUCUN dispositif, même au conditionnel")
+                && p30.Contains("N'en cite aucun nom"));
+            Verifie("sans cadre, ce sont des conseils applicables immédiatement",
+                p30.Contains("sans aucune procédure administrative")
+                && p30.Contains("placement dans la classe"));
+            Verifie("l'absence de dispositif est présentée comme une réponse pleine",
+                p30.Contains("réponse pleine et entière"));
+
+            // (d) La seule retouche autorisée : la forme.
+            Verifie("les sigles sont normalisés",
+                p30.Contains("« sessad » → « SESSAD »") && p30.Contains("« pap » → « PAP »"));
+            Verifie("une faute évidente est corrigée",
+                p30.Contains("Corrige une faute d'orthographe ou un mot manquant évident"));
+            Verifie("en cas de doute, on ne devine pas",
+                p30.Contains("EN CAS DE DOUTE, LAISSE TEL QUEL")
+                && p30.Contains("Tu corriges la FORME, jamais le FOND"));
+
+            // (e) La page ne traite que la scolarité et sera lue par l'école.
+            Verifie("les activités extrascolaires restent en 7.3",
+                p30.Contains("Les activités extrascolaires appartiennent à 7.3"));
+            Verifie("la page est écrite en sachant que l'école la lira",
+                p30.Contains("sera lue par l'école") && p30.Contains("ne divulgue que ce qui est nécessaire"));
+
+            // (f) L'éditeur : le cadre s'ouvre en premier, avec son statut.
+            var blocS5 = dossier30.Blocs.First(b => b.Key == "pt_s5");
+            blocS5.ContenuValide = """
+                {
+                  "cadreScolaire": [
+                    { "quoi": "PAP", "statut": "déjà en place", "porteur": "l'école", "echeance": "à renouveler",
+                      "degre": "indispensable", "objectif": "aménagements de temps et de supports" }
+                  ],
+                  "intro": "Scolarité en CM1.",
+                  "amenagements": ["Placer au premier rang, loin de la fenêtre"],
+                  "coordination": ["Point d'étape avec l'enseignante en janvier"],
+                  "reperesEvolution": ["Devoirs rendus complets"]
+                }
+                """;
+            var htmlS5 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossier30, "GOBLET Adrien");
+
+            var vmS5 = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocS5, _ => Task.CompletedTask);
+            var champsS5 = vmS5.PtFields.ToDictionary(f => f.JsonPath);
+
+            Verifie("le cadre scolaire est le premier champ, et il annonce qu'il se remplit avant",
+                vmS5.PtFields[0].JsonPath == "cadreScolaire"
+                && vmS5.PtFields[0].Title.Contains("avant de générer"));
+            Verifie("seul le cadre scolaire porte un statut",
+                champsS5["cadreScolaire"].ActionsAvecStatut);
+            Verifie("le statut saisi est relu",
+                champsS5["cadreScolaire"].Actions[0].Statut == "déjà en place"
+                && champsS5["cadreScolaire"].Actions[0].Quoi == "PAP");
+
+            // Le statut survit à l'aller-retour — c'est lui qui commande le texte.
+            champsS5["cadreScolaire"].Actions[0].Statut = "à renouveler";
+            var vmS5Relu = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocS5, _ => Task.CompletedTask);
+            Verifie("le statut corrigé à la main survit au rechargement",
+                vmS5Relu.PtFields.First(f => f.JsonPath == "cadreScolaire").Actions[0].Statut == "à renouveler");
+
+            // (g) Le rendu distingue les deux cas.
+            Verifie("avec un cadre, la page parle d'AMÉNAGEMENTS et affiche le statut",
+                htmlS5.Contains("CADRE SCOLAIRE") && htmlS5.Contains("AM") && htmlS5.Contains("en place"));
+
+            var dossierSansCadre = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            dossierSansCadre.Blocs.First(b => b.Key == "pt_s5").ContenuValide =
+                """{"cadreScolaire":[],"intro":"","amenagements":["Découper les consignes en une étape à la fois"],"coordination":[],"reperesEvolution":[]}""";
+            var htmlSansCadre = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossierSansCadre, "X Y");
+            Verifie("sans cadre, la page parle de CONSEILS applicables sans démarche",
+                htmlSansCadre.Contains("CONSEILS") && htmlSansCadre.Contains("sans d")
+                && !htmlSansCadre.Contains("CADRE SCOLAIRE"));
+        }
+
         Console.WriteLine();
         Console.WriteLine(echecs == 0 ? "=== SÉANCE 3 OK ===" : $"=== {echecs} ÉCHEC(S) ===");
         return echecs == 0 ? 0 : 1;

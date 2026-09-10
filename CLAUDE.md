@@ -108,4 +108,5 @@ if (!success) { MessageBox.Show(error); return; }
 - [VISION_V2.md](VISION_V2.md) — Vision MedCompanion V2 (Focus Med, Mémoire, Mode Consultation)
 - [PLAN_MODE_CONSULTATION_V0A.md](PLAN_MODE_CONSULTATION_V0A.md) — Plan détaillé Mode Consultation V0a
 - [PLAN_CARTOGRAPHIE_ENFANT_V2.md](PLAN_CARTOGRAPHIE_ENFANT_V2.md) — **Reconstruction Cartographie de l'enfant** (grille unique + items par tranche d'âge, feuille parents en salle d'attente). Construit à côté du bloc Évaluation, sans y toucher.
+- [PLAN_IMPRESSION_SANS_LIBREOFFICE.md](PLAN_IMPRESSION_SANS_LIBREOFFICE.md) — **Impression sans LibreOffice** : gabarit HTML A4 → Edge caché → PDF → PDFium. Rendu identique au docx. Plan validé 07/09/2026, chantier non démarré.
 - [SETUP_WHISPER_GPU.md](SETUP_WHISPER_GPU.md) — **Guide installation Whisper GPU + 7 pièges résolus** (à lire avant install nouveau poste)

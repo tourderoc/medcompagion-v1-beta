@@ -148,7 +148,15 @@ namespace MedCompanion.Services.Restitutions
             CancellationToken ct = default)
         {
             var systemPrompt = BuildSystemPrompt(bloc);
-            var sb           = new System.Text.StringBuilder();
+
+            // Un bloc STRUCTURÉ ne se reformule pas comme un texte : sans le rappel de son
+            // format, le modèle répond en prose, le rendu ne peut plus la lire, et la saisie du
+            // médecin est perdue. On passe donc par la propagation, qui conserve l'existant.
+            var format = BuildFormatBlocStructure(bloc.Key, reading);
+            if (format != null)
+                return await PropagerBlocStructureAsync(bloc, currentContent, userInstruction, format, systemPrompt, ct);
+
+            var sb = new System.Text.StringBuilder();
 
             if (string.IsNullOrWhiteSpace(userInstruction))
             {
@@ -186,6 +194,129 @@ namespace MedCompanion.Services.Restitutions
         }
 
         /// <summary>
+        /// L'instruction de FORMAT d'un bloc structuré (JSON), ou null si le bloc est du texte
+        /// libre. C'est la même que celle de la génération initiale : un bloc n'a qu'un format,
+        /// et le rappeler à chaque réécriture est ce qui garantit qu'il reste lisible.
+        /// </summary>
+        private static string? BuildFormatBlocStructure(string key, DossierReading reading) => key switch
+        {
+            "pt_s1" => BuildPtS1Instruction(reading),
+            "pt_s2" => BuildPtS2Instruction(reading),
+            "pt_s3" => BuildPtS3Instruction(reading),
+            "pt_s4" => BuildPtS4Instruction(reading),
+            "pt_s5" => BuildPtS5Instruction(reading),
+            _       => null
+        };
+
+        /// <summary>
+        /// Réécrit un bloc structuré SANS effacer ce qu'il contient déjà.
+        ///
+        /// Le geste n'est pas « régénérer » mais PROPAGER : le médecin pose une décision — un
+        /// traitement, un bilan — et le modèle en tire les conséquences ailleurs dans la
+        /// section. Un stimulant ajouté appelle une surveillance cardio-tensionnelle, un ECG
+        /// préalable, une consultation de titration, et rend fausse une intro qui annonçait
+        /// « sans recourir à un traitement ».
+        ///
+        /// La règle est celle qui tient tout le dossier, d'un étage à l'autre : ce que le
+        /// médecin a écrit fait foi. Sans elle, une seule réécriture suffit à perdre une saisie —
+        /// et l'outil devient inutilisable dès la première modification.
+        /// </summary>
+        private async Task<string> PropagerBlocStructureAsync(
+            RestitutionBloc bloc,
+            string currentContent,
+            string userInstruction,
+            string format,
+            string systemPrompt,
+            CancellationToken ct)
+        {
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine(format);
+            sb.AppendLine();
+            sb.AppendLine("=================");
+
+            var existant = StripFence(currentContent).Trim();
+            bool aDuContenu = existant.Length > 2 && existant != "{}";
+
+            if (aDuContenu)
+            {
+                sb.AppendLine("ÉTAT ACTUEL DE LA SECTION — écrit ou relu par le médecin :");
+                sb.AppendLine(existant);
+                sb.AppendLine();
+                sb.AppendLine("=================");
+                sb.AppendLine("RÈGLE ABSOLUE — ce que le médecin a écrit fait foi :");
+                sb.AppendLine("  • CONSERVE mot pour mot chaque élément présent ci-dessus. N'en supprime AUCUN.");
+                sb.AppendLine("  • N'en reformule aucun : un texte saisi par le médecin est une décision, pas une suggestion.");
+                sb.AppendLine("  • COMPLÈTE ce qui manque, et METS À JOUR uniquement ce que ces éléments rendent");
+                sb.AppendLine("    désormais incohérent — c'est le cœur de ta tâche.");
+                sb.AppendLine("    Exemple : si un traitement a été ajouté, la surveillance doit couvrir ses effets,");
+                sb.AppendLine("    les bilans préalables nécessaires doivent apparaître, le suivi doit prévoir la");
+                sb.AppendLine("    titration, et une intro qui annonçait l'absence de traitement doit être corrigée.");
+
+                // Une exception, et une seule. Demander un bilan est une DÉCISION — elle ne se
+                // touche pas. Dire ce qu'il tranche est une FORMULATION clinique, adossée au
+                // dossier : c'est précisément le travail du modèle, et le médecin qui ajoute un
+                // examen en séance n'a pas à en rédiger la justification sur le moment.
+                if (format.Contains("pourTrancher", StringComparison.Ordinal))
+                {
+                    sb.AppendLine();
+                    sb.AppendLine("SEULE EXCEPTION — le champ « pourTrancher » des bilans :");
+                    sb.AppendLine("  • C'est le SEUL champ que tu peux écrire ou reformuler, y compris sur un bilan");
+                    sb.AppendLine("    que le médecin vient d'ajouter lui-même.");
+                    sb.AppendLine("  • Bilan sans « pourTrancher » : rédige-le à partir du dossier.");
+                    sb.AppendLine("  • « pourTrancher » sommaire ou abrégé : reformule-le en question clinique précise,");
+                    sb.AppendLine("    ancrée dans CE dossier. Par exemple « examen de l'audition » devient « éliminer");
+                    sb.AppendLine("    un déficit auditif contribuant aux difficultés attentionnelles en classe ».");
+                    sb.AppendLine("  • Garde l'intention du médecin quand il en a écrit une : tu la précises, tu ne la remplaces pas.");
+                    sb.AppendLine("  • Le libellé du bilan (« quoi »), son porteur, son échéance et son degré ne changent JAMAIS.");
+                    sb.AppendLine("  • N'invente aucune indication que le dossier ne soutient pas.");
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(userInstruction))
+            {
+                sb.AppendLine();
+                sb.AppendLine($"INSTRUCTION DU MÉDECIN : {userInstruction.Trim()}");
+            }
+            else if (aDuContenu)
+            {
+                sb.AppendLine();
+                sb.AppendLine("Aucune instruction particulière : propage simplement les conséquences de ce qui a été saisi.");
+            }
+
+            sb.AppendLine();
+            sb.AppendLine("Réponds UNIQUEMENT par le JSON complet de la section, sans texte avant ni après.");
+
+            var messages = new List<(string role, string content)> { ("user", sb.ToString()) };
+            var result   = await _llmService.ChatAsync(systemPrompt, messages, 1200, ct);
+            if (!result.success) return $"(Erreur : {result.error})";
+
+            // Un modèle qui répond à côté du format ne doit pas effacer la saisie : mieux vaut
+            // garder l'état actuel que le remplacer par quelque chose que le rendu ne lit pas.
+            var produit = StripFence(result.result.Trim());
+            if (aDuContenu && !RessembleAJson(produit)) return currentContent;
+            return produit;
+        }
+
+        private static string StripFence(string s)
+        {
+            var t = (s ?? "").Trim();
+            if (!t.StartsWith("```")) return t;
+            var nl = t.IndexOf('\n');
+            if (nl < 0) return t;
+            t = t.Substring(nl + 1);
+            var fin = t.LastIndexOf("```", StringComparison.Ordinal);
+            return (fin >= 0 ? t.Substring(0, fin) : t).Trim();
+        }
+
+        private static bool RessembleAJson(string s)
+        {
+            var t = (s ?? "").Trim();
+            if (!t.StartsWith("{") || !t.EndsWith("}")) return false;
+            try { using var _ = JsonDocument.Parse(t); return true; }
+            catch { return false; }
+        }
+
+        /// <summary>
         /// Marque une sous-section que la génération groupée doit SAUTER. Repérée par sa valeur
         /// plutôt que par son indice : les indices de la page 2 sont utilisés par l'écran pour le
         /// bouton « Reformuler » de chaque section, et les décaler les casserait tous.
@@ -198,6 +329,198 @@ namespace MedCompanion.Services.Restitutions
         /// <summary>Texte affiché tant que le projet de soins n'est pas écrit.</summary>
         public const string FeuilleDeRouteEnAttente =
             "_À rédiger une fois le projet de soins établi — elle en sera la traduction pour les parents._";
+
+        // ── Lectures posées en amont de la synthèse ─────────────────────────
+
+        /// <summary>
+        /// Les blocs dont la lecture doit être faite AVANT la synthèse : les 8 sphères de la
+        /// cartographie de l'enfant, les feuilles de l'environnement, et la lecture globale de
+        /// la branche. La synthèse croise ces lectures — elle ne peut pas les précéder.
+        ///
+        /// f5 (Cadre Éducatif) n'y figure pas : il n'existe plus dans le nouveau parcours, où
+        /// il est fusionné dans « Cadre &amp; repères » (f4). L'exiger bloquerait toute
+        /// synthèse d'un dossier V2.
+        /// </summary>
+        private static readonly string[] BlocsLecturePrealable =
+        {
+            "carto_s1", "carto_s2", "carto_s3", "carto_s4",
+            "carto_s5", "carto_s6", "carto_s7", "carto_s8",
+            "env_edu_f1", "env_edu_f2", "env_edu_f3", "env_edu_f4",
+            "env_edu_global",
+        };
+
+        /// <summary>Titre lisible d'un bloc de lecture préalable, pour le message d'attente.</summary>
+        private static string LibelleBlocLecture(string key) => key switch
+        {
+            "carto_s1" => "Sphère 1", "carto_s2" => "Sphère 2", "carto_s3" => "Sphère 3",
+            "carto_s4" => "Sphère 4", "carto_s5" => "Sphère 5", "carto_s6" => "Sphère 6",
+            "carto_s7" => "Sphère 7", "carto_s8" => "Sphère 8",
+            "env_edu_f1" => "Environnement — feuille 1", "env_edu_f2" => "Environnement — feuille 2",
+            "env_edu_f3" => "Environnement — feuille 3", "env_edu_f4" => "Environnement — feuille 4",
+            "env_edu_global" => "Lecture globale de la branche éducative",
+            _ => key
+        };
+
+        /// <summary>
+        /// Les lectures encore à faire, dans l'ordre du dossier. Vide = la synthèse peut partir.
+        /// </summary>
+        private static List<string> LecturesManquantes(RestitutionBase dossier)
+        {
+            var manquantes = new List<string>();
+            foreach (var key in BlocsLecturePrealable)
+            {
+                var bloc = dossier.Blocs.FirstOrDefault(b => b.Key == key);
+                if (bloc == null) continue; // bloc absent du catalogue : rien à exiger
+                var contenu = string.IsNullOrWhiteSpace(bloc.ContenuValide) ? bloc.ContenuPreremplit : bloc.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu)) manquantes.Add(LibelleBlocLecture(key));
+            }
+            return manquantes;
+        }
+
+        /// <summary>Message affiché tant que les lectures d'amont ne sont pas faites.</summary>
+        private static string SyntheseEnAttente(List<string> manquantes) =>
+            "_En attente des lectures d'amont — la synthèse les croise, elle ne peut pas les précéder._\n\n"
+          + $"À générer d'abord : {string.Join(", ", manquantes)}.";
+
+        /// <summary>
+        /// Les blocs de synthèse dont dépend le projet thérapeutique. Le projet découle de la
+        /// synthèse : il traite ce qu'elle a retenu et cherche à confirmer ce qu'elle a laissé
+        /// ouvert. Sans elle, il propose un projet qui ne découle de rien.
+        /// </summary>
+        private static readonly string[] BlocsSynthesePrealable =
+        {
+            "synthese_diag_s1", "synthese_diag_s2", "synthese_diag_s3",
+            "synthese_diag_s4", "synthese_diag_s5",
+        };
+
+        private static string LibelleBlocSynthese(string key) => key switch
+        {
+            "synthese_diag_s1" => "Compréhension globale",
+            "synthese_diag_s2" => "Diagnostics retenus",
+            "synthese_diag_s3" => "Différentiels écartés",
+            "synthese_diag_s4" => "Intégration cartographies",
+            "synthese_diag_s5" => "Conclusion intégrative",
+            _ => key
+        };
+
+        private static List<string> SyntheseManquante(RestitutionBase dossier)
+        {
+            var manquantes = new List<string>();
+            foreach (var key in BlocsSynthesePrealable)
+            {
+                var bloc = dossier.Blocs.FirstOrDefault(b => b.Key == key);
+                if (bloc == null) continue;
+                var contenu = string.IsNullOrWhiteSpace(bloc.ContenuValide) ? bloc.ContenuPreremplit : bloc.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu)) manquantes.Add(LibelleBlocSynthese(key));
+            }
+            return manquantes;
+        }
+
+        private static string ProjetEnAttente(List<string> manquantes) =>
+            "_En attente de la synthèse — le projet en découle, il ne peut pas la précéder._\n\n"
+          + $"À générer d'abord : {string.Join(", ", manquantes)}.";
+
+        /// <summary>Titre lisible d'une section du projet, pour le chaînage entre sections.</summary>
+        private static string LibelleSectionProjet(string key) => key switch
+        {
+            "pt_s1" => "7.1 Prise en charge médicale",
+            "pt_s2" => "7.2 Accompagnement psychologique",
+            "pt_s3" => "7.3 Soutien développemental",
+            "pt_s4" => "7.4 Accompagnement parental et familial",
+            "pt_s5" => "7.5 École et apprentissages",
+            _ => key
+        };
+
+        /// <summary>
+        /// Les sections du projet DÉJÀ écrites avant celle qu'on rédige. Un projet est un tout :
+        /// proposer un accompagnement psychologique sans voir qu'un traitement vient d'être
+        /// introduit, ou qu'un bilan neuropsychologique est demandé sous un mois, produit deux
+        /// pages qui s'ignorent — et parfois se contredisent sur le calendrier.
+        /// </summary>
+        private static string BuildSectionsProjetAmont(RestitutionBase dossier, string sectionCourante)
+        {
+            var sb = new StringBuilder();
+            foreach (var key in new[] { "pt_s1", "pt_s2", "pt_s3", "pt_s4", "pt_s5" })
+            {
+                if (key == sectionCourante) break;
+                var bloc = dossier.Blocs.FirstOrDefault(b => b.Key == key);
+                if (bloc == null) continue;
+                var contenu = string.IsNullOrWhiteSpace(bloc.ContenuValide) ? bloc.ContenuPreremplit : bloc.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu) || contenu.Trim() == "{}") continue;
+                sb.AppendLine($"### {LibelleSectionProjet(key)}");
+                sb.AppendLine(contenu.Trim());
+                sb.AppendLine();
+            }
+            if (sb.Length == 0) return "";
+
+            return "== SECTIONS DU PROJET DÉJÀ ÉCRITES ET VALIDÉES ==\n"
+                 + "La section que tu rédiges appartient au MÊME projet : mets-la en phase avec celles-ci.\n"
+                 + "Ne les répète pas, ne les contredis pas — en particulier sur le calendrier et sur\n"
+                 + "ce qui est déjà demandé à la famille : ce qu'elle peut engager de front est limité.\n"
+                 + "AUCUNE PROPOSITION NE DOIT FIGURER DEUX FOIS DANS LE PROJET. Si une action ci-dessus\n"
+                 + "couvre déjà un besoin, ne la reformule pas sous un autre nom dans ta section :\n"
+                 + "deux formulations voisines du même geste, à deux pages d'écart, se lisent comme deux\n"
+                 + "demandes distinctes et alourdissent inutilement ce qu'on demande à la famille.\n\n"
+                 + sb.ToString().TrimEnd() + "\n\n";
+        }
+
+        /// <summary>
+        /// La synthèse validée de CE dossier, mise en tête du prompt du projet. Le projet
+        /// traite ce qu'elle a retenu, et ses bilans cherchent à confirmer ce qu'elle a laissé
+        /// ouvert — il lui faut donc son texte, pas seulement le Bilan Final de l'ancien parcours.
+        /// </summary>
+        private static string BuildSyntheseValidee(RestitutionBase dossier)
+        {
+            var sb = new StringBuilder();
+            foreach (var key in BlocsSynthesePrealable)
+            {
+                var bloc = dossier.Blocs.FirstOrDefault(b => b.Key == key);
+                if (bloc == null) continue;
+                var contenu = string.IsNullOrWhiteSpace(bloc.ContenuValide) ? bloc.ContenuPreremplit : bloc.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu)) continue;
+                sb.AppendLine($"### {LibelleBlocSynthese(key)}");
+                sb.AppendLine(contenu.Trim());
+                sb.AppendLine();
+            }
+            if (sb.Length == 0) return "";
+
+            return "== SYNTHÈSE DE CE DOSSIER, DÉJÀ RÉDIGÉE ET VALIDÉE ==\n"
+                 + "Le projet ci-dessous DÉCOULE de cette synthèse : il traite ce qu'elle a retenu,\n"
+                 + "et les bilans qu'il demande cherchent à trancher ce qu'elle a laissé ouvert.\n"
+                 + "Ne la contredis pas, ne rouvre pas de diagnostic qu'elle a écarté.\n\n"
+                 + sb.ToString().TrimEnd() + "\n\n";
+        }
+
+        /// <summary>
+        /// Les lectures déjà rédigées ET RELUES dans CE dossier, mises en tête du prompt de
+        /// synthèse.
+        ///
+        /// Sans elles, la synthèse reconstruisait son raisonnement depuis les scores bruts en
+        /// ignorant l'interprétation clinique posée juste au-dessus dans le même document :
+        /// elle pouvait la contredire, et surtout elle perdait les corrections du médecin —
+        /// une observation de sphère rectifiée à la main ne remontait pas.
+        /// </summary>
+        private static string BuildLecturesValidees(RestitutionBase dossier)
+        {
+            var sb = new StringBuilder();
+            foreach (var key in BlocsLecturePrealable)
+            {
+                var bloc = dossier.Blocs.FirstOrDefault(b => b.Key == key);
+                if (bloc == null) continue;
+                var contenu = string.IsNullOrWhiteSpace(bloc.ContenuValide) ? bloc.ContenuPreremplit : bloc.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu)) continue;
+                sb.AppendLine($"### {bloc.Titre}");
+                sb.AppendLine(contenu.Trim());
+                sb.AppendLine();
+            }
+            if (sb.Length == 0) return "";
+
+            return "== LECTURES DÉJÀ POSÉES ET VALIDÉES DANS CE DOSSIER ==\n"
+                 + "Ces lectures ont été rédigées puis RELUES par le médecin dans les pages qui précèdent.\n"
+                 + "Elles font foi : appuie-toi dessus, ne les contredis pas, ne les réinterprète pas.\n"
+                 + "Ton travail est de les CROISER entre elles et avec les données ci-dessous.\n\n"
+                 + sb.ToString().TrimEnd() + "\n\n";
+        }
 
         private static (string Title, string Instruction)[] GetRestitution1PageSubsections() => new[]
         {
@@ -1594,14 +1917,24 @@ namespace MedCompanion.Services.Restitutions
             CancellationToken ct = default)
         {
             // ── Cartographie de l'environnement V2 (séance 3) — PRIORITAIRE quand une séance
-            // porte des données. Recâblage feuille par feuille : seule la feuille 1 (Famille)
-            // lit la V2 pour l'instant. La V1 reste le repli des anciens dossiers.
+            // porte des données. Les 4 feuilles V2 sont recâblées ; le bloc 5 (Cadre Éducatif
+            // V1) n'existe plus en V2 — fusionné dans « Cadre & repères » (feuille 4).
+            // La V1 reste le repli des anciens dossiers.
             var seanceV2 = reading.LatestSeanceEnvironnement;
             if (seanceV2 != null)
             {
+                if (feuilleIdx == 5)
+                {
+                    onSectionReady("**Observations**\nDans le nouveau parcours, « Valeurs sociétales » et « Cadre éducatif » sont fusionnés dans la feuille « Cadre & repères » (feuille 4) : ce bloc n'a plus de contenu propre.\n\n**Niveau clinique**\nVoir la feuille « Cadre & repères ».");
+                    return;
+                }
+
                 string? feuilleKeyV2 = feuilleIdx switch
                 {
                     1 => "famille",
+                    2 => "ecole_pairs",
+                    3 => "ecrans",
+                    4 => "cadre_reperes",
                     _ => null
                 };
                 if (feuilleKeyV2 != null)
@@ -1704,23 +2037,100 @@ namespace MedCompanion.Services.Restitutions
         }
 
         /// <summary>
-        /// Génère la lecture globale (synthèse) qui croise les 5 feuilles de la Branche Éducative.
+        /// Génère la lecture globale (synthèse) qui croise les feuilles de la Branche Éducative
+        /// — les 4 feuilles V2 quand une séance 3 porte des données, sinon les 5 feuilles V1.
         /// </summary>
         public async Task SuggestEnvEduGlobalAsync(
             DossierReading reading,
             Action<string> onSectionReady,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
+            var seanceV2Glob = reading.LatestSeanceEnvironnement;
+            if (seanceV2Glob != null)
+            {
+                await SuggestEnvGlobalV2Async(seanceV2Glob, onSectionReady, ct);
+                return;
+            }
 
+            // Comme en V2 : on ne transmet PAS le dossier complet. Cette page est une lecture
+            // de l'environnement par lui-même — croiser ses feuilles entre elles. L'intégration
+            // au tableau clinique appartient à la Synthèse diagnostique, plus loin dans le
+            // dossier ; la faire ici la produirait deux fois, et deux fois différemment.
             var carto = reading.LatestCartographieEnvironnement;
             var instr = BuildEnvGlobalInstruction(carto);
             var blocRef   = new RestitutionBloc("env_edu_global", "Branche Éducative", 21, "clinique");
             var sysPrompt = BuildSystemPrompt(blocRef);
-            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var userPrompt = "INSTRUCTION STRICTE — génère UNIQUEMENT ce qui est demandé ci-dessous, " +
+                             "sans introduction, sans commentaire, sans titre supplémentaire :\n" +
+                             instr + "\n\n" +
+                             "RAPPEL TON OBLIGATOIRE : Voix clinique. Utilise la terminologie pédopsychiatrique précise. " +
+                             "Rigueur et concision clinique. Réponds directement en Markdown.";
             var messages  = new List<(string role, string content)> { ("user", userPrompt) };
             var result    = await _llmService.ChatAsync(sysPrompt, messages, 600, ct);
+            onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
+        }
+
+        /// <summary>
+        /// Lecture globale V2 : croise les 4 feuilles de la séance 3. Le prompt porte, par
+        /// feuille, l'état de chaque nervure (couleur ou « non lisible ») — pas le détail
+        /// item par item, déjà traité feuille par feuille : une lecture globale qui reçoit
+        /// tous les justificatifs redevient une somme, pas une lecture.
+        /// </summary>
+        private async Task SuggestEnvGlobalV2Async(
+            Services.Evaluations.SeanceEnvironnement seance,
+            Action<string> onSectionReady,
+            CancellationToken ct)
+        {
+            var feuilles = Models.Evaluations.LectureEnvironnementV2.Construire(seance.CotationsEnv, seance.ReponsesParent)
+                .Where(f => f.NbTotal > 0)
+                .ToList();
+            if (feuilles.Count == 0 || feuilles.All(f => f.NbManquants == f.NbTotal))
+            {
+                onSectionReady("**Lecture globale** : non disponible (aucune feuille renseignée).");
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"=== DONNÉES D'ÉVALUATION — LES 4 FEUILLES DE L'ENVIRONNEMENT (séance du {seance.Date:dd/MM/yyyy}) ===");
+            sb.AppendLine($"Fiabilité déclarée — environnement : {Models.Evaluations.FiabiliteCartographie.LabelDe(seance.FiabiliteEnv)}");
+            foreach (var f in feuilles)
+            {
+                sb.AppendLine($"Feuille « {f.Label} » ({f.SousTitre}) : {f.EtatText}");
+                foreach (var n in f.Nervures)
+                    sb.AppendLine($"  - {n.Label}{(n.IsCentrale ? " (centrale)" : "")} : "
+                                + (n.EstComplete ? $"{n.NbOui}/{n.NbTotal} → « {n.NiveauLabel} »" : $"non lisible ({n.EtatText})"));
+            }
+            sb.AppendLine();
+            sb.AppendLine("Rédige UNIQUEMENT la LECTURE GLOBALE de l'environnement :");
+            sb.AppendLine();
+            sb.AppendLine("**Lecture globale**");
+            sb.AppendLine("4 à 6 phrases en prose (pas de liste) qui CROISENT les feuilles : ce qui soutient");
+            sb.AppendLine("l'enfant dans son environnement, ce qui le fragilise, et comment ces dimensions");
+            sb.AppendLine("interagissent (ex. un socle familial solide qui compense un vécu scolaire difficile).");
+            sb.AppendLine("- Appuie-toi UNIQUEMENT sur les nervures lisibles ci-dessus.");
+            sb.AppendLine("- Une nervure « non lisible » n'est NI bonne NI mauvaise : ne l'interprète JAMAIS ;");
+            sb.AppendLine("  si des pans entiers manquent, dis simplement que la lecture reste partielle.");
+            sb.AppendLine("- N'INVENTE RIEN. Pas de recommandations ici — c'est une lecture, pas un projet.");
+            sb.AppendLine();
+            sb.AppendLine("**Niveau clinique**");
+            sb.AppendLine("1 SEULE phrase qualifiant TOUTE la branche éducative (pas une feuille en particulier).");
+            sb.AppendLine("Format : `Mot-clé (qualifier court).` — le mot-clé seul sera affiché en pastille, garde-le");
+            sb.AppendLine("COURT (1 à 3 mots) et parlant : `Environnement porteur`, `Socle solide, école fragile`,");
+            sb.AppendLine("`Étayage nécessaire`, `Environnement fragilisé`.");
+            if (feuilles.Any(f => !f.EstLisible))
+                sb.AppendLine("ATTENTION : certaines feuilles ne sont pas entièrement lisibles — commence par `Lecture partielle — `.");
+            sb.AppendLine();
+            sb.AppendLine("Commence directement par `**Lecture globale**`.");
+
+            var blocRef      = new RestitutionBloc("env_edu_global", "Branche Éducative", 21, "clinique");
+            var systemPrompt = BuildSystemPrompt(blocRef);
+            var userPrompt   = "INSTRUCTION STRICTE — génère UNIQUEMENT ce qui est demandé ci-dessous, " +
+                               "sans introduction, sans commentaire, sans titre supplémentaire :\n" +
+                               sb + "\n\n" +
+                               "RAPPEL TON OBLIGATOIRE : Voix clinique. Utilise la terminologie pédopsychiatrique précise. " +
+                               "Rigueur et concision clinique. Réponds directement en Markdown.";
+            var messages     = new List<(string role, string content)> { ("user", userPrompt) };
+            var result       = await _llmService.ChatAsync(systemPrompt, messages, 600, ct);
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
@@ -1734,9 +2144,17 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestSyntheseDiagS1Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
+            // La synthèse croise les lectures d'amont : elle ne peut pas les précéder.
+            if (dossier != null)
+            {
+                var manquantes = LecturesManquantes(dossier);
+                if (manquantes.Count > 0) { onSectionReady(SyntheseEnAttente(manquantes)); return; }
+            }
+
+            var context = (dossier != null ? BuildLecturesValidees(dossier) : "") + reading.RenderForSynthese();
             if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
 
             var blocRef    = new RestitutionBloc("synthese_diag_s1", "Compréhension globale", 22, "clinique");
@@ -1794,9 +2212,17 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestSyntheseDiagS2Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
+            // La synthèse croise les lectures d'amont : elle ne peut pas les précéder.
+            if (dossier != null)
+            {
+                var manquantes = LecturesManquantes(dossier);
+                if (manquantes.Count > 0) { onSectionReady(SyntheseEnAttente(manquantes)); return; }
+            }
+
+            var context = (dossier != null ? BuildLecturesValidees(dossier) : "") + reading.RenderForSynthese();
             if (string.IsNullOrWhiteSpace(context)) { onSectionReady("[]"); return; }
 
             var blocRef    = new RestitutionBloc("synthese_diag_s2", "Diagnostics retenus", 23, "clinique");
@@ -1857,9 +2283,17 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestSyntheseDiagS3Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
+            // La synthèse croise les lectures d'amont : elle ne peut pas les précéder.
+            if (dossier != null)
+            {
+                var manquantes = LecturesManquantes(dossier);
+                if (manquantes.Count > 0) { onSectionReady(SyntheseEnAttente(manquantes)); return; }
+            }
+
+            var context = (dossier != null ? BuildLecturesValidees(dossier) : "") + reading.RenderForSynthese();
             if (string.IsNullOrWhiteSpace(context)) { onSectionReady("[]"); return; }
 
             var blocRef    = new RestitutionBloc("synthese_diag_s3", "Diagnostics différentiels écartés", 24, "clinique");
@@ -1914,9 +2348,17 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestSyntheseDiagS4Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
+            // La synthèse croise les lectures d'amont : elle ne peut pas les précéder.
+            if (dossier != null)
+            {
+                var manquantes = LecturesManquantes(dossier);
+                if (manquantes.Count > 0) { onSectionReady(SyntheseEnAttente(manquantes)); return; }
+            }
+
+            var context = (dossier != null ? BuildLecturesValidees(dossier) : "") + reading.RenderForSynthese();
             if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
 
             var blocRef    = new RestitutionBloc("synthese_diag_s4", "Intégration cartographies", 25, "clinique");
@@ -1965,9 +2407,17 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestSyntheseDiagS5Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
+            // La synthèse croise les lectures d'amont : elle ne peut pas les précéder.
+            if (dossier != null)
+            {
+                var manquantes = LecturesManquantes(dossier);
+                if (manquantes.Count > 0) { onSectionReady(SyntheseEnAttente(manquantes)); return; }
+            }
+
+            var context = (dossier != null ? BuildLecturesValidees(dossier) : "") + reading.RenderForSynthese();
             if (string.IsNullOrWhiteSpace(context)) { onSectionReady("(Aucun contenu source disponible.)"); return; }
 
             var blocRef    = new RestitutionBloc("synthese_diag_s5", "Conclusion intégrative", 26, "clinique");
@@ -2018,14 +2468,32 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestPtS1Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            // Le projet découle de la synthèse : il ne peut pas la précéder.
+            if (dossier != null)
+            {
+                var manquantes = SyntheseManquante(dossier);
+                if (manquantes.Count > 0) { onSectionReady(ProjetEnAttente(manquantes)); return; }
+            }
 
             var blocRef    = new RestitutionBloc("pt_s1", "Prise en charge médicale", 27, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
             var instr      = BuildPtS1Instruction(reading);
+
+            // Section déjà remplie : on PROPAGE au lieu de régénérer. Sinon, cliquer Suggérer
+            // après avoir saisi un traitement l'effacerait — une fois suffit pour ne plus oser
+            // le faire, et l'outil devient inutilisable après la première modification.
+            var dejaEcrit = dossier?.Blocs.FirstOrDefault(b => b.Key == "pt_s1")?.ContenuValide;
+            if (!string.IsNullOrWhiteSpace(dejaEcrit) && StripFence(dejaEcrit).Trim() is var dj && dj.Length > 2 && dj != "{}")
+            {
+                onSectionReady(await PropagerBlocStructureAsync(blocRef, dejaEcrit, "", instr, sysPrompt, ct));
+                return;
+            }
+
+            var context = (dossier != null ? BuildSyntheseValidee(dossier) : "") + reading.RenderForProjet();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
             var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
@@ -2045,23 +2513,48 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("    \"situationActuelle\": \"Situation médicamenteuse actuelle — 1 phrase.\",");
             sb.AppendLine("    \"propositions\": [\"Traitement proposé : ...\", \"Objectif attendu : ...\", \"Surveillance prévue : ...\"]");
             sb.AppendLine("  },");
-            sb.AppendLine("  \"bilans\": {");
-            sb.AppendLine("    \"realises\": [\"Bilan déjà réalisé 1\", \"Bilan 2\"],");
-            sb.AppendLine("    \"aEnvisager\": [\"À envisager 1\", \"À envisager 2\"]");
-            sb.AppendLine("  },");
+            sb.AppendLine("  \"bilans\": [");
+            sb.AppendLine("    { \"quoi\": \"Bilan à demander\", \"porteur\": \"...\", \"echeance\": \"...\", \"degre\": \"...\", \"pourTrancher\": \"la question que ce bilan résout\" }");
+            sb.AppendLine("  ],");
             sb.AppendLine("  \"surveillance\": [\"Point de surveillance 1\", \"Point 2\", \"Point 3\"],");
-            sb.AppendLine("  \"suivi\": [\"Modalité de suivi 1\", \"Modalité 2\", \"Modalité 3\"],");
-            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement médical sobre et bienveillant.\"");
+            sb.AppendLine("  \"suivi\": [");
+            sb.AppendLine("    { \"quoi\": \"Modalité de suivi\", \"porteur\": \"...\", \"echeance\": \"...\", \"degre\": \"...\" }");
+            sb.AppendLine("  ]");
             sb.AppendLine("}");
+            sb.AppendLine();
+            sb.AppendLine("VOCABULAIRE IMPOSÉ (n'invente aucune autre valeur) :");
+            sb.AppendLine("  • porteur : « le médecin » | « les parents » | « l'école » | « professionnel en place » | « professionnel à trouver »");
+            sb.AppendLine("      → « professionnel à trouver » = aucun praticien identifié à ce jour (à chercher, souvent avec délai d'attente).");
+            sb.AppendLine("      → « professionnel en place » = un praticien suit déjà l'enfant et prend cette action en charge.");
+            sb.AppendLine("  • echeance : « sans attendre » | « sous 1 mois » | « ce trimestre » | « cette année scolaire » | « à 6 mois » | « à 1 an » | « à 2 ans »");
+            sb.AppendLine("  • degre : « indispensable » | « recommandé » | « utile si possible » | « à réévaluer plus tard »");
             sb.AppendLine();
             sb.AppendLine("RÈGLES :");
             sb.AppendLine("  • objectifs : 3 à 4 items, chacun < 15 mots");
             sb.AppendLine("  • traitement.propositions vide [] si aucun traitement médicamenteux n'est indiqué");
             sb.AppendLine("  • traitement.situationActuelle : honnête — préciser si traitement en cours ou absent");
-            sb.AppendLine("  • bilans.realises : ce qui a déjà été fait (entretien, bilans, évaluations)");
-            sb.AppendLine("  • bilans.aEnvisager : ce qui pourrait être utile selon le tableau clinique");
+            sb.AppendLine();
+            sb.AppendLine("  • bilans : les bilans À RÉALISER, 0 à 5. Ne JAMAIS y remettre les bilans déjà faits :");
+            sb.AppendLine("    ils figurent déjà dans le parcours de soins et son annexe. Le projet regarde devant.");
+            sb.AppendLine("    Exception : un bilan antérieur qui COMMANDE un contrôle (« échographie de contrôle »)");
+            sb.AppendLine("    s'écrit comme l'action de contrôle, avec son échéance — pas comme un rappel.");
+            sb.AppendLine("  • Inclure TOUS les bilans à visée diagnostique, médicaux ET paramédicaux : ORL, biologique,");
+            sb.AppendLine("    cardiologique, mais aussi neuropsychologique, orthophonique, psychomoteur, ergothérapique.");
+            sb.AppendLine("    Un bilan est un acte de DIAGNOSTIC : il sert à SAVOIR. Les rééducations et suivis qui en");
+            sb.AppendLine("    découlent ne vont PAS ici — ils appartiennent aux sections 7.2 et 7.3.");
+            sb.AppendLine("  • pourTrancher : OBLIGATOIRE et précis — la question clinique que ce bilan résout");
+            sb.AppendLine("    (« départager trouble du langage et retentissement attentionnel »). Jamais « au cas où »,");
+            sb.AppendLine("    jamais « pour compléter ». Un bilan qui ne tranche rien ne se demande pas.");
+            sb.AppendLine();
             sb.AppendLine("  • surveillance : 3 à 5 points de vigilance clinique < 12 mots chacun");
-            sb.AppendLine("  • suivi : 3 à 4 modalités pratiques (délai + action), < 10 mots chacune");
+            sb.AppendLine("  • suivi : 3 à 4 modalités pratiques de suivi médical");
+            sb.AppendLine("  • degre : AU PLUS 2 « indispensable » sur l'ensemble de la section. Ce degré hiérarchise");
+            sb.AppendLine("    pour une famille qui ne peut pas tout engager de front : tout qualifier d'indispensable");
+            sb.AppendLine("    ne hiérarchise plus rien. Il est indépendant de la certitude diagnostique — un bilan peut");
+            sb.AppendLine("    être indispensable PARCE QUE le diagnostic est incertain.");
+            sb.AppendLine("  • porteur : attribuer honnêtement. Le médecin prescrit et coordonne ; il ne réalise PAS");
+            sb.AppendLine("    lui-même les bilans paramédicaux et ne prend PAS les rendez-vous à la place des parents.");
+            sb.AppendLine("  • NE PAS écrire de phrase d'engagement : le rôle du médecin est un texte fixe du dossier.");
             sb.AppendLine("  • NE PAS proposer de projet thérapeutique psychologique ou scolaire ici — section médicale uniquement");
 
             if (reading.LatestBilanFinal != null)
@@ -2076,14 +2569,9 @@ namespace MedCompanion.Services.Restitutions
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
-            {
-                sb.AppendLine();
-                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section médicale comme référence) :");
-                // Limiter à 600 caractères pour éviter de surcharger le prompt
-                var pt = reading.ProjetTherapeutique.Trim();
-                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
-            }
+            // Le projet thérapeutique ANTÉRIEUR n'est plus transmis : le projet se relisait
+            // lui-même au lieu de découler de la synthèse écrite juste avant dans ce dossier.
+            // Même circularité que celle retirée de la synthèse — cf. RenderForSynthese.
 
             return sb.ToString();
         }
@@ -2094,13 +2582,32 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestPtS2Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            if (dossier != null)
+            {
+                var manquantes = SyntheseManquante(dossier);
+                if (manquantes.Count > 0) { onSectionReady(ProjetEnAttente(manquantes)); return; }
+            }
+
             var blocRef    = new RestitutionBloc("pt_s2", "Accompagnement psychologique", 28, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
             var instr      = BuildPtS2Instruction(reading);
+
+            var dejaEcrit = dossier?.Blocs.FirstOrDefault(b => b.Key == "pt_s2")?.ContenuValide;
+            if (!string.IsNullOrWhiteSpace(dejaEcrit) && StripFence(dejaEcrit).Trim() is var dj && dj.Length > 2 && dj != "{}")
+            {
+                onSectionReady(await PropagerBlocStructureAsync(blocRef, dejaEcrit, "", instr, sysPrompt, ct));
+                return;
+            }
+
+            // La synthèse d'abord, puis les sections de projet déjà écrites : cette page
+            // appartient au même projet que la prise en charge médicale et doit s'y accorder.
+            var context = (dossier != null ? BuildSyntheseValidee(dossier) + BuildSectionsProjetAmont(dossier, "pt_s2") : "")
+                        + reading.RenderForProjet();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+
             var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
@@ -2114,27 +2621,58 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine();
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
-            sb.AppendLine("  \"intro\": \"1 phrase décrivant le rôle de l'accompagnement psychologique pour cet enfant.\",");
+            sb.AppendLine("  \"indication\": {");
+            sb.AppendLine("    \"degre\": \"...\", \"porteur\": \"...\",");
+            sb.AppendLine("    \"motif\": \"Pourquoi un suivi psychologique EST ou N'EST PAS indiqué pour CET enfant.\",");
+            sb.AppendLine("    \"critereReevaluation\": \"Ce qui ferait reconsidérer — uniquement si le suivi est différé ou non indiqué.\"");
+            sb.AppendLine("  },");
+            sb.AppendLine("  \"intro\": \"1 phrase situant l'accompagnement psychologique pour cet enfant.\",");
             sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
-            sb.AppendLine("  \"resultatsAttendus\": [\"Résultat attendu 1\", \"Résultat 2\", \"Résultat 3\"],");
-            sb.AppendLine("  \"modalites\": [\"Psychothérapie individuelle\", \"Soutien émotionnel et cognitif\"],");
-            sb.AppendLine("  \"pointsTravail\": [\"Point de travail 1\", \"Point 2\", \"Point 3\"],");
-            sb.AppendLine("  \"outilsUtilises\": [\"Outil ou approche 1\", \"Outil 2\", \"Outil 3\"],");
-            sb.AppendLine("  \"surveillance\": [\"Indicateur à surveiller 1\", \"Indicateur 2\", \"Indicateur 3\"],");
-            sb.AppendLine("  \"indicateursPositifs\": [\"Signe positif attendu 1\", \"Signe 2\", \"Signe 3\"],");
-            sb.AppendLine("  \"suivi\": [\"Modalité de suivi 1\", \"Modalité 2\", \"Modalité 3\"],");
-            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement sobre et bienveillant.\"");
+            sb.AppendLine("  \"modalites\": [\"Psychothérapie individuelle\", \"Groupe d'habiletés sociales\"],");
+            sb.AppendLine("  \"axesTravail\": [\"Axe de travail 1\", \"Axe 2\", \"Axe 3\"],");
+            sb.AppendLine("  \"reperesEvolution\": [\"Ce qui montrerait que ça avance 1\", \"2\", \"3\"],");
+            sb.AppendLine("  \"pointsVigilance\": [\"Ce qui ferait réajuster 1\", \"2\", \"3\"],");
+            sb.AppendLine("  \"articulation\": [\"Uniquement si un psychologue suit DÉJÀ l'enfant — voir plus bas.\"]");
             sb.AppendLine("}");
             sb.AppendLine();
+            sb.AppendLine("VOCABULAIRE IMPOSÉ (n'invente aucune autre valeur) :");
+            sb.AppendLine("  • indication.degre : « indispensable » | « recommandé » | « utile si possible »");
+            sb.AppendLine("      | « à réévaluer plus tard » | « non indiqué à ce stade »");
+            sb.AppendLine("  • indication.porteur : « professionnel en place » | « professionnel à trouver »");
+            sb.AppendLine("      | « les parents » | « l'école » | « le médecin »");
+            sb.AppendLine();
+            sb.AppendLine("L'INDICATION COMMANDE TOUTE LA SECTION — c'est la première chose à trancher :");
+            sb.AppendLine("  Un suivi psychologique n'est PAS automatique. Demande-toi d'abord s'il est indiqué");
+            sb.AppendLine("  pour CET enfant, à quel point, et par qui. Trois cas, et un seul s'applique :");
+            sb.AppendLine();
+            sb.AppendLine("  (A) INDIQUÉ, professionnel à trouver → remplis objectifs, modalites, axesTravail,");
+            sb.AppendLine("      reperesEvolution, pointsVigilance. Laisse « articulation » vide [].");
+            sb.AppendLine();
+            sb.AppendLine("  (B) UN PSYCHOLOGUE SUIT DÉJÀ L'ENFANT (porteur = « professionnel en place ») →");
+            sb.AppendLine("      n'écris PAS un projet comme si l'on partait de zéro : ce suivi existe et a son");
+            sb.AppendLine("      propre cadre. Remplis « articulation » : ce qu'on attend de ce suivi, ce qu'on");
+            sb.AppendLine("      lui transmet de cette évaluation, et comment on se coordonne (3 à 5 items).");
+            sb.AppendLine("      Garde objectifs et axesTravail — ils disent au confrère ce qui ressort de");
+            sb.AppendLine("      l'évaluation — mais allège modalites, qui relève de lui.");
+            sb.AppendLine();
+            sb.AppendLine("  (C) NON INDIQUÉ ou DIFFÉRÉ → renseigne « motif » et « critereReevaluation », et");
+            sb.AppendLine("      laisse objectifs, modalites, axesTravail, reperesEvolution VIDES [].");
+            sb.AppendLine("      Dire « pas maintenant, on y reviendra si tel élément apparaît » est une");
+            sb.AppendLine("      information clinique utile. Aligner des objectifs sous une indication qu'on");
+            sb.AppendLine("      vient d'écarter serait se contredire dans la même page.");
+            sb.AppendLine();
             sb.AppendLine("RÈGLES :");
+            sb.AppendLine("  • motif : ancré dans CE dossier — les éléments cliniques qui fondent (ou non) l'indication.");
+            sb.AppendLine("    Jamais de généralité (« un suivi est toujours bénéfique »).");
+            sb.AppendLine("  • critereReevaluation : vide \"\" si le suivi est indiqué maintenant.");
             sb.AppendLine("  • objectifs : 3 à 4 items, chacun < 15 mots, centrés sur le développement émotionnel/relationnel");
-            sb.AppendLine("  • resultatsAttendus : 3 à 4 items, observables et concrets (comportements, relations, régulation)");
-            sb.AppendLine("  • modalites : 2 à 4 types de dispositifs psych. pertinents pour ce tableau clinique");
-            sb.AppendLine("  • pointsTravail : 3 à 5 axes thérapeutiques prioritaires, < 12 mots chacun");
-            sb.AppendLine("  • outilsUtilises : approches/outils cliniques (TCC, EMDR, jeu symbolique, etc.) adaptés à l'âge");
-            sb.AppendLine("  • surveillance : 3 à 5 points de vigilance clinique sur l'évolution psychologique");
-            sb.AppendLine("  • indicateursPositifs : 3 à 4 signaux concrets d'amélioration attendus");
-            sb.AppendLine("  • suivi : 3 à 4 modalités pratiques (fréquence + action), < 10 mots chacune");
+            sb.AppendLine("  • modalites : 2 à 3 types de dispositifs (individuel, groupe, guidance) — le CADRE, pas la technique");
+            sb.AppendLine("  • axesTravail : 3 à 5 axes prioritaires, < 12 mots chacun — CE QU'ON TRAVAILLE");
+            sb.AppendLine("  • N'INDIQUE PAS d'outils ni de techniques (TCC, EMDR, jeu symbolique…) : le choix de la");
+            sb.AppendLine("    méthode appartient au psychologue. Tu poses les axes, il choisit comment les travailler.");
+            sb.AppendLine("  • reperesEvolution : 3 à 4 signes concrets et observables que l'accompagnement porte");
+            sb.AppendLine("  • pointsVigilance : 3 à 4 éléments qui feraient réajuster ou réorienter");
+            sb.AppendLine("  • NE PAS écrire de phrase d'engagement : le rôle du médecin est un texte fixe du dossier.");
             sb.AppendLine("  • NE PAS proposer de traitement médicamenteux ici — section psychologique uniquement");
 
             if (reading.LatestBilanFinal != null)
@@ -2149,13 +2687,8 @@ namespace MedCompanion.Services.Restitutions
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
-            {
-                sb.AppendLine();
-                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section psychologique comme référence) :");
-                var pt = reading.ProjetTherapeutique.Trim();
-                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
-            }
+            // Le projet antérieur n'est plus transmis — cf. RenderForProjet : le projet découle
+            // de la synthèse de CE dossier, pas de sa propre version précédente.
 
             return sb.ToString();
         }
@@ -2166,13 +2699,32 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestPtS3Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            if (dossier != null)
+            {
+                var manquantes = SyntheseManquante(dossier);
+                if (manquantes.Count > 0) { onSectionReady(ProjetEnAttente(manquantes)); return; }
+            }
+
             var blocRef    = new RestitutionBloc("pt_s3", "Soutien développemental", 29, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
             var instr      = BuildPtS3Instruction(reading);
+
+            var dejaEcrit = dossier?.Blocs.FirstOrDefault(b => b.Key == "pt_s3")?.ContenuValide;
+            if (!string.IsNullOrWhiteSpace(dejaEcrit) && StripFence(dejaEcrit).Trim() is var dj && dj.Length > 2 && dj != "{}")
+            {
+                onSectionReady(await PropagerBlocStructureAsync(blocRef, dejaEcrit, "", instr, sysPrompt, ct));
+                return;
+            }
+
+            // Lire 7.1 est ici décisif : une rééducation dont le bilan n'est pas encore fait
+            // doit être différée, pas prescrite.
+            var context = (dossier != null ? BuildSyntheseValidee(dossier) + BuildSectionsProjetAmont(dossier, "pt_s3") : "")
+                        + reading.RenderForProjet();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+
             var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
@@ -2186,24 +2738,82 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine();
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
-            sb.AppendLine("  \"intro\": \"1 phrase décrivant l'objectif global du soutien développemental pour cet enfant.\",");
+            sb.AppendLine("  \"intro\": \"1 à 2 phrases : l'objectif du soutien développemental, en s'appuyant sur les ressources de l'enfant.\",");
             sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
-            sb.AppendLine("  \"interventions\": [\"Orthophonie (si nécessaire)\", \"Psychomotricité\", \"Neuropsychologie\"],");
-            sb.AppendLine("  \"axesPrioritaires\": [\"Axe prioritaire 1 (domaine + objectif)\", \"Axe 2\", \"Axe 3\"],");
-            sb.AppendLine("  \"ressourcesEnfant\": [\"Ressource ou point fort 1\", \"Ressource 2\", \"Ressource 3\"],");
-            sb.AppendLine("  \"indicateursEvolution\": [\"Indicateur attendu 1\", \"Indicateur 2\", \"Indicateur 3\"],");
-            sb.AppendLine("  \"reevaluation\": [\"Modalité de réévaluation 1\", \"Modalité 2\", \"Modalité 3\"],");
-            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement sobre et bienveillant.\"");
+            sb.AppendLine("  \"reeducations\": [");
+            sb.AppendLine("    { \"quoi\": \"Rééducation ou prise en charge\", \"porteur\": \"...\", \"echeance\": \"...\", \"degre\": \"...\", \"objectif\": \"ce qu'elle vise pour CET enfant\" }");
+            sb.AppendLine("  ],");
+            sb.AppendLine("  \"ressourcesVie\": [");
+            sb.AppendLine("    { \"quoi\": \"Activité ou pratique du quotidien\", \"porteur\": \"les parents\", \"objectif\": \"à quoi elle sert pour CET enfant\" }");
+            sb.AppendLine("  ],");
+            sb.AppendLine("  \"reperesEvolution\": [\"Ce qui montrerait que ça avance 1\", \"2\", \"3\"],");
+            sb.AppendLine("  \"reevaluation\": [\"Modalité de réévaluation 1\", \"2\"]");
             sb.AppendLine("}");
             sb.AppendLine();
+            sb.AppendLine("VOCABULAIRE IMPOSÉ (n'invente aucune autre valeur) :");
+            sb.AppendLine("  • porteur : « le médecin » | « les parents » | « l'école » | « professionnel en place » | « professionnel à trouver »");
+            sb.AppendLine("  • echeance : « sans attendre » | « sous 1 mois » | « ce trimestre » | « cette année scolaire » | « à 6 mois » | « à 1 an » | « à 2 ans »");
+            sb.AppendLine("  • degre : « indispensable » | « recommandé » | « utile si possible » | « à réévaluer plus tard »");
+            sb.AppendLine();
+            sb.AppendLine("DEUX NATURES À NE JAMAIS MÉLANGER — c'est la structure même de cette section :");
+            sb.AppendLine();
+            sb.AppendLine("  • « reeducations » = des SOINS. Orthophonie, psychomotricité, ergothérapie, orthoptie,");
+            sb.AppendLine("    remédiation cognitive, neuropsychologie. Ils se prescrivent, supposent un professionnel");
+            sb.AppendLine("    de santé, un bilan, un compte-rendu, souvent des mois d'attente et un coût. Ils portent");
+            sb.AppendLine("    donc un degré et une échéance — une famille ne peut pas tout engager de front, et ce");
+            sb.AppendLine("    degré lui dit par quoi commencer.");
+            sb.AppendLine();
+            sb.AppendLine("  • « ressourcesVie » = des ACTIVITÉS QUE L'ENFANT PRATIQUE, régulièrement, et qui");
+            sb.AppendLine("    développent une fonction. Elles ne se prescrivent pas : elles s'installent.");
+            sb.AppendLine("    → D'ABORD L'ENGAGEMENT CORPOREL : sport collectif ou individuel, natation, arts");
+            sb.AppendLine("      martiaux, danse, escalade, vélo, temps dehors. C'est le registre principal de");
+            sb.AppendLine("      cette section. Viennent ensuite les activités artistiques ou de groupe — musique,");
+            sb.AppendLine("      théâtre, chorale — quand elles travaillent l'attention, la coordination ou la");
+            sb.AppendLine("      place dans un groupe. Puis la relaxation et le rythme de sommeil.");
+            sb.AppendLine();
+            sb.AppendLine("    → FRONTIÈRE ABSOLUE AVEC LA SECTION 7.4 : ici, c'est l'ENFANT QUI FAIT.");
+            sb.AppendLine("      Tout ce qui relève de ce que les PARENTS CHANGENT dans leur façon de faire");
+            sb.AppendLine("      appartient à 7.4 et N'A RIEN À FAIRE ICI :");
+            sb.AppendLine("        ✗ minuteur visuel, planning imagé, pictogrammes de consigne — le parent les installe");
+            sb.AppendLine("        ✗ temps d'échange ritualisé, débriefing du soir, jeux de rôle — c'est une interaction");
+            sb.AppendLine("        ✗ phrasé des consignes, anticipation des transitions — c'est une façon de faire");
+            sb.AppendLine("      Ne propose ici que ce que l'enfant PRATIQUE lui-même.");
+            sb.AppendLine("    → Elles ne portent NI degré NI échéance : une habitude ne se programme pas comme un");
+            sb.AppendLine("      rendez-vous, et « sophrologie : indispensable » n'aurait aucun sens clinique.");
+            sb.AppendLine("    → En revanche « objectif » y est OBLIGATOIRE et doit être précis : « judo » ne dit rien,");
+            sb.AppendLine("      « judo, pour canaliser l'excès moteur dans un cadre structuré » dit pourquoi ça vaut");
+            sb.AppendLine("      la peine — et c'est ce qui fait qu'une famille s'y tient.");
+            sb.AppendLine();
+            sb.AppendLine("    → « quoi » DOIT ÊTRE CONCRET, jamais une catégorie abstraite. Un parent doit savoir");
+            sb.AppendLine("      ce qu'il fait dès ce soir. Nomme la chose, et donne 2 ou 3 exemples faisables");
+            sb.AppendLine("      ENTRE PARENTHÈSES :");
+            sb.AppendLine("        ✗ « Activités de structuration temporelle »  → personne ne sait quoi en faire.");
+            sb.AppendLine("        ✓ « Repères visuels du temps (planning imagé du matin, sablier pour les devoirs,");
+            sb.AppendLine("           minuteur avant les transitions) »");
+            sb.AppendLine("        ✗ « Activités de médiation verbale »");
+            sb.AppendLine("        ✓ « Temps d'échange ritualisé (raconter trois moments de la journée au coucher,");
+            sb.AppendLine("           jeux de rôle sur les situations difficiles) »");
+            sb.AppendLine("      Les exemples doivent convenir à CET enfant — son âge, ses centres d'intérêt, ce que");
+            sb.AppendLine("      le dossier dit de son quotidien. Pas des exemples de manuel.");
+            sb.AppendLine();
+            sb.AppendLine("NE PROPOSE PAS DE BILAN ICI. Les bilans à visée diagnostique appartiennent à la section 7.1 :");
+            sb.AppendLine("  là-bas ce qui sert à SAVOIR, ici ce qui sert à FAIRE PROGRESSER.");
+            sb.AppendLine("  Quand une rééducation dépend d'un bilan encore à réaliser, ne la prescris pas d'emblée :");
+            sb.AppendLine("  inscris-la avec le degré « à réévaluer plus tard » et dis-le dans son objectif");
+            sb.AppendLine("  (« à décider selon les conclusions du bilan orthophonique »). Le dossier dit alors ce");
+            sb.AppendLine("  qu'il sait vraiment : on demande d'abord, on décide ensuite.");
+            sb.AppendLine();
             sb.AppendLine("RÈGLES :");
-            sb.AppendLine("  • objectifs : 4 à 5 items couvrant les sphères développementales fragilisées, < 15 mots chacun");
-            sb.AppendLine("  • interventions : 2 à 4 spécialités pertinentes selon le tableau clinique (pas toutes systématiques)");
-            sb.AppendLine("  • axesPrioritaires : 2 à 3 axes issus des évaluations (sphère + objectif clinique), < 20 mots chacun");
-            sb.AppendLine("  • ressourcesEnfant : 4 à 5 points forts observés chez l'enfant (appuis thérapeutiques)");
-            sb.AppendLine("  • indicateursEvolution : 4 à 5 signes concrets d'amélioration attendus à moyen terme");
-            sb.AppendLine("  • reevaluation : 3 à 4 modalités pratiques (délai + type), < 10 mots chacune");
-            sb.AppendLine("  • NE PAS proposer de traitement médicamenteux ni de suivi psy ici — section développementale uniquement");
+            sb.AppendLine("  • intro : mentionne les points d'appui de l'enfant — ils fondent le soutien proposé.");
+            sb.AppendLine("  • objectifs : 3 à 4 items, chacun < 15 mots, centrés sur le développement fonctionnel");
+            sb.AppendLine("  • reeducations : 0 à 5. Aucune n'est obligatoire — une liste vide est une réponse");
+            sb.AppendLine("    clinique valable, dis-le alors dans l'intro.");
+            sb.AppendLine("  • degre : AU PLUS 2 « indispensable » sur l'ensemble de la section.");
+            sb.AppendLine("  • ressourcesVie : 0 à 4, portées par « les parents » sauf exception.");
+            sb.AppendLine("  • reperesEvolution : 3 à 4 signes concrets et observables de progression");
+            sb.AppendLine("  • reevaluation : 2 à 3 modalités (quand et sur quoi on refait le point)");
+            sb.AppendLine("  • NE PAS écrire de phrase d'engagement : le rôle du médecin est un texte fixe du dossier.");
+            sb.AppendLine("  • NE PAS proposer de traitement médicamenteux ni de psychothérapie ici (sections 7.1 et 7.2).");
 
             if (reading.LatestBilanFinal != null)
             {
@@ -2211,22 +2821,17 @@ namespace MedCompanion.Services.Restitutions
                 if (b.DiagnosticsRetenus.Count > 0)
                 {
                     sb.AppendLine();
-                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les axes développementaux) :");
+                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les objectifs développementaux) :");
                     foreach (var d in b.DiagnosticsRetenus)
                         sb.AppendLine($"  • {d.Value}");
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
-            {
-                sb.AppendLine();
-                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section développementale comme référence) :");
-                var pt = reading.ProjetTherapeutique.Trim();
-                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
-            }
+            // Le projet antérieur n'est plus transmis — cf. RenderForProjet.
 
             return sb.ToString();
         }
+
 
         /// <summary>
         /// 7.4 — Accompagnement parental, familial et éducatif. JSON structuré avec 7 clés.
@@ -2234,13 +2839,30 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestPtS4Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            if (dossier != null)
+            {
+                var manquantes = SyntheseManquante(dossier);
+                if (manquantes.Count > 0) { onSectionReady(ProjetEnAttente(manquantes)); return; }
+            }
+
             var blocRef    = new RestitutionBloc("pt_s4", "Accompagnement parental, familial et éducatif", 30, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
             var instr      = BuildPtS4Instruction(reading);
+
+            var dejaEcrit = dossier?.Blocs.FirstOrDefault(b => b.Key == "pt_s4")?.ContenuValide;
+            if (!string.IsNullOrWhiteSpace(dejaEcrit) && StripFence(dejaEcrit).Trim() is var dj && dj.Length > 2 && dj != "{}")
+            {
+                onSectionReady(await PropagerBlocStructureAsync(blocRef, dejaEcrit, "", instr, sysPrompt, ct));
+                return;
+            }
+
+            var context = (dossier != null ? BuildSyntheseValidee(dossier) + BuildSectionsProjetAmont(dossier, "pt_s4") : "")
+                        + reading.RenderForProjet();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+
             var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
@@ -2254,26 +2876,82 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine();
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
-            sb.AppendLine("  \"intro\": \"1 phrase décrivant le rôle du soutien parental et familial pour accompagner cet enfant.\",");
+            sb.AppendLine("  \"intro\": \"1 à 2 phrases, en s'appuyant sur les ressources de cette famille.\",");
             sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
-            sb.AppendLine("  \"axesPrioritaires\": [\"Axe 1 (domaine + objectif concret)\", \"Axe 2\", \"Axe 3\"],");
-            sb.AppendLine("  \"outils\": [\"Outil ou ressource 1\", \"Outil 2\", \"Outil 3\"],");
-            sb.AppendLine("  \"forcesFamiliales\": [\"Force ou ressource familiale 1\", \"Force 2\", \"Force 3\"],");
-            sb.AppendLine("  \"objectifsCourtTerme\": [\"Objectif court terme 1\", \"Objectif 2\", \"Objectif 3\"],");
-            sb.AppendLine("  \"modalites\": [\"Modalité d'accompagnement 1\", \"Modalité 2\", \"Modalité 3\"],");
-            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement sobre et bienveillant, adressée à la famille.\"");
+            sb.AppendLine("  \"accompagnementParents\": [");
+            sb.AppendLine("    { \"quoi\": \"...\", \"porteur\": \"...\", \"echeance\": \"...\", \"degre\": \"...\", \"objectif\": \"ce que cela vise\" }");
+            sb.AppendLine("  ],");
+            sb.AppendLine("  \"interventionsEducatives\": [");
+            sb.AppendLine("    { \"quoi\": \"...\", \"porteur\": \"...\", \"echeance\": \"...\", \"degre\": \"...\", \"objectif\": \"ce que cela vise\" }");
+            sb.AppendLine("  ],");
+            sb.AppendLine("  \"auQuotidien\": [");
+            sb.AppendLine("    { \"quoi\": \"Geste concret (avec exemples)\", \"porteur\": \"les parents\", \"objectif\": \"à quoi cela sert\" }");
+            sb.AppendLine("  ],");
+            sb.AppendLine("  \"reperesEvolution\": [\"Ce qui montrerait que ça avance 1\", \"2\", \"3\"]");
             sb.AppendLine("}");
             sb.AppendLine();
+            sb.AppendLine("VOCABULAIRE IMPOSÉ (n'invente aucune autre valeur) :");
+            sb.AppendLine("  • porteur : « le médecin » | « les parents » | « l'école » | « professionnel en place » | « professionnel à trouver »");
+            sb.AppendLine("  • echeance : « sans attendre » | « sous 1 mois » | « ce trimestre » | « cette année scolaire » | « à 6 mois » | « à 1 an » | « à 2 ans »");
+            sb.AppendLine("  • degre : « indispensable » | « recommandé » | « utile si possible » | « à réévaluer plus tard »");
+            sb.AppendLine();
+            sb.AppendLine("TROIS BLOCS DISTINCTS — ne mets jamais un item dans le mauvais :");
+            sb.AppendLine();
+            sb.AppendLine("  (1) « accompagnementParents » — ce qui soutient les PARENTS eux-mêmes : guidance");
+            sb.AppendLine("      parentale, programme structuré, groupe de parents, thérapie familiale, soutien");
+            sb.AppendLine("      individuel d'un parent.");
+            sb.AppendLine("      QUI LE PORTE — règle importante :");
+            sb.AppendLine("        → « le médecin » quand la situation est SIMPLE : la guidance se fait alors en");
+            sb.AppendLine("          consultation, au fil du suivi. C'est le cas le plus fréquent.");
+            sb.AppendLine("        → « professionnel à trouver » quand la situation est COMPLEXE et dépasse ce");
+            sb.AppendLine("          cadre : conflit conjugal marqué ou séparation conflictuelle, souffrance");
+            sb.AppendLine("          psychique d'un parent, épuisement parental sévère, besoin d'un travail");
+            sb.AppendLine("          familial, ou programme structuré complet.");
+            sb.AppendLine("        Tranche d'après CE dossier, et dis dans « objectif » ce que l'accompagnement vise.");
+            sb.AppendLine();
+            sb.AppendLine("  (2) « interventionsEducatives » — un TIERS intervient dans le quotidien de l'enfant :");
+            sb.AppendLine("      SESSAD, éducateur spécialisé, AEMO, TISF, aide éducative, PCPE.");
+            sb.AppendLine("      La question à trancher est : faut-il un intervenant, ou non ?");
+            sb.AppendLine("      Une liste VIDE est une réponse clinique parfaitement valable — la plupart des");
+            sb.AppendLine("      situations n'en relèvent pas. N'en propose que si le dossier le justifie vraiment,");
+            sb.AppendLine("      et dis-le alors dans l'intro quand tu n'en proposes aucun.");
+            sb.AppendLine();
+            sb.AppendLine("  (3) « auQuotidien » — ce que les PARENTS CHANGENT dans leur façon de faire, sans");
+            sb.AppendLine("      intervenant. Le registre est celui de la COMMUNICATION et de la PÉDAGOGIE du");
+            sb.AppendLine("      quotidien : formulation des consignes, anticipation des transitions, supports");
+            sb.AppendLine("      visuels installés à la maison, temps d'échange ritualisés, gestion des devoirs");
+            sb.AppendLine("      et des écrans, désamorçage des crises.");
+            sb.AppendLine();
+            sb.AppendLine("      → FRONTIÈRE ABSOLUE AVEC LA SECTION 7.3 : ici, c'est le PARENT QUI CHANGE SA");
+            sb.AppendLine("        FAÇON DE FAIRE. Les activités que l'ENFANT PRATIQUE — sport, natation, arts");
+            sb.AppendLine("        martiaux, musique, théâtre — appartiennent à 7.3 et N'ONT RIEN À FAIRE ICI.");
+            sb.AppendLine("        Ne propose aucune activité extrascolaire dans cette section.");
+            sb.AppendLine("      → Ni échéance ni degré : ce sont des habitudes, elles s'installent.");
+            sb.AppendLine("      → « quoi » DOIT ÊTRE CONCRET, avec 2 ou 3 exemples ENTRE PARENTHÈSES :");
+            sb.AppendLine("          ✗ « Travailler la gestion des transitions »  → ne dit rien à un parent.");
+            sb.AppendLine("          ✓ « Annoncer les changements à l'avance (prévenir 5 minutes avant, minuteur");
+            sb.AppendLine("             visible, rituel de fin d'activité) »");
+            sb.AppendLine("        Les exemples doivent convenir à CET enfant et à CETTE famille — son âge, son");
+            sb.AppendLine("        organisation, ce que le dossier dit de son quotidien.");
+            sb.AppendLine();
+            sb.AppendLine("TON — cette page peut être lue par les parents comme un jugement sur eux. Elle ne doit");
+            sb.AppendLine("jamais l'être :");
+            sb.AppendLine("  • Écris les stratégies comme des AJUSTEMENTS DE L'ENVIRONNEMENT, jamais comme la");
+            sb.AppendLine("    correction de ce que les parents feraient mal. « Prévenir les transitions 5 minutes");
+            sb.AppendLine("    avant » décrit un geste ; « éviter les changements brusques » sonne comme un reproche.");
+            sb.AppendLine("  • Pas de « il faudrait que les parents… », pas de « les parents doivent apprendre à… ».");
+            sb.AppendLine("  • L'intro nomme ce sur quoi cette famille s'appuie déjà — c'est vrai, et c'est ce qui");
+            sb.AppendLine("    rend le reste recevable.");
+            sb.AppendLine();
             sb.AppendLine("RÈGLES :");
-            sb.AppendLine("  • objectifs : 4 à 5 items couvrant le rôle parental, la cohésion familiale, le cadre éducatif à domicile, < 15 mots");
-            sb.AppendLine("  • axesPrioritaires : 3 à 4 axes issus de la cartographie environnementale (famille, cohérence éducative, valeurs, cadre)");
-            sb.AppendLine("    Exemples d'axes : « Fonction parentale — clarifier règles et attentes », « Cohérence éducative — harmoniser les réponses des adultes »");
-            sb.AppendLine("    La dimension éducative = cadre familial (routines, règles, repères) — PAS les aménagements scolaires (réservés à 7.5)");
-            sb.AppendLine("  • outils : 3 à 5 ressources concrètes (guidance parentale, livret parental, entretiens familiaux, ateliers thématiques)");
-            sb.AppendLine("  • forcesFamiliales : 4 à 5 points d'appui observés chez la famille (motivation, liens affectifs, capacité de demande d'aide…)");
-            sb.AppendLine("  • objectifsCourtTerme : 4 à 5 objectifs observables à 3 mois (comportements, routines, interactions)");
-            sb.AppendLine("  • modalites : 3 à 4 modalités pratiques (fréquence + type), < 10 mots chacune");
-            sb.AppendLine("  • NE PAS proposer d'aménagements scolaires ici — réservés à la section 7.5");
+            sb.AppendLine("  • objectifs : 3 à 4 items, chacun < 15 mots");
+            sb.AppendLine("  • accompagnementParents : 1 à 3 items");
+            sb.AppendLine("  • interventionsEducatives : 0 à 3 items");
+            sb.AppendLine("  • auQuotidien : 3 à 5 gestes concrets");
+            sb.AppendLine("  • degre : AU PLUS 2 « indispensable » sur l'ensemble de la section.");
+            sb.AppendLine("  • reperesEvolution : 3 à 4 signes concrets et observables");
+            sb.AppendLine("  • NE PAS écrire de phrase d'engagement : le rôle du médecin est un texte fixe du dossier.");
+            sb.AppendLine("  • NE PAS traiter la scolarité ici — c'est la section 7.5.");
 
             if (reading.LatestBilanFinal != null)
             {
@@ -2281,22 +2959,17 @@ namespace MedCompanion.Services.Restitutions
                 if (b.DiagnosticsRetenus.Count > 0)
                 {
                     sb.AppendLine();
-                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les besoins familiaux) :");
+                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour l'accompagnement familial) :");
                     foreach (var d in b.DiagnosticsRetenus)
                         sb.AppendLine($"  • {d.Value}");
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
-            {
-                sb.AppendLine();
-                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section parentale/familiale comme référence) :");
-                var pt = reading.ProjetTherapeutique.Trim();
-                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
-            }
+            // Le projet antérieur n'est plus transmis — cf. RenderForProjet.
 
             return sb.ToString();
         }
+
 
         /// <summary>
         /// 7.5 — École et apprentissages. JSON structuré avec 7 clés.
@@ -2304,16 +2977,36 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestPtS5Async(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            if (dossier != null)
+            {
+                var manquantes = SyntheseManquante(dossier);
+                if (manquantes.Count > 0) { onSectionReady(ProjetEnAttente(manquantes)); return; }
+            }
+
             var blocRef    = new RestitutionBloc("pt_s5", "École et apprentissages", 31, "clinique");
-            var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildPtS5Instruction(reading);
-            var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
+            var sysPromptS5 = BuildSystemPrompt(blocRef);
+            var instrS5     = BuildPtS5Instruction(reading);
+
+            // Le cadre scolaire est saisi par le médecin AVANT la génération : dès que le bloc
+            // porte quelque chose, on propage — c'est ce qui garantit que les dispositifs qu'il
+            // a posés traversent la génération sans être modifiés.
+            var dejaEcritS5 = dossier?.Blocs.FirstOrDefault(b => b.Key == "pt_s5")?.ContenuValide;
+            if (!string.IsNullOrWhiteSpace(dejaEcritS5) && StripFence(dejaEcritS5).Trim() is var djS5 && djS5.Length > 2 && djS5 != "{}")
+            {
+                onSectionReady(await PropagerBlocStructureAsync(blocRef, dejaEcritS5, "", instrS5, sysPromptS5, ct));
+                return;
+            }
+
+            var context = (dossier != null ? BuildSyntheseValidee(dossier) + BuildSectionsProjetAmont(dossier, "pt_s5") : "")
+                        + reading.RenderForProjet();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+
+            var userPrompt = BuildSubsectionPrompt(context, instrS5, "clinique");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
-            var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
+            var result     = await _llmService.ChatAsync(sysPromptS5, messages, 900, ct);
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
@@ -2324,28 +3017,73 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine();
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
-            sb.AppendLine("  \"intro\": \"1 phrase décrivant l'objectif global du soutien scolaire pour cet enfant.\",");
-            sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
-            sb.AppendLine("  \"amenagements\": [\"Organisation et temps\", \"Environnement et cadre\", \"Apprentissages et supports\", \"Participation et sociale\"],");
-            sb.AppendLine("  \"coordination\": [\"Équipe éducative\", \"Information partagée\", \"Suivi commun\", \"Lien avec les intervenants\"],");
-            sb.AppendLine("  \"pointsAppui\": [\"Point d'appui scolaire 1\", \"Point 2\", \"Point 3\"],");
-            sb.AppendLine("  \"indicateursEvolution\": [\"Indicateur scolaire attendu 1\", \"Indicateur 2\", \"Indicateur 3\"],");
-            sb.AppendLine("  \"reevaluation\": [\"Modalité de réévaluation 1\", \"Modalité 2\", \"Modalité 3\"],");
-            sb.AppendLine("  \"engagement\": \"1 phrase d'engagement sobre et bienveillant, centrée sur le parcours scolaire.\"");
+            sb.AppendLine("  \"cadreScolaire\": [");
+            sb.AppendLine("    { \"quoi\": \"Dispositif\", \"statut\": \"...\", \"porteur\": \"...\", \"echeance\": \"...\", \"degre\": \"...\", \"objectif\": \"ce qu'il permet pour cet enfant\" }");
+            sb.AppendLine("  ],");
+            sb.AppendLine("  \"intro\": \"1 à 2 phrases situant la scolarité de cet enfant.\",");
+            sb.AppendLine("  \"amenagements\": [\"Aménagement concret 1\", \"2\", \"3\"],");
+            sb.AppendLine("  \"coordination\": [\"Modalité de lien avec l'école 1\", \"2\"],");
+            sb.AppendLine("  \"reperesEvolution\": [\"Ce qui montrerait que ça avance 1\", \"2\", \"3\"]");
             sb.AppendLine("}");
             sb.AppendLine();
+            sb.AppendLine("VOCABULAIRE IMPOSÉ (n'invente aucune autre valeur) :");
+            sb.AppendLine("  • statut : « à demander » | « déjà en place » | « à renouveler »");
+            sb.AppendLine("  • porteur : « le médecin » | « les parents » | « l'école » | « professionnel en place » | « professionnel à trouver »");
+            sb.AppendLine("  • echeance : « sans attendre » | « sous 1 mois » | « ce trimestre » | « cette année scolaire » | « à 6 mois » | « à 1 an » | « à 2 ans »");
+            sb.AppendLine("  • degre : « indispensable » | « recommandé » | « utile si possible » | « à réévaluer plus tard »");
+            sb.AppendLine();
+            sb.AppendLine("════ RÈGLE ABSOLUE — TU NE PROPOSES AUCUN DISPOSITIF SCOLAIRE ════");
+            sb.AppendLine();
+            sb.AppendLine("Un dispositif — PAP, PPS, PAI, AESH, ULIS, SEGPA, ITEP, aménagements d'examen — n'est");
+            sb.AppendLine("pas une orientation clinique : c'est une DÉCISION ADMINISTRATIVE. Chacun a sa procédure");
+            sb.AppendLine("et son instance : le PAP passe par le médecin scolaire, le PPS, l'AESH et l'ULIS par un");
+            sb.AppendLine("dossier MDPH et une notification. Ce dossier est remis aux parents, qui le transmettent");
+            sb.AppendLine("souvent à l'école : un dispositif écrit ici circule et engage.");
+            sb.AppendLine();
+            sb.AppendLine("Le médecin seul décide. Deux cas, et un seul s'applique :");
+            sb.AppendLine();
+            sb.AppendLine("  (A) LE MÉDECIN A RENSEIGNÉ « cadreScolaire » →");
+            sb.AppendLine("      • Conserve chaque dispositif EXACTEMENT tel qu'il l'a écrit. N'en ajoute AUCUN,");
+            sb.AppendLine("        n'en retire AUCUN, n'en transforme AUCUN (un PAP ne devient jamais un PPS).");
+            sb.AppendLine("      • Décline « amenagements » en cohérence avec CE dispositif précis : un PAP et un");
+            sb.AppendLine("        PPS n'ouvrent pas les mêmes droits, les aménagements réalistes diffèrent.");
+            sb.AppendLine("      • Un dispositif « déjà en place » ne se redemande pas : on S'APPUIE dessus.");
+            sb.AppendLine("        Les aménagements décrivent alors ce qu'il permet, et la coordination comment");
+            sb.AppendLine("        on travaille avec lui. Ne propose ni démarche ni dossier pour celui-là.");
+            sb.AppendLine("      • Complète porteur, échéance et objectif si le médecin les a laissés vides : là");
+            sb.AppendLine("        tu ne décides rien, tu rappelles un circuit connu (dossier MDPH déposé par les");
+            sb.AppendLine("        parents, courrier au médecin scolaire pour un PAP…).");
+            sb.AppendLine();
+            sb.AppendLine("  (B) « cadreScolaire » EST VIDE →");
+            sb.AppendLine("      • Laisse-le VIDE []. Ne propose AUCUN dispositif, même au conditionnel, même");
+            sb.AppendLine("        comme piste « à discuter ». N'en cite aucun nom, nulle part dans la section.");
+            sb.AppendLine("      • Écris à la place des CONSEILS PÉDAGOGIQUES applicables immédiatement par");
+            sb.AppendLine("        l'enseignant, sans aucune procédure administrative : placement dans la classe,");
+            sb.AppendLine("        découpage des consignes, temps de pause, supports visuels, façon de vérifier");
+            sb.AppendLine("        la compréhension, allègement de la copie.");
+            sb.AppendLine("      • C'est une réponse pleine et entière : beaucoup de situations relèvent");
+            sb.AppendLine("        d'ajustements pédagogiques et de rien d'autre.");
+            sb.AppendLine();
+            sb.AppendLine("CORRECTION DE FORME — la seule chose que tu peux retoucher dans « cadreScolaire » :");
+            sb.AppendLine("  • Mets les sigles dans leur forme correcte : « sessad » → « SESSAD », « pap » → « PAP »,");
+            sb.AppendLine("    « ulis » → « ULIS », « aesh » → « AESH », « pai » → « PAI », « pps » → « PPS ».");
+            sb.AppendLine("  • Corrige une faute d'orthographe ou un mot manquant évident, quand l'intention");
+            sb.AppendLine("    ne fait AUCUN doute (« demande de PAP a l'ecole » → « Demande de PAP à l'école »).");
+            sb.AppendLine("  • EN CAS DE DOUTE, LAISSE TEL QUEL. Ne devine jamais quel dispositif était visé :");
+            sb.AppendLine("    une abréviation ambiguë reste telle quelle. Tu corriges la FORME, jamais le FOND.");
+            sb.AppendLine();
             sb.AppendLine("RÈGLES :");
-            sb.AppendLine("  • objectifs : 4 à 5 items portant sur la réussite scolaire, la participation, la confiance en contexte scolaire, < 15 mots");
-            sb.AppendLine("  • amenagements : 3 à 4 catégories d'aménagements pertinents selon le tableau clinique");
-            sb.AppendLine("    Exemples : « Organisation et temps (temps supplémentaire, consignes étape par étape) »,");
-            sb.AppendLine("              « Environnement et cadre (place calme, repères visuels) »,");
-            sb.AppendLine("              « Apprentissages et supports (supports visuels, fractionnement des tâches) »,");
-            sb.AppendLine("              « Participation et sociale (guidage des interactions, coopération en petit groupe) »");
-            sb.AppendLine("  • coordination : 3 à 4 modalités de lien avec l'école (réunion équipe, cahier de liaison, suivi conjoint…)");
-            sb.AppendLine("  • pointsAppui : 4 à 5 points forts de l'enfant observables en contexte scolaire");
-            sb.AppendLine("  • indicateursEvolution : 4 à 5 signes concrets d'amélioration scolaire attendus à moyen terme");
-            sb.AppendLine("  • reevaluation : 3 à 4 modalités pratiques (délai + type), < 10 mots chacune");
-            sb.AppendLine("  • NE PAS proposer de traitement médicamenteux ni de suivi psy ici — section scolaire uniquement");
+            sb.AppendLine("  • amenagements : 4 à 6, CONCRETS et applicables par un enseignant. Décris un geste");
+            sb.AppendLine("    de classe, pas une intention : « placer au premier rang, loin de la fenêtre » plutôt");
+            sb.AppendLine("    que « adapter l'environnement de travail ».");
+            sb.AppendLine("  • coordination : 2 à 4 modalités de lien avec l'école (équipe éducative, point");
+            sb.AppendLine("    d'étape, informations à transmettre, interlocuteur).");
+            sb.AppendLine("  • reperesEvolution : 3 à 4 signes observables EN CLASSE.");
+            sb.AppendLine("  • Ne traite ici QUE la scolarité. Les activités extrascolaires appartiennent à 7.3,");
+            sb.AppendLine("    et ce que les parents ajustent à la maison à 7.4.");
+            sb.AppendLine("  • Cette page sera lue par l'école : reste factuel, sans jargon diagnostique inutile,");
+            sb.AppendLine("    et ne divulgue que ce qui est nécessaire pour scolariser l'enfant.");
+            sb.AppendLine("  • NE PAS écrire de phrase d'engagement : le rôle du médecin est un texte fixe du dossier.");
 
             if (reading.LatestBilanFinal != null)
             {
@@ -2353,22 +3091,17 @@ namespace MedCompanion.Services.Restitutions
                 if (b.DiagnosticsRetenus.Count > 0)
                 {
                     sb.AppendLine();
-                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les besoins scolaires) :");
+                    sb.AppendLine("DIAGNOSTICS RETENUS (ancrage pour les aménagements) :");
                     foreach (var d in b.DiagnosticsRetenus)
                         sb.AppendLine($"  • {d.Value}");
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(reading.ProjetTherapeutique))
-            {
-                sb.AppendLine();
-                sb.AppendLine("PROJET THÉRAPEUTIQUE EXISTANT (utiliser la section scolaire comme référence) :");
-                var pt = reading.ProjetTherapeutique.Trim();
-                sb.AppendLine(pt.Length > 600 ? pt.Substring(0, 600) + "…" : pt);
-            }
+            // Le projet antérieur n'est plus transmis — cf. RenderForProjet.
 
             return sb.ToString();
         }
+
 
         /// <summary>
         /// 8 — Conclusion et perspectives. JSON mixte (voix clinique + chaleur livre).
@@ -2486,26 +3219,46 @@ namespace MedCompanion.Services.Restitutions
             if (carto == null)
                 return "Aucune cartographie de l'environnement disponible. Écris : `L'environnement de l'enfant n'a pas encore été évalué.`";
 
+            // Aligné sur la lecture globale V2 : le détail des nervures (et non les seuls noms
+            // de niveaux), de la prose clinique plutôt que des puces, et un mot-clé de niveau
+            // pour la pastille de la boîte.
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine("=== SYNTHÈSE — BRANCHE ÉDUCATIVE ===");
-            sb.AppendLine("Niveaux des 5 feuilles :");
-            void AppendNiveau(string nom, Models.Evaluations.FeuilleEnvironnement f)
+            sb.AppendLine("=== DONNÉES D'ÉVALUATION — LES 5 FEUILLES DE L'ENVIRONNEMENT ===");
+            void AppendFeuille(string nom, Models.Evaluations.FeuilleEnvironnement f)
             {
                 var n = Services.Evaluations.EnvironnementScoringService.CalculerFeuille(f);
-                sb.AppendLine($"  {nom} : {Models.Evaluations.CartographieEnvironnementContent.NiveauLabel(n)}");
+                sb.AppendLine($"Feuille « {nom} » : {Models.Evaluations.CartographieEnvironnementContent.NiveauLabel(n)}");
+                void AppendNervure(Models.Evaluations.Nervure nervure, bool centrale)
+                {
+                    var niv = Services.Evaluations.EnvironnementScoringService.CalculerNervure(nervure);
+                    sb.AppendLine($"  - {nervure.Label}{(centrale ? " (centrale)" : "")} : {nervure.Score}/{nervure.MaxScore}"
+                                + $" → « {Models.Evaluations.CartographieEnvironnementContent.NiveauLabel(niv)} »");
+                }
+                AppendNervure(f.NervureCentrale, true);
+                foreach (var s in f.NervuresSecondaires) AppendNervure(s, false);
             }
-            AppendNiveau("Famille", carto.Famille);
-            AppendNiveau("École & Pairs", carto.EcolePairs);
-            AppendNiveau("Écrans & Médias", carto.EcransMedias);
-            AppendNiveau("Valeurs sociétales", carto.ValeursSocietales);
-            AppendNiveau("Cadre éducatif", carto.CadreEducatif);
+            AppendFeuille("Famille", carto.Famille);
+            AppendFeuille("École & Pairs", carto.EcolePairs);
+            AppendFeuille("Écrans & Médias", carto.EcransMedias);
+            AppendFeuille("Valeurs sociétales", carto.ValeursSocietales);
+            AppendFeuille("Cadre éducatif", carto.CadreEducatif);
             sb.AppendLine();
-            sb.AppendLine("Rédige la LECTURE GLOBALE de la Branche Éducative pour les parents :");
-            sb.AppendLine("- 1 paragraphe d'introduction (2-3 phrases) sur l'environnement global.");
-            sb.AppendLine("- 1 paragraphe **Axes de soutien prioritaires** avec 2-3 puces ✓ : ce qui est porteur.");
-            sb.AppendLine("- 1 paragraphe **Points d'attention** avec 2-3 puces sur ce qui nécessite un étayage.");
-            sb.AppendLine("- Ton chaleureux et constructif — voix livre (Tome 2/3), pas clinique.");
+            sb.AppendLine("Rédige UNIQUEMENT la LECTURE GLOBALE de l'environnement :");
+            sb.AppendLine();
+            sb.AppendLine("**Lecture globale**");
+            sb.AppendLine("4 à 6 phrases en prose (pas de liste) qui CROISENT les feuilles : ce qui soutient");
+            sb.AppendLine("l'enfant dans son environnement, ce qui le fragilise, et comment ces dimensions");
+            sb.AppendLine("interagissent (ex. un socle familial solide qui compense un vécu scolaire difficile).");
             sb.AppendLine("- Ne répète pas les observations de chaque feuille : synthétise et croise.");
+            sb.AppendLine("- N'INVENTE RIEN. Pas de recommandations ici — c'est une lecture, pas un projet.");
+            sb.AppendLine();
+            sb.AppendLine("**Niveau clinique**");
+            sb.AppendLine("1 SEULE phrase qualifiant TOUTE la branche éducative (pas une feuille en particulier).");
+            sb.AppendLine("Format : `Mot-clé (qualifier court).` — le mot-clé seul sera affiché en pastille, garde-le");
+            sb.AppendLine("COURT (1 à 3 mots) et parlant : `Environnement porteur`, `Socle solide, école fragile`,");
+            sb.AppendLine("`Étayage nécessaire`, `Environnement fragilisé`.");
+            sb.AppendLine();
+            sb.AppendLine("Commence directement par `**Lecture globale**`.");
             return sb.ToString();
         }
 

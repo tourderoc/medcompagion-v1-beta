@@ -110,12 +110,50 @@ namespace MedCompanion.Services.Restitutions
         public MedCompanion.Services.Evaluations.SeanceEnvironnement? LatestSeanceEnvironnement { get; init; }
 
         /// <summary>
+        /// Les deux séances d'évaluation en LECTURE INTÉGRALE : sous chaque conclusion, les
+        /// réponses item par item. Réservé à <see cref="RenderForSynthese"/>.
+        /// </summary>
+        public string EvaluationsV2Integral { get; init; } = "";
+
+        /// <summary>
         /// Rendu textuel structuré du dossier pour injection dans un prompt LLM.
         /// Ordre clinique : qui est l'enfant → ce qu'on a appris au 1er entretien → suite →
         /// évaluations → synthèses → projet → sources externes.
         /// </summary>
-        public string RenderForLlm()
+        public string RenderForLlm() => Render(RenduDossier.Standard);
+
+        /// <summary>
+        /// Rendu destiné aux blocs de SYNTHÈSE — le dossier tel qu'un clinicien le relit avant
+        /// de conclure. Deux différences avec <see cref="RenderForLlm"/> :
+        ///
+        /// 1. Les séances d'évaluation sont lues INTÉGRALEMENT (réponses item par item), là où
+        ///    les autres blocs n'en reçoivent que les conclusions. C'est ici qu'on croise, et
+        ///    un score seul ne dit pas QUELLES dimensions accrochent.
+        ///
+        /// 2. La Synthèse Globale et le Projet thérapeutique déjà validés sont RETIRÉS. Les
+        ///    laisser rendait le raisonnement circulaire : la synthèse relisait sa propre
+        ///    version antérieure et un projet qui en découle, au risque de reconduire une
+        ///    formulation ancienne au lieu de repartir des sources. Le dossier de restitution
+        ///    est la source de vérité de l'instant — pas l'écho de ce qui a déjà été écrit.
+        /// </summary>
+        public string RenderForSynthese() => Render(RenduDossier.Synthese);
+
+        /// <summary>
+        /// Rendu destiné aux blocs du PROJET THÉRAPEUTIQUE. Le projet antérieur en est retiré :
+        /// le projet découle de la synthèse de CE dossier — qui lui est fournie à part — et non
+        /// de sa propre version précédente, qu'il se contenterait de reconduire.
+        ///
+        /// La Synthèse Globale du dossier bleu, elle, reste transmise : c'est une source du
+        /// dossier patient, pas une production de ce document.
+        /// </summary>
+        public string RenderForProjet() => Render(RenduDossier.Projet);
+
+        /// <summary>À quoi le rendu est destiné — ce qui décide de ce qu'on retire.</summary>
+        private enum RenduDossier { Standard, Synthese, Projet }
+
+        private string Render(RenduDossier mode)
         {
+            bool pourSynthese = mode == RenduDossier.Synthese;
             var sb = new StringBuilder();
             sb.AppendLine("== DOSSIER PATIENT — SOURCES VALIDÉES ==");
             sb.AppendLine();
@@ -192,12 +230,24 @@ namespace MedCompanion.Services.Restitutions
             // cite pourtant comme sa source principale, les décrivait sans jamais les voir.
             AppendCartographieEnfantV1(sb, LatestCartographieEnfant);
             AppendCartographieEnvironnementV1(sb, LatestCartographieEnvironnement);
-            AppendSection(sb, "SÉANCES D'ÉVALUATION (nouveau parcours — cartographie de l'enfant, environnement & évaluation ciblée)",
-                          EvaluationsV2Contexte);
 
-            AppendSection(sb, "SYNTHÈSE GLOBALE MED (synthese.md transversale)",            SyntheseGlobaleMed);
-            AppendSection(sb, "SYNTHÈSE GLOBALE V0.5 (dernière version validée)",          SyntheseGlobaleV05);
-            AppendSection(sb, "PROJET THÉRAPEUTIQUE (dernière version validée)",            ProjetTherapeutique);
+            var seances = pourSynthese && !string.IsNullOrWhiteSpace(EvaluationsV2Integral)
+                ? EvaluationsV2Integral
+                : EvaluationsV2Contexte;
+            AppendSection(sb, pourSynthese
+                    ? "SÉANCES D'ÉVALUATION — LECTURE INTÉGRALE (cartographie de l'enfant, environnement & évaluation ciblée : conclusions PUIS réponses item par item)"
+                    : "SÉANCES D'ÉVALUATION (nouveau parcours — cartographie de l'enfant, environnement & évaluation ciblée)",
+                seances);
+
+            if (!pourSynthese)
+            {
+                AppendSection(sb, "SYNTHÈSE GLOBALE MED (synthese.md transversale)",         SyntheseGlobaleMed);
+                AppendSection(sb, "SYNTHÈSE GLOBALE V0.5 (dernière version validée)",        SyntheseGlobaleV05);
+            }
+            // Le projet antérieur ne revient ni à la synthèse ni au projet lui-même : dans les
+            // deux cas il fermerait la boucle sur ce qui a déjà été écrit.
+            if (mode == RenduDossier.Standard)
+                AppendSection(sb, "PROJET THÉRAPEUTIQUE (dernière version validée)",         ProjetTherapeutique);
             AppendSection(sb, "MÉTA-SYNTHÈSE DES DOCUMENTS IMPORTÉS",                       SyntheseGlobaleDocuments);
 
             if (SynthesesDocuments.Count > 0)

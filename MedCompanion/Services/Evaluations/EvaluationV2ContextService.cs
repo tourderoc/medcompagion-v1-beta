@@ -32,14 +32,26 @@ namespace MedCompanion.Services.Evaluations
         /// produit. Vide et non « (aucune) » : c'est à l'appelant de décider comment nommer
         /// l'absence dans SON prompt.
         /// </summary>
-        public string PourPrompt(string patientDirectoryPath)
+        /// <param name="integral">
+        /// Lecture INTÉGRALE : ajoute, sous chaque conclusion, les réponses item par item —
+        /// les six dimensions de chaque axe parent, et les items de chaque nervure
+        /// d'environnement avec leur source.
+        ///
+        /// Réservé aux blocs de SYNTHÈSE. Ailleurs, la conclusion suffit et le détail dilue.
+        /// Mais la synthèse est précisément l'endroit où l'on croise : un 4/6 en Attachement ne
+        /// dit pas la même chose selon que l'enfant achoppe sur la séparation ou sur le recours
+        /// — c'est ce que la structure des six dimensions existe pour produire, et le score seul
+        /// le jette. Un clinicien qui rédige sa synthèse relit ses observations, pas seulement
+        /// ses conclusions.
+        /// </param>
+        public string PourPrompt(string patientDirectoryPath, bool integral = false)
         {
             if (string.IsNullOrWhiteSpace(patientDirectoryPath)) return "";
 
             var sb = new StringBuilder();
 
-            EcrireSeance2(sb, patientDirectoryPath);
-            EcrireSeance3(sb, patientDirectoryPath);
+            EcrireSeance2(sb, patientDirectoryPath, integral);
+            EcrireSeance3(sb, patientDirectoryPath, integral);
 
             return sb.ToString().TrimEnd();
         }
@@ -50,7 +62,7 @@ namespace MedCompanion.Services.Evaluations
 
         // ── Séance 2 — Cartographie de l'enfant ───────────────────────────────
 
-        private void EcrireSeance2(StringBuilder sb, string dir)
+        private void EcrireSeance2(StringBuilder sb, string dir, bool integral = false)
         {
             List<CartographieV2> fiches;
             try { fiches = _carto.LoadAll(dir).Where(c => c.VerseeAuDossier).ToList(); }
@@ -77,14 +89,41 @@ namespace MedCompanion.Services.Evaluations
                 {
                     sb.AppendLine("  Questionnaire parent (score sur 6, plus haut = plus favorable) :");
                     foreach (var kv in c.ScoresQuestionnaire)
+                    {
                         sb.AppendLine($"    - {CartographieItemsV2.AxeLabel(kv.Key)} : {kv.Value}/6");
+
+                        // Lecture intégrale : QUELLES dimensions accrochent, et non le seul score.
+                        if (!integral) continue;
+                        if (!c.ReponsesQuestionnaire.TryGetValue(kv.Key, out var reps) || reps.Length == 0) continue;
+                        var dims = CartographieItemsV2.Dimensions(kv.Key);
+                        for (int i = 0; i < reps.Length && i < dims.Count; i++)
+                        {
+                            var marque = reps[i] switch { "oui" => "oui", "non" => "NON", _ => "non renseigné" };
+                            sb.AppendLine($"        [{marque}] {dims[i]}");
+                        }
+                    }
+                    if (integral)
+                        sb.AppendLine("    (« non renseigné » = case laissée vide par le parent — jamais un « non »)");
                 }
 
                 if (c.Axes.Count > 0)
                 {
                     sb.AppendLine("  Axes observés par le médecin (sur 5) :");
-                    foreach (var kv in c.Axes.Where(kv => kv.Value > 0))
-                        sb.AppendLine($"    - {kv.Key} : {kv.Value}/5");
+                    foreach (var profil in ProfilsObservesV2.Profils)
+                    {
+                        foreach (var ax in profil.Axes)
+                        {
+                            if (!c.Axes.TryGetValue($"{profil.Key}.{ax.Key}", out var v) || v <= 0) continue;
+                            // En intégral, on nomme le profil et les deux pôles : « 2/5 » n'a de
+                            // sens que rapporté à ce que 1 et 5 veulent dire sur CET axe — et le
+                            // Tempérament est un portrait, où aucun pôle n'est meilleur.
+                            sb.AppendLine(integral
+                                ? $"    - {profil.Label} · {ax.Label} : {v}/5  (1 = {ax.Pole1} ; 5 = {ax.Pole5})"
+                                : $"    - {profil.Key}.{ax.Key} : {v}/5");
+                        }
+                    }
+                    if (integral)
+                        sb.AppendLine("    (Tempérament = portrait : aucun pôle n'y est meilleur que l'autre, rien n'y est pathologique)");
                 }
 
                 if (!string.IsNullOrWhiteSpace(c.SyntheseTexte))
@@ -99,7 +138,7 @@ namespace MedCompanion.Services.Evaluations
 
         // ── Séance 3 — Environnement & évaluation ciblée ──────────────────────
 
-        private void EcrireSeance3(StringBuilder sb, string dir)
+        private void EcrireSeance3(StringBuilder sb, string dir, bool integral = false)
         {
             List<SeanceEnvironnement> fiches;
             try { fiches = _env.LoadAll(dir).ToList(); }
@@ -134,9 +173,31 @@ namespace MedCompanion.Services.Evaluations
                     var lues = LectureEnvironnementV2.Construire(s.CotationsEnv, s.ReponsesParent);
                     sb.AppendLine("  Cartographie de l'environnement — lecture par feuille :");
                     foreach (var f in lues)
+                    {
                         sb.AppendLine(f.EstLisible
                             ? $"    - {f.Label} : {f.NbOui}/{f.NbTotal} favorables — {f.EtatText}"
                             : $"    - {f.Label} : NON LISIBLE — {f.EtatText}");
+
+                        // Lecture intégrale : nervure par nervure, item par item, avec la source.
+                        // Qui répond compte ici autant que la réponse — un item qui met en cause
+                        // celui qui remplit la feuille revient au médecin, pas au parent.
+                        if (!integral) continue;
+                        foreach (var n in f.Nervures)
+                        {
+                            sb.AppendLine($"        ▸ {n.Label}{(n.IsCentrale ? " (centrale)" : "")} : "
+                                        + (n.EstComplete ? $"{n.NbOui}/{n.NbTotal} → {n.NiveauLabel}" : $"non lisible ({n.EtatText})"));
+                            foreach (var l in n.Lignes)
+                            {
+                                var marque = l.Reponse switch
+                                {
+                                    ReponseProposition.Oui => "oui",
+                                    ReponseProposition.Non => "NON",
+                                    _                      => "non renseigné"
+                                };
+                                sb.AppendLine($"            [{marque}] {l.Texte}  ({l.SourceLabel})");
+                            }
+                        }
+                    }
 
                     // Une feuille non lisible est DITE et non omise : la taire laisserait croire
                     // que l'environnement a été exploré en entier.

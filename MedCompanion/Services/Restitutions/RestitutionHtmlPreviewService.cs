@@ -545,8 +545,8 @@ namespace MedCompanion.Services.Restitutions
                     var envV2     = LoadLatestSeanceEnvironnement(patientNomComplet);
                     var envBlocs  = BuildEnvEduBlocsDict(dossier.Blocs);
                     sb.Append(BuildEnvEduPage1(envCarto, envV2, envBlocs, pageNumber,     totalPages));
-                    sb.Append(BuildEnvEduPage2(envCarto, envBlocs, pageNumber + 1, totalPages));
-                    sb.Append(BuildEnvEduPage3(envCarto, envBlocs, pageNumber + 2, totalPages));
+                    sb.Append(BuildEnvEduPage2(envCarto, envV2, envBlocs, pageNumber + 1, totalPages));
+                    sb.Append(BuildEnvEduPage3(envCarto, envV2, envBlocs, pageNumber + 2, totalPages));
                     pageNumber += 3;
                     continue;
                 }
@@ -1546,25 +1546,93 @@ namespace MedCompanion.Services.Restitutions
 
         // ── Projet Thérapeutique — 7.1 Prise en charge médicale ────────────
 
+        /// <summary>
+        /// Une action du projet thérapeutique. Les quatre attributs répondent chacun à une
+        /// question que le dossier laissait sans réponse :
+        ///
+        /// • <b>Porteur</b> — QUI fait. Sans lui, toute action était attribuée par défaut au
+        ///   signataire du dossier : le dossier laissait croire que le pédopsychiatre assurait
+        ///   lui-même les rééducations et prenait les rendez-vous.
+        /// • <b>Echeance</b> — QUAND. Un projet sans échéance n'est pas applicable, et la
+        ///   feuille de route de la page 2 n'avait rien de daté à traduire aux parents.
+        /// • <b>Degre</b> — À QUEL POINT. Six interventions présentées au même niveau sont
+        ///   écrasantes pour une famille et ne disent pas par où commencer ; hiérarchisées,
+        ///   elles deviennent un chemin praticable.
+        /// • <b>PourTrancher</b> (bilans) — CE QUE ÇA RÉSOUT. Repris du Rattachement des axes
+        ///   ciblés de la séance 3 : un bilan se demande pour répondre à une question restée
+        ///   ouverte dans la synthèse, pas « au cas où ».
+        ///
+        /// Croiser Porteur et Degre produit l'information qu'aucun ne donne seul :
+        /// « indispensable » + « professionnel à trouver » désigne le point de blocage du
+        /// parcours — le plus urgent, et celui sur lequel personne n'est encore engagé.
+        /// </summary>
+        private sealed class PtAction
+        {
+            public string Quoi         { get; set; } = "";
+            public string Porteur      { get; set; } = "";
+            public string Echeance     { get; set; } = "";
+            public string Degre        { get; set; } = "";
+            /// <summary>Bilans : la question clinique que l'examen résout.</summary>
+            public string PourTrancher { get; set; } = "";
+            /// <summary>Rééducations et ressources de vie : ce que l'action vise pour cet enfant.</summary>
+            public string Objectif     { get; set; } = "";
+            /// <summary>Dispositifs scolaires : à demander, déjà en place, ou à renouveler —
+            /// un dispositif existant ne se redemande pas, on s'appuie dessus.</summary>
+            public string Statut       { get; set; } = "";
+        }
+
+        /// <summary>Couleur du degré de recommandation. Volontairement distincte de l'échelle
+        /// de confiance diagnostique : force de recommandation et certitude sont deux axes
+        /// indépendants — un bilan peut être indispensable PARCE QUE le diagnostic est incertain.</summary>
+        private static string PtDegreColor(string? degre) => (degre ?? "").ToLowerInvariant() switch
+        {
+            var d when d.Contains("indispensable")            => "#C0392B",
+            var d when d.Contains("recommand")                => "#E67E22",
+            var d when d.Contains("utile")                    => "#2980B9",
+            var d when d.Contains("réévaluer") || d.Contains("reevaluer") => "#7F8C8D",
+            _                                                  => "#95A5A6"
+        };
+
+        /// <summary>
+        /// Couleur du statut d'un dispositif scolaire. « Déjà en place » est vert : c'est un
+        /// acquis sur lequel s'appuyer, pas une démarche à engager.
+        /// </summary>
+        private static string PtStatutColor(string? statut) => (statut ?? "").ToLowerInvariant() switch
+        {
+            var s when s.Contains("en place")   => "#1E8449",
+            var s when s.Contains("renouveler") => "#D68910",
+            var s when s.Contains("demander")   => "#2471A3",
+            _                                    => "#95A5A6"
+        };
+
+        /// <summary>Couleur du porteur. « À trouver » ressort en rouge : c'est ce qui bloque.</summary>
+        private static string PtPorteurColor(string? porteur) => (porteur ?? "").ToLowerInvariant() switch
+        {
+            var p when p.Contains("trouver")                          => "#C0392B",
+            var p when p.Contains("parent") || p.Contains("vous")     => "#8E44AD",
+            var p when p.Contains("école") || p.Contains("ecole")     => "#16A085",
+            var p when p.Contains("médecin") || p.Contains("medecin") => "#2471A3",
+            _                                                          => "#5D6D7E",
+        };
+
         private sealed class PtS1Traitement
         {
             public string       SituationActuelle { get; set; } = "";
             public List<string> Propositions      { get; set; } = new();
-        }
-        private sealed class PtS1Bilans
-        {
-            public List<string> Realises   { get; set; } = new();
-            public List<string> AEnvisager { get; set; } = new();
         }
         private sealed class PtS1Data
         {
             public string         Intro        { get; set; } = "";
             public List<string>   Objectifs    { get; set; } = new();
             public PtS1Traitement Traitement   { get; set; } = new();
-            public PtS1Bilans     Bilans       { get; set; } = new();
+            /// <summary>Bilans À RÉALISER. Les bilans déjà faits ne sont plus repris ici :
+            /// ils figurent déjà deux fois dans le dossier (résumé du parcours de soins, puis
+            /// annexe détaillée). Le projet regarde devant — ce qui est fait appartient au
+            /// parcours. Un bilan antérieur qui COMMANDE une action (surveillance à 2 ans,
+            /// contrôle à refaire) vit dans cette action, avec son échéance.</summary>
+            public List<PtAction> Bilans       { get; set; } = new();
             public List<string>   Surveillance { get; set; } = new();
-            public List<string>   Suivi        { get; set; } = new();
-            public string         Engagement   { get; set; } = "";
+            public List<PtAction> Suivi        { get; set; } = new();
         }
 
         private static PtS1Data? TryParsePtS1Json(string? text)
@@ -1644,32 +1712,18 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("      </div>");
             sb.AppendLine("    </div></div>");
 
-            // 3. Bilans complémentaires
+            // 3. Bilans à réaliser — tous les bilans à visée diagnostique, médicaux comme
+            // paramédicaux : un bilan est un acte de DIAGNOSTIC, pas de traitement, et tous
+            // partent d'une prescription du médecin. Les rééducations qui en découlent
+            // appartiennent à 7.3. Ligne de partage : ici ce qui sert à SAVOIR, là-bas ce qui
+            // sert à FAIRE PROGRESSER.
             sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> BILANS COMPLÉMENTAIRES</div>");
+            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> BILANS À RÉALISER</div>");
             sb.AppendLine("    <div class='pt-card-body'>");
-            sb.AppendLine("      <div class='pt-two-cols'>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>DÉJÀ RÉALISÉS</div>");
-            if (data.Bilans.Realises.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var r in data.Bilans.Realises)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>À ENVISAGER SI NÉCESSAIRE</div>");
-            if (data.Bilans.AEnvisager.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-list'>");
-                foreach (var a in data.Bilans.AEnvisager)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(a)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("      </div>");
+            if (data.Bilans.Count > 0)
+                sb.Append(BuildPtActionsTable(data.Bilans, titreDetail: "Pour trancher"));
+            else
+                sb.AppendLine("      <p class='pt-col-text pt-col-none'>Aucun bilan complémentaire nécessaire à ce stade.</p>");
             sb.AppendLine("    </div></div>");
 
             // 4. Surveillance clinique
@@ -1690,38 +1744,128 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS DE SUIVI</div>");
             sb.AppendLine("    <div class='pt-card-body'>");
             if (data.Suivi.Count > 0)
-            {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var sv in data.Suivi)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(sv)}</div>");
-                sb.AppendLine("      </div>");
-            }
+                sb.Append(BuildPtActionsTable(data.Suivi));
             sb.AppendLine("    </div></div>");
 
             sb.AppendLine("  </div>"); // pt-cards-wrapper
 
-            // Notre engagement
-            if (!string.IsNullOrWhiteSpace(data.Engagement))
-                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+            // Rôle du pédopsychiatre — TEXTE FIXE, jamais généré. C'est un fait sur le
+            // fonctionnement du cabinet, pas une déduction clinique : le faire écrire par le
+            // modèle, c'est accepter qu'il écrive un jour « j'assurerai le suivi orthophonique ».
+            // Posé ici, il complète le porteur de chaque action : celui-ci dit qui fait quoi,
+            // celui-là dit ce que le médecin fait — et donc ce qu'il ne fait pas.
+            sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(RoleDuPedopsychiatre)}</div>");
 
             sb.AppendLine("</div>");
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Le rôle du pédopsychiatre dans le projet, tel qu'il est constant d'un dossier à
+        /// l'autre : préparer, veiller à l'application, ajuster, suivre l'évolution. Une
+        /// coordination clinique — pas une exécution.
+        /// </summary>
+        public const string RoleDuPedopsychiatre =
+            "Mon rôle est de préparer ce projet thérapeutique avec vous, de veiller à sa mise en œuvre, "
+          + "de l'ajuster au fil du temps en fonction de ce que nous observons, et d'en suivre l'évolution. "
+          + "Les interventions elles-mêmes sont portées par les professionnels et les partenaires indiqués "
+          + "en regard de chaque action.";
+
+        /// <summary>
+        /// Rend une liste d'actions en tableau : ce qu'on fait, qui le porte, pour quand, à quel
+        /// degré — et pour les bilans, ce que ça sert à trancher. Porteur et degré portent leur
+        /// pastille de couleur : « à trouver » en rouge parce que c'est ce qui bloque un parcours.
+        /// </summary>
+        /// <param name="titreDetail">
+        /// En-tête de la colonne de justification, ou null pour ne pas l'afficher :
+        /// « Pour trancher » sur un bilan, « Objectif visé » sur une rééducation.
+        /// </param>
+        /// <param name="avecEcheanceEtDegre">
+        /// false pour les ressources du quotidien : elles s'installent au lieu de se programmer,
+        /// et les hiérarchiser comme des soins serait un contresens.
+        /// </param>
+        private static string BuildPtActionsTable(
+            List<PtAction> actions,
+            string? titreDetail = null,
+            bool avecEcheanceEtDegre = true,
+            bool avecStatut = false)
+        {
+            var sb = new StringBuilder();
+            sb.AppendLine("      <table class='pt-actions'>");
+            sb.AppendLine("        <thead><tr>");
+            sb.AppendLine("          <th>Action</th>");
+            if (avecStatut)          sb.AppendLine("          <th>Statut</th>");
+            sb.AppendLine("          <th>Qui</th>");
+            if (avecEcheanceEtDegre) sb.AppendLine("          <th>Quand</th><th>Degré</th>");
+            if (titreDetail != null)  sb.AppendLine($"          <th>{WebUtility.HtmlEncode(titreDetail)}</th>");
+            sb.AppendLine("        </tr></thead>");
+            sb.AppendLine("        <tbody>");
+            foreach (var a in actions)
+            {
+                sb.AppendLine("          <tr>");
+                sb.AppendLine($"            <td class='pt-a-quoi'>{WebUtility.HtmlEncode(a.Quoi)}</td>");
+                if (avecStatut)
+                    sb.AppendLine(string.IsNullOrWhiteSpace(a.Statut)
+                        ? "            <td></td>"
+                        : $"            <td><span class='pt-tag' style='background:{PtStatutColor(a.Statut)}'>{WebUtility.HtmlEncode(a.Statut)}</span></td>");
+                sb.AppendLine(string.IsNullOrWhiteSpace(a.Porteur)
+                    ? "            <td></td>"
+                    : $"            <td><span class='pt-tag' style='background:{PtPorteurColor(a.Porteur)}'>{WebUtility.HtmlEncode(a.Porteur)}</span></td>");
+                if (avecEcheanceEtDegre)
+                {
+                    sb.AppendLine($"            <td class='pt-a-quand'>{WebUtility.HtmlEncode(a.Echeance)}</td>");
+                    sb.AppendLine(string.IsNullOrWhiteSpace(a.Degre)
+                        ? "            <td></td>"
+                        : $"            <td><span class='pt-tag' style='background:{PtDegreColor(a.Degre)}'>{WebUtility.HtmlEncode(a.Degre)}</span></td>");
+                }
+                if (titreDetail != null)
+                {
+                    var detail = string.IsNullOrWhiteSpace(a.PourTrancher) ? a.Objectif : a.PourTrancher;
+                    sb.AppendLine($"            <td class='pt-a-trancher'>{WebUtility.HtmlEncode(detail)}</td>");
+                }
+                sb.AppendLine("          </tr>");
+            }
+            sb.AppendLine("        </tbody>");
+            sb.AppendLine("      </table>");
+            return sb.ToString();
+        }
+
         // ── Projet Thérapeutique — 7.2 Accompagnement psychologique ───────────
+
+        /// <summary>
+        /// L'indication d'un accompagnement : elle COMMANDE la section. Un suivi psychologique
+        /// n'est pas automatique — sans cette décision en tête, la page se lisait comme une
+        /// prescription implicite, et un enfant déjà suivi se voyait proposer un projet écrit
+        /// comme si l'on partait de zéro.
+        /// </summary>
+        private sealed class PtIndication
+        {
+            public string Degre               { get; set; } = "";
+            public string Porteur             { get; set; } = "";
+            public string Motif               { get; set; } = "";
+            public string CritereReevaluation { get; set; } = "";
+
+            public bool EstRenseignee => !string.IsNullOrWhiteSpace(Degre) || !string.IsNullOrWhiteSpace(Motif);
+
+            /// <summary>Vrai quand le suivi n'est pas engagé maintenant : la section se replie alors
+            /// sur le motif et ce qui ferait reconsidérer, plutôt que d'aligner des objectifs.</summary>
+            public bool EstDifferee =>
+                Degre.Contains("réévaluer", StringComparison.OrdinalIgnoreCase) ||
+                Degre.Contains("non indiqu", StringComparison.OrdinalIgnoreCase);
+        }
 
         private sealed class PtS2Data
         {
-            public string       Intro               { get; set; } = "";
-            public List<string> Objectifs           { get; set; } = new();
-            public List<string> ResultatsAttendus   { get; set; } = new();
-            public List<string> Modalites           { get; set; } = new();
-            public List<string> PointsTravail       { get; set; } = new();
-            public List<string> OutilsUtilises      { get; set; } = new();
-            public List<string> Surveillance        { get; set; } = new();
-            public List<string> IndicateursPositifs { get; set; } = new();
-            public List<string> Suivi               { get; set; } = new();
-            public string       Engagement          { get; set; } = "";
+            public PtIndication Indication       { get; set; } = new();
+            public string       Intro            { get; set; } = "";
+            public List<string> Objectifs        { get; set; } = new();
+            public List<string> Modalites        { get; set; } = new();
+            public List<string> AxesTravail      { get; set; } = new();
+            public List<string> ReperesEvolution { get; set; } = new();
+            public List<string> PointsVigilance  { get; set; } = new();
+            /// <summary>Rempli seulement quand un psychologue suit déjà l'enfant : ce qu'on attend
+            /// de ce suivi, ce qu'on lui transmet, comment on se coordonne.</summary>
+            public List<string> Articulation     { get; set; } = new();
         }
 
         private static PtS2Data? TryParsePtS2Json(string? text)
@@ -1757,139 +1901,137 @@ namespace MedCompanion.Services.Restitutions
                 return sb.ToString();
             }
 
+            // ── L'indication, en tête : elle décide de ce qui suit ──────────
+            var ind = data.Indication;
+            if (ind.EstRenseignee)
+            {
+                var couleur = PtDegreColor(ind.Degre);
+                sb.AppendLine($"  <div class='pt-indication' style='border-left:4px solid {couleur}'>");
+                sb.AppendLine("    <div class='pt-indication-hdr'>");
+                sb.AppendLine("      <span class='pt-indication-label'>INDICATION</span>");
+                if (!string.IsNullOrWhiteSpace(ind.Degre))
+                    sb.AppendLine($"      <span class='pt-tag' style='background:{couleur}'>{WebUtility.HtmlEncode(ind.Degre)}</span>");
+                if (!string.IsNullOrWhiteSpace(ind.Porteur))
+                    sb.AppendLine($"      <span class='pt-tag' style='background:{PtPorteurColor(ind.Porteur)}'>{WebUtility.HtmlEncode(ind.Porteur)}</span>");
+                sb.AppendLine("    </div>");
+                if (!string.IsNullOrWhiteSpace(ind.Motif))
+                    sb.AppendLine($"    <div class='pt-indication-motif'>{WebUtility.HtmlEncode(ind.Motif)}</div>");
+                if (!string.IsNullOrWhiteSpace(ind.CritereReevaluation))
+                    sb.AppendLine($"    <div class='pt-indication-crit'><strong>À reconsidérer si :</strong> {WebUtility.HtmlEncode(ind.CritereReevaluation)}</div>");
+                sb.AppendLine("  </div>");
+            }
+
             if (!string.IsNullOrWhiteSpace(data.Intro))
                 sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
 
+            // Suivi différé ou non indiqué : l'indication et son critère disent tout. Aligner
+            // des objectifs sous une indication qu'on vient d'écarter serait se contredire.
+            if (ind.EstDifferee && data.Objectifs.Count == 0 && data.AxesTravail.Count == 0)
+            {
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
+
             sb.AppendLine("  <div class='pt-cards-wrapper'>");
+            int num = 1;
 
-            // 1. Objectifs + Résultats attendus
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            sb.AppendLine("      <div class='pt-two-cols'>");
-            sb.AppendLine("        <div class='pt-col'>");
-            if (data.Objectifs.Count > 0)
+            void CarteListe(string titre, List<string> items, string? sousTitre = null, bool check = false)
             {
-                sb.AppendLine("          <ul class='sd-list'>");
-                foreach (var o in data.Objectifs)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(o)}</li>");
-                sb.AppendLine("          </ul>");
+                if (items.Count == 0) return;
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> {WebUtility.HtmlEncode(titre)}</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                if (!string.IsNullOrWhiteSpace(sousTitre))
+                    sb.AppendLine($"      <div class='pt-col-hdr'>{WebUtility.HtmlEncode(sousTitre)}</div>");
+                sb.AppendLine($"      <ul class='{(check ? "sd-check-list" : "sd-list")}'>");
+                foreach (var i in items)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(i)}</li>");
+                sb.AppendLine("      </ul>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>RÉSULTATS ATTENDUS</div>");
-            if (data.ResultatsAttendus.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var r in data.ResultatsAttendus)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("      </div>");
-            sb.AppendLine("    </div></div>");
 
-            // 2. Modalités d'accompagnement proposées
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> MODALITÉS D'ACCOMPAGNEMENT PROPOSÉES</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
+            // Suivi déjà en place : l'articulation passe en premier — c'est ce qui change par
+            // rapport à un suivi à mettre en place.
+            CarteListe("ARTICULATION AVEC LE SUIVI EN PLACE", data.Articulation);
+            CarteListe("OBJECTIFS", data.Objectifs);
+
             if (data.Modalites.Count > 0)
             {
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> CADRE PROPOSÉ</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
                 sb.AppendLine("      <div class='pt-suivi-cards'>");
                 foreach (var m in data.Modalites)
                     sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(m)}</div>");
                 sb.AppendLine("      </div>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
 
-            // 3. Points de travail prioritaires + Outils utilisés
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> POINTS DE TRAVAIL PRIORITAIRES</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            sb.AppendLine("      <div class='pt-two-cols'>");
-            sb.AppendLine("        <div class='pt-col'>");
-            if (data.PointsTravail.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-list'>");
-                foreach (var p in data.PointsTravail)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(p)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>OUTILS UTILISÉS</div>");
-            if (data.OutilsUtilises.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var t in data.OutilsUtilises)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(t)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("      </div>");
-            sb.AppendLine("    </div></div>");
+            CarteListe("AXES DE TRAVAIL", data.AxesTravail);
 
-            // 4. Surveillance et indicateurs d'évolution
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> SURVEILLANCE ET INDICATEURS D'ÉVOLUTION</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            sb.AppendLine("      <div class='pt-two-cols'>");
-            sb.AppendLine("        <div class='pt-col'>");
-            if (data.Surveillance.Count > 0)
+            // Repères et vigilance côte à côte : les deux faces d'une même surveillance.
+            if (data.ReperesEvolution.Count > 0 || data.PointsVigilance.Count > 0)
             {
-                sb.AppendLine("          <ul class='sd-list'>");
-                foreach (var s in data.Surveillance)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(s)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>INDICATEURS POSITIFS ATTENDUS</div>");
-            if (data.IndicateursPositifs.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var i in data.IndicateursPositifs)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(i)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("      </div>");
-            sb.AppendLine("    </div></div>");
-
-            // 5. Modalités de suivi
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS DE SUIVI</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.Suivi.Count > 0)
-            {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var sv in data.Suivi)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(sv)}</div>");
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> SUIVRE L'ÉVOLUTION</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.AppendLine("      <div class='pt-two-cols'>");
+                sb.AppendLine("        <div class='pt-col'>");
+                sb.AppendLine("          <div class='pt-col-hdr'>CE QUI MONTRERAIT QUE ÇA AVANCE</div>");
+                if (data.ReperesEvolution.Count > 0)
+                {
+                    sb.AppendLine("          <ul class='sd-check-list'>");
+                    foreach (var r in data.ReperesEvolution)
+                        sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
+                    sb.AppendLine("          </ul>");
+                }
+                sb.AppendLine("        </div>");
+                sb.AppendLine("        <div class='pt-col'>");
+                sb.AppendLine("          <div class='pt-col-hdr'>CE QUI FERAIT RÉAJUSTER</div>");
+                if (data.PointsVigilance.Count > 0)
+                {
+                    sb.AppendLine("          <ul class='sd-list'>");
+                    foreach (var p in data.PointsVigilance)
+                        sb.AppendLine($"            <li>{WebUtility.HtmlEncode(p)}</li>");
+                    sb.AppendLine("          </ul>");
+                }
+                sb.AppendLine("        </div>");
                 sb.AppendLine("      </div>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
 
             sb.AppendLine("  </div>"); // pt-cards-wrapper
 
-            if (!string.IsNullOrWhiteSpace(data.Engagement))
-                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+            sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(RoleDuPedopsychiatre)}</div>");
 
             sb.AppendLine("</div>");
             return sb.ToString();
         }
 
+
         // ── Projet Thérapeutique — 7.3 Soutien développemental ─────────────────
 
+        /// <summary>
+        /// Le soutien développemental porte DEUX natures que rien ne doit confondre.
+        ///
+        /// Les rééducations sont des soins : prescrites, portées par un professionnel de santé,
+        /// avec bilan, compte-rendu, délais d'attente et coût — elles se hiérarchisent, d'où
+        /// leur degré et leur échéance. Les ressources du quotidien — sport, relaxation, rythme
+        /// de sommeil — ne se prescrivent pas : elles s'installent. Leur donner un degré
+        /// (« sophrologie : indispensable ») n'aurait aucun sens ; ce qu'il leur faut, c'est un
+        /// objectif précis, seul capable de faire tenir une famille dans la durée.
+        ///
+        /// Mêlées dans une même liste, elles pesaient pareil : un parent pouvait engager la
+        /// sophrologie — immédiate et gratuite — et différer l'orthophonie.
+        /// </summary>
         private sealed class PtS3Data
         {
-            public string       Intro                { get; set; } = "";
-            public List<string> Objectifs            { get; set; } = new();
-            public List<string> Interventions        { get; set; } = new();
-            public List<string> AxesPrioritaires     { get; set; } = new();
-            public List<string> RessourcesEnfant     { get; set; } = new();
-            public List<string> IndicateursEvolution { get; set; } = new();
-            public List<string> Reevaluation         { get; set; } = new();
-            public string       Engagement           { get; set; } = "";
+            public string        Intro            { get; set; } = "";
+            public List<string>  Objectifs        { get; set; } = new();
+            public List<PtAction> Reeducations    { get; set; } = new();
+            public List<PtAction> RessourcesVie   { get; set; } = new();
+            public List<string>  ReperesEvolution { get; set; } = new();
+            public List<string>  Reevaluation     { get; set; } = new();
         }
 
         private static PtS3Data? TryParsePtS3Json(string? text)
@@ -1915,7 +2057,7 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("<div class='page ce-page pt-page'>");
             sb.Append(BuildPcHeader(
                 "PROJET THÉRAPEUTIQUE",
-                "7.3 Soutien développemental — Accompagner le développement global de l'enfant",
+                "7.3 Soutien développemental — Rééducations et ressources du quotidien",
                 "", pageNumber, totalPages));
 
             if (data == null)
@@ -1929,108 +2071,97 @@ namespace MedCompanion.Services.Restitutions
                 sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
 
             sb.AppendLine("  <div class='pt-cards-wrapper'>");
+            int num = 1;
 
             // 1. Objectifs
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
             if (data.Objectifs.Count > 0)
             {
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> OBJECTIFS</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
                 sb.AppendLine("      <ul class='sd-list'>");
                 foreach (var o in data.Objectifs)
                     sb.AppendLine($"        <li>{WebUtility.HtmlEncode(o)}</li>");
                 sb.AppendLine("      </ul>");
+                sb.AppendLine("    </div></div>");
             }
+
+            // 2. Rééducations — des soins : portés, datés, hiérarchisés.
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> RÉÉDUCATIONS ET PRISES EN CHARGE</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.Reeducations.Count > 0)
+                sb.Append(BuildPtActionsTable(data.Reeducations, titreDetail: "Objectif visé"));
+            else
+                sb.AppendLine("      <p class='pt-col-text pt-col-none'>Aucune rééducation indiquée à ce stade.</p>");
             sb.AppendLine("    </div></div>");
 
-            // 2. Interventions proposées (chips)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> INTERVENTIONS PROPOSÉES</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.Interventions.Count > 0)
+            // 3. Ressources du quotidien — ni degré ni échéance : elles s'installent.
+            if (data.RessourcesVie.Count > 0)
             {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var iv in data.Interventions)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(iv)}</div>");
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> RESSOURCES DU QUOTIDIEN</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.Append(BuildPtActionsTable(data.RessourcesVie, titreDetail: "Ce que cela apporte", avecEcheanceEtDegre: false));
+                sb.AppendLine("    </div></div>");
+            }
+
+            // 4. Repères d'évolution + réévaluation
+            if (data.ReperesEvolution.Count > 0 || data.Reevaluation.Count > 0)
+            {
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> SUIVRE L'ÉVOLUTION</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.AppendLine("      <div class='pt-two-cols'>");
+                sb.AppendLine("        <div class='pt-col'>");
+                sb.AppendLine("          <div class='pt-col-hdr'>CE QUI MONTRERAIT QUE ÇA AVANCE</div>");
+                if (data.ReperesEvolution.Count > 0)
+                {
+                    sb.AppendLine("          <ul class='sd-check-list'>");
+                    foreach (var r in data.ReperesEvolution)
+                        sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
+                    sb.AppendLine("          </ul>");
+                }
+                sb.AppendLine("        </div>");
+                sb.AppendLine("        <div class='pt-col'>");
+                sb.AppendLine("          <div class='pt-col-hdr'>RÉÉVALUATION</div>");
+                if (data.Reevaluation.Count > 0)
+                {
+                    sb.AppendLine("          <ul class='sd-list'>");
+                    foreach (var r in data.Reevaluation)
+                        sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
+                    sb.AppendLine("          </ul>");
+                }
+                sb.AppendLine("        </div>");
                 sb.AppendLine("      </div>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
-
-            // 3. Axes prioritaires issus de l'évaluation
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> AXES PRIORITAIRES ISSUS DE L'ÉVALUATION</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.AxesPrioritaires.Count > 0)
-            {
-                sb.AppendLine("      <ul class='sd-list'>");
-                foreach (var a in data.AxesPrioritaires)
-                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(a)}</li>");
-                sb.AppendLine("      </ul>");
-            }
-            sb.AppendLine("    </div></div>");
-
-            // 4. Ressources de l'enfant + Indicateurs d'évolution attendus
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> RESSOURCES &amp; INDICATEURS D'ÉVOLUTION</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            sb.AppendLine("      <div class='pt-two-cols'>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>RESSOURCES DE L'ENFANT</div>");
-            if (data.RessourcesEnfant.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var r in data.RessourcesEnfant)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(r)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>INDICATEURS D'ÉVOLUTION ATTENDUS</div>");
-            if (data.IndicateursEvolution.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var i in data.IndicateursEvolution)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(i)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("      </div>");
-            sb.AppendLine("    </div></div>");
-
-            // 5. Modalités de réévaluation (chips)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS DE RÉÉVALUATION</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.Reevaluation.Count > 0)
-            {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var rv in data.Reevaluation)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(rv)}</div>");
-                sb.AppendLine("      </div>");
-            }
-            sb.AppendLine("    </div></div>");
 
             sb.AppendLine("  </div>"); // pt-cards-wrapper
 
-            if (!string.IsNullOrWhiteSpace(data.Engagement))
-                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+            sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(RoleDuPedopsychiatre)}</div>");
 
             sb.AppendLine("</div>");
             return sb.ToString();
         }
 
+
         // ── Projet Thérapeutique — 7.4 Accompagnement parental, familial et éducatif ──
 
+        /// <summary>
+        /// Trois natures qui ne se confondent pas : soutenir les PARENTS (le médecin lui-même
+        /// en situation simple, un professionnel quand elle se complique), faire intervenir un
+        /// TIERS dans le quotidien (SESSAD, éducateur, AEMO — autres circuits, autres délais),
+        /// et ce que la FAMILLE ajuste seule, qui ne se programme ni ne se hiérarchise.
+        /// </summary>
         private sealed class PtS4Data
         {
-            public string       Intro               { get; set; } = "";
-            public List<string> Objectifs           { get; set; } = new();
-            public List<string> AxesPrioritaires    { get; set; } = new();
-            public List<string> Outils              { get; set; } = new();
-            public List<string> ForcesFamiliales    { get; set; } = new();
-            public List<string> ObjectifsCourtTerme { get; set; } = new();
-            public List<string> Modalites           { get; set; } = new();
-            public string       Engagement          { get; set; } = "";
+            public string        Intro                   { get; set; } = "";
+            public List<string>  Objectifs               { get; set; } = new();
+            public List<PtAction> AccompagnementParents  { get; set; } = new();
+            public List<PtAction> InterventionsEducatives { get; set; } = new();
+            public List<PtAction> AuQuotidien            { get; set; } = new();
+            public List<string>  ReperesEvolution        { get; set; } = new();
         }
 
         private static PtS4Data? TryParsePtS4Json(string? text)
@@ -2056,7 +2187,7 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("<div class='page ce-page pt-page'>");
             sb.Append(BuildPcHeader(
                 "PROJET THÉRAPEUTIQUE",
-                "7.4 Accompagnement parental, familial et éducatif — Soutenir la famille pour accompagner l'enfant",
+                "7.4 Accompagnement parental, familial et éducatif",
                 "", pageNumber, totalPages));
 
             if (data == null)
@@ -2070,108 +2201,89 @@ namespace MedCompanion.Services.Restitutions
                 sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
 
             sb.AppendLine("  <div class='pt-cards-wrapper'>");
+            int num = 1;
 
-            // 1. Objectifs
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
             if (data.Objectifs.Count > 0)
             {
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> OBJECTIFS</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
                 sb.AppendLine("      <ul class='sd-list'>");
                 foreach (var o in data.Objectifs)
                     sb.AppendLine($"        <li>{WebUtility.HtmlEncode(o)}</li>");
                 sb.AppendLine("      </ul>");
+                sb.AppendLine("    </div></div>");
             }
+
+            // Soutenir les parents eux-mêmes — porté par le médecin en situation simple,
+            // par un professionnel quand elle se complique.
+            if (data.AccompagnementParents.Count > 0)
+            {
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> ACCOMPAGNEMENT DES PARENTS</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.Append(BuildPtActionsTable(data.AccompagnementParents, titreDetail: "Objectif visé"));
+                sb.AppendLine("    </div></div>");
+            }
+
+            // Un tiers dans le quotidien. L'absence est une réponse : on l'écrit plutôt que de
+            // laisser une carte vide, qui se lirait comme un oubli.
+            sb.AppendLine("  <div class='pt-card'>");
+            sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> INTERVENTIONS ÉDUCATIVES</div>");
+            sb.AppendLine("    <div class='pt-card-body'>");
+            if (data.InterventionsEducatives.Count > 0)
+                sb.Append(BuildPtActionsTable(data.InterventionsEducatives, titreDetail: "Objectif visé"));
+            else
+                sb.AppendLine("      <p class='pt-col-text pt-col-none'>Aucune intervention éducative extérieure nécessaire à ce stade.</p>");
             sb.AppendLine("    </div></div>");
 
-            // 2. Axes prioritaires issus de la cartographie environnementale
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> AXES PRIORITAIRES — CARTOGRAPHIE ENVIRONNEMENTALE</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.AxesPrioritaires.Count > 0)
+            // Ce que la famille ajuste elle-même : ni échéance ni degré.
+            if (data.AuQuotidien.Count > 0)
             {
-                sb.AppendLine("      <ul class='sd-list'>");
-                foreach (var a in data.AxesPrioritaires)
-                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(a)}</li>");
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> AU QUOTIDIEN</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.Append(BuildPtActionsTable(data.AuQuotidien, titreDetail: "Ce que cela apporte", avecEcheanceEtDegre: false));
+                sb.AppendLine("    </div></div>");
+            }
+
+            if (data.ReperesEvolution.Count > 0)
+            {
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> CE QUI MONTRERAIT QUE ÇA AVANCE</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.AppendLine("      <ul class='sd-check-list'>");
+                foreach (var r in data.ReperesEvolution)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(r)}</li>");
                 sb.AppendLine("      </ul>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
-
-            // 3. Outils et ressources proposés (chips)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> OUTILS ET RESSOURCES PROPOSÉS</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.Outils.Count > 0)
-            {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var ot in data.Outils)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(ot)}</div>");
-                sb.AppendLine("      </div>");
-            }
-            sb.AppendLine("    </div></div>");
-
-            // 4. Forces familiales + Objectifs à court terme
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> FORCES FAMILIALES &amp; OBJECTIFS À COURT TERME</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            sb.AppendLine("      <div class='pt-two-cols'>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>FORCES FAMILIALES IDENTIFIÉES</div>");
-            if (data.ForcesFamiliales.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var f in data.ForcesFamiliales)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(f)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>OBJECTIFS À COURT TERME</div>");
-            if (data.ObjectifsCourtTerme.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var oct in data.ObjectifsCourtTerme)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(oct)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("      </div>");
-            sb.AppendLine("    </div></div>");
-
-            // 5. Modalités d'accompagnement (chips)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS D'ACCOMPAGNEMENT</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.Modalites.Count > 0)
-            {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var m in data.Modalites)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(m)}</div>");
-                sb.AppendLine("      </div>");
-            }
-            sb.AppendLine("    </div></div>");
 
             sb.AppendLine("  </div>"); // pt-cards-wrapper
 
-            if (!string.IsNullOrWhiteSpace(data.Engagement))
-                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+            sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(RoleDuPedopsychiatre)}</div>");
 
             sb.AppendLine("</div>");
             return sb.ToString();
         }
 
+
         // ── Projet Thérapeutique — 7.5 École & apprentissages ───────────────────
 
+        /// <summary>
+        /// La seule section où le médecin écrit AVANT la génération. Un dispositif scolaire
+        /// n'est pas une orientation clinique mais une décision administrative — PAP par le
+        /// médecin scolaire, PPS et AESH par la MDPH — et ce dossier circule jusqu'à l'école.
+        /// Le modèle ne propose donc jamais de dispositif : il décline ce que le médecin a posé,
+        /// ou, si rien n'est posé, se limite à des conseils applicables sans procédure.
+        /// </summary>
         private sealed class PtS5Data
         {
-            public string       Intro                { get; set; } = "";
-            public List<string> Objectifs            { get; set; } = new();
-            public List<string> Amenagements         { get; set; } = new();
-            public List<string> Coordination         { get; set; } = new();
-            public List<string> PointsAppui          { get; set; } = new();
-            public List<string> IndicateursEvolution { get; set; } = new();
-            public List<string> Reevaluation         { get; set; } = new();
-            public string       Engagement           { get; set; } = "";
+            public List<PtAction> CadreScolaire    { get; set; } = new();
+            public string        Intro             { get; set; } = "";
+            public List<string>  Amenagements      { get; set; } = new();
+            public List<string>  Coordination      { get; set; } = new();
+            public List<string>  ReperesEvolution  { get; set; } = new();
         }
 
         private static PtS5Data? TryParsePtS5Json(string? text)
@@ -2197,7 +2309,7 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("<div class='page ce-page pt-page'>");
             sb.Append(BuildPcHeader(
                 "PROJET THÉRAPEUTIQUE",
-                "7.5 École et apprentissages — Favoriser la réussite scolaire et le bien-être à l'école",
+                "7.5 École et apprentissages",
                 "", pageNumber, totalPages));
 
             if (data == null)
@@ -2211,95 +2323,69 @@ namespace MedCompanion.Services.Restitutions
                 sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
 
             sb.AppendLine("  <div class='pt-cards-wrapper'>");
+            int num = 1;
 
-            // 1. Objectifs
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> OBJECTIFS</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.Objectifs.Count > 0)
+            // Le cadre scolaire n'est rendu que si le médecin en a posé un. Aucun dispositif
+            // n'est jamais suggéré ici : c'est une décision administrative qui n'appartient
+            // qu'à lui, et ce dossier circule jusqu'à l'école.
+            if (data.CadreScolaire.Count > 0)
             {
-                sb.AppendLine("      <ul class='sd-list'>");
-                foreach (var o in data.Objectifs)
-                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(o)}</li>");
-                sb.AppendLine("      </ul>");
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> CADRE SCOLAIRE</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.Append(BuildPtActionsTable(data.CadreScolaire, titreDetail: "Ce qu'il permet", avecStatut: true));
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
 
-            // 2. Aménagements et adaptations proposés (chips)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> AMÉNAGEMENTS ET ADAPTATIONS PROPOSÉS</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
             if (data.Amenagements.Count > 0)
             {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var am in data.Amenagements)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(am)}</div>");
-                sb.AppendLine("      </div>");
+                sb.AppendLine("  <div class='pt-card'>");
+                var titre = data.CadreScolaire.Count > 0
+                    ? "AMÉNAGEMENTS PÉDAGOGIQUES"
+                    : "CONSEILS PÉDAGOGIQUES";
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> {titre}</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                if (data.CadreScolaire.Count == 0)
+                    sb.AppendLine("      <p class='pt-col-text pt-col-none'>Applicables directement en classe, sans démarche particulière.</p>");
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var a in data.Amenagements)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(a)}</li>");
+                sb.AppendLine("      </ul>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
 
-            // 3. Coordination et communication (chips)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> COORDINATION ET COMMUNICATION</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
             if (data.Coordination.Count > 0)
             {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var co in data.Coordination)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(co)}</div>");
-                sb.AppendLine("      </div>");
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> LIEN AVEC L'ÉCOLE</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var c in data.Coordination)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(c)}</li>");
+                sb.AppendLine("      </ul>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
 
-            // 4. Points d'appui à l'école + Indicateurs d'évolution
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> POINTS D'APPUI &amp; INDICATEURS D'ÉVOLUTION</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            sb.AppendLine("      <div class='pt-two-cols'>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>POINTS D'APPUI À L'ÉCOLE</div>");
-            if (data.PointsAppui.Count > 0)
+            if (data.ReperesEvolution.Count > 0)
             {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var p in data.PointsAppui)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(p)}</li>");
-                sb.AppendLine("          </ul>");
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num++}</span> CE QUI MONTRERAIT QUE ÇA AVANCE</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.AppendLine("      <ul class='sd-check-list'>");
+                foreach (var r in data.ReperesEvolution)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(r)}</li>");
+                sb.AppendLine("      </ul>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("        <div class='pt-col'>");
-            sb.AppendLine("          <div class='pt-col-hdr'>INDICATEURS D'ÉVOLUTION ATTENDUS</div>");
-            if (data.IndicateursEvolution.Count > 0)
-            {
-                sb.AppendLine("          <ul class='sd-check-list'>");
-                foreach (var i in data.IndicateursEvolution)
-                    sb.AppendLine($"            <li>{WebUtility.HtmlEncode(i)}</li>");
-                sb.AppendLine("          </ul>");
-            }
-            sb.AppendLine("        </div>");
-            sb.AppendLine("      </div>");
-            sb.AppendLine("    </div></div>");
-
-            // 5. Modalités de réévaluation (chips)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> MODALITÉS DE RÉÉVALUATION</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.Reevaluation.Count > 0)
-            {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var rv in data.Reevaluation)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(rv)}</div>");
-                sb.AppendLine("      </div>");
-            }
-            sb.AppendLine("    </div></div>");
 
             sb.AppendLine("  </div>"); // pt-cards-wrapper
 
-            if (!string.IsNullOrWhiteSpace(data.Engagement))
-                sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
+            sb.AppendLine($"  <div class='pt-engagement'>{WebUtility.HtmlEncode(RoleDuPedopsychiatre)}</div>");
 
             sb.AppendLine("</div>");
             return sb.ToString();
         }
+
 
         // ── Section 8 — Conclusion et perspectives ─────────────────────────────
 
@@ -2549,31 +2635,9 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-            // Feuilles V2 (séance 3) prioritaires, feuille par feuille — la V1 reste le repli
-            // des anciens dossiers. Recâblées : feuille 1 (Famille).
-            var feuillesV2 = envV2 != null
-                ? Models.Evaluations.LectureEnvironnementV2.Construire(envV2.CotationsEnv, envV2.ReponsesParent)
-                : null;
-            var familleV2 = feuillesV2?.FirstOrDefault(f => f.Key == "famille" && f.NbTotal > 0 && f.NbManquants < f.NbTotal);
-
             bool auMoinsUneCarte = false;
-
-            if (familleV2 != null)
-            {
-                sb.Append(BuildFeuilleCardV2(1, familleV2, blocs.GetValueOrDefault("env_edu_f1")));
-                auMoinsUneCarte = true;
-            }
-            else if (carto != null)
-            {
-                sb.Append(BuildFeuilleCard(1, carto.Famille, blocs.GetValueOrDefault("env_edu_f1")));
-                auMoinsUneCarte = true;
-            }
-
-            if (carto != null)
-            {
-                sb.Append(BuildFeuilleCard(2, carto.EcolePairs, blocs.GetValueOrDefault("env_edu_f2")));
-                auMoinsUneCarte = true;
-            }
+            auMoinsUneCarte |= AppendFeuilleCard(sb, 1, "famille",     carto?.Famille,    envV2, blocs);
+            auMoinsUneCarte |= AppendFeuilleCard(sb, 2, "ecole_pairs", carto?.EcolePairs, envV2, blocs);
 
             if (!auMoinsUneCarte)
             {
@@ -2592,7 +2656,78 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-        private string BuildEnvEduPage2(CartographieEnvironnement? carto, Dictionary<string, string> blocs, int pageNumber, int totalPages)
+        /// <summary>
+        /// Niveau global de la branche éducative en V2 : couleur et libellé de repli.
+        ///
+        /// La branche ne prend une couleur que si TOUTES ses feuilles sont lisibles — même
+        /// règle qu'une feuille vis-à-vis de ses nervures. Une seule feuille incomplète et
+        /// c'est gris : conclure sur l'environnement d'un enfant à partir d'une moitié de
+        /// questionnaire donnerait une teinte qui a l'air d'un résultat.
+        /// </summary>
+        private static (string couleur, string label) NiveauGlobalV2(SeanceEnvironnement envV2)
+        {
+            var feuilles = Models.Evaluations.LectureEnvironnementV2
+                .Construire(envV2.CotationsEnv, envV2.ReponsesParent)
+                .Where(f => f.NbTotal > 0)
+                .ToList();
+
+            if (feuilles.Count == 0 || !feuilles.All(f => f.EstLisible))
+                return (Models.Evaluations.LectureEnvironnementV2.GrisIndetermine, "Lecture partielle");
+
+            var nbOui   = feuilles.Sum(f => f.NbOui);
+            var nbTotal = feuilles.Sum(f => f.NbTotal);
+            var niveau  = Models.Evaluations.LectureEnvironnementV2.NiveauPourPart(
+                nbTotal == 0 ? 0 : (double)nbOui / nbTotal);
+            return (CartographieContent.NiveauColor(niveau), CartographieContent.NiveauLabel(niveau));
+        }
+
+        private static (string couleur, string label) NiveauGlobalV1(CartographieEnvironnement carto)
+        {
+            var niveau = EnvironnementScoringService.CalculerGlobal(carto);
+            return (CartographieEnvironnementContent.NiveauColor(niveau),
+                    CartographieEnvironnementContent.NiveauLabel(niveau));
+        }
+
+        /// <summary>
+        /// Ajoute la carte d'une feuille : la version V2 (séance 3) si cette feuille y porte au
+        /// moins une réponse, sinon la version V1 de l'ancien parcours, sinon rien. Retourne
+        /// true si une carte a été écrite — pour que la page sache si elle est vide.
+        ///
+        /// Écrit une seule fois ici plutôt que répété dans les trois pages : c'est la règle de
+        /// bascule V2/V1, elle doit être la même partout.
+        /// </summary>
+        private static bool AppendFeuilleCard(
+            StringBuilder sb,
+            int num,
+            string feuilleKeyV2,
+            FeuilleEnvironnement? feuilleV1,
+            SeanceEnvironnement? envV2,
+            Dictionary<string, string> blocs)
+        {
+            var contenu = blocs.GetValueOrDefault($"env_edu_f{num}");
+
+            if (envV2 != null)
+            {
+                var feuilleV2 = Models.Evaluations.LectureEnvironnementV2
+                    .Construire(envV2.CotationsEnv, envV2.ReponsesParent)
+                    .FirstOrDefault(f => f.Key == feuilleKeyV2 && f.NbTotal > 0 && f.NbManquants < f.NbTotal);
+                if (feuilleV2 != null)
+                {
+                    sb.Append(BuildFeuilleCardV2(num, feuilleV2, contenu));
+                    return true;
+                }
+            }
+
+            if (feuilleV1 != null)
+            {
+                sb.Append(BuildFeuilleCard(num, feuilleV1, contenu));
+                return true;
+            }
+
+            return false;
+        }
+
+        private string BuildEnvEduPage2(CartographieEnvironnement? carto, SeanceEnvironnement? envV2, Dictionary<string, string> blocs, int pageNumber, int totalPages)
 
         {
 
@@ -2610,22 +2745,15 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-            if (carto != null)
+            // Feuille 4 : « Valeurs sociétales » (V1) devient « Cadre & repères » (V2), qui
+            // absorbe aussi l'ancien Cadre Éducatif — d'où la carte 5 sans équivalent V2.
+            bool auMoinsUneCarte = false;
+            auMoinsUneCarte |= AppendFeuilleCard(sb, 3, "ecrans",        carto?.EcransMedias,      envV2, blocs);
+            auMoinsUneCarte |= AppendFeuilleCard(sb, 4, "cadre_reperes", carto?.ValeursSocietales, envV2, blocs);
 
+            if (!auMoinsUneCarte)
             {
-
-                sb.Append(BuildFeuilleCard(3, carto.EcransMedias, blocs.GetValueOrDefault("env_edu_f3")));
-
-                sb.Append(BuildFeuilleCard(4, carto.ValeursSocietales, blocs.GetValueOrDefault("env_edu_f4")));
-
-            }
-
-            else
-
-            {
-
                 sb.AppendLine("<p class='placeholder'><em>Aucune évaluation Cartographie de l'environnement disponible — complétez l'Étape 4 de l'évaluation.</em></p>");
-
             }
 
 
@@ -2640,7 +2768,7 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-        private string BuildEnvEduPage3(CartographieEnvironnement? carto, Dictionary<string, string> blocs, int pageNumber, int totalPages)
+        private string BuildEnvEduPage3(CartographieEnvironnement? carto, SeanceEnvironnement? envV2, Dictionary<string, string> blocs, int pageNumber, int totalPages)
 
         {
 
@@ -2658,44 +2786,53 @@ namespace MedCompanion.Services.Restitutions
 
 
 
-            if (carto != null)
+            // La carte 5 (Cadre Éducatif) n'existe que dans l'ancien parcours : en V2 elle est
+            // fusionnée dans « Cadre & repères » (carte 4). On ne la rend donc que pour les
+            // dossiers V1 — afficher une carte vide ferait croire à une dimension non explorée.
+            bool aDesFeuillesV2 = envV2 != null
+                && Models.Evaluations.LectureEnvironnementV2
+                    .Construire(envV2.CotationsEnv, envV2.ReponsesParent)
+                    .Any(f => f.NbTotal > 0 && f.NbManquants < f.NbTotal);
 
+            bool auMoinsUnContenu = false;
+
+            if (!aDesFeuillesV2 && carto != null)
             {
-
                 sb.Append(BuildFeuilleCard(5, carto.CadreEducatif, blocs.GetValueOrDefault("env_edu_f5")));
-
-
-
-                // Lecture globale
-
-                var globalTxt = blocs.GetValueOrDefault("env_edu_global");
-
-                var niveauGlobal = EnvironnementScoringService.CalculerGlobal(carto);
-
-                var colorGlobal  = CartographieEnvironnementContent.NiveauColor(niveauGlobal);
-
-                sb.AppendLine("<div class='env-global-box' style='border-left:4px solid " + colorGlobal + "'>");
-
-                sb.AppendLine("  <div class='env-global-title'>LECTURE GLOBALE DE LA BRANCHE ÉDUCATIVE</div>");
-
-                if (!string.IsNullOrWhiteSpace(globalTxt))
-
-                    sb.AppendLine($"  <div class='env-global-body'>{MarkdownToHtmlLite(globalTxt)}</div>");
-
-                else
-
-                    sb.AppendLine("  <p class='placeholder'><em>(Lecture globale à générer — bouton ✨ Suggérer)</em></p>");
-
-                sb.AppendLine("</div>");
-
+                auMoinsUnContenu = true;
             }
 
-            else
-
+            if (aDesFeuillesV2 || carto != null)
             {
+                // Lecture globale
+                var globalTxt = blocs.GetValueOrDefault("env_edu_global");
 
+                var (colorGlobal, labelParDefaut) = aDesFeuillesV2
+                    ? NiveauGlobalV2(envV2!)
+                    : NiveauGlobalV1(carto!);
+
+                // Même règle que les cartes de feuille : la couleur vient des cotations, le
+                // libellé du mot-clé rédigé par Med quand il existe.
+                var labelGlobal = TryExtractNiveauLabelFromBloc(globalTxt) ?? labelParDefaut;
+
+                sb.AppendLine("<div class='env-global-box' style='border-left:4px solid " + colorGlobal + "'>");
+                sb.AppendLine("  <div class='env-global-hdr'>");
+                sb.AppendLine("    <div class='env-global-title'>LECTURE GLOBALE DE LA BRANCHE ÉDUCATIVE</div>");
+                sb.AppendLine($"    <div class='env-global-badge' style='background:{colorGlobal}'>{WebUtility.HtmlEncode(labelGlobal)}</div>");
+                sb.AppendLine("  </div>");
+                if (!string.IsNullOrWhiteSpace(globalTxt))
+                    // ParseEnvFeuilleHtml retire la section « Niveau clinique » du corps : elle
+                    // est déjà dans le badge, la répéter alourdirait la boîte.
+                    sb.AppendLine($"  <div class='env-global-body'>{ParseEnvFeuilleHtml(globalTxt)}</div>");
+                else
+                    sb.AppendLine("  <p class='placeholder'><em>(Lecture globale à générer — bouton ✨ Suggérer)</em></p>");
+                sb.AppendLine("</div>");
+                auMoinsUnContenu = true;
+            }
+
+            if (!auMoinsUnContenu)
+            {
                 sb.AppendLine("<p class='placeholder'><em>Aucune évaluation Cartographie de l'environnement disponible — complétez l'Étape 4 de l'évaluation.</em></p>");
-
             }
 
 
@@ -2736,21 +2873,14 @@ namespace MedCompanion.Services.Restitutions
 
         {
 
-            // Priorité : niveau produit par le LLM dans le bloc restitution (plus riche car basé
-            // sur le dossier complet + synthèse). Fallback sur le scoring évaluation (checkboxes)
-            // si le bloc n'a pas encore été généré.
-            var llmNiveau = TryExtractNiveauClinicFromBloc(contenu);
-            string couleur, niveauLabel;
-            if (llmNiveau.HasValue)
-            {
-                (couleur, niveauLabel) = llmNiveau.Value;
-            }
-            else
-            {
-                var niveauFeuille = EnvironnementScoringService.CalculerFeuille(feuille);
-                couleur     = CartographieEnvironnementContent.NiveauColor(niveauFeuille);
-                niveauLabel = CartographieEnvironnementContent.NiveauLabel(niveauFeuille);
-            }
+            // Couleur = scoring de l'évaluation (les cases cochées), libellé = mot-clé rédigé
+            // par Med s'il existe. Voir TryExtractNiveauLabelFromBloc : faire dépendre la
+            // couleur du vocabulaire du modèle produisait des badges gris sur des feuilles
+            // colorées.
+            var niveauFeuille = EnvironnementScoringService.CalculerFeuille(feuille);
+            var couleur       = CartographieEnvironnementContent.NiveauColor(niveauFeuille);
+            var niveauLabel   = TryExtractNiveauLabelFromBloc(contenu)
+                                ?? CartographieEnvironnementContent.NiveauLabel(niveauFeuille);
 
             var svg           = BuildAxesSvg(feuille);
 
@@ -2805,19 +2935,14 @@ namespace MedCompanion.Services.Restitutions
         /// </summary>
         private static string BuildFeuilleCardV2(int num, FeuilleLue feuille, string? contenu)
         {
-            var llmNiveau = TryExtractNiveauClinicFromBloc(contenu);
-            string couleur, niveauLabel;
-            if (llmNiveau.HasValue)
-            {
-                (couleur, niveauLabel) = llmNiveau.Value;
-            }
-            else
-            {
-                couleur     = feuille.Couleur;
-                niveauLabel = feuille.Niveau.HasValue
-                    ? CartographieContent.NiveauLabel(feuille.Niveau.Value)
-                    : "non lisible";
-            }
+            // La couleur vient des cotations (règle V2 : gris tant que toutes les nervures ne
+            // sont pas complètes) ; le libellé vient de Med quand il l'a rédigé — un mot-clé
+            // clinique dit plus que le nom du niveau, mais il ne décide pas de la couleur.
+            var couleur     = feuille.Couleur;
+            var niveauLabel = TryExtractNiveauLabelFromBloc(contenu)
+                ?? (feuille.Niveau.HasValue
+                        ? CartographieContent.NiveauLabel(feuille.Niveau.Value)
+                        : "non lisible");
 
             var svg = BuildAxesSvgV2(feuille);
 
@@ -2979,7 +3104,21 @@ namespace MedCompanion.Services.Restitutions
         /// ou sur la même ligne "**Niveau clinique** : Mot-clé (qualifier).".
         /// Retourne null si aucun niveau LLM valide n'est trouvé.
         /// </summary>
-        private static (string couleur, string label)? TryExtractNiveauClinicFromBloc(string? contenu)
+        /// <summary>
+        /// Extrait le LIBELLÉ du niveau clinique rédigé par Med dans le bloc — le texte seul,
+        /// jamais la couleur.
+        ///
+        /// La couleur venait autrefois d'un appariement de ce libellé sur cinq racines
+        /// (fluide / globalement / mitigé / fragilisé / bloqué). Or on demande à Med un mot-clé
+        /// clinique riche — « Cadre porteur », « Fonction parentale préservée » — qui ne tombe
+        /// dans aucune de ces racines : le badge repartait alors sur un gris de repli, à côté
+        /// de nervures vertes. Deux gris de sens opposés coexistaient, et la couleur du badge
+        /// dépendait du vocabulaire du modèle plutôt que des cotations.
+        ///
+        /// La couleur vient donc désormais des DONNÉES (niveau calculé de la feuille), et le
+        /// gris ne signifie plus qu'une chose : la feuille n'est pas entièrement lisible.
+        /// </summary>
+        private static string? TryExtractNiveauLabelFromBloc(string? contenu)
         {
             if (string.IsNullOrWhiteSpace(contenu)) return null;
 
@@ -2993,34 +3132,25 @@ namespace MedCompanion.Services.Restitutions
                     // Niveau sur la même ligne ?
                     var rest = l.Substring("**Niveau clinique**".Length).TrimStart(':', ' ');
                     if (!string.IsNullOrWhiteSpace(rest))
-                        return MapNiveauKeyword(rest);
+                        return NettoyerNiveauLabel(rest);
                     nextIsNiveau = true;
                     continue;
                 }
 
                 if (nextIsNiveau && !string.IsNullOrEmpty(l))
-                    return MapNiveauKeyword(l);
+                    return NettoyerNiveauLabel(l);
             }
             return null;
         }
 
-        private static (string couleur, string label)? MapNiveauKeyword(string text)
+        /// <summary>
+        /// « `Fluide (Contexte porteur).` » → « Fluide ». Le badge est étroit : on garde le
+        /// mot-clé, pas son qualifier — qui reste lisible dans le corps de la carte.
+        /// </summary>
+        private static string? NettoyerNiveauLabel(string text)
         {
-            // Format : "Fluide (Contexte porteur)." ou "`Fluide (qualifier).`"
             var clean = text.Trim('`', ' ', '.').Split('(')[0].Trim();
-
-            // Normalisation pour comparaison sans accents/casse
-            var key = clean.ToLowerInvariant()
-                           .Replace("é", "e").Replace("è", "e").Replace("ê", "e")
-                           .Replace("à", "a").Replace("â", "a");
-
-            if (key.Contains("fluide"))             return ("#1E8449", clean);
-            if (key.Contains("globalement"))        return ("#58D68D", clean);
-            if (key.Contains("mitig"))              return ("#F1C40F", clean);
-            if (key.Contains("fragil"))             return ("#E67E22", clean);
-            if (key.Contains("bloqu") || key.Contains("alerte") || key.Contains("tres fragilist")) return ("#C0392B", clean);
-
-            return string.IsNullOrWhiteSpace(clean) ? null : ("#95A5A6", clean);
+            return string.IsNullOrWhiteSpace(clean) ? null : clean;
         }
 
         private static string BuildEnvEduLegend()
@@ -5631,6 +5761,24 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   margin-bottom: 6px;
   text-transform: uppercase;
 }
+/* Ligne de titre : intitulé à gauche, badge de niveau global à droite — même
+   grammaire visuelle que l'en-tête d'une carte de feuille. */
+.env-global-hdr {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.env-global-hdr .env-global-title { margin-bottom: 0; }
+.env-global-badge {
+  padding: 3px 10px;
+  border-radius: 12px;
+  color: white;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .env-global-body { font-size: 12px; color: #2C3E50; line-height: 1.6; }
 .env-legend {
   display: flex;
@@ -5767,6 +5915,36 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
 .pt-suivi-cards { display: flex; gap: 8px; flex-wrap: wrap; }
 .pt-suivi-card { flex: 1 1 0; min-width: 90px; background: #EBF5FB; border-radius: 5px; padding: 8px 10px; font-size: 12px; text-align: center; color: #1A3A6A; line-height: 1.45; }
 .pt-engagement { background: #EAF4EA; border-left: 3px solid #1E6B4A; border-radius: 0 4px 4px 0; padding: 8px 14px; font-size: 13px; color: #1E6B4A; font-style: italic; margin-top: 10px; }
+
+/* Indication d'une section : elle ouvre la page et décide de ce qui suit. */
+.pt-indication {
+  background: #F7F9FB; border-radius: 0 5px 5px 0;
+  padding: 9px 14px; margin-bottom: 10px;
+}
+.pt-indication-hdr { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.pt-indication-label {
+  font-size: 9.5px; font-weight: 700; letter-spacing: 0.6px;
+  text-transform: uppercase; color: #5D6D7E;
+}
+.pt-indication-motif { font-size: 12px; color: #2C3E50; line-height: 1.5; }
+.pt-indication-crit  { font-size: 11px; color: #5D6D7E; font-style: italic; margin-top: 4px; }
+
+/* Tableau d'actions : ce qu'on fait, qui, quand, à quel degré. */
+.pt-actions { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.pt-actions th {
+  text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.4px; color: #7F8C8D; padding: 0 6px 4px 0;
+  border-bottom: 1px solid #E0E0E0;
+}
+.pt-actions td { padding: 5px 6px 5px 0; vertical-align: top; border-bottom: 1px solid #F2F4F6; }
+.pt-actions tr:last-child td { border-bottom: none; }
+.pt-a-quoi     { color: #2C3E50; font-weight: 600; }
+.pt-a-quand    { color: #34495E; white-space: nowrap; }
+.pt-a-trancher { color: #5D6D7E; font-style: italic; }
+.pt-tag {
+  display: inline-block; padding: 1.5px 7px; border-radius: 9px;
+  color: white; font-size: 9.5px; font-weight: 600; white-space: nowrap;
+}
 .sd-legend {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   border-top: 1px solid #E2E8F0; padding-top: 6px; margin-top: auto;

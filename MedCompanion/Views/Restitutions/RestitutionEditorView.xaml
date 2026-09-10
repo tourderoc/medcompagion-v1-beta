@@ -1623,10 +1623,12 @@
                                                                          BorderBrush="#D6DBDF" BorderThickness="1">
                                                                     <TextBox.Style>
                                                                         <Style TargetType="TextBox">
-                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                            <!-- Trois types de champs coexistent : ce TextBox n'est que
+                                                                                 celui du texte libre. -->
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
                                                                             <Style.Triggers>
-                                                                                <DataTrigger Binding="{Binding IsList}" Value="True">
-                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                <DataTrigger Binding="{Binding IsText}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
                                                                                 </DataTrigger>
                                                                             </Style.Triggers>
                                                                         </Style>
@@ -1670,6 +1672,204 @@
                                                                     </ItemsControl>
                                                                     <Button Command="{Binding AddItemCommand}" Content="+ Ajouter"
                                                                             HorizontalAlignment="Left" Margin="0,4,0,0"
+                                                                            Padding="7,3" FontSize="11" Cursor="Hand"
+                                                                            Background="#EBF5FB" BorderBrush="#AED6F1" BorderThickness="1"
+                                                                            Foreground="#1B4F72"/>
+                                                                </StackPanel>
+
+                                                                <!-- Contenu INDICATION : est-ce indiqué, à quel degré, par qui,
+                                                                     pourquoi — et ce qui ferait reconsidérer si c'est différé. -->
+                                                                <StackPanel Margin="8,6,8,6" DataContext="{Binding Indication}">
+                                                                    <StackPanel.Style>
+                                                                        <Style TargetType="StackPanel">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding DataContext.IsIndication, RelativeSource={RelativeSource AncestorType=ContentPresenter}}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </StackPanel.Style>
+                                                                    <Grid>
+                                                                        <Grid.ColumnDefinitions>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                            <ColumnDefinition Width="*"/>
+                                                                        </Grid.ColumnDefinitions>
+                                                                        <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                                                            <TextBlock Text="DEGRÉ" FontSize="9" Foreground="#7F8C8D" FontWeight="SemiBold"/>
+                                                                            <ComboBox ItemsSource="{Binding Degres}"
+                                                                                      SelectedItem="{Binding Degre, Mode=TwoWay}"
+                                                                                      IsEditable="False" FontSize="11" Padding="4,2"/>
+                                                                        </StackPanel>
+                                                                        <StackPanel Grid.Column="1" Margin="4,0,0,0">
+                                                                            <TextBlock Text="QUI" FontSize="9" Foreground="#7F8C8D" FontWeight="SemiBold"/>
+                                                                            <ComboBox ItemsSource="{Binding Porteurs}"
+                                                                                      SelectedItem="{Binding Porteur, Mode=TwoWay}"
+                                                                                      IsEditable="False" FontSize="11" Padding="4,2"/>
+                                                                        </StackPanel>
+                                                                    </Grid>
+                                                                    <TextBlock Text="MOTIF CLINIQUE" FontSize="9" Foreground="#7F8C8D"
+                                                                               FontWeight="SemiBold" Margin="0,6,0,0"/>
+                                                                    <TextBox Text="{Binding Motif, UpdateSourceTrigger=PropertyChanged}"
+                                                                             FontSize="12" FontFamily="Segoe UI" Padding="5,3"
+                                                                             BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="36"/>
+                                                                    <TextBlock Text="À RECONSIDÉRER SI (si le suivi est différé)" FontSize="9"
+                                                                               Foreground="#7F8C8D" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                                                                    <TextBox Text="{Binding CritereReevaluation, UpdateSourceTrigger=PropertyChanged}"
+                                                                             FontSize="11" FontFamily="Segoe UI" FontStyle="Italic" Padding="5,3"
+                                                                             BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                             AcceptsReturn="True" TextWrapping="Wrap" MinHeight="30"/>
+                                                                </StackPanel>
+
+                                                                <!-- Contenu ACTIONS : ce qu'on fait, qui le porte, pour quand,
+                                                                     à quel degré — et pour les bilans, ce que ça tranche. -->
+                                                                <StackPanel Margin="8,6,8,6">
+                                                                    <StackPanel.Style>
+                                                                        <Style TargetType="StackPanel">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                            <Style.Triggers>
+                                                                                <DataTrigger Binding="{Binding IsActions}" Value="True">
+                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                </DataTrigger>
+                                                                            </Style.Triggers>
+                                                                        </Style>
+                                                                    </StackPanel.Style>
+                                                                    <ItemsControl ItemsSource="{Binding Actions}">
+                                                                        <ItemsControl.ItemTemplate>
+                                                                            <DataTemplate DataType="{x:Type vm:PtActionVm}">
+                                                                                <Border Margin="0,0,0,6" Padding="7,6"
+                                                                                        Background="#FBFCFD" BorderBrush="#E1E6EA"
+                                                                                        BorderThickness="1" CornerRadius="4">
+                                                                                    <StackPanel>
+                                                                                        <!-- Ligne 1 : l'action + supprimer -->
+                                                                                        <Grid>
+                                                                                            <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="*"/>
+                                                                                                <ColumnDefinition Width="Auto"/>
+                                                                                            </Grid.ColumnDefinitions>
+                                                                                            <TextBox Grid.Column="0"
+                                                                                                     Text="{Binding Quoi, UpdateSourceTrigger=PropertyChanged}"
+                                                                                                     FontSize="12" FontFamily="Segoe UI" FontWeight="SemiBold"
+                                                                                                     Padding="5,3" BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                                                     AcceptsReturn="False" TextWrapping="Wrap"/>
+                                                                                            <Button Grid.Column="1" Margin="4,0,0,0"
+                                                                                                    Command="{Binding RemoveCommand}"
+                                                                                                    Content="−" Padding="5,2" FontSize="12" Cursor="Hand"
+                                                                                                    Background="#FADBD8" BorderBrush="#F1948A"
+                                                                                                    BorderThickness="1" Foreground="#C0392B"/>
+                                                                                        </Grid>
+
+                                                                                        <!-- Ligne 2 : qui / quand / degré. Les ressources du
+                                                                                             quotidien n'ont ni quand ni degré : elles s'installent. -->
+                                                                                        <Grid Margin="0,5,0,0">
+                                                                                            <Grid.ColumnDefinitions>
+                                                                                                <ColumnDefinition Width="*"/>
+                                                                                                <ColumnDefinition Width="*"/>
+                                                                                                <ColumnDefinition Width="*"/>
+                                                                                            </Grid.ColumnDefinitions>
+                                                                                            <StackPanel Grid.Column="0" Margin="0,0,4,0">
+                                                                                                <!-- Dispositifs scolaires : le statut d'abord, car
+                                                                                                     « déjà en place » change tout le reste du texte. -->
+                                                                                                <StackPanel Margin="0,0,0,4">
+                                                                                                    <StackPanel.Style>
+                                                                                                        <Style TargetType="StackPanel">
+                                                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                            <Style.Triggers>
+                                                                                                                <DataTrigger Binding="{Binding AfficherStatut}" Value="True">
+                                                                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                                                                </DataTrigger>
+                                                                                                            </Style.Triggers>
+                                                                                                        </Style>
+                                                                                                    </StackPanel.Style>
+                                                                                                    <TextBlock Text="STATUT" FontSize="9" Foreground="#7F8C8D" FontWeight="SemiBold"/>
+                                                                                                    <ComboBox ItemsSource="{Binding Statuts}"
+                                                                                                              SelectedItem="{Binding Statut, Mode=TwoWay}"
+                                                                                                              IsEditable="False" FontSize="11" Padding="4,2"/>
+                                                                                                </StackPanel>
+                                                                                                <TextBlock Text="QUI" FontSize="9" Foreground="#7F8C8D" FontWeight="SemiBold"/>
+                                                                                                <ComboBox ItemsSource="{Binding Porteurs}"
+                                                                                                          SelectedItem="{Binding Porteur, Mode=TwoWay}"
+                                                                                                          IsEditable="False" FontSize="11" Padding="4,2"/>
+                                                                                            </StackPanel>
+                                                                                            <StackPanel Grid.Column="1" Margin="2,0,2,0">
+                                                                                                <StackPanel.Style>
+                                                                                                    <Style TargetType="StackPanel">
+                                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                        <Style.Triggers>
+                                                                                                            <DataTrigger Binding="{Binding AfficherEcheanceEtDegre}" Value="True">
+                                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                                            </DataTrigger>
+                                                                                                        </Style.Triggers>
+                                                                                                    </Style>
+                                                                                                </StackPanel.Style>
+                                                                                                <TextBlock Text="QUAND" FontSize="9" Foreground="#7F8C8D" FontWeight="SemiBold"/>
+                                                                                                <ComboBox ItemsSource="{Binding Echeances}"
+                                                                                                          SelectedItem="{Binding Echeance, Mode=TwoWay}"
+                                                                                                          IsEditable="False" FontSize="11" Padding="4,2"/>
+                                                                                            </StackPanel>
+                                                                                            <StackPanel Grid.Column="2" Margin="4,0,0,0">
+                                                                                                <StackPanel.Style>
+                                                                                                    <Style TargetType="StackPanel">
+                                                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                        <Style.Triggers>
+                                                                                                            <DataTrigger Binding="{Binding AfficherEcheanceEtDegre}" Value="True">
+                                                                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                                                            </DataTrigger>
+                                                                                                        </Style.Triggers>
+                                                                                                    </Style>
+                                                                                                </StackPanel.Style>
+                                                                                                <TextBlock Text="DEGRÉ" FontSize="9" Foreground="#7F8C8D" FontWeight="SemiBold"/>
+                                                                                                <ComboBox ItemsSource="{Binding Degres}"
+                                                                                                          SelectedItem="{Binding Degre, Mode=TwoWay}"
+                                                                                                          IsEditable="False" FontSize="11" Padding="4,2"/>
+                                                                                            </StackPanel>
+                                                                                        </Grid>
+
+                                                                                        <!-- Ligne 3 : ce que le bilan tranche (bilans uniquement) -->
+                                                                                        <StackPanel Margin="0,5,0,0">
+                                                                                            <StackPanel.Style>
+                                                                                                <Style TargetType="StackPanel">
+                                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                    <Style.Triggers>
+                                                                                                        <DataTrigger Binding="{Binding AfficherPourTrancher}" Value="True">
+                                                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                                                        </DataTrigger>
+                                                                                                    </Style.Triggers>
+                                                                                                </Style>
+                                                                                            </StackPanel.Style>
+                                                                                            <TextBlock Text="POUR TRANCHER" FontSize="9" Foreground="#7F8C8D" FontWeight="SemiBold"/>
+                                                                                            <TextBox Text="{Binding PourTrancher, UpdateSourceTrigger=PropertyChanged}"
+                                                                                                     FontSize="11" FontFamily="Segoe UI" FontStyle="Italic"
+                                                                                                     Padding="5,3" BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="30"/>
+                                                                                        </StackPanel>
+
+                                                                                        <!-- Ligne 3 bis : ce que l'action vise (rééducations, ressources) -->
+                                                                                        <StackPanel Margin="0,5,0,0">
+                                                                                            <StackPanel.Style>
+                                                                                                <Style TargetType="StackPanel">
+                                                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                                    <Style.Triggers>
+                                                                                                        <DataTrigger Binding="{Binding AfficherObjectif}" Value="True">
+                                                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                                                        </DataTrigger>
+                                                                                                    </Style.Triggers>
+                                                                                                </Style>
+                                                                                            </StackPanel.Style>
+                                                                                            <TextBlock Text="OBJECTIF VISÉ" FontSize="9" Foreground="#7F8C8D" FontWeight="SemiBold"/>
+                                                                                            <TextBox Text="{Binding Objectif, UpdateSourceTrigger=PropertyChanged}"
+                                                                                                     FontSize="11" FontFamily="Segoe UI" FontStyle="Italic"
+                                                                                                     Padding="5,3" BorderBrush="#D6DBDF" BorderThickness="1"
+                                                                                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="30"/>
+                                                                                        </StackPanel>
+                                                                                    </StackPanel>
+                                                                                </Border>
+                                                                            </DataTemplate>
+                                                                        </ItemsControl.ItemTemplate>
+                                                                    </ItemsControl>
+                                                                    <Button Command="{Binding AddActionCommand}" Content="+ Ajouter"
+                                                                            HorizontalAlignment="Left" Margin="0,2,0,0"
                                                                             Padding="7,3" FontSize="11" Cursor="Hand"
                                                                             Background="#EBF5FB" BorderBrush="#AED6F1" BorderThickness="1"
                                                                             Foreground="#1B4F72"/>

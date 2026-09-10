@@ -697,72 +697,102 @@ namespace MedCompanion.ViewModels.Restitutions
 
         private static System.Collections.Generic.IReadOnlyList<PtFieldDef> GetPtFieldDefs(string key) => key switch
         {
+            // 7.1 — les bilans DÉJÀ FAITS ne s'éditent plus ici : ils figurent au parcours de
+            // soins et dans son annexe. Bilans et suivi deviennent des ACTIONS portées, datées
+            // et hiérarchisées. L'engagement disparaît de l'éditeur : le rôle du pédopsychiatre
+            // est un texte fixe du dossier, pas un champ à rédiger.
             "pt_s1" => new PtFieldDef[]
             {
-                new("intro",                        "Intro",                           false),
-                new("objectifs",                    "Objectifs",                       true),
-                new("traitement.situationActuelle", "Traitement — Situation actuelle", false),
-                new("traitement.propositions",      "Traitement — Propositions",       true),
-                new("bilans.realises",              "Bilans — Réalisés",               true),
-                new("bilans.aEnvisager",            "Bilans — À envisager",            true),
-                new("surveillance",                 "Surveillance",                    true),
-                new("suivi",                        "Suivi",                           true),
-                new("engagement",                   "Engagement",                      false),
+                new("intro",                        "Intro",                           PtFieldKind.Text),
+                new("objectifs",                    "Objectifs",                       PtFieldKind.List),
+                new("traitement.situationActuelle", "Traitement — Situation actuelle", PtFieldKind.Text),
+                new("traitement.propositions",      "Traitement — Propositions",       PtFieldKind.List),
+                new("bilans",                       "Bilans à réaliser",               PtFieldKind.Actions,
+                    PorteurParDefaut: "professionnel à trouver", EcheanceParDefaut: "ce trimestre", DegreParDefaut: "recommandé")
+                    { AvecPourTrancher = true },
+                new("surveillance",                 "Surveillance",                    PtFieldKind.List),
+                new("suivi",                        "Modalités de suivi",              PtFieldKind.Actions,
+                    PorteurParDefaut: "le médecin", EcheanceParDefaut: "à 6 mois", DegreParDefaut: "recommandé"),
             },
+            // 7.2 — l'indication ouvre la section et décide de ce qui suit. « Outils utilisés »
+            // a été retiré : le choix de la technique appartient au psychologue, pas au
+            // prescripteur. « Résultats attendus » et « Indicateurs positifs » disaient la même
+            // chose — fusionnés en « Repères d'évolution », face aux « Points de vigilance ».
             "pt_s2" => new PtFieldDef[]
             {
-                new("intro",               "Intro",                  false),
-                new("objectifs",           "Objectifs",              true),
-                new("resultatsAttendus",   "Résultats attendus",     true),
-                new("modalites",           "Modalités",              true),
-                new("pointsTravail",       "Points de travail",      true),
-                new("outilsUtilises",      "Outils utilisés",        true),
-                new("surveillance",        "Surveillance",           true),
-                new("indicateursPositifs", "Indicateurs positifs",   true),
-                new("suivi",               "Suivi",                  true),
-                new("engagement",          "Engagement",             false),
+                new("indication",       "Indication de l'accompagnement",      PtFieldKind.Indication),
+                new("intro",            "Intro",                               PtFieldKind.Text),
+                new("objectifs",        "Objectifs",                           PtFieldKind.List),
+                new("modalites",        "Cadre proposé",                       PtFieldKind.List),
+                new("axesTravail",      "Axes de travail",                     PtFieldKind.List),
+                new("reperesEvolution", "Repères d'évolution",                 PtFieldKind.List),
+                new("pointsVigilance",  "Points de vigilance",                 PtFieldKind.List),
+                new("articulation",     "Articulation avec le suivi en place", PtFieldKind.List),
             },
+
+            // 7.3 — deux natures séparées : les rééducations sont des soins (portées, datées,
+            // hiérarchisées), les ressources du quotidien s'installent (ni échéance ni degré,
+            // mais un objectif obligatoire). « Axes prioritaires » faisait doublon avec les
+            // objectifs, et « Ressources de l'enfant » était la troisième occurrence des points
+            // forts dans le dossier — elle rejoint l'intro.
             "pt_s3" => new PtFieldDef[]
             {
-                new("intro",                "Intro",                   false),
-                new("objectifs",            "Objectifs",               true),
-                new("interventions",        "Interventions",           true),
-                new("axesPrioritaires",     "Axes prioritaires",       true),
-                new("ressourcesEnfant",     "Ressources de l'enfant",  true),
-                new("indicateursEvolution", "Indicateurs d'évolution", true),
-                new("reevaluation",         "Réévaluation",            true),
-                new("engagement",           "Engagement",              false),
+                new("intro",            "Intro",                    PtFieldKind.Text),
+                new("objectifs",        "Objectifs",                PtFieldKind.List),
+                new("reeducations",     "Rééducations et prises en charge", PtFieldKind.Actions,
+                    PorteurParDefaut: "professionnel à trouver", EcheanceParDefaut: "ce trimestre", DegreParDefaut: "recommandé")
+                    { AvecObjectif = true },
+                new("ressourcesVie",    "Ressources du quotidien",  PtFieldKind.Actions,
+                    PorteurParDefaut: "les parents")
+                    { AvecObjectif = true, AvecEcheanceEtDegre = false },
+                new("reperesEvolution", "Repères d'évolution",      PtFieldKind.List),
+                new("reevaluation",     "Réévaluation",             PtFieldKind.List),
             },
+
+            // 7.4 — trois natures distinctes là où tout était mêlé : accompagner les PARENTS
+            // (le médecin lui-même en situation simple, un professionnel quand elle se complique),
+            // faire intervenir un TIERS dans le quotidien (SESSAD, éducateur, AEMO — circuits et
+            // délais tout autres), et ce que la FAMILLE ajuste elle-même (ni degré ni échéance,
+            // mais du concret). « Axes prioritaires » et « Objectifs court terme » répétaient les
+            // objectifs ; « Forces familiales » rejoint l'intro.
             "pt_s4" => new PtFieldDef[]
             {
-                new("intro",               "Intro",                 false),
-                new("objectifs",           "Objectifs",             true),
-                new("axesPrioritaires",    "Axes prioritaires",     true),
-                new("outils",              "Outils",                true),
-                new("forcesFamiliales",    "Forces familiales",     true),
-                new("objectifsCourtTerme", "Objectifs court terme", true),
-                new("modalites",           "Modalités",             true),
-                new("engagement",          "Engagement",            false),
+                new("intro",                   "Intro",                        PtFieldKind.Text),
+                new("objectifs",               "Objectifs",                    PtFieldKind.List),
+                new("accompagnementParents",   "Accompagnement des parents",   PtFieldKind.Actions,
+                    PorteurParDefaut: "le médecin", EcheanceParDefaut: "ce trimestre", DegreParDefaut: "recommandé")
+                    { AvecObjectif = true },
+                new("interventionsEducatives", "Interventions éducatives",     PtFieldKind.Actions,
+                    PorteurParDefaut: "professionnel à trouver", EcheanceParDefaut: "cette année scolaire", DegreParDefaut: "recommandé")
+                    { AvecObjectif = true },
+                new("auQuotidien",             "Au quotidien",                 PtFieldKind.Actions,
+                    PorteurParDefaut: "les parents")
+                    { AvecObjectif = true, AvecEcheanceEtDegre = false },
+                new("reperesEvolution",        "Repères d'évolution",          PtFieldKind.List),
             },
+
+            // 7.5 — le CADRE SCOLAIRE ouvre la section et se remplit AVANT de générer : un
+            // dispositif est une décision administrative, pas une orientation clinique, et ce
+            // dossier circule jusqu'à l'école. Le modèle ne fait que décliner ce qui est posé.
             "pt_s5" => new PtFieldDef[]
             {
-                new("intro",                "Intro",                   false),
-                new("objectifs",            "Objectifs",               true),
-                new("amenagements",         "Aménagements",            true),
-                new("coordination",         "Coordination",            true),
-                new("pointsAppui",          "Points d'appui",          true),
-                new("indicateursEvolution", "Indicateurs d'évolution", true),
-                new("reevaluation",         "Réévaluation",            true),
-                new("engagement",           "Engagement",              false),
+                new("cadreScolaire",     "Cadre scolaire — à remplir avant de générer", PtFieldKind.Actions,
+                    PorteurParDefaut: "les parents", EcheanceParDefaut: "ce trimestre", DegreParDefaut: "recommandé")
+                    { AvecObjectif = true, AvecStatut = true },
+                new("intro",             "Intro",                    PtFieldKind.Text),
+                new("amenagements",      "Aménagements pédagogiques", PtFieldKind.List),
+                new("coordination",      "Lien avec l'école",         PtFieldKind.List),
+                new("reperesEvolution",  "Repères d'évolution",       PtFieldKind.List),
             },
+
             "conclusion" => new PtFieldDef[]
             {
-                new("intro",          "Intro",               false),
-                new("forces",         "Forces",              true),
-                new("feuilleDeRoute", "Feuille de route",    true),
-                new("messageParents", "Message aux parents", true),
-                new("prochainsRdv",   "Prochains RDV",       true),
-                new("engagement",     "Engagement",          false),
+                new("intro",          "Intro",               PtFieldKind.Text),
+                new("forces",         "Forces",              PtFieldKind.List),
+                new("feuilleDeRoute", "Feuille de route",    PtFieldKind.List),
+                new("messageParents", "Message aux parents", PtFieldKind.List),
+                new("prochainsRdv",   "Prochains RDV",       PtFieldKind.List),
+                new("engagement",     "Engagement",          PtFieldKind.Text),
             },
             _ => System.Array.Empty<PtFieldDef>()
         };
@@ -772,7 +802,16 @@ namespace MedCompanion.ViewModels.Restitutions
             if (!IsPtBloc) return;
             foreach (var def in GetPtFieldDefs(Model.Key))
             {
-                var field = new PtFieldViewModel(def.JsonPath, def.Label, def.IsList);
+                var field = new PtFieldViewModel(def.JsonPath, def.Label, def.Kind)
+                {
+                    PorteurParDefaut  = def.PorteurParDefaut,
+                    EcheanceParDefaut = def.EcheanceParDefaut,
+                    DegreParDefaut    = def.DegreParDefaut,
+                    ActionsAvecPourTrancher    = def.AvecPourTrancher,
+                    ActionsAvecObjectif        = def.AvecObjectif,
+                    ActionsAvecEcheanceEtDegre = def.AvecEcheanceEtDegre,
+                    ActionsAvecStatut          = def.AvecStatut,
+                };
                 field.Flush = FlushPtToContenu;
                 if (reformulateAction != null)
                 {
@@ -814,9 +853,35 @@ namespace MedCompanion.ViewModels.Restitutions
                 {
                     var el = GetNestedElement(root, field.JsonPath);
                     if (!el.HasValue) continue;
-                    if (!field.IsList)
+                    if (field.IsText)
                     {
                         field.Content = el.Value.GetString() ?? "";
+                    }
+                    else if (field.IsIndication)
+                    {
+                        if (el.Value.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                        field.Indication.Degre               = LireTexte(el.Value, "degre");
+                        field.Indication.Porteur             = LireTexte(el.Value, "porteur");
+                        field.Indication.Motif               = LireTexte(el.Value, "motif");
+                        field.Indication.CritereReevaluation = LireTexte(el.Value, "critereReevaluation");
+                    }
+                    else if (field.IsActions)
+                    {
+                        if (el.Value.ValueKind != System.Text.Json.JsonValueKind.Array) continue;
+                        field.Actions.Clear();
+                        foreach (var item in el.Value.EnumerateArray())
+                        {
+                            if (item.ValueKind != System.Text.Json.JsonValueKind.Object) continue;
+                            var a = field.NouvelleAction();
+                            a.Quoi         = LireTexte(item, "quoi");
+                            a.Porteur      = LireTexte(item, "porteur");
+                            a.Echeance     = LireTexte(item, "echeance");
+                            a.Degre        = LireTexte(item, "degre");
+                            a.PourTrancher = LireTexte(item, "pourTrancher");
+                            a.Objectif     = LireTexte(item, "objectif");
+                            a.Statut       = LireTexte(item, "statut");
+                            field.Actions.Add(a);
+                        }
                     }
                     else if (el.Value.ValueKind == System.Text.Json.JsonValueKind.Array)
                     {
@@ -832,6 +897,21 @@ namespace MedCompanion.ViewModels.Restitutions
             }
             catch { }
             finally { _syncingPt = false; }
+        }
+
+        /// <summary>
+        /// Lit une propriété texte, en tolérant la casse du modèle : selon l'appel il écrit
+        /// « pourTrancher » ou « PourTrancher », et perdre le champ pour cette seule raison
+        /// effacerait une donnée que le médecin voit à l'écran.
+        /// </summary>
+        private static string LireTexte(System.Text.Json.JsonElement obj, string nom)
+        {
+            if (obj.TryGetProperty(nom, out var v) && v.ValueKind == System.Text.Json.JsonValueKind.String)
+                return v.GetString() ?? "";
+            var pascal = char.ToUpperInvariant(nom[0]) + nom[1..];
+            if (obj.TryGetProperty(pascal, out var v2) && v2.ValueKind == System.Text.Json.JsonValueKind.String)
+                return v2.GetString() ?? "";
+            return "";
         }
 
         private static System.Text.Json.JsonElement? GetNestedElement(
@@ -878,9 +958,38 @@ namespace MedCompanion.ViewModels.Restitutions
                         current[parts[i]] = new System.Collections.Generic.Dictionary<string, object?>();
                     current = (System.Collections.Generic.Dictionary<string, object?>)current[parts[i]]!;
                 }
-                current[parts[^1]] = field.IsList
-                    ? (object?)field.Items.Select(e => e.Value).ToArray()
-                    : field.Content;
+                current[parts[^1]] = field.Kind switch
+                {
+                    PtFieldKind.Indication => new System.Collections.Generic.Dictionary<string, object?>
+                    {
+                        ["degre"]               = field.Indication.Degre,
+                        ["porteur"]             = field.Indication.Porteur,
+                        ["motif"]               = field.Indication.Motif,
+                        ["critereReevaluation"] = field.Indication.CritereReevaluation,
+                    },
+                    PtFieldKind.List    => field.Items.Select(e => e.Value).ToArray(),
+                    PtFieldKind.Actions => field.Actions.Select(a =>
+                    {
+                        var d = new System.Collections.Generic.Dictionary<string, object?>
+                        {
+                            ["quoi"]    = a.Quoi,
+                            ["porteur"] = a.Porteur,
+                        };
+                        // Chaque clé n'est écrite que là où elle a un sens : une clé vide
+                        // inviterait le modèle à la remplir — un degré sur une habitude de vie,
+                        // une justification sur une modalité de suivi.
+                        if (field.ActionsAvecEcheanceEtDegre)
+                        {
+                            d["echeance"] = a.Echeance;
+                            d["degre"]    = a.Degre;
+                        }
+                        if (field.ActionsAvecPourTrancher) d["pourTrancher"] = a.PourTrancher;
+                        if (field.ActionsAvecObjectif)     d["objectif"]     = a.Objectif;
+                        if (field.ActionsAvecStatut)       d["statut"]       = a.Statut;
+                        return d;
+                    }).ToArray(),
+                    _                   => (object?)field.Content,
+                };
             }
             return root;
         }
@@ -1590,52 +1699,52 @@ namespace MedCompanion.ViewModels.Restitutions
 
                     case "synthese_diag_s1":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestSyntheseDiagS1Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS1Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "synthese_diag_s2":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestSyntheseDiagS2Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS2Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "synthese_diag_s3":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestSyntheseDiagS3Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS3Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "synthese_diag_s4":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestSyntheseDiagS4Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS4Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "synthese_diag_s5":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestSyntheseDiagS5Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestSyntheseDiagS5Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "pt_s1":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestPtS1Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestPtS1Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "pt_s2":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestPtS2Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestPtS2Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "pt_s3":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestPtS3Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestPtS3Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "pt_s4":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestPtS4Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestPtS4Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "pt_s5":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestPtS5Async(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestPtS5Async(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     case "conclusion":
@@ -1809,52 +1918,52 @@ namespace MedCompanion.ViewModels.Restitutions
 
                             case "synthese_diag_s1":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS1Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS1Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "synthese_diag_s2":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS2Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS2Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "synthese_diag_s3":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS3Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS3Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "synthese_diag_s4":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS4Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS4Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "synthese_diag_s5":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS5Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestSyntheseDiagS5Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "pt_s1":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestPtS1Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestPtS1Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "pt_s2":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestPtS2Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestPtS2Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "pt_s3":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestPtS3Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestPtS3Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "pt_s4":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestPtS4Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestPtS4Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "pt_s5":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestPtS5Async(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestPtS5Async(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             case "conclusion":

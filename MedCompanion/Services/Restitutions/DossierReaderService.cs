@@ -73,6 +73,7 @@ namespace MedCompanion.Services.Restitutions
                 DatePremierEntretien   = notes.FirstOrDefault(n => n.Type.Contains("premiere", StringComparison.OrdinalIgnoreCase))?.Date,
                 DatesSeancesEvaluation = LireDatesSeancesEvaluation(patientNomComplet),
                 EvaluationsV2Contexte  = LireEvaluationsV2(patientNomComplet),
+                EvaluationsV2Integral  = LireEvaluationsV2(patientNomComplet, integral: true),
                 LatestCartographieV2   = LireCartographieV2(patientNomComplet),
                 LatestSeanceEnvironnement = LireSeanceEnvironnement(patientNomComplet),
             };
@@ -83,12 +84,12 @@ namespace MedCompanion.Services.Restitutions
         /// Même lecteur que la Synthèse Globale et le Projet thérapeutique — pour que les trois
         /// documents s'appuient sur la même description du dossier.
         /// </summary>
-        private string LireEvaluationsV2(string patientNomComplet)
+        private string LireEvaluationsV2(string patientNomComplet, bool integral = false)
         {
             try
             {
                 var dir = _pathService.GetPatientRootDirectory(patientNomComplet);
-                return string.IsNullOrWhiteSpace(dir) ? "" : new Evaluations.EvaluationV2ContextService().PourPrompt(dir);
+                return string.IsNullOrWhiteSpace(dir) ? "" : new Evaluations.EvaluationV2ContextService().PourPrompt(dir, integral);
             }
             catch { return ""; }
         }

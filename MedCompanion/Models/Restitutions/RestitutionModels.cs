@@ -137,8 +137,11 @@ namespace MedCompanion.Models.Restitutions
             Blocs.Add(new RestitutionBloc("env_edu_f1", "🍃 Environnement — Famille",            16, "clinique"));
             Blocs.Add(new RestitutionBloc("env_edu_f2", "🍃 Environnement — École & Pairs",      17, "clinique"));
             Blocs.Add(new RestitutionBloc("env_edu_f3", "🍃 Environnement — Écrans & Médias",    18, "clinique"));
-            Blocs.Add(new RestitutionBloc("env_edu_f4", "🍃 Environnement — Valeurs Sociétales", 19, "clinique"));
-            Blocs.Add(new RestitutionBloc("env_edu_f5", "🍃 Environnement — Cadre Éducatif",     20, "clinique"));
+            // f4 porte le nom du NOUVEAU parcours : « Cadre & repères » y fusionne les anciennes
+            // Valeurs sociétales et Cadre éducatif. f5 n'a donc plus d'équivalent V2 — il reste
+            // pour les dossiers de l'ancien parcours, et son libellé le dit.
+            Blocs.Add(new RestitutionBloc("env_edu_f4", "🍃 Environnement — Cadre & repères",    19, "clinique"));
+            Blocs.Add(new RestitutionBloc("env_edu_f5", "🍃 Environnement — Cadre Éducatif (ancien parcours)", 20, "clinique"));
             Blocs.Add(new RestitutionBloc("env_edu_global", "🍃 Lecture globale Branche Éducative", 21, "clinique"));
             Blocs.Add(new RestitutionBloc("synthese_diag_s1", "🔬 Synthèse — Compréhension globale",    22, "clinique"));
             Blocs.Add(new RestitutionBloc("synthese_diag_s2", "🔬 Synthèse — Diagnostics retenus",       23, "clinique"));

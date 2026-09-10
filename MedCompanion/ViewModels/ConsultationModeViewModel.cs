@@ -6703,13 +6703,17 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
                 {
                     if (_currentPatient == null) return Task.FromResult(false);
 
-                    // ── Cartographie de l'environnement V2 prioritaire (recâblage feuille par
-                    // feuille : 1 = Famille). Compléter édite les items des deux sources
-                    // (feuille parents + cotations d'entretien) ; la fiche de séance 3 est
-                    // réécrite — même liberté de correction qu'en V1.
+                    // ── Cartographie de l'environnement V2 prioritaire. Compléter édite les
+                    // items des deux sources (feuille parents + cotations d'entretien) ; la
+                    // fiche de séance 3 est réécrite — même liberté de correction qu'en V1.
+                    // La feuille 5 (Cadre Éducatif) n'a pas d'équivalent V2 : elle est fusionnée
+                    // dans « Cadre & repères » (feuille 4), et reste éditable en V1 seulement.
                     string? feuilleKeyV2 = feuilleIdx switch
                     {
                         1 => "famille",
+                        2 => "ecole_pairs",
+                        3 => "ecrans",
+                        4 => "cadre_reperes",
                         _ => null
                     };
                     if (feuilleKeyV2 != null)
