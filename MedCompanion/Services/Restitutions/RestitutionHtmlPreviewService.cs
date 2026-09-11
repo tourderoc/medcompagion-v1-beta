@@ -597,7 +597,8 @@ namespace MedCompanion.Services.Restitutions
                 }
                 if (bloc.Key == "conclusion")
                 {
-                    sb.Append(BuildConclusionPage(bloc.ContenuValide, coverFields, pageNumber, totalPages));
+                    sb.Append(BuildConclusionPage(bloc.ContenuValide, coverFields,
+                                                  TrouverProchainRdvMedecin(dossier), pageNumber, totalPages));
                     pageNumber++;
                     continue;
                 }
@@ -2389,14 +2390,18 @@ namespace MedCompanion.Services.Restitutions
 
         // ── Section 8 — Conclusion et perspectives ─────────────────────────────
 
+        /// <summary>
+        /// La dernière page ne redit pas ce que le dossier a déjà dit. La feuille de route est
+        /// en page 2, les rendez-vous et les prises en charge en section 7 : les reprendre ici
+        /// en texte libre produisait une troisième version, générée à part, libre de contredire
+        /// les deux autres. Ne restent que ce que cette page est seule à porter — l'enfant rendu
+        /// entier, ses forces, et ce qui n'est pas encore tranché.
+        /// </summary>
         private sealed class ConclusionData
         {
-            public string       Intro          { get; set; } = "";
-            public List<string> Forces         { get; set; } = new();
-            public List<string> FeuilleDeRoute { get; set; } = new();
-            public List<string> MessageParents { get; set; } = new();
-            public List<string> ProchainsRdv   { get; set; } = new();
-            public string       Engagement     { get; set; } = "";
+            public string       Intro       { get; set; } = "";
+            public List<string> Forces      { get; set; } = new();
+            public List<string> ResteOuvert { get; set; } = new();
         }
 
         private static ConclusionData? TryParseConclusionJson(string? text)
@@ -2414,10 +2419,106 @@ namespace MedCompanion.Services.Restitutions
             catch { return null; }
         }
 
-        private string BuildConclusionPage(string? contenu, CoverFields cover, int pageNumber, int totalPages)
+        /// <summary>
+        /// Ce que le dossier dit de lui-même — texte FIXE, jamais généré, comme le rôle du
+        /// pédopsychiatre en section 7. Un document qui va circuler doit dire ce qu'il est et
+        /// à qui il appartient, et ça ne se réinvente pas d'un enfant à l'autre.
+        /// </summary>
+        public const string DocDitPhotographie =
+            "Ce dossier est une photographie, prise le {0}. Il décrit où en est votre enfant "
+          + "aujourd'hui — pas ce qu'il sera.";
+
+        public const string DocDitAppartient =
+            "Il vous appartient. Vous décidez qui le lit : l'école, un autre professionnel, "
+          + "votre famille — ou personne.";
+
+        public const string DocDitReprise =
+            "Nous le reprendrons ensemble et nous l'ajusterons à mesure que nous avancerons.";
+
+        /// <summary>Rang d'une échéance du projet — ce qui vient le plus tôt passe devant.</summary>
+        private static int RangEcheanceRendu(string echeance)
+        {
+            var e = (echeance ?? "").ToLowerInvariant();
+            if (e.Contains("sans attendre")) return 0;
+            if (e.Contains("sous 1 mois"))   return 1;
+            if (e.Contains("trimestre"))     return 2;
+            if (e.Contains("année"))         return 3;
+            if (e.Contains("6 mois"))        return 4;
+            if (e.Contains("1 an"))          return 5;
+            if (e.Contains("2 ans"))         return 6;
+            return 3;
+        }
+
+        /// <summary>
+        /// Le prochain rendez-vous, REPRIS du projet et jamais réinventé : l'action portée par
+        /// le médecin dont l'échéance vient le plus tôt. Une date inventée sur la dernière page
+        /// contredirait la section 7 et la page 2 — et c'est celle que les parents retiennent.
+        /// </summary>
+        private static string TrouverProchainRdvMedecin(DossierRestitutionInitial dossier)
+        {
+            int    meilleurRang = int.MaxValue;
+            string meilleurQuoi = "", meilleureEcheance = "";
+
+            foreach (var bloc in dossier.Blocs)
+            {
+                if (bloc.Key != "pt_s1" && bloc.Key != "pt_s2" && bloc.Key != "pt_s3"
+                 && bloc.Key != "pt_s4" && bloc.Key != "pt_s5") continue;
+
+                var contenu = string.IsNullOrWhiteSpace(bloc.ContenuValide) ? bloc.ContenuPreremplit : bloc.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu)) continue;
+
+                var start = contenu.IndexOf('{');
+                var end   = contenu.LastIndexOf('}');
+                if (start < 0 || end <= start) continue;
+
+                JsonDocument doc;
+                try { doc = JsonDocument.Parse(contenu.Substring(start, end - start + 1)); }
+                catch { continue; }
+
+                using (doc)
+                {
+                    if (doc.RootElement.ValueKind != JsonValueKind.Object) continue;
+                    foreach (var prop in doc.RootElement.EnumerateObject())
+                    {
+                        if (prop.Value.ValueKind != JsonValueKind.Array) continue;
+                        foreach (var item in prop.Value.EnumerateArray())
+                        {
+                            if (item.ValueKind != JsonValueKind.Object) continue;
+                            string Lire(string n) =>
+                                item.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String
+                                    ? (v.GetString() ?? "") : "";
+
+                            var porteur = Lire("porteur");
+                            if (porteur.IndexOf("médecin", StringComparison.OrdinalIgnoreCase) < 0
+                             && porteur.IndexOf("medecin", StringComparison.OrdinalIgnoreCase) < 0
+                             && porteur.IndexOf("pédopsy", StringComparison.OrdinalIgnoreCase) < 0) continue;
+
+                            var quoi = Lire("quoi").Trim();
+                            if (quoi.Length == 0) continue;
+
+                            var ech  = Lire("echeance").Trim();
+                            var rang = RangEcheanceRendu(ech);
+                            if (rang < meilleurRang)
+                            {
+                                meilleurRang      = rang;
+                                meilleurQuoi      = quoi;
+                                meilleureEcheance = ech;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (meilleurQuoi.Length == 0) return "";
+            return meilleureEcheance.Length > 0 ? $"{meilleurQuoi} — {meilleureEcheance}" : meilleurQuoi;
+        }
+
+        private string BuildConclusionPage(string? contenu, CoverFields cover, string prochainRdv, int pageNumber, int totalPages)
         {
             var data = TryParseConclusionJson(contenu);
             var sb   = new StringBuilder();
+
+            var prenom = string.IsNullOrWhiteSpace(cover.Prenom) ? "l'enfant" : cover.Prenom.Trim();
 
             sb.AppendLine("<div class='page ce-page pt-page'>");
             sb.Append(BuildPcHeader(
@@ -2433,72 +2534,66 @@ namespace MedCompanion.Services.Restitutions
             }
 
             sb.AppendLine("  <div class='pt-cards-wrapper'>");
+            int num = 0;
 
-            // 1. Ce que nous retenons
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>1</span> CE QUE NOUS RETENONS DE L'ENFANT</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
+            // 1. L'enfant rendu entier. Après trente pages d'axes et de scores, de la prose.
             if (!string.IsNullOrWhiteSpace(data.Intro))
-                sb.AppendLine($"      <p class='pt-col-text' style='font-style:italic; line-height:1.6;'>{WebUtility.HtmlEncode(data.Intro)}</p>");
-            sb.AppendLine("    </div></div>");
+            {
+                num++;
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num}</span> CE QUE NOUS RETENONS DE {WebUtility.HtmlEncode(prenom.ToUpperInvariant())}</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.AppendLine($"      <p class='pt-col-text' style='line-height:1.7;'>{WebUtility.HtmlEncode(data.Intro)}</p>");
+                sb.AppendLine("    </div></div>");
+            }
 
-            // 2. Ses forces pour grandir (chips)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>2</span> SES FORCES POUR GRANDIR</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
+            // 2. Ses forces — chacune ancrée dans une observation.
             if (data.Forces.Count > 0)
             {
+                num++;
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num}</span> SES FORCES</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
                 sb.AppendLine("      <div class='pt-suivi-cards'>");
                 foreach (var f in data.Forces)
                     sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(f)}</div>");
                 sb.AppendLine("      </div>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
 
-            // 3. Notre feuille de route (chips timeline)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>3</span> NOTRE FEUILLE DE ROUTE</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.FeuilleDeRoute.Count > 0)
+            // 3. Ce qui reste ouvert. Vidé dans l'éditeur, la carte disparaît : nommer une
+            //    incertitude devant des parents est une décision clinique, prise au cas par cas.
+            if (data.ResteOuvert.Count > 0)
             {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var (etape, idx) in data.FeuilleDeRoute.Select((e, i) => (e, i + 1)))
-                    sb.AppendLine($"        <div class='pt-suivi-card'><strong>{idx}</strong><br/>{WebUtility.HtmlEncode(etape)}</div>");
-                sb.AppendLine("      </div>");
+                num++;
+                sb.AppendLine("  <div class='pt-card'>");
+                sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num}</span> CE QUI RESTE OUVERT</div>");
+                sb.AppendLine("    <div class='pt-card-body'>");
+                sb.AppendLine("      <ul class='sd-list'>");
+                foreach (var o in data.ResteOuvert)
+                    sb.AppendLine($"        <li>{WebUtility.HtmlEncode(o)}</li>");
+                sb.AppendLine("      </ul>");
+                sb.AppendLine("    </div></div>");
             }
-            sb.AppendLine("    </div></div>");
 
-            // 4. Message aux parents (chips messages courts)
-            sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>4</span> MESSAGE AUX PARENTS</div>");
-            sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.MessageParents.Count > 0)
-            {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var msg in data.MessageParents)
-                    sb.AppendLine($"        <div class='pt-suivi-card' style='font-style:italic;'>{WebUtility.HtmlEncode(msg)}</div>");
-                sb.AppendLine("      </div>");
-            }
-            sb.AppendLine("    </div></div>");
+            // 4. Ce que ce document est. Texte fixe — il ne dépend pas de l'enfant.
+            num++;
+            var dateRestit = string.IsNullOrWhiteSpace(cover.DateRestitution)
+                ? DateTime.Today.ToString("dd/MM/yyyy")
+                : cover.DateRestitution.Trim();
 
-            // 5. Prochains rendez-vous (chips)
             sb.AppendLine("  <div class='pt-card'>");
-            sb.AppendLine("    <div class='pt-card-hdr'><span class='pt-num'>5</span> PROCHAINS RENDEZ-VOUS</div>");
+            sb.AppendLine($"    <div class='pt-card-hdr'><span class='pt-num'>{num}</span> CE DOCUMENT VOUS APPARTIENT</div>");
             sb.AppendLine("    <div class='pt-card-body'>");
-            if (data.ProchainsRdv.Count > 0)
-            {
-                sb.AppendLine("      <div class='pt-suivi-cards'>");
-                foreach (var rdv in data.ProchainsRdv)
-                    sb.AppendLine($"        <div class='pt-suivi-card'>{WebUtility.HtmlEncode(rdv)}</div>");
-                sb.AppendLine("      </div>");
-            }
+            sb.AppendLine($"      <p class='pt-col-text'>{WebUtility.HtmlEncode(string.Format(DocDitPhotographie, dateRestit))}</p>");
+            sb.AppendLine($"      <p class='pt-col-text'>{WebUtility.HtmlEncode(DocDitAppartient)}</p>");
+            sb.AppendLine($"      <p class='pt-col-text'>{WebUtility.HtmlEncode(DocDitReprise)}</p>");
+            sb.AppendLine($"      <p class='pt-col-text'><strong>Prochain rendez-vous :</strong> "
+                        + WebUtility.HtmlEncode(string.IsNullOrWhiteSpace(prochainRdv) ? "à fixer ensemble." : prochainRdv)
+                        + "</p>");
             sb.AppendLine("    </div></div>");
 
             sb.AppendLine("  </div>"); // pt-cards-wrapper
-
-            if (!string.IsNullOrWhiteSpace(data.Engagement))
-                sb.AppendLine($"  <div class='pt-engagement' style='text-align:center; font-size:10px;'>{WebUtility.HtmlEncode(data.Engagement)}</div>");
-
             sb.AppendLine("</div>");
             return sb.ToString();
         }

@@ -420,6 +420,32 @@ namespace MedCompanion.Services.Restitutions
             "_En attente de la synthèse — le projet en découle, il ne peut pas la précéder._\n\n"
           + $"À générer d'abord : {string.Join(", ", manquantes)}.";
 
+        /// <summary>
+        /// Les sections du projet dont dépend la conclusion. Dernier maillon de la chaîne
+        /// lectures → synthèse → projet → conclusion : la dernière page ferme une lecture,
+        /// elle ne peut pas conclure sur un projet qui n'existe pas encore.
+        /// </summary>
+        private static readonly string[] BlocsProjetPrealable =
+        { "pt_s1", "pt_s2", "pt_s3", "pt_s4", "pt_s5" };
+
+        private static List<string> ProjetManquant(RestitutionBase dossier)
+        {
+            var manquantes = new List<string>();
+            foreach (var key in BlocsProjetPrealable)
+            {
+                var bloc = dossier.Blocs.FirstOrDefault(b => b.Key == key);
+                if (bloc == null) continue;
+                var contenu = string.IsNullOrWhiteSpace(bloc.ContenuValide) ? bloc.ContenuPreremplit : bloc.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu)) manquantes.Add(LibelleSectionProjet(key));
+            }
+            return manquantes;
+        }
+
+        private static string ConclusionEnAttente(List<string> manquantes) =>
+            "_En attente de la synthèse et du projet — la conclusion ferme la lecture du dossier, "
+          + "elle ne peut pas la précéder._\n\n"
+          + $"À générer d'abord : {string.Join(", ", manquantes)}.";
+
         /// <summary>Titre lisible d'une section du projet, pour le chaînage entre sections.</summary>
         private static string LibelleSectionProjet(string key) => key switch
         {
@@ -636,20 +662,220 @@ namespace MedCompanion.Services.Restitutions
             return sb.ToString().Trim();
         }
 
+        /// <summary>Une action du projet, à plat, pour la feuille de route.</summary>
+        private sealed record ActionProjet(
+            string Section, string Quoi, string Porteur, string Echeance,
+            string Degre, string Statut, string Detail);
+
+        /// <summary>Rang de priorité d'un degré — plus petit = plus urgent à faire figurer.</summary>
+        private static int RangDegre(string degre) => (degre ?? "").ToLowerInvariant() switch
+        {
+            var d when d.Contains("indispensable") => 0,
+            var d when d.Contains("recommand")     => 1,
+            var d when d.Contains("utile")         => 2,
+            var d when d.Contains("réévaluer") || d.Contains("reevaluer") => 4,
+            _                                      => 3,   // sans degré : entre les deux
+        };
+
+        /// <summary>Rang d'une échéance — ce qui vient en premier dans le temps passe devant.</summary>
+        private static int RangEcheance(string echeance) => (echeance ?? "").ToLowerInvariant() switch
+        {
+            var e when e.Contains("sans attendre")       => 0,
+            var e when e.Contains("sous 1 mois")         => 1,
+            var e when e.Contains("ce trimestre")        => 2,
+            var e when e.Contains("cette année")         => 3,
+            var e when e.Contains("6 mois")              => 4,
+            var e when e.Contains("1 an")                => 5,
+            var e when e.Contains("2 ans")               => 6,
+            _                                             => 3,
+        };
+
+        /// <summary>
+        /// Rassemble les actions des cinq sections du projet et les trie : d'abord ce qui est
+        /// indispensable, puis ce qui vient le plus tôt. C'est l'ordre dans lequel une famille
+        /// doit s'y prendre — et celui que la feuille de route doit refléter.
+        ///
+        /// Ce qui n'est pas une action à engager reste dehors : un dispositif « déjà en place »
+        /// n'est pas une étape à venir, et une rééducation « à réévaluer plus tard » n'a rien à
+        /// faire dans une liste de prochaines étapes.
+        /// </summary>
+        private static List<ActionProjet> CollecterActionsProjet(RestitutionBase dossier)
+        {
+            // Les tableaux d'actions de chaque section, avec le champ qui porte leur finalité.
+            var champs = new (string Bloc, string Section, string Cle, string Detail)[]
+            {
+                ("pt_s1", "Médical",     "bilans",                  "pourTrancher"),
+                ("pt_s1", "Médical",     "suivi",                   ""),
+                ("pt_s2", "Psychologue", "indication",              "motif"),
+                ("pt_s3", "Rééducation", "reeducations",            "objectif"),
+                ("pt_s3", "Quotidien",   "ressourcesVie",           "objectif"),
+                ("pt_s4", "Parents",     "accompagnementParents",   "objectif"),
+                ("pt_s4", "Éducatif",    "interventionsEducatives", "objectif"),
+                ("pt_s4", "Quotidien",   "auQuotidien",             "objectif"),
+                ("pt_s5", "École",       "cadreScolaire",           "objectif"),
+            };
+
+            var res = new List<ActionProjet>();
+
+            foreach (var (blocKey, section, cle, champDetail) in champs)
+            {
+                var bloc = dossier.Blocs.FirstOrDefault(b => b.Key == blocKey);
+                if (bloc == null) continue;
+                var contenu = string.IsNullOrWhiteSpace(bloc.ContenuValide) ? bloc.ContenuPreremplit : bloc.ContenuValide;
+                if (string.IsNullOrWhiteSpace(contenu)) continue;
+
+                JsonElement racine;
+                JsonDocument doc;
+                try { doc = JsonDocument.Parse(StripFence(contenu)); racine = doc.RootElement; }
+                catch { continue; }
+
+                using (doc)
+                {
+                    if (!racine.TryGetProperty(cle, out var el)) continue;
+
+                    // « indication » est un objet unique ; tout le reste, des tableaux d'actions.
+                    var elements = el.ValueKind == JsonValueKind.Array
+                        ? el.EnumerateArray().ToList()
+                        : el.ValueKind == JsonValueKind.Object ? new List<JsonElement> { el } : new List<JsonElement>();
+
+                    foreach (var item in elements)
+                    {
+                        if (item.ValueKind != JsonValueKind.Object) continue;
+
+                        string Lire(string nom)
+                        {
+                            if (item.TryGetProperty(nom, out var v) && v.ValueKind == JsonValueKind.String)
+                                return v.GetString() ?? "";
+                            return "";
+                        }
+
+                        // L'indication n'a pas de « quoi » : c'est la section elle-même.
+                        var quoi = cle == "indication" ? "Accompagnement psychologique" : Lire("quoi");
+                        if (string.IsNullOrWhiteSpace(quoi)) continue;
+
+                        var degre  = Lire("degre");
+                        var statut = Lire("statut");
+
+                        // Rien à engager : on n'en fait pas une étape.
+                        if (degre.Contains("non indiqu", StringComparison.OrdinalIgnoreCase)) continue;
+                        if (statut.Contains("en place", StringComparison.OrdinalIgnoreCase))  continue;
+
+                        res.Add(new ActionProjet(
+                            section, quoi.Trim(), Lire("porteur"), Lire("echeance"),
+                            degre, statut,
+                            string.IsNullOrEmpty(champDetail) ? "" : Lire(champDetail)));
+                    }
+                }
+            }
+
+            return res
+                .OrderBy(a => RangDegre(a.Degre))
+                .ThenBy(a => RangEcheance(a.Echeance))
+                .ToList();
+        }
+
+        /// <summary>
+        /// Ce que le dossier laisse ouvert, relu depuis des champs DÉJÀ structurés : la question
+        /// clinique que chaque bilan demandé doit trancher (« pour trancher », saisi en 7.1), les
+        /// actions dont le degré dit « à réévaluer », et les diagnostics dont la certitude n'est
+        /// pas acquise (« Hypothèse », « Modérée », posés en 5.2).
+        ///
+        /// Aucune de ces données n'est inventée pour la conclusion : elles existent depuis que le
+        /// projet et la synthèse sont structurés, et personne ne les relisait. C'est la matière du
+        /// bloc « Ce qui reste ouvert » — la seule chose que la dernière page dit et qu'aucune
+        /// autre ne porte.
+        /// </summary>
+        private static string BuildOuverturesProjet(RestitutionBase dossier)
+        {
+            var lignes = new List<string>();
+
+            foreach (var a in CollecterActionsProjet(dossier))
+            {
+                if (a.Section == "Médical" && !string.IsNullOrWhiteSpace(a.Detail))
+                    lignes.Add($"• Bilan demandé — « {a.Quoi} » doit trancher : {a.Detail.Trim()}");
+                else if (RangDegre(a.Degre) == 4)
+                    lignes.Add($"• À réévaluer plus tard — {a.Quoi}"
+                             + (string.IsNullOrWhiteSpace(a.Detail) ? "" : $" ({a.Detail.Trim()})"));
+            }
+
+            // Diagnostics encore ouverts : la synthèse les a posés avec leur degré de certitude.
+            var s2 = dossier.Blocs.FirstOrDefault(b => b.Key == "synthese_diag_s2");
+            var contenuS2 = s2 == null ? "" :
+                (string.IsNullOrWhiteSpace(s2.ContenuValide) ? s2.ContenuPreremplit : s2.ContenuValide);
+            if (!string.IsNullOrWhiteSpace(contenuS2))
+            {
+                try
+                {
+                    using var doc = JsonDocument.Parse(StripFence(contenuS2));
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var item in doc.RootElement.EnumerateArray())
+                        {
+                            if (item.ValueKind != JsonValueKind.Object) continue;
+                            string Lire(string n) => item.TryGetProperty(n, out var v) && v.ValueKind == JsonValueKind.String
+                                ? v.GetString() ?? "" : "";
+                            var label     = Lire("label").Trim();
+                            var certitude = Lire("certitude").Trim();
+                            if (label.Length == 0) continue;
+                            var c = certitude.ToLowerInvariant();
+                            if (c.Contains("hypoth") || c.Contains("modér") || c.Contains("moder"))
+                                lignes.Add($"• Diagnostic non acquis — {label} (certitude : {certitude})");
+                        }
+                    }
+                }
+                catch { /* synthèse encore en texte libre : rien à en tirer, ce n'est pas une erreur */ }
+            }
+
+            if (lignes.Count == 0) return "";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("== CE QUE CE DOSSIER LAISSE OUVERT (relevé dans le projet et la synthèse) ==");
+            foreach (var l in lignes) sb.AppendLine(l);
+            sb.AppendLine();
+            return sb.ToString();
+        }
+
         public async Task<string> RedigerFeuilleDeRouteAsync(
             RestitutionBase dossier,
             CancellationToken ct = default)
         {
-            var projet = new System.Text.StringBuilder();
-            foreach (var b in dossier.Blocs
-                        .Where(b => b.Key.StartsWith("pt_", StringComparison.Ordinal))
-                        .OrderBy(b => b.Ordre))
+            // Les actions du projet, mises en clair et TRIÉES PAR PRIORITÉ. On ne transmet plus
+            // les cinq blocs en JSON brut : un modèle modeste y perdait précisément ce qui fait
+            // cette page — qui porte quoi, pour quand, et dans quel ordre commencer.
+            var actions = CollecterActionsProjet(dossier);
+            var projet  = new System.Text.StringBuilder();
+            bool triees = actions.Count > 0;
+
+            if (triees)
             {
-                var contenu = string.IsNullOrWhiteSpace(b.ContenuValide) ? b.ContenuPreremplit : b.ContenuValide;
-                if (string.IsNullOrWhiteSpace(contenu)) continue;
-                projet.AppendLine($"### {b.Titre}");
-                projet.AppendLine(contenu.Trim());
-                projet.AppendLine();
+                foreach (var a in actions)
+                {
+                    var bouts = new List<string>();
+                    if (!string.IsNullOrWhiteSpace(a.Porteur))  bouts.Add($"porté par : {a.Porteur}");
+                    if (!string.IsNullOrWhiteSpace(a.Echeance)) bouts.Add($"échéance : {a.Echeance}");
+                    if (!string.IsNullOrWhiteSpace(a.Degre))    bouts.Add($"priorité : {a.Degre}");
+                    if (!string.IsNullOrWhiteSpace(a.Statut))   bouts.Add($"statut : {a.Statut}");
+                    projet.AppendLine($"- [{a.Section}] {a.Quoi}"
+                                    + (bouts.Count > 0 ? $"  ({string.Join(" · ", bouts)})" : ""));
+                    if (!string.IsNullOrWhiteSpace(a.Detail))
+                        projet.AppendLine($"    But : {a.Detail}");
+                }
+            }
+            else
+            {
+                // Repli sur le contenu brut des blocs : un projet écrit avant le passage aux
+                // actions structurées — ou saisi en texte libre — doit continuer de produire
+                // une feuille de route, même sans tri ni porteurs.
+                foreach (var b in dossier.Blocs
+                            .Where(b => b.Key.StartsWith("pt_", StringComparison.Ordinal))
+                            .OrderBy(b => b.Ordre))
+                {
+                    var contenu = string.IsNullOrWhiteSpace(b.ContenuValide) ? b.ContenuPreremplit : b.ContenuValide;
+                    if (string.IsNullOrWhiteSpace(contenu) || contenu.Trim() == "{}") continue;
+                    projet.AppendLine($"### {b.Titre}");
+                    projet.AppendLine(contenu.Trim());
+                    projet.AppendLine();
+                }
             }
 
             if (projet.Length == 0) return FeuilleDeRouteEnAttente;
@@ -657,7 +883,10 @@ namespace MedCompanion.Services.Restitutions
             var blocp2 = new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre");
 
             var consigne = new System.Text.StringBuilder();
-            consigne.AppendLine("Voici le PROJET DE SOINS qui vient d'être décidé avec cette famille :");
+            consigne.AppendLine(triees
+                ? "Voici les ACTIONS du PROJET DE SOINS qui vient d'être décidé avec cette famille, DÉJÀ TRIÉES :\n"
+                  + "les plus prioritaires et les plus proches dans le temps d'abord."
+                : "Voici le PROJET DE SOINS qui vient d'être décidé avec cette famille :");
             consigne.AppendLine();
             consigne.AppendLine(projet.ToString().TrimEnd());
             consigne.AppendLine();
@@ -665,17 +894,35 @@ namespace MedCompanion.Services.Restitutions
             consigne.AppendLine("une liste numérotée de 3 à 5 prochaines étapes (1. **Étape :** description en 1-2 lignes).");
             consigne.AppendLine();
             consigne.AppendLine("RÈGLES :");
-            consigne.AppendLine("- Tu ne reprends QUE ce qui figure dans le projet ci-dessus. Tu n'ajoutes aucune étape.");
-            consigne.AppendLine("- Si le projet en contient plus de cinq, tu gardes les plus proches dans le temps.");
+            consigne.AppendLine("- Tu ne reprends QUE ce qui figure ci-dessus. Tu n'ajoutes aucune étape.");
+            if (triees)
+            {
+                consigne.AppendLine("- GARDE L'ORDRE de la liste : il dit par quoi commencer. Si elle compte plus de cinq");
+                consigne.AppendLine("  actions, prends les premières et laisse tomber les suivantes — le dossier complet");
+                consigne.AppendLine("  les détaille plus loin, cette page ne retient que l'essentiel.");
+            }
+            else
+            {
+                consigne.AppendLine("- Si le projet contient plus de cinq étapes, garde les plus proches dans le temps.");
+            }
             consigne.AppendLine("- Langage des parents, sans jargon. Ce qu'ils doivent retenir en sortant.");
             // Le « nous allons » indifférencié laissait croire que le médecin prenait tout en
             // charge — les rendez-vous, les bilans, le suivi. Une famille attend alors un appel
             // qui ne viendra pas, et l'école suspend ses propres démarches.
-            consigne.AppendLine("- Dis QUI fait quoi quand le projet le précise : « vous prendrez rendez-vous… »,");
-            consigne.AppendLine("  « je revois votre enfant… », « l'école mettra en place… ». N'écris « nous » que");
-            consigne.AppendLine("  pour ce qui est réellement fait ensemble.");
-            consigne.AppendLine("- Si le projet ne dit pas qui porte une action, reste neutre : « un rendez-vous est à");
+            consigne.AppendLine("- DIS QUI FAIT QUOI, en te servant du porteur indiqué pour chaque action :");
+            consigne.AppendLine("    « les parents »            → « vous prendrez rendez-vous… »");
+            consigne.AppendLine("    « le médecin »             → « je revois votre enfant… »");
+            consigne.AppendLine("    « l'école »                → « l'école mettra en place… »");
+            consigne.AppendLine("    « professionnel à trouver » → dis clairement qu'il reste à trouver, c'est souvent");
+            consigne.AppendLine("      ce qui prend le plus de temps : « il faudra trouver un orthophoniste… »");
+            consigne.AppendLine("    « professionnel en place »  → « le suivi se poursuit avec… »");
+            consigne.AppendLine("  N'écris « nous » que pour ce qui est réellement fait ensemble.");
+            consigne.AppendLine("- Quand une échéance est donnée, dis-la simplement : « dans les prochaines semaines »,");
+            consigne.AppendLine("  « d'ici la fin du trimestre », « avant la fin de l'année scolaire ». Pas de date exacte.");
+            consigne.AppendLine("- Si une action n'indique pas qui la porte, reste neutre : « un rendez-vous est à");
             consigne.AppendLine("  prendre chez… » — n'attribue la responsabilité à personne.");
+            consigne.AppendLine("- Ne mentionne PAS les priorités telles quelles (« indispensable », « recommandé ») :");
+            consigne.AppendLine("  elles t'ont servi à ordonner la liste, elles n'ont pas à figurer dans le texte.");
             consigne.AppendLine();
             consigne.AppendLine("Commence directement par la liste numérotée, sans titre.");
 
@@ -3109,57 +3356,91 @@ namespace MedCompanion.Services.Restitutions
         public async Task SuggestConclusionAsync(
             DossierReading reading,
             Action<string> onSectionReady,
+            RestitutionBase? dossier = null,
             CancellationToken ct = default)
         {
-            var context = reading.RenderForLlm();
-            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
+            // Dernier maillon de la chaîne : la conclusion ferme une lecture, elle ne l'ouvre pas.
+            if (dossier != null)
+            {
+                var manquantes = SyntheseManquante(dossier);
+                manquantes.AddRange(ProjetManquant(dossier));
+                if (manquantes.Count > 0) { onSectionReady(ConclusionEnAttente(manquantes)); return; }
+            }
+
             var blocRef    = new RestitutionBloc("conclusion", "Conclusion et perspectives", 32, "mixte");
             var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildConclusionInstruction(reading);
+            var ouvertures = dossier != null ? BuildOuverturesProjet(dossier) : "";
+            var instr      = BuildConclusionInstruction(ouvertures);
+
+            // Déjà écrite : on PROPAGE au lieu de régénérer — comme les sections du projet. Vider
+            // « ce qui reste ouvert » est une décision du médecin ; une régénération ne doit ni
+            // la rétablir ni effacer le reste de la page.
+            var dejaEcrit = dossier?.Blocs.FirstOrDefault(b => b.Key == "conclusion")?.ContenuValide;
+            if (!string.IsNullOrWhiteSpace(dejaEcrit) && StripFence(dejaEcrit).Trim() is var dj && dj.Length > 2 && dj != "{}")
+            {
+                onSectionReady(await PropagerBlocStructureAsync(blocRef, dejaEcrit, "", instr, sysPrompt, ct));
+                return;
+            }
+
+            // La synthèse validée d'abord : la conclusion en découle et ne doit pas la contredire.
+            var context = (dossier != null ? BuildSyntheseValidee(dossier) : "") + reading.RenderForProjet();
+            if (string.IsNullOrWhiteSpace(context)) { onSectionReady("{}"); return; }
             var userPrompt = BuildSubsectionPrompt(context, instr, "mixte");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(sysPrompt, messages, 900, ct);
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildConclusionInstruction(DossierReading reading)
+        private static string BuildConclusionInstruction(string ouvertures)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Génère la section 8 — CONCLUSION ET PERSPECTIVES du dossier de restitution.");
             sb.AppendLine();
-            sb.AppendLine("VOIX : mixte — précision clinique sobre + chaleur bienveillante pour les parents.");
-            sb.AppendLine("La conclusion est lue par le médecin ET par la famille — trouver le ton juste.");
+            sb.AppendLine("C'est la DERNIÈRE page, et tout le factuel a déjà été dit : la feuille de route est");
+            sb.AppendLine("en page 2, les rendez-vous et les prises en charge en section 7, le raisonnement");
+            sb.AppendLine("clinique en section 5. Cette page ne les répète pas. Elle fait deux choses que");
+            sb.AppendLine("personne d'autre ne fait : rendre l'enfant entier, et dire ce qui reste ouvert.");
+            sb.AppendLine();
+            sb.AppendLine("VOIX : mixte — précision clinique sobre et chaleur pour les parents, sans condescendance.");
             sb.AppendLine();
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
-            sb.AppendLine("  \"intro\": \"2 à 3 phrases intégratives sur ce que le bilan révèle de cet enfant (difficultés ET ressources).\",");
-            sb.AppendLine("  \"forces\": [\"Force 1\", \"Force 2\", \"Force 3\", \"Force 4\"],");
-            sb.AppendLine("  \"feuilleDeRoute\": [\"Étape 1 — libellé court\", \"Étape 2\", \"Étape 3\", \"Étape 4\", \"Étape 5\"],");
-            sb.AppendLine("  \"messageParents\": [\"Message court aux parents 1\", \"Message 2\", \"Message 3\", \"Message 4\"],");
-            sb.AppendLine("  \"prochainsRdv\": [\"Modalité 1\", \"Modalité 2\", \"Modalité 3\", \"Modalité 4\"],");
-            sb.AppendLine("  \"engagement\": \"1 phrase finale douce et sobre, centrée sur le chemin à parcourir ensemble.\"");
+            sb.AppendLine("  \"intro\": \"4 à 6 phrases sur cet enfant pris dans son ensemble.\",");
+            sb.AppendLine("  \"forces\": [\"Force courte — où on l'a vue\", \"…\"],");
+            sb.AppendLine("  \"resteOuvert\": [\"Ce qui n'est pas tranché — et ce qui le tranchera\", \"…\"]");
             sb.AppendLine("}");
             sb.AppendLine();
             sb.AppendLine("RÈGLES :");
-            sb.AppendLine("  • intro : 2-3 phrases intégratives — nommer les difficultés SANS les dramatiser, valoriser les ressources");
-            sb.AppendLine("    Ne pas résumer le diagnostic ; synthétiser ce qu'on comprend de l'enfant dans sa globalité");
-            sb.AppendLine("  • forces : 4 à 6 forces ou ressources de l'enfant (mots courts : « Curiosité », « Attachement aux proches »…)");
-            sb.AppendLine("  • feuilleDeRoute : 4 à 6 étapes chronologiques du projet (Aujourd'hui → Mise en place → Réévaluation → Ajustements → Autonomie)");
-            sb.AppendLine("  • messageParents : 4 courts messages bienveillants adressés aux parents (15 mots max chacun)");
-            sb.AppendLine("    Ton : confiant, partenarial, sans condescendance. Ex : « Vous restez les partenaires essentiels de ce parcours. »");
-            sb.AppendLine("  • prochainsRdv : 3 à 4 items concrets (prochaine consultation, réévaluation, bilans, coordination)");
-            sb.AppendLine("  • engagement : phrase finale en « nous » — professionnels + famille — sobre et chaleureuse");
+            sb.AppendLine("  • intro : nomme l'enfant par son prénom. Après trente pages d'axes, de sphères et");
+            sb.AppendLine("    de scores, cette page reparle de lui COMME D'UN ENFANT, pas comme d'un dossier.");
+            sb.AppendLine("    Les difficultés nommées sans les dramatiser, les ressources sans les flatter.");
+            sb.AppendLine("    De la prose, jamais une liste — c'est le paragraphe qu'un parent peut lire à voix haute.");
+            sb.AppendLine("    Ne redonne pas le diagnostic : la section 5 l'a posé, le répéter ici l'affaiblit.");
+            sb.AppendLine("  • forces : 4 à 6, chacune ANCRÉE dans une observation de ce dossier.");
+            sb.AppendLine("    Format : « Force courte — où on l'a vue ».");
+            sb.AppendLine("    Ex : « Curiosité — pose beaucoup de questions sur ce qui l'entoure ».");
+            sb.AppendLine("    Une force sans ancrage est une flatterie : si le dossier ne la montre pas, ne l'écris pas.");
+            sb.AppendLine("  • resteOuvert : 2 à 4 points, tirés UNIQUEMENT du relevé ci-dessous.");
+            sb.AppendLine("    Chaque point dit ce qui n'est pas tranché ET ce qui le tranchera.");
+            sb.AppendLine("    Ex : « La part attentionnelle reste à préciser — le bilan neuropsychologique");
+            sb.AppendLine("    demandé ce trimestre le dira. »");
+            sb.AppendLine("    Ton factuel et tranquille : nommer ce qu'on ignore rassure, à condition de dire");
+            sb.AppendLine("    dans la même phrase comment on va le savoir. N'INVENTE AUCUNE incertitude.");
+            sb.AppendLine("    Un tableau « resteOuvert » vide dans l'état actuel est une DÉCISION du médecin,");
+            sb.AppendLine("    jamais un oubli : laisse-le vide.");
+            sb.AppendLine();
+            sb.AppendLine("N'écris NI feuille de route, NI liste de rendez-vous, NI messages d'encouragement :");
+            sb.AppendLine("les deux premiers figurent déjà ailleurs dans le dossier, le troisième n'y a pas sa place.");
 
-            if (reading.LatestBilanFinal != null)
+            if (!string.IsNullOrWhiteSpace(ouvertures))
             {
-                var b = reading.LatestBilanFinal;
-                if (b.DiagnosticsRetenus.Count > 0)
-                {
-                    sb.AppendLine();
-                    sb.AppendLine("DIAGNOSTICS RETENUS (pour l'intro intégrative — ne pas les lister, les intégrer en prose) :");
-                    foreach (var d in b.DiagnosticsRetenus)
-                        sb.AppendLine($"  • {d.Value}");
-                }
+                sb.AppendLine();
+                sb.Append(ouvertures);
+            }
+            else
+            {
+                sb.AppendLine();
+                sb.AppendLine("Aucune ouverture relevée dans le projet ni dans la synthèse : laisse « resteOuvert » vide.");
             }
 
             return sb.ToString();

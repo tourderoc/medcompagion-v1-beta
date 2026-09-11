@@ -1015,7 +1015,11 @@ class Program
             Verifie("les blocs de projet vides ne sont pas transmis", !p.Contains("pt_s3"));
             Verifie("interdiction d'ajouter des étapes", p.Contains("Tu n'ajoutes aucune étape"));
             Verifie("consigne « qui fait quoi »",
-                p.Contains("Dis QUI fait quoi") && p.Contains("n'attribue la responsabilité à personne"));
+                p.Contains("DIS QUI FAIT QUOI") && p.Contains("n'attribue la responsabilité à personne"));
+            // Un projet en texte libre — dossier rédigé avant les actions structurées — doit
+            // continuer de produire une feuille de route, sans tri puisqu'il n'y a rien à trier.
+            Verifie("un projet en texte libre passe par le repli, sans consigne de tri",
+                p.Contains("PROJET DE SOINS qui vient d'être décidé") && !p.Contains("GARDE L'ORDRE"));
 
             // Sans dossier fourni, on n'invente pas non plus.
             var sansDossier = await svc.SuggestRestitution1PageSectionAsync(
@@ -2385,6 +2389,288 @@ class Program
             Verifie("sans cadre, la page parle de CONSEILS applicables sans démarche",
                 htmlSansCadre.Contains("CONSEILS") && htmlSansCadre.Contains("sans d")
                 && !htmlSansCadre.Contains("CADRE SCOLAIRE"));
+        }
+
+        // ── 31. Feuille de route : les actions du projet, triées et attribuées ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : la feuille de route traduit le projet structuré ──");
+        {
+            var lecture31 = new MedCompanion.Services.Restitutions.DossierReading
+            { PatientNomComplet = "GOBLET Adrien", PatientJson = "{}" };
+
+            var dossier31 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+
+            // Un projet complet, volontairement écrit dans le désordre des priorités.
+            dossier31.Blocs.First(b => b.Key == "pt_s1").ContenuValide = """
+                {
+                  "bilans": [
+                    { "quoi": "Bilan orthophonique", "porteur": "professionnel à trouver", "echeance": "ce trimestre",
+                      "degre": "recommandé", "pourTrancher": "préciser le trouble du langage" },
+                    { "quoi": "ECG", "porteur": "les parents", "echeance": "sans attendre",
+                      "degre": "indispensable", "pourTrancher": "avant introduction du stimulant" }
+                  ],
+                  "suivi": [
+                    { "quoi": "Consultation de titration", "porteur": "le médecin", "echeance": "sous 1 mois", "degre": "indispensable" }
+                  ]
+                }
+                """;
+            dossier31.Blocs.First(b => b.Key == "pt_s3").ContenuValide = """
+                {
+                  "reeducations": [
+                    { "quoi": "Psychomotricité", "porteur": "professionnel à trouver", "echeance": "cette année scolaire",
+                      "degre": "à réévaluer plus tard", "objectif": "à décider après le bilan" }
+                  ],
+                  "ressourcesVie": [
+                    { "quoi": "Judo", "porteur": "les parents", "objectif": "canaliser l'excès moteur" }
+                  ]
+                }
+                """;
+            dossier31.Blocs.First(b => b.Key == "pt_s5").ContenuValide = """
+                {
+                  "cadreScolaire": [
+                    { "quoi": "PAP", "statut": "déjà en place", "porteur": "l'école", "degre": "indispensable",
+                      "objectif": "aménagements de supports" },
+                    { "quoi": "Demande d'AESH", "statut": "à demander", "porteur": "les parents",
+                      "echeance": "ce trimestre", "degre": "recommandé", "objectif": "accompagnement en classe" }
+                  ]
+                }
+                """;
+
+            var moteur31 = new FauxMoteur { Reponse = _ => (true, "1. **Étape :** texte.") };
+            var svc31 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteur31, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svc31.RedigerFeuilleDeRouteAsync(dossier31);
+            var p31 = moteur31.Prompts.Count > 0 ? moteur31.Prompts[0] : "";
+
+            // (a) Plus de JSON brut : les actions sont mises en clair avec leurs attributs.
+            Verifie("le projet n'est plus transmis en JSON brut",
+                !p31.Contains("\"quoi\"") && !p31.Contains("{"), p31.Length > 0 ? "" : "prompt vide");
+            Verifie("chaque action porte son porteur et son échéance en clair",
+                p31.Contains("porté par : les parents") && p31.Contains("échéance : sans attendre"));
+            Verifie("la finalité de l'action est transmise",
+                p31.Contains("But :") && p31.Contains("avant introduction du stimulant"));
+
+            // (b) Le tri : indispensable d'abord, puis le plus proche dans le temps.
+            var iEcg    = p31.IndexOf("ECG", StringComparison.Ordinal);
+            var iTitr   = p31.IndexOf("Consultation de titration", StringComparison.Ordinal);
+            var iOrtho  = p31.IndexOf("Bilan orthophonique", StringComparison.Ordinal);
+            var iJudo   = p31.IndexOf("Judo", StringComparison.Ordinal);
+            Verifie("les actions indispensables passent devant les recommandées",
+                iEcg > 0 && iTitr > 0 && iOrtho > iEcg && iOrtho > iTitr,
+                $"ECG={iEcg} titration={iTitr} ortho={iOrtho}");
+            Verifie("à priorité égale, le plus urgent passe devant",
+                iEcg < iTitr, $"ECG={iEcg} titration={iTitr}");
+            Verifie("ce qui n'a pas de degré vient après les actions hiérarchisées",
+                iJudo > iOrtho, $"judo={iJudo} ortho={iOrtho}");
+
+            // (c) Ce qui n'est pas une étape à engager est écarté.
+            Verifie("un dispositif déjà en place n'est pas une prochaine étape",
+                !p31.Contains("PAP"), "le PAP déjà en place ne doit pas figurer");
+            Verifie("une rééducation à réévaluer plus tard n'encombre pas la liste",
+                p31.IndexOf("Psychomotricité", StringComparison.Ordinal) is var iPsy
+                && (iPsy < 0 || iPsy > iJudo), "elle doit être en fin de liste, pas devant");
+            Verifie("ce qui reste à demander y figure bien",
+                p31.Contains("Demande d'AESH"));
+
+            // (d) La consigne sait maintenant se servir de ces attributs.
+            Verifie("l'ordre reçu doit être conservé",
+                p31.Contains("GARDE L'ORDRE") && p31.Contains("par quoi commencer"));
+            Verifie("chaque porteur a sa formulation pour les parents",
+                p31.Contains("vous prendrez rendez-vous") && p31.Contains("je revois votre enfant")
+                && p31.Contains("l'école mettra en place"));
+            Verifie("« professionnel à trouver » est dit comme tel — c'est ce qui prend du temps",
+                p31.Contains("il faudra trouver un orthophoniste"));
+            Verifie("les échéances sont dites en langage courant, sans date",
+                p31.Contains("d'ici la fin du trimestre") && p31.Contains("Pas de date exacte"));
+            Verifie("le vocabulaire de priorité ne sort pas dans le texte des parents",
+                p31.Contains("Ne mentionne PAS les priorités telles quelles"));
+
+            // (e) Projet vide : le message d'attente, aucun appel au modèle.
+            var dossierVide31 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+            var moteurVide31 = new FauxMoteur { Reponse = _ => (true, "ne doit pas être appelé") };
+            var svcVide31 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurVide31, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            var sortieVide = await svcVide31.RedigerFeuilleDeRouteAsync(dossierVide31);
+            Verifie("sans projet, la feuille reste en attente sans appeler le modèle",
+                moteurVide31.Prompts.Count == 0
+                && sortieVide == MedCompanion.Services.Restitutions.RestitutionSuggesterService.FeuilleDeRouteEnAttente);
+        }
+
+        // ── 32. Conclusion : elle ferme la lecture, elle ne la redit pas ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : la conclusion rend l'enfant entier et dit ce qui reste ouvert ──");
+        {
+            var lecture32 = new MedCompanion.Services.Restitutions.DossierReading
+            { PatientNomComplet = "GOBLET Adrien", PatientJson = "{}" };
+
+            static MedCompanion.Models.Restitutions.DossierRestitutionInitial DossierComplet32()
+            {
+                var d = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                foreach (var k in new[] { "synthese_diag_s1", "synthese_diag_s3", "synthese_diag_s4", "synthese_diag_s5" })
+                    d.Blocs.First(b => b.Key == k).ContenuValide = "Rédigé.";
+
+                // La synthèse pose ses diagnostics AVEC leur degré de certitude.
+                d.Blocs.First(b => b.Key == "synthese_diag_s2").ContenuValide = """
+                    [
+                      { "label": "TDAH presentation combinee", "certitude": "Élevée", "elements": ["Inattention scolaire"] },
+                      { "label": "Trouble du langage ecrit", "certitude": "Hypothèse", "elements": ["Lecture laborieuse"] }
+                    ]
+                    """;
+
+                d.Blocs.First(b => b.Key == "pt_s1").ContenuValide = """
+                    {
+                      "bilans": [
+                        { "quoi": "Bilan orthophonique", "porteur": "professionnel a trouver", "echeance": "ce trimestre",
+                          "degre": "recommandé", "pourTrancher": "preciser le trouble du langage ecrit" }
+                      ],
+                      "suivi": [
+                        { "quoi": "Consultation de titration", "porteur": "le médecin", "echeance": "sous 1 mois", "degre": "indispensable" },
+                        { "quoi": "Consultation de suivi", "porteur": "le médecin", "echeance": "à 6 mois", "degre": "recommandé" }
+                      ]
+                    }
+                    """;
+                d.Blocs.First(b => b.Key == "pt_s2").ContenuValide = """{"indication":{"porteur":"professionnel a trouver","motif":"Estime de soi"}}""";
+                d.Blocs.First(b => b.Key == "pt_s3").ContenuValide = """
+                    {
+                      "reeducations": [
+                        { "quoi": "Psychomotricite", "porteur": "professionnel a trouver", "echeance": "cette année scolaire",
+                          "degre": "à réévaluer plus tard", "objectif": "a decider apres le bilan" }
+                      ],
+                      "ressourcesVie": []
+                    }
+                    """;
+                d.Blocs.First(b => b.Key == "pt_s4").ContenuValide = """{"accompagnementParents":[],"interventionsEducatives":[],"auQuotidien":[]}""";
+                d.Blocs.First(b => b.Key == "pt_s5").ContenuValide = """{"cadreScolaire":[],"intro":"CM1"}""";
+                return d;
+            }
+
+            // (a) Le verrou : dernier maillon de la chaîne, la conclusion attend son amont.
+            var moteurVide32 = new FauxMoteur { Reponse = _ => (true, "ne doit pas être appelé") };
+            var svcVide32 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurVide32, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            var sortieVide32 = "";
+            await svcVide32.SuggestConclusionAsync(lecture32, s => sortieVide32 = s,
+                new MedCompanion.Models.Restitutions.DossierRestitutionInitial());
+            Verifie("sans synthèse ni projet, la conclusion ne part pas et n'appelle pas le modèle",
+                moteurVide32.Prompts.Count == 0 && sortieVide32.Contains("En attente de la synthèse et du projet"),
+                sortieVide32);
+            Verifie("le message d'attente nomme ce qu'il faut générer d'abord",
+                sortieVide32.Contains("Compréhension globale") && sortieVide32.Contains("7.1 Prise en charge médicale"),
+                sortieVide32);
+
+            // (b) Le dossier complet : les ouvertures viennent de champs DÉJÀ structurés.
+            var dossier32 = DossierComplet32();
+            var moteur32 = new FauxMoteur { Reponse = _ => (true, "{}") };
+            var svc32 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteur32, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svc32.SuggestConclusionAsync(lecture32, _ => { }, dossier32);
+            var p32 = moteur32.Prompts.Count > 0 ? moteur32.Prompts[0] : "";
+
+            Verifie("avec la synthèse et le projet, la conclusion part",
+                moteur32.Prompts.Count == 1, $"{moteur32.Prompts.Count} appel(s)");
+            Verifie("le relevé des ouvertures est transmis",
+                p32.Contains("CE QUE CE DOSSIER LAISSE OUVERT"));
+            Verifie("un bilan demandé dit la question qu'il tranche",
+                p32.Contains("doit trancher : preciser le trouble du langage ecrit"));
+            Verifie("ce qui est à réévaluer plus tard figure comme une ouverture",
+                p32.Contains("À réévaluer plus tard — Psychomotricite"));
+            Verifie("un diagnostic non acquis est une ouverture",
+                p32.Contains("Diagnostic non acquis — Trouble du langage ecrit"));
+            Verifie("un diagnostic acquis n'en est pas une",
+                !p32.Contains("Diagnostic non acquis — TDAH"));
+            Verifie("l'incertitude ne s'invente pas",
+                p32.Contains("N'INVENTE AUCUNE incertitude"));
+            Verifie("un « reste ouvert » vidé à la main est une décision, pas un oubli",
+                p32.Contains("est une DÉCISION du médecin") && p32.Contains("laisse-le vide"));
+
+            // (c) Ce que la page ne doit plus produire — page 2 et section 7 le disent déjà.
+            Verifie("le format demandé se limite aux trois champs de cette page",
+                p32.Contains("resteOuvert") && !p32.Contains("feuilleDeRoute")
+                && !p32.Contains("messageParents") && !p32.Contains("prochainsRdv"));
+            Verifie("la consigne interdit explicitement de redire ce qui est ailleurs",
+                p32.Contains("NI feuille de route, NI liste de rendez-vous, NI messages"));
+            Verifie("les forces doivent être ancrées dans une observation",
+                p32.Contains("ANCRÉE dans une observation") && p32.Contains("est une flatterie"));
+            Verifie("la synthèse validée est lue avant de conclure",
+                p32.Contains("SYNTHÈSE DE CE DOSSIER, DÉJÀ RÉDIGÉE ET VALIDÉE"));
+
+            // (d) Déjà écrite : on propage, on n'efface pas.
+            var dossierDejaEcrit32 = DossierComplet32();
+            dossierDejaEcrit32.Blocs.First(b => b.Key == "conclusion").ContenuValide =
+                """{"intro":"Adrien est un enfant curieux.","forces":["Curiosite — questionne beaucoup"],"resteOuvert":[]}""";
+            var moteurProp32 = new FauxMoteur { Reponse = _ => (true, """{"intro":"x","forces":[],"resteOuvert":[]}""") };
+            var svcProp32 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                moteurProp32, new MedCompanion.Services.Restitutions.DossierReaderService(new PathService()));
+            await svcProp32.SuggestConclusionAsync(lecture32, _ => { }, dossierDejaEcrit32);
+            var pProp32 = moteurProp32.Prompts.Count > 0 ? moteurProp32.Prompts[0] : "";
+            Verifie("une conclusion déjà écrite est propagée, pas régénérée",
+                pProp32.Contains("ÉTAT ACTUEL DE LA SECTION") && pProp32.Contains("CONSERVE mot pour mot"));
+            Verifie("la propagation rappelle qu'un « reste ouvert » vide se laisse vide",
+                pProp32.Contains("laisse-le vide"));
+
+            // (e) Le rendu : quatre blocs, et rien qui double le reste du dossier.
+            var dossierRendu32 = DossierComplet32();
+            dossierRendu32.Blocs.First(b => b.Key == "conclusion").ContenuValide = """
+                {
+                  "intro": "Adrien est un enfant curieux qui se fatigue vite en classe.",
+                  "forces": ["Curiosite — questionne beaucoup sur le monde", "Attachement — cherche le regard de sa mere"],
+                  "resteOuvert": ["La part langagiere reste a preciser — le bilan orthophonique le dira."]
+                }
+                """;
+            var htmlC = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossierRendu32, "GOBLET Adrien");
+            var pageC = htmlC.Substring(htmlC.IndexOf("CONCLUSION ET PERSPECTIVES", StringComparison.Ordinal));
+
+            Verifie("la page rend l'enfant entier, ses forces et ce qui reste ouvert",
+                pageC.Contains("CE QUE NOUS RETENONS DE") && pageC.Contains("SES FORCES")
+                && pageC.Contains("CE QUI RESTE OUVERT"));
+            Verifie("la page dit ce qu'est ce document et à qui il appartient",
+                pageC.Contains("CE DOCUMENT VOUS APPARTIENT")
+                && pageC.Contains("Ce dossier est une photographie")
+                && pageC.Contains("Il vous appartient"));
+            Verifie("la feuille de route et les messages d'encouragement ont quitté la dernière page",
+                !pageC.Contains("NOTRE FEUILLE DE ROUTE") && !pageC.Contains("MESSAGE AUX PARENTS")
+                && !pageC.Contains("PROCHAINS RENDEZ-VOUS"));
+
+            // (f) Le prochain rendez-vous est REPRIS du projet, jamais réinventé.
+            Verifie("le prochain rendez-vous du médecin vient du projet, le plus proche d'abord",
+                pageC.Contains("Prochain rendez-vous") && pageC.Contains("Consultation de titration")
+                && !pageC.Contains("Consultation de suivi"));
+
+            // (g) Vider « ce qui reste ouvert » fait disparaître la carte — pas une boîte vide.
+            var dossierSansOuvert = DossierComplet32();
+            dossierSansOuvert.Blocs.First(b => b.Key == "conclusion").ContenuValide =
+                """{"intro":"Adrien est un enfant curieux.","forces":["Curiosite — questionne beaucoup"],"resteOuvert":[]}""";
+            var htmlSansOuvert = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossierSansOuvert, "GOBLET Adrien");
+            var pageSansOuvert = htmlSansOuvert.Substring(htmlSansOuvert.IndexOf("CONCLUSION ET PERSPECTIVES", StringComparison.Ordinal));
+            Verifie("vidé dans l'éditeur, « ce qui reste ouvert » disparaît de la page",
+                !pageSansOuvert.Contains("CE QUI RESTE OUVERT"));
+            Verifie("le reste de la page tient debout sans lui",
+                pageSansOuvert.Contains("SES FORCES") && pageSansOuvert.Contains("CE DOCUMENT VOUS APPARTIENT"));
+
+            // Sans action portée par le médecin, la page ne fabrique pas une date.
+            var dossierSansRdv = DossierComplet32();
+            dossierSansRdv.Blocs.First(b => b.Key == "pt_s1").ContenuValide = """{"bilans":[],"suivi":[]}""";
+            dossierSansRdv.Blocs.First(b => b.Key == "conclusion").ContenuValide =
+                """{"intro":"Adrien.","forces":[],"resteOuvert":[]}""";
+            var htmlSansRdv = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(new PathService())
+                .BuildPreviewHtml(dossierSansRdv, "GOBLET Adrien");
+            Verifie("sans rendez-vous dans le projet, la page le dit au lieu d'en inventer un",
+                htmlSansRdv.Substring(htmlSansRdv.IndexOf("CONCLUSION ET PERSPECTIVES", StringComparison.Ordinal))
+                          .Contains("fixer ensemble"));
+
+            // (h) L'éditeur reflète le même modèle que la page.
+            var blocConcl = dossierRendu32.Blocs.First(b => b.Key == "conclusion");
+            var vmConcl = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(blocConcl, _ => Task.CompletedTask);
+            var clesConcl = vmConcl.PtFields.Select(f => f.JsonPath).ToList();
+            Verifie("l'éditeur n'expose plus que les trois champs de cette page",
+                clesConcl.Count == 3 && clesConcl[0] == "intro" && clesConcl[1] == "forces"
+                && clesConcl[2] == "resteOuvert",
+                string.Join(", ", clesConcl));
+            Verifie("le contenu saisi est relu dans l'éditeur",
+                vmConcl.PtFields.First(f => f.JsonPath == "resteOuvert").Items.Count == 1
+                && vmConcl.PtFields.First(f => f.JsonPath == "forces").Items.Count == 2);
         }
 
         Console.WriteLine();

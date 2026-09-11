@@ -785,14 +785,16 @@ namespace MedCompanion.ViewModels.Restitutions
                 new("reperesEvolution",  "Repères d'évolution",       PtFieldKind.List),
             },
 
+            // La feuille de route, les rendez-vous et les messages aux parents ont quitté cette
+            // page : les deux premiers sont déjà écrits ailleurs dans le dossier, le troisième
+            // n'y avait pas sa place. « Ce qui reste ouvert » se vide à la main quand le médecin
+            // juge que ce n'est pas le moment de nommer l'incertitude — la carte disparaît alors
+            // du rendu, et une régénération ne la rétablit pas.
             "conclusion" => new PtFieldDef[]
             {
-                new("intro",          "Intro",               PtFieldKind.Text),
-                new("forces",         "Forces",              PtFieldKind.List),
-                new("feuilleDeRoute", "Feuille de route",    PtFieldKind.List),
-                new("messageParents", "Message aux parents", PtFieldKind.List),
-                new("prochainsRdv",   "Prochains RDV",       PtFieldKind.List),
-                new("engagement",     "Engagement",          PtFieldKind.Text),
+                new("intro",       "Ce que nous retenons", PtFieldKind.Text),
+                new("forces",      "Ses forces",           PtFieldKind.List),
+                new("resteOuvert", "Ce qui reste ouvert",  PtFieldKind.List),
             },
             _ => System.Array.Empty<PtFieldDef>()
         };
@@ -1749,7 +1751,7 @@ namespace MedCompanion.ViewModels.Restitutions
 
                     case "conclusion":
                         await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                            (cb, c) => _suggesterService.SuggestConclusionAsync(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestConclusionAsync(_currentReading!, cb, _dossier, c), ct);
                         break;
 
                     default:
@@ -1968,7 +1970,7 @@ namespace MedCompanion.ViewModels.Restitutions
 
                             case "conclusion":
                                 await RunProgressiveAsync(blocVm, blocVm.Title, 1,
-                                    (cb, c) => _suggesterService.SuggestConclusionAsync(_currentReading!, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestConclusionAsync(_currentReading!, cb, _dossier, c), ct);
                                 break;
 
                             default:
