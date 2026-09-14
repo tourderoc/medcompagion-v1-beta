@@ -138,10 +138,13 @@ namespace MedCompanion.Services.LLM
             int maxTokens,
             System.Threading.CancellationToken cancellationToken,
             string? schemaName,
-            string? jsonSchema)
+            string? jsonSchema,
+            bool sansReflexion = false)
         {
             var (ready, readyMsg) = await LlamaCppServerManager.EnsureRunningAsync();
             if (!ready) return (false, "", readyMsg);
+
+            using var requete = LlamaCppServerManager.SuivreRequete();
 
             try
             {
@@ -151,7 +154,7 @@ namespace MedCompanion.Services.LLM
                 foreach (var (role, content) in messages)
                     messagesList.Add(new { role, content });
 
-                var bodyDict = BuildRequestBody(messagesList, maxTokens, stream: false, schemaName, jsonSchema);
+                var bodyDict = BuildRequestBody(messagesList, maxTokens, stream: false, schemaName, jsonSchema, sansReflexion);
 
                 var json = JsonSerializer.Serialize(bodyDict);
                 var httpContent = new StringContent(json, Encoding.UTF8, "application/json");
@@ -179,7 +182,35 @@ namespace MedCompanion.Services.LLM
                     if (choices[0].TryGetProperty("finish_reason", out var finish) &&
                         finish.GetString() == "length")
                     {
-                        var budget = EffectiveMaxTokens(maxTokens, !string.IsNullOrWhiteSpace(jsonSchema));
+                        var schemaContraint = !string.IsNullOrWhiteSpace(jsonSchema);
+
+                        // En PROSE, un texte coupé reste lisible et exploitable : le rendre vaut
+                        // mieux que d'effacer tout le bloc au profit d'un message d'erreur — c'est
+                        // ce qui affichait « (Erreur : Réponse coupée…) » à la place des sections du
+                        // dossier de restitution, alors qu'Ollama, lui, rendait le texte. On rogne
+                        // la phrase inachevée et le médecin relance s'il veut la suite.
+                        // Sous SCHÉMA, en revanche, un JSON tronqué est inexploitable : erreur.
+                        // ... mais SEULEMENT si c'est bien de la prose. Plusieurs blocs (projet
+                        // thérapeutique, diagnostics) demandent du JSON par ce même chemin, sans
+                        // passer par le décodage contraint : rendre un JSON tronqué en le déclarant
+                        // réussi ferait échouer le rendu plus loin, sans dire pourquoi. On le traite
+                        // donc comme le JSON sous schéma — reprise, puis erreur franche.
+                        var ressembleAduJson = RessembleAduJson(messageContent);
+
+                        if (!schemaContraint && !ressembleAduJson && !string.IsNullOrWhiteSpace(messageContent))
+                            return (true, CouperALaDernierePhrase(messageContent), null);
+
+                        // Content VIDE au plafond = tout est parti en délibération (le serveur la
+                        // range dans `reasoning_content`). Sur un modèle à réflexion, la réserve de
+                        // 2000 tokens ne suffit pas toujours à une section de restitution : plutôt
+                        // que de rendre un bloc vide, on refait la passe sans réflexion — c'est
+                        // exactement la configuration qui marche côté Ollama. Une seule reprise,
+                        // gardée par `sansReflexion`, donc pas de boucle possible.
+                        if (!sansReflexion && !ReflexionCoupee(false, false))
+                            return await ChatCoreAsync(systemPrompt, messages, maxTokens,
+                                                       cancellationToken, null, null, sansReflexion: true);
+
+                        var budget = EffectiveMaxTokens(maxTokens, ReflexionCoupee(schemaContraint, false));
                         return (false, messageContent,
                             $"Réponse coupée : le modèle a atteint le plafond de {budget} tokens sans terminer. " +
                             "Relancer sur un texte plus court, ou augmenter le budget de l'appelant.");
@@ -240,6 +271,8 @@ namespace MedCompanion.Services.LLM
         {
             var (ready, readyMsg) = await LlamaCppServerManager.EnsureRunningAsync();
             if (!ready) return (false, "", readyMsg);
+
+            using var requete = LlamaCppServerManager.SuivreRequete();
 
             try
             {
@@ -332,6 +365,8 @@ namespace MedCompanion.Services.LLM
             var (ready, readyMsg) = await LlamaCppServerManager.EnsureRunningAsync(forVision: true);
             if (!ready) return (false, "", readyMsg);
 
+            using var requete = LlamaCppServerManager.SuivreRequete();
+
             try
             {
                 var base64Image = Convert.ToBase64String(imageData);
@@ -390,8 +425,19 @@ namespace MedCompanion.Services.LLM
         // Un budget calibré pour la seule réponse (ex. 400 pour l'extraction de puces) était donc
         // intégralement consommé par le bloc de réflexion : le serveur s'arrêtait pile au plafond et
         // renvoyait un content VIDE, que l'appelant signalait par une « Erreur LLM » sans message.
-        // Même réserve que OllamaLLMProvider.ReasoningHeadroomTokens.
-        private const int ReasoningHeadroomTokens = 2000;
+        //
+        // MESURÉ le 12/09/2026 sur le bloc « 7.1 Prise en charge médicale » (budget appelant 900),
+        // avec Qwen3.8-27B en réflexion « low » et un dossier patient COURT : 2 642 tokens produits
+        // pour un plafond à 2 900, dont ~2 000 de délibération et ~640 de réponse. La réserve était
+        // donc consommée à 100 % avant même qu'un vrai dossier — plus long, donc plus délibéré —
+        // n'entre en jeu : d'où les sections de projet qui revenaient coupées alors que le modèle
+        // répondait parfaitement sur un cas d'école.
+        //
+        // 4 000 plutôt que 2 000 : un plafond plus haut ne coûte RIEN tant que le modèle n'y touche
+        // pas (il s'arrête sur EOS), alors qu'un plafond trop bas coûte la réponse entière.
+        // Volontairement différent d'OllamaLLMProvider.ReasoningHeadroomTokens, qui sert gpt-oss et
+        // n'a pas montré ce besoin.
+        private const int ReasoningHeadroomTokens = 4000;
 
         /// <summary>
         /// Budget réellement envoyé au serveur.
@@ -413,6 +459,50 @@ namespace MedCompanion.Services.LLM
             return thinkingDisabled ? maxTokens : maxTokens + ReasoningHeadroomTokens;
         }
 
+        /// <summary>
+        /// La réflexion est-elle coupée pour CETTE requête. Décision unique, partagée par le corps
+        /// de requête et par le calcul du budget : les deux divergeaient, et le message d'erreur
+        /// annonçait un plafond qui n'était pas celui envoyé au serveur.
+        ///
+        /// Troisième condition, la corrective : AUCUN niveau de réflexion demandé ⇒ réflexion
+        /// coupée. Sans elle, le template décidait seul, et il réfléchit par défaut — y compris sur
+        /// les modèles dont <see cref="LlamaCppModelProfile.SupportsReasoning"/> est false, pour qui
+        /// l'interface ne propose même pas le réglage. Un bloc de restitution demandé à 500 tokens
+        /// partait donc avec 2500 (500 + la réserve), les dépensait entièrement en délibération et
+        /// s'arrêtait au plafond sans avoir rédigé. Ollama n'avait pas ce défaut parce qu'il envoie
+        /// explicitement think=false à ces modèles : on fait désormais pareil, et le budget de
+        /// l'appelant redevient un budget de RÉDACTION.
+        /// </summary>
+        private bool ReflexionCoupee(bool schemaContraint, bool sansReflexion)
+            => schemaContraint
+               || sansReflexion
+               || string.IsNullOrEmpty(ReasoningEffort)
+               || ReasoningEffort == ReasoningLevels.Off;
+
+        /// <summary>
+        /// Rogne la phrase laissée en plan par une génération arrêtée au plafond. On ne coupe que si
+        /// la dernière ponctuation forte tombe dans le dernier tiers du texte : au-delà, la coupure
+        /// emporterait plus que la phrase inachevée et amputerait le bloc.
+        /// </summary>
+        /// <summary>
+        /// La réponse est-elle une structure JSON plutôt que de la prose. Test volontairement
+        /// grossier — on ne cherche pas à valider, seulement à savoir si une troncature rend le
+        /// contenu inexploitable. Les blocs concernés ouvrent sur « { », « [ » ou une clôture
+        /// Markdown « ```json ».
+        /// </summary>
+        private static bool RessembleAduJson(string texte)
+        {
+            var t = texte.TrimStart();
+            return t.StartsWith("{") || t.StartsWith("[") || t.StartsWith("```json", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string CouperALaDernierePhrase(string texte)
+        {
+            var t = texte.TrimEnd();
+            var fin = t.LastIndexOfAny(new[] { '.', '!', '?', '…' });
+            return (fin >= 0 && fin >= t.Length * 2 / 3) ? t.Substring(0, fin + 1) : t;
+        }
+
         private Dictionary<string, object> BuildRequestBody(
             List<object> messagesList,
             int maxTokens,
@@ -423,8 +513,9 @@ namespace MedCompanion.Services.LLM
         {
             var schemaConstrained = !string.IsNullOrWhiteSpace(jsonSchema);
 
-            // Réflexion coupée sous contrainte de schéma, mais aussi quand l'appelant le demande.
-            var reflexionCoupee = schemaConstrained || sansReflexion;
+            // Coupée sous schéma, quand l'appelant le demande, et quand aucun niveau de réflexion
+            // n'est réglé — voir ReflexionCoupee.
+            var reflexionCoupee = ReflexionCoupee(schemaConstrained, sansReflexion);
 
             var body = new Dictionary<string, object>
             {
@@ -476,9 +567,9 @@ namespace MedCompanion.Services.LLM
             // "off" n'est pas un niveau de reasoning_effort (les niveaux vont de 'minimal' à 'max') :
             // c'est l'interrupteur serveur --reasoning off, appliqué au démarrage du process. On
             // s'abstient donc d'envoyer le champ, sinon le template recevrait un niveau invalide.
-            // Jamais de niveau de réflexion sous contrainte de schéma : il contredirait le
-            // enable_thinking=false posé juste au-dessus.
-            if (!schemaConstrained && !string.IsNullOrEmpty(ReasoningEffort) && ReasoningEffort != ReasoningLevels.Off)
+            // Jamais de niveau de réflexion quand la réflexion est coupée — schéma, vision ou
+            // reprise après plafond : il contredirait le enable_thinking=false posé juste au-dessus.
+            if (!reflexionCoupee && !string.IsNullOrEmpty(ReasoningEffort) && ReasoningEffort != ReasoningLevels.Off)
                 body["reasoning_effort"] = ToTemplateEffort(ReasoningEffort!);
             return body;
         }

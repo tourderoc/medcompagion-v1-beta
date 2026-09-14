@@ -22,7 +22,56 @@ namespace MedCompanion.Services.LLM
     /// </summary>
     public static class LlamaCppServerManager
     {
-        private const string ExePath = @"C:\Users\nair\llama.cpp\build\bin\Release\llama-server.exe";
+        /// <summary>Emplacement du moteur si aucun réglage n'est posé : le dossier de sortie de la
+        /// compilation locale de llama.cpp, historique de la machine de développement.</summary>
+        private const string ExePathParDefaut = @"C:\Users\nair\llama.cpp\build\bin\Release\llama-server.exe";
+
+        /// <summary>Chemin réel du moteur : réglage <c>LlamaCppExePath</c> de appsettings.json s'il
+        /// est renseigné, sinon <see cref="ExePathParDefaut"/>. Résolu une seule fois au chargement
+        /// du type — changer le réglage suppose donc de redémarrer l'application. Sert aussi de
+        /// critère d'identité dans <see cref="IsOurServer"/>, d'où l'importance qu'il soit stable.</summary>
+        private static readonly string ExePath = ResoudreExePath();
+
+        /// <summary>
+        /// Restreint llama-server à une seule carte graphique, si AppSettings.LlamaCppGpuUuid
+        /// est renseigné. La variable n'est posée que sur ce processus : au niveau de la session
+        /// elle masquerait l'autre carte à Whisper, qui doit précisément tourner dessus.
+        ///
+        /// GGML_VK_VISIBLE_DEVICES accompagne CUDA_VISIBLE_DEVICES : sans elle, un moteur compilé
+        /// avec le support Vulkan retrouve la carte écartée par cet autre chemin et recommence à
+        /// répartir le modèle — constaté sur Ollama 0.33 le 11/09/2026.
+        /// </summary>
+        private static void AppliquerCarteGraphique(ProcessStartInfo psi)
+        {
+            try
+            {
+                var uuid = AppSettings.Load().LlamaCppGpuUuid?.Trim();
+                if (string.IsNullOrWhiteSpace(uuid)) return;
+
+                psi.EnvironmentVariables["CUDA_VISIBLE_DEVICES"] = uuid;
+                psi.EnvironmentVariables["GGML_VK_VISIBLE_DEVICES"] = uuid;
+            }
+            catch
+            {
+                // Impossible de lire les réglages : on démarre sans restriction plutôt que
+                // de priver l'application de son moteur local.
+            }
+        }
+
+        private static string ResoudreExePath()
+        {
+            try
+            {
+                var configure = AppSettings.Load().LlamaCppExePath;
+                return string.IsNullOrWhiteSpace(configure) ? ExePathParDefaut : configure.Trim();
+            }
+            catch
+            {
+                // Réglages illisibles ou corrompus : on ne bloque pas le démarrage du moteur.
+                return ExePathParDefaut;
+            }
+        }
+
         private const int    Port    = 8899;
 
         /// <summary>
@@ -31,7 +80,7 @@ namespace MedCompanion.Services.LLM
         /// cours diffère de celui demandé. Un seul modèle à la fois — les deux ne tiennent pas
         /// ensemble en VRAM.
         /// </summary>
-        public static LlamaCppModelProfile CurrentProfile { get; set; } = LlamaCppProfiles.Qwen;
+        public static LlamaCppModelProfile CurrentProfile { get; set; } = LlamaCppProfiles.Gemma4Qat;
 
         /// <summary>Profil du process en cours (null si rien ne tourne).</summary>
         private static LlamaCppModelProfile? _runningProfile;
@@ -43,6 +92,14 @@ namespace MedCompanion.Services.LLM
             "MedCompanion", "llama-server.log");
 
         public static string BaseUrl => $"http://127.0.0.1:{Port}";
+
+        /// <summary>
+        /// Libération de la VRAM tenue par l'autre moteur, appelée juste avant de démarrer
+        /// llama-server. Branchée par <see cref="LLMServiceFactory"/> sur le déchargement des
+        /// modèles Ollama résidents. Laissée nulle, le démarrage se fait sans précaution — c'est
+        /// l'ancien comportement.
+        /// </summary>
+        public static Func<Task>? LibererVramConcurrente { get; set; }
 
         private static Process? _process;
         private static readonly SemaphoreSlim _lock = new(1, 1);
@@ -56,11 +113,77 @@ namespace MedCompanion.Services.LLM
         private static int _stopGeneration;
         private static readonly HttpClient _healthClient = new() { Timeout = TimeSpan.FromSeconds(3) };
 
-        // Déchargement automatique après inactivité, même principe que le keep_alive d'Ollama : sans
-        // ça, le modèle reste chargé indéfiniment (VRAM/RAM occupées) même quand il n'est plus utilisé.
-        private static readonly TimeSpan IdleTimeout = TimeSpan.FromMinutes(5);
+        // Déchargement automatique après inactivité. Il était de 5 minutes quand la carte était partagée
+        // avec Ollama et Whisper ; depuis que la 5060 Ti est réservée au LLM (14/09/2026), un déchargement
+        // aussi court ne libérait plus rien pour personne et faisait payer un rechargement après chaque
+        // pause de consultation. Réglage LlamaCppIdleUnloadMinutes, 2 h par défaut ; 0 = jamais.
+        private static readonly int IdleUnloadMinutes = LireDelaiInactivite();
         private static DateTime _lastActivity = DateTime.MinValue;
         private static Timer? _idleTimer;
+
+        private static int LireDelaiInactivite()
+        {
+            try { return Math.Max(0, AppSettings.Load().LlamaCppIdleUnloadMinutes); }
+            catch { return 120; }
+        }
+
+        // ── État publié ────────────────────────────────────────────────────────
+        // Source unique de l'état du moteur : le voyant de l'en-tête ne fait que l'afficher. Avant, quatre
+        // endroits écrivaient sa couleur à la main (warm-up, bascule, bouton décharger, paramètres), et
+        // aucun ne voyait la veille, la bascule vision, l'arrêt depuis Pilotage ni un serveur mort :
+        // le voyant restait vert sur un modèle déchargé.
+        private static EtatMoteurLlm _etat = EtatMoteurLlm.Arrete;
+        private static string _etatMessage = "Aucun modèle chargé.";
+        private static int _requetesEnCours;
+        private static int _echecsSante;
+        private static int _surveillanceEnCours;
+
+        /// <summary>État courant du moteur. Voir <see cref="EtatChange"/>.</summary>
+        public static EtatMoteurLlm Etat => _etat;
+
+        /// <summary>Précision sur l'état : cause d'une erreur, raison d'un déchargement.</summary>
+        public static string EtatMessage => _etatMessage;
+
+        /// <summary>Levé à chaque changement d'état, depuis n'importe quel thread.</summary>
+        public static event Action? EtatChange;
+
+        private static void PublierEtat(EtatMoteurLlm etat, string message)
+        {
+            _etat        = etat;
+            _etatMessage = message;
+            try { EtatChange?.Invoke(); } catch { /* un abonné défaillant ne doit pas bloquer le moteur */ }
+        }
+
+        /// <summary>
+        /// À encadrer autour de chaque requête envoyée au serveur (<c>using var _ = SuivreRequete();</c>).
+        /// Fait passer l'état à « génère » tant qu'au moins une requête est en cours, et date la fin de
+        /// la dernière — c'est d'elle, et non du début, que se mesure l'inactivité.
+        /// </summary>
+        public static IDisposable SuivreRequete()
+        {
+            if (Interlocked.Increment(ref _requetesEnCours) == 1 && ServeurPret)
+                PublierEtat(EtatMoteurLlm.Genere, "Génération en cours.");
+            return new FinDeRequete();
+        }
+
+        /// <summary>Un modèle est chargé ET a répondu — et non un process encore en chargement. Sans cette
+        /// nuance, une requête texte interrompue par un redémarrage vision republiait « prêt » à sa fin,
+        /// pendant que le modèle de vision chargeait encore.</summary>
+        private static bool ServeurPret =>
+            IsRunning && _runningProfile != null && (_etat is EtatMoteurLlm.Pret or EtatMoteurLlm.Genere);
+
+        private sealed class FinDeRequete : IDisposable
+        {
+            private int _terminee;
+
+            public void Dispose()
+            {
+                if (Interlocked.Exchange(ref _terminee, 1) == 1) return;
+                _lastActivity = DateTime.Now;
+                if (Interlocked.Decrement(ref _requetesEnCours) == 0 && ServeurPret && _etat == EtatMoteurLlm.Genere)
+                    PublierEtat(EtatMoteurLlm.Pret, "Prêt.");
+            }
+        }
 
         public static bool IsRunning => _process != null && !_process.HasExited;
 
@@ -77,6 +200,17 @@ namespace MedCompanion.Services.LLM
         /// <summary>Profil effectivement chargé, qui peut différer de <see cref="CurrentProfile"/>
         /// tant que le redémarrage n'a pas eu lieu.</summary>
         public static LlamaCppModelProfile? RunningProfile => _runningProfile;
+
+        /// <summary>Le process en cours sert la vision (mmproj chargé, sans MTP) ; null si rien ne tourne.</summary>
+        public static bool? RunningModeIsVision => _runningModeIsVision;
+
+        private static bool _chargementVision;
+
+        /// <summary>Le modèle chargé — ou en cours de chargement — est le modèle de vision. Contrairement à
+        /// <see cref="RunningModeIsVision"/>, vaut aussi pendant le chargement, pour que le voyant l'annonce
+        /// dès le début d'une lecture de formulaire.</summary>
+        public static bool ModeVisionEnCours =>
+            _etat == EtatMoteurLlm.Chargement ? _chargementVision : _runningModeIsVision == true;
 
         /// <summary>
         /// Nettoie tout llama-server.exe orphelin dès le démarrage de l'app, avant même que
@@ -116,6 +250,25 @@ namespace MedCompanion.Services.LLM
         /// (une fois par formulaire), pas le flux principal.
         /// </param>
         public static async Task<(bool success, string message)> EnsureRunningAsync(bool forVision = false)
+        {
+            var resultat = await EnsureRunningCoreAsync(forVision);
+
+            if (resultat.success)
+            {
+                // « Déjà actif » compris. Sans écraser « génère » : une requête peut être en cours.
+                if (IsRunning && Volatile.Read(ref _requetesEnCours) == 0 && _etat != EtatMoteurLlm.Pret)
+                    PublierEtat(EtatMoteurLlm.Pret, "Prêt.");
+            }
+            else if (!resultat.message.StartsWith("Démarrage annulé", StringComparison.Ordinal))
+            {
+                // Un démarrage annulé vient d'un arrêt demandé, qui a déjà publié « arrêté ».
+                PublierEtat(EtatMoteurLlm.Erreur, resultat.message);
+            }
+
+            return resultat;
+        }
+
+        private static async Task<(bool success, string message)> EnsureRunningCoreAsync(bool forVision)
         {
             await _lock.WaitAsync();
             try
@@ -158,6 +311,10 @@ namespace MedCompanion.Services.LLM
 
                 if (!File.Exists(ExePath))
                     return (false, $"llama-server.exe introuvable : {ExePath}");
+                // Testé avant IsReady : sans dossier, le message « modèle introuvable » afficherait un
+                // chemin vide et enverrait chercher un fichier manquant au lieu d'un réglage manquant.
+                if (!LlamaCppProfiles.ModelsDirConfigure)
+                    return (false, "Dossier des modèles llama.cpp non renseigné (réglage LlamaCppModelsDir) : aucun modèle ne peut être chargé.");
                 // IsReady et non File.Exists : pendant un téléchargement le fichier existe déjà mais
                 // tronqué, et llama-server échoue alors sur un GGUF invalide sans message clair.
                 if (!profile.IsReady)
@@ -238,9 +395,62 @@ namespace MedCompanion.Services.LLM
                     RedirectStandardError  = true
                 };
 
+                AppliquerCarteGraphique(psi);
+
+                // Le démarrage est décidé : publié AVANT les préparatifs, dont la libération d'Ollama peut
+                // durer jusqu'à 15 s. Les marqueurs du process précédent sont effacés ici — s'il était mort
+                // seul, rien ne l'avait fait, et la surveillance d'arrêt ci-dessous l'aurait pris pour
+                // celui qu'on démarre.
+                _runningModeIsVision     = null;
+                _runningReasoningEnabled = null;
+                _runningProfile          = null;
+                _chargementVision        = forVision;
+                PublierEtat(EtatMoteurLlm.Chargement,
+                    $"Chargement de {profile.ShortName}{(forVision ? " (vision)" : "")}…");
+
+                // Dernier verrou avant de démarrer : personne d'autre ne doit tenir le port. Les
+                // nettoyages ci-dessus raisonnent sur ce qu'on CROIT suivre (_process) et sur la liste
+                // des process ; celui-ci part de l'état réel du système et rattrape donc les cas où
+                // l'on s'est trompé — serveur d'une session précédente, process perdu de vue après un
+                // timeout, bascule concurrente.
+                LibererLePort();
+
+                // Rendre la VRAM tenue par l'AUTRE moteur avant d'allouer la nôtre. La fabrique le
+                // fait déjà lors d'une bascule de provider, mais trois écrans instancient leur
+                // propre LlamaCppProvider pour la vision (formulaires, cartographies) et démarrent
+                // le serveur sans passer par elle : là, personne ne prévenait Ollama. Posé ici,
+                // c'est-à-dire au seul endroit par lequel TOUT démarrage passe.
+                if (LibererVramConcurrente != null)
+                {
+                    try { await LibererVramConcurrente(); }
+                    catch { /* best-effort : ne doit jamais empêcher le moteur local de démarrer */ }
+                }
+
                 _process = Process.Start(psi);
                 if (_process == null)
                     return (false, "Impossible de démarrer llama-server.exe");
+
+                // Mort du serveur hors de tout arrêt demandé (plantage, carte perdue au réveil d'une mise
+                // en veille...) : sans ce signal, le voyant resterait vert sur un process disparu.
+                // Un arrêt voulu passe par StopInternal, qui incrémente _stopGeneration avant de tuer ;
+                // un échec pendant le chargement laisse _runningProfile à null et se signale lui-même.
+                var generationSuivie = Volatile.Read(ref _stopGeneration);
+                var processSuivi     = _process;
+                try
+                {
+                    processSuivi.EnableRaisingEvents = true;
+                    processSuivi.Exited += (_, _) =>
+                    {
+                        if (Volatile.Read(ref _stopGeneration) == generationSuivie
+                            && ReferenceEquals(_process, processSuivi)
+                            && _runningProfile != null)
+                        {
+                            PublierEtat(EtatMoteurLlm.Erreur,
+                                "Le serveur llama.cpp s'est arrêté de lui-même. Il redémarrera au prochain appel.");
+                        }
+                    };
+                }
+                catch { /* surveillance best-effort */ }
 
                 // Drainer la sortie vers un fichier de log : indispensable, sinon le tampon du pipe
                 // se remplit (llama-server est très verbeux) et le process peut se bloquer en
@@ -303,6 +513,12 @@ namespace MedCompanion.Services.LLM
                     await Task.Delay(1000);
                 }
 
+                // Le tuer avant d'abandonner. Sans ça, un serveur trop lent à charger restait vivant
+                // sans que personne ne le suive : il finissait son chargement pour rien, gardait son
+                // modèle en VRAM et en mémoire engagée, et l'appel suivant en démarrait un SECOND
+                // par-dessus.
+                ForceKill(proc, 5000);
+                if (ReferenceEquals(_process, proc)) _process = null;
                 return (false, "Timeout : llama-server n'a pas répondu après 150s.");
             }
             finally
@@ -336,6 +552,60 @@ namespace MedCompanion.Services.LLM
 
         /// <summary>Vrai si ce process est bien notre llama-server (celui de <see cref="ExePath"/>) et
         /// non celui embarqué par Ollama. En cas de doute (chemin illisible), on ne touche pas.</summary>
+        /// <summary>
+        /// Tue le détenteur du port s'il en reste un, et seulement si c'est NOTRE llama-server.
+        ///
+        /// Pourquoi ce filet en plus des autres : llama-server ne se met à écouter qu'APRÈS avoir
+        /// chargé le modèle (visible dans son journal — « model loaded » puis « listening on »). Un
+        /// second serveur démarré par erreur consomme donc plusieurs Go et plusieurs secondes avant
+        /// de découvrir que le port est pris. Pire, pendant tout ce temps c'est l'ANCIEN serveur qui
+        /// répond à /health : la boucle d'attente le prend pour le nouveau et déclare la bascule
+        /// réussie, alors que le modèle qui répond n'est pas celui qu'on croit.
+        ///
+        /// On part de l'état réel du système (qui tient le port) plutôt que de nos propres
+        /// références, précisément pour rattraper les cas où celles-ci sont fausses. Le filtre
+        /// <see cref="IsOurServer"/> reste indispensable : le llama-server d'Ollama ne doit jamais
+        /// être tué ici.
+        /// </summary>
+        private static void LibererLePort()
+        {
+            try
+            {
+                using var netstat = Process.Start(new ProcessStartInfo
+                {
+                    FileName               = "netstat",
+                    Arguments              = "-ano -p tcp",
+                    UseShellExecute        = false,
+                    CreateNoWindow         = true,
+                    RedirectStandardOutput = true
+                });
+                if (netstat == null) return;
+
+                var sortie = netstat.StandardOutput.ReadToEnd();
+                netstat.WaitForExit(3000);
+
+                foreach (var ligne in sortie.Split('\n'))
+                {
+                    // Pas de filtre sur l'état de la connexion : son libellé dépend de la langue de
+                    // Windows. C'est IsOurServer qui décide, et lui ne se trompe pas de cible.
+                    if (!ligne.Contains($":{Port}")) continue;
+
+                    var champs = ligne.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    if (champs.Length == 0 || !int.TryParse(champs[champs.Length - 1], out var pid)) continue;
+                    if (_process != null && pid == _process.Id) continue;
+
+                    try
+                    {
+                        using var detenteur = Process.GetProcessById(pid);
+                        if (!IsOurServer(detenteur)) continue;
+                        ForceKill(detenteur, 5000);
+                    }
+                    catch { /* process déjà parti entre netstat et ici */ }
+                }
+            }
+            catch { /* best-effort : ne doit jamais empêcher le démarrage */ }
+        }
+
         private static bool IsOurServer(Process proc)
         {
             try
@@ -371,6 +641,16 @@ namespace MedCompanion.Services.LLM
                     CreateNoWindow  = true
                 });
                 taskkill?.WaitForExit(3000);
+
+                // Attendre la mort de la CIBLE, et non celle de taskkill : c'est elle qui tient le
+                // modèle. taskkill rend la main dès qu'il a POSÉ la demande d'arrêt, en quelques
+                // dizaines de millisecondes ; le serveur, lui, met plusieurs secondes à rendre 10 Go
+                // de VRAM et de mémoire engagée. On repartait donc démarrer le modèle suivant pendant
+                // que le précédent occupait encore la carte — les deux llama-server visibles côte à
+                // côte dans le moniteur de ressources, le nouveau allouant ses 7 Go pendant que
+                // l'ancien en tenait encore 10. C'est le seul chemin par lequel ça pouvait arriver :
+                // partout ailleurs, l'arrêt précède le démarrage.
+                proc.WaitForExit(15000);
             }
             catch { /* déjà arrêté, ou pas les droits — best-effort */ }
         }
@@ -397,16 +677,53 @@ namespace MedCompanion.Services.LLM
             }
         }
 
-        /// <summary>Démarre la surveillance d'inactivité (une seule instance à la fois — sans effet
-        /// si déjà en cours). Vérifie toutes les minutes si <see cref="IdleTimeout"/> est dépassé.</summary>
+        /// <summary>Démarre la surveillance du serveur chargé (une seule instance à la fois). Toutes les
+        /// minutes : déchargement après <see cref="IdleUnloadMinutes"/> sans requête, et contrôle que le
+        /// serveur répond toujours.</summary>
         private static void StartIdleWatcher()
         {
+            _echecsSante = 0;
             _idleTimer?.Dispose();
-            _idleTimer = new Timer(_ =>
+            _idleTimer = new Timer(_ => _ = SurveillerAsync(), null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+        }
+
+        private static async Task SurveillerAsync()
+        {
+            if (Interlocked.Exchange(ref _surveillanceEnCours, 1) == 1) return;
+            try
             {
-                if (IsRunning && DateTime.Now - _lastActivity > IdleTimeout)
+                if (!IsRunning || Volatile.Read(ref _requetesEnCours) > 0) return;
+
+                if (IdleUnloadMinutes > 0 && DateTime.Now - _lastActivity > TimeSpan.FromMinutes(IdleUnloadMinutes))
+                {
                     Stop();
-            }, null, TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+                    PublierEtat(EtatMoteurLlm.Arrete, IdleUnloadMinutes >= 60
+                        ? $"Déchargé après {IdleUnloadMinutes / 60.0:0.#} h sans utilisation."
+                        : $"Déchargé après {IdleUnloadMinutes} min sans utilisation.");
+                    return;
+                }
+
+                // Un process vivant peut ne plus servir : c'est le cas typique au réveil d'une mise en veille,
+                // où la carte graphique a été réinitialisée sous lui. Contrôlé seulement au repos — avec un
+                // seul créneau (-np 1), un serveur occupé peut légitimement tarder à répondre à /health — et
+                // sur deux échecs consécutifs, pour ne pas abattre un serveur sur un simple hoquet.
+                if (_etat != EtatMoteurLlm.Pret) return;
+
+                if (await IsHealthyAsync())
+                {
+                    _echecsSante = 0;
+                    return;
+                }
+
+                if (++_echecsSante >= 2)
+                {
+                    Stop();
+                    PublierEtat(EtatMoteurLlm.Erreur,
+                        "Le serveur llama.cpp ne répondait plus (réveil de mise en veille ?). Arrêté : il redémarrera au prochain appel.");
+                }
+            }
+            catch { /* surveillance best-effort */ }
+            finally { Volatile.Write(ref _surveillanceEnCours, 0); }
         }
 
         /// <summary>
@@ -470,7 +787,23 @@ namespace MedCompanion.Services.LLM
             finally
             {
                 _process = null;
+                PublierEtat(EtatMoteurLlm.Arrete, "Aucun modèle chargé.");
             }
         }
+    }
+
+    /// <summary>État du moteur llama.cpp, publié par <see cref="LlamaCppServerManager"/>.</summary>
+    public enum EtatMoteurLlm
+    {
+        /// <summary>Aucun modèle chargé ; le prochain appel en chargera un.</summary>
+        Arrete,
+        /// <summary>Serveur en cours de démarrage.</summary>
+        Chargement,
+        /// <summary>Modèle chargé en VRAM, au repos.</summary>
+        Pret,
+        /// <summary>Au moins une requête en cours.</summary>
+        Genere,
+        /// <summary>Démarrage impossible ou serveur perdu.</summary>
+        Erreur
     }
 }

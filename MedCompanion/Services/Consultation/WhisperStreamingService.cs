@@ -109,17 +109,115 @@ namespace MedCompanion.Services.Consultation
 
         // ── Whisper (créés une seule fois) ────────────────────────────────────
         private WhisperFactory?   _factory;
+
+        /// <summary>
+        /// Quand la carte de Whisper est désignée par son UUID, aligne l'ordre des cartes CUDA de CE
+        /// processus sur celui de nvidia-smi (bus PCI). Sans cela, CUDA classe de la plus rapide à la
+        /// plus lente et le numéro retrouvé via nvidia-smi désignerait l'autre carte.
+        ///
+        /// Posé dans le constructeur statique : CUDA ne lit cette variable qu'à son initialisation,
+        /// c'est-à-dire au premier chargement d'un modèle Whisper, qui passe forcément par cette
+        /// classe. llama-server en hérite sans effet, puisqu'il reçoit sa carte par UUID.
+        /// </summary>
+        static WhisperStreamingService()
+        {
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(AppSettings.Load().WhisperGpuUuid))
+                    Environment.SetEnvironmentVariable("CUDA_DEVICE_ORDER", "PCI_BUS_ID");
+            }
+            catch { /* réglages illisibles : ordre CUDA par défaut */ }
+        }
+
+        /// <summary>
+        /// Numéro de la carte d'UUID donné dans l'ordre de nvidia-smi (bus PCI), ou -1 si
+        /// nvidia-smi est absent ou ne la voit pas.
+        /// </summary>
+        private static int IndexCarteDepuisUuid(string uuid)
+        {
+            try
+            {
+                using var smi = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName               = "nvidia-smi",
+                    Arguments              = "--query-gpu=index,uuid --format=csv,noheader",
+                    UseShellExecute        = false,
+                    CreateNoWindow         = true,
+                    RedirectStandardOutput = true
+                });
+                if (smi == null) return -1;
+
+                var sortie = smi.StandardOutput.ReadToEnd();
+                smi.WaitForExit(5000);
+
+                foreach (var ligne in sortie.Split('\n'))
+                {
+                    var champs = ligne.Split(',');
+                    if (champs.Length == 2
+                        && champs[1].Trim().Equals(uuid, StringComparison.OrdinalIgnoreCase)
+                        && int.TryParse(champs[0].Trim(), out var index))
+                        return index;
+                }
+            }
+            catch { /* nvidia-smi introuvable */ }
+            return -1;
+        }
+
+        /// <summary>
+        /// Crée la factory Whisper sur la carte choisie dans les réglages : par UUID
+        /// (AppSettings.WhisperGpuUuid) de préférence, sinon par numéro (AppSettings.WhisperGpuDevice).
+        /// Réserver une carte à Whisper évite qu'une dictée vienne disputer sa VRAM au modèle de
+        /// langage. Aucun des deux réglages = comportement d'origine, ggml choisit lui-même.
+        /// </summary>
+        private static WhisperFactory CreerFactory(string modelPath)
+        {
+            try
+            {
+                var reglages = AppSettings.Load();
+
+                if (!string.IsNullOrWhiteSpace(reglages.WhisperGpuUuid))
+                {
+                    var uuid  = reglages.WhisperGpuUuid.Trim();
+                    var index = IndexCarteDepuisUuid(uuid);
+                    if (index >= 0)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[Whisper] Chargement sur la carte {uuid} (n° {index}, ordre bus PCI).");
+                        return WhisperFactory.FromPath(modelPath, new WhisperFactoryOptions { GpuDevice = index });
+                    }
+
+                    // Pas de repli sur WhisperGpuDevice : son numéro est exprimé dans l'ordre CUDA par
+                    // défaut, que le constructeur statique vient justement de remplacer par l'ordre PCI.
+                    System.Diagnostics.Debug.WriteLine($"[Whisper] Carte {uuid} introuvable via nvidia-smi : carte par défaut.");
+                    return WhisperFactory.FromPath(modelPath);
+                }
+
+                var carte = reglages.WhisperGpuDevice;
+                if (carte >= 0)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[Whisper] Chargement sur la carte CUDA {carte}.");
+                    return WhisperFactory.FromPath(modelPath, new WhisperFactoryOptions { GpuDevice = carte });
+                }
+            }
+            catch (Exception ex)
+            {
+                // Réglage illisible ou carte refusée : mieux vaut une dictée sur la carte par
+                // défaut qu'une dictée impossible.
+                System.Diagnostics.Debug.WriteLine($"[Whisper] Choix de carte ignoré : {ex.Message}");
+            }
+
+            return WhisperFactory.FromPath(modelPath);
+        }
         private WhisperProcessor? _processor;
         private string?           _modelPath;   // chemin du modèle, pour recréer le factory lors d'un reset complet
         private bool _whisperInitialized;
         private readonly SemaphoreSlim _initLock = new(1, 1);
 
-        // ── Déchargement de secours après inactivité ──────────────────────────
-        // Le cas normal est traité par StopAsync, qui décharge immédiatement. Ce minuteur ne sert
-        // que de filet pour les chemins où le modèle a été chargé sans qu'une dictée démarre
-        // vraiment (micro absent, erreur d'ouverture du périphérique) : sans lui, les ~3 Go de
-        // large-v3 resteraient en VRAM jusqu'à la fermeture de l'application.
-        public static TimeSpan IdleUnloadTimeout { get; set; } = TimeSpan.FromMinutes(5);
+        // ── Déchargement après inactivité ─────────────────────────────────────
+        // Seul mécanisme de déchargement en usage normal : le modèle reste chargé entre les dictées
+        // (voir StopAsync). Deux heures couvrent une consultation et une pause déjeuner sans relire
+        // le modèle ; au-delà, Med est probablement resté ouvert en fin de journée. La 3050 étant
+        // réservée à Whisper, garder ses ~3 Go ne prive aucune autre application.
+        public static TimeSpan IdleUnloadTimeout { get; set; } = TimeSpan.FromHours(2);
         private System.Threading.Timer? _idleUnloadTimer;
         private readonly object _idleLock = new();
 
@@ -252,7 +350,7 @@ namespace MedCompanion.Services.Consultation
                     $"[Whisper] Prompt dynamique : {_vocabService.Count} termes custom chargés.");
 
                 _modelPath = modelManager.ModelPath;
-                _factory   = WhisperFactory.FromPath(modelManager.ModelPath);
+                _factory   = CreerFactory(modelManager.ModelPath);
                 _processor = _factory.CreateBuilder()
                                      .WithLanguage("fr")
                                      // PAS de .WithSingleSegment() : avec des chunks Batch de 90s,
@@ -488,17 +586,15 @@ namespace MedCompanion.Services.Consultation
 
             StatusChanged?.Invoke("Enregistrement arrêté.");
 
-            // Déchargement IMMÉDIAT, pas différé : l'extraction IA démarre dans la foulée de l'arrêt
-            // (bouton « Extraire avec IA » en interrogatoire, automatique sur Pause en suivi). Garder
-            // les ~3 Go de large-v3 en VRAM pendant que le LLM recharge ses ~14,6 Go fait déborder la
-            // carte au pire moment. Le rechargement au prochain démarrage coûte 1-3 s, signalés par
-            // le voyant du moteur.
+            // Le modèle reste chargé entre deux dictées. Il était déchargé immédiatement ici quand
+            // Whisper et le LLM partageaient la même carte : garder les ~3 Go de large-v3 pendant que
+            // le LLM rechargeait faisait déborder la VRAM. Depuis que Whisper a sa propre carte (3050)
+            // et le LLM la sienne (5060 Ti), ce déchargement ne protégeait plus rien et faisait relire
+            // le modèle à chaque reprise de dictée. Seul le filet d'inactivité le décharge désormais.
             //
-            // Sauf pendant Dispose (qui appelle StopAsync en bloquant le thread puis libère
-            // factory/processor lui-même) : UnloadModelAsync attend _initLock de façon asynchrone,
-            // ce qui bloquerait le thread UI déjà bloqué par le GetAwaiter().GetResult() de Dispose.
+            // Pas pendant Dispose, qui libère factory et processor lui-même et désarme ce minuteur.
             if (!_isDisposed)
-                await UnloadModelAsync();
+                ScheduleIdleUnload();
         }
 
         /// <summary>
@@ -1074,7 +1170,7 @@ namespace MedCompanion.Services.Consultation
                         _whisperInitialized = false;
                         return (false, "Chemin du modèle introuvable — réinitialisation impossible (relancez l'app).");
                     }
-                    _factory = WhisperFactory.FromPath(_modelPath);
+                    _factory = CreerFactory(_modelPath);
                 }
 
                 if (_factory == null)

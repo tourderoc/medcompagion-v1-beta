@@ -90,8 +90,13 @@ namespace MedCompanion.Views.Pilotage
                     : $"{loaded?.ShortName ?? selected.ShortName} · contexte {FormatContext(loaded?.ContextSize ?? selected.ContextSize)}")
                 : $"{selected.ShortName} sera chargé au prochain appel";
 
+            // Le bouton sert aussi à démarrer : actif seulement quand le serveur tournait, il laissait
+            // l'écran sans aucun moyen de relancer un serveur qu'on venait d'y arrêter. Inactif pendant
+            // un chargement (un second démarrage attendrait le premier) et moteur désactivé.
             StopBtn.IsEnabled    = running;
-            RestartBtn.IsEnabled = running;
+            RestartBtn.Content   = running ? "⟳ Redémarrer" : "▶ Démarrer";
+            RestartBtn.IsEnabled = LlamaCppProfiles.Enabled
+                                   && LlamaCppServerManager.Etat != EtatMoteurLlm.Chargement;
 
             bool hasAdapter = GpuMemoryProbe.TryReadAdapterMemory(out _, out var freeBytes);
             VramFreeText.Text = hasAdapter ? $"{freeBytes / 1024 / 1024:N0} Mo" : "—";
@@ -613,7 +618,8 @@ namespace MedCompanion.Views.Pilotage
             RestartBtn.IsEnabled = false;
             try
             {
-                LlamaCppServerManager.Stop();
+                if (LlamaCppServerManager.IsRunning)
+                    LlamaCppServerManager.Stop();
                 var (ok, msg) = await LlamaCppServerManager.EnsureRunningAsync();
                 if (!ok)
                     ShowNotice(msg);

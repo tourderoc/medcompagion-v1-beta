@@ -16,9 +16,26 @@ namespace MedCompanion.Services.Consultation
 
     public class WhisperModelManager
     {
-        private static readonly string ModelsFolder = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "MedCompanion", "models");
+        /// <summary>
+        /// Dossier des modèles : réglage <c>WhisperModelsDir</c> s'il est renseigné, sinon le dossier
+        /// de l'application dans AppData, où Med télécharge ses modèles.
+        ///
+        /// Ce n'est pas un repli : le fichier n'est jamais cherché à deux endroits. Renseigné, le
+        /// réglage est la seule source ; le dossier AppData ne sert que s'il est vide, pour qu'un poste
+        /// neuf puisse encore télécharger son modèle sans configuration. Sur le poste du cabinet, les
+        /// modèles vivent sur la partition dédiée du SSD (M:\whisper) depuis le 14/09/2026.
+        /// </summary>
+        private static readonly string ModelsFolder = ResoudreDossier();
+
+        private static string ResoudreDossier()
+        {
+            var dossierApplication = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "MedCompanion", "models");
+
+            var configure = AppSettings.Load().WhisperModelsDir;
+            return string.IsNullOrWhiteSpace(configure) ? dossierApplication : configure.Trim();
+        }
 
         // Tailles approximatives en bytes pour afficher une progression estimée
         private static readonly long[] ModelEstimatedBytes =

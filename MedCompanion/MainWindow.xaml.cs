@@ -70,7 +70,6 @@ public partial class MainWindow : Window
 
     // Services LLM
     private LLMServiceFactory _llmFactory;
-    private LLMWarmupService _warmupService;
     private ILLMService? _currentLLMService;
 
     /// <summary>Proxy "vivant" (voir LiveLlmServiceProxy) — à utiliser pour tout service construit
@@ -158,8 +157,17 @@ public partial class MainWindow : Window
             Dispatcher.InvokeAsync(() => HandleApiKeyMigration(envKey));
         };
         
-        _warmupService = new LLMWarmupService(_llmFactory, _settings);
-        
+        // Med s'ouvre toujours sur Gemma 4 12B QAT + MTP, quel que soit le dernier modèle utilisé
+        // (décision du 14/09/2026, PLAN_MOTEUR_LLM_LOCAL.md). Posé AVANT l'initialisation : le
+        // modèle mémorisé pilote le chargement d'ouverture (InitializeLLMSystem) et la sélection du
+        // sélecteur, le profil courant tout appel qui précéderait ce chargement. Ne régler que l'un des
+        // deux laissait l'autre charger Qwen.
+        if (_settings.LLMProvider == "LlamaCpp")
+        {
+            _settings.OllamaModel = Services.LLM.LlamaCppProfiles.Gemma4Qat.Id;
+            Services.LLM.LlamaCppServerManager.CurrentProfile = Services.LLM.LlamaCppProfiles.Gemma4Qat;
+        }
+
         // Initialisation asynchrone sécurisée
         _llmFactory.InitializeAsync();
         _currentLLMService = _llmFactory.GetCurrentProvider();

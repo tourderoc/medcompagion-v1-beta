@@ -22,6 +22,12 @@ namespace MedCompanion.Services.LLM
         {
             _settings = settings;
             _secureStorage = secureStorage;
+
+            // Tout démarrage de llama-server commence par rendre la VRAM qu'Ollama garde résidente
+            // — y compris les démarrages déclenchés hors de cette fabrique (lecture d'image par
+            // vision). Voir OllamaLLMProvider.DechargerModelesResidentsAsync.
+            LlamaCppServerManager.LibererVramConcurrente =
+                () => OllamaLLMProvider.DechargerModelesResidentsAsync(_settings.OllamaBaseUrl);
         }
 
         /// <summary>

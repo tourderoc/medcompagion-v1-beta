@@ -211,6 +211,70 @@ namespace MedCompanion.Services.LLM
             }
         }
 
+        /// <summary>
+        /// Décharge TOUS les modèles qu'Ollama garde résidents, quel que soit celui que ce provider
+        /// sert. <see cref="UnloadAsync"/> ne libère que <c>_currentModel</c> : insuffisant avant de
+        /// démarrer llama-server, qui vise la même carte et ne sait pas ce qu'Ollama tient.
+        ///
+        /// Ollama garde son modèle en VRAM cinq minutes après le dernier appel (keep_alive par
+        /// défaut). Sans ce nettoyage, une lecture de formulaire par vision — qui démarre
+        /// llama-server DERRIÈRE le dos de la fabrique — chargeait Gemma + mmproj par-dessus le
+        /// modèle Ollama encore résident : 20 Go demandés sur une carte de 16, le pilote débordait
+        /// sur la mémoire partagée et c'est LÀ que la RAM se remplissait.
+        ///
+        /// Statique et sans état : appelé depuis le gestionnaire de process, qui n'a pas de
+        /// provider sous la main. Best-effort — Ollama éteint, rien à libérer.
+        /// </summary>
+        public static async Task<int> DechargerModelesResidentsAsync(string baseUrl)
+        {
+            var liberes = 0;
+            try
+            {
+                var racine = baseUrl.TrimEnd('/');
+                using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(10) };
+
+                var ps = await http.GetStringAsync($"{racine}/api/ps").ConfigureAwait(false);
+                using var doc = JsonDocument.Parse(ps);
+                if (!doc.RootElement.TryGetProperty("models", out var models)) return 0;
+
+                foreach (var m in models.EnumerateArray())
+                {
+                    var nom = m.TryGetProperty("model", out var n) ? n.GetString() : null;
+                    if (string.IsNullOrWhiteSpace(nom)) continue;
+
+                    var corps = JsonSerializer.Serialize(
+                        new { model = nom, keep_alive = 0, prompt = "", stream = false });
+                    using var contenu = new StringContent(corps, Encoding.UTF8, "application/json");
+                    var r = await http.PostAsync($"{racine}/api/generate", contenu).ConfigureAwait(false);
+                    if (r.IsSuccessStatusCode) liberes++;
+                }
+
+                // keep_alive=0 est un ORDRE, pas une garantie : Ollama répond tout de suite mais son
+                // process runner (son propre llama-server.exe, dans lib\ollama) met encore quelques
+                // secondes à mourir et à rendre la VRAM. Démarrer le nôtre sans attendre, c'est
+                // exactement le chevauchement qu'on cherche à supprimer : deux llama-server.exe
+                // chargés en même temps. On attend donc que /api/ps soit vide, 15 s au plus — au-delà
+                // on démarre quand même, mieux vaut un chevauchement qu'un moteur qui ne démarre pas.
+                if (liberes > 0)
+                {
+                    for (var i = 0; i < 15; i++)
+                    {
+                        await Task.Delay(1000).ConfigureAwait(false);
+                        try
+                        {
+                            var reste = await http.GetStringAsync($"{racine}/api/ps").ConfigureAwait(false);
+                            using var d = JsonDocument.Parse(reste);
+                            if (!d.RootElement.TryGetProperty("models", out var m)
+                                || m.GetArrayLength() == 0) break;
+                        }
+                        catch { break; }
+                    }
+                }
+            }
+            catch { /* Ollama absent ou injoignable : il n'y a rien à libérer */ }
+            return liberes;
+        }
+
         public async Task<(bool success, string message)> WarmupAsync()
         {
             try

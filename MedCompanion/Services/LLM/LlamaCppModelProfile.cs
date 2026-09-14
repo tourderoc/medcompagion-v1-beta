@@ -157,20 +157,55 @@ namespace MedCompanion.Services.LLM
     /// <summary>Profils connus, résolution depuis le nom de modèle, et persistance des réglages.</summary>
     public static class LlamaCppProfiles
     {
-        private const string ModelsDir = @"C:\Users\nair\llamacpp-models";
+        /// <summary>
+        /// Dossier des modèles : réglage <c>LlamaCppModelsDir</c> de appsettings.json, et rien d'autre.
+        /// Vide si le réglage manque — voir <see cref="ModelsDirConfigure"/>.
+        ///
+        /// Plus de dossier de repli, volontairement. L'ancien repli codé en dur pointait sur une
+        /// seconde copie des modèles : dès que le réglage se vidait, Med l'aurait lue sans rien dire.
+        /// Depuis le 14/09/2026 les modèles vivent sur une partition dédiée du SSD (M:) ; un réglage
+        /// manquant doit se voir, pas se contourner.
+        ///
+        /// Déclaré AVANT les profils : les initialiseurs de champs statiques s'exécutent dans l'ordre
+        /// du texte, et tous les chemins ci-dessous en dépendent.
+        /// </summary>
+        private static readonly string ModelsDir = ResoudreModelsDir();
+
+        /// <summary>Le dossier des modèles est renseigné. À false, aucun profil n'est chargeable.</summary>
+        public static bool ModelsDirConfigure => !string.IsNullOrEmpty(ModelsDir);
+
+        private static string ResoudreModelsDir()
+        {
+            try
+            {
+                var configure = AppSettings.Load().LlamaCppModelsDir;
+                return string.IsNullOrWhiteSpace(configure) ? "" : configure.Trim().TrimEnd('\\', '/');
+            }
+            catch
+            {
+                // Réglages illisibles : aucun dossier plutôt qu'un dossier deviné.
+                return "";
+            }
+        }
+
+        /// <summary>Chemin d'un fichier du dossier des modèles, ou chaîne vide si le dossier n'est pas
+        /// renseigné. Un chemin vide rend le profil non chargeable (<see cref="LlamaCppModelProfile.IsReady"/>)
+        /// au lieu de désigner un fichier relatif au lecteur courant.</summary>
+        private static string Chemin(string fichier)
+            => string.IsNullOrEmpty(ModelsDir) ? "" : $@"{ModelsDir}\{fichier}";
 
         /// <summary>
-        /// Qwen3.8-27B — le raisonnement (courriers, rapports, restitutions).
-        /// Contexte 32768 par défaut : meilleur compromis vitesse/contexte mesuré. Vision via le
-        /// mmproj officiel Unsloth, la quantization communautaire ne l'embarquant pas.
+        /// Qwen3.8-27B — le raisonnement (synthèses, restitutions, tâches qui demandent de délibérer).
+        /// Contexte 32768 par défaut : meilleur compromis vitesse/contexte mesuré.
+        /// Sans vision : son projecteur (mmproj-F16, 0,9 Go) a été retiré le 14/09/2026, la lecture
+        /// d'image passant entièrement par Gemma QAT.
         /// </summary>
         public static readonly LlamaCppModelProfile Qwen = new()
         {
             Id                 = "Qwen3.8-27B",
             ShortName          = "Qwen3.8-27B",
             DisplayName        = "hf.co/jrell/Qwen3.8-27B-i1-IQ4_XS-GGUF-Smaller (llama.cpp)",
-            ModelPath          = $@"{ModelsDir}\Qwen3.8-27B-IQ4_XS.gguf",
-            MmprojPath         = $@"{ModelsDir}\mmproj-F16.gguf",
+            ModelPath          = Chemin("Qwen3.8-27B-IQ4_XS.gguf"),
             MaxContextSize     = 131072,
             DefaultContextSize = 32768,
             DefaultDraftTokens = 3,
@@ -179,43 +214,23 @@ namespace MedCompanion.Services.LLM
         };
 
         /// <summary>
-        /// Gemma 4 12B — le volume et le long contexte (analyse de PDF, conclusions de documents).
-        /// Mesuré à 128k avec cache q8_0 : 8 956 Mo de VRAM, chargement ~10 s. Soit deux fois le
-        /// contexte de la configuration Ollama (64k) pour 3,4 Go de moins.
-        /// Projecteur de vision de 167 Mo présent (5× plus léger que celui de Qwen), non exploité.
-        /// </summary>
-        public static readonly LlamaCppModelProfile Gemma4 = new()
-        {
-            Id                 = "gemma4:12b",
-            ShortName          = "Gemma 4 12B",
-            DisplayName        = "gemma4:12b (llama.cpp)",
-            ModelPath          = $@"{ModelsDir}\gemma4-12b.gguf",
-            MmprojPath         = $@"{ModelsDir}\gemma4-12b-mmproj.gguf",
-            MaxContextSize     = 131072,
-            DefaultContextSize = 131072,
-            DefaultDraftTokens = 4,
-            HasMtpTensors      = false,
-            SupportsReasoning  = false,
-        };
-
-        /// <summary>
-        /// Gemma 4 12B en QAT, avec son brouillon MTP séparé — la variante d'Unsloth.
-        /// Deux différences avec le profil ci-dessus, et elles sont indépendantes :
+        /// Gemma 4 12B en QAT, avec son brouillon MTP séparé — la variante d'Unsloth. Seul Gemma servi
+        /// depuis le 14/09/2026 : le Gemma 4 12B standard a été retiré, fichier et profil.
         ///  • QAT (Quantization-Aware Training) : le modèle est entraîné en tenant compte de la
         ///    quantification, donc le 4 bits perd nettement moins de qualité qu'une conversion
         ///    classique. Unsloth a retravaillé la conversion, la Q4_0 directe depuis le BF16 QAT
         ///    dégradant la précision.
-        ///  • Le brouillon MTP, absent du GGUF standard, est ici fourni à part.
-        /// Conservé en parallèle du profil standard pour pouvoir les comparer sur de vrais documents.
+        ///  • Le brouillon MTP n'est pas dans le GGUF : il est fourni à part.
+        /// C'est aussi le modèle de vision (formulaires, cartographies).
         /// </summary>
         public static readonly LlamaCppModelProfile Gemma4Qat = new()
         {
             Id                 = "gemma4-qat-mtp",
             ShortName          = "Gemma 4 12B QAT + MTP",
             DisplayName        = "gemma-4-12B-it-qat + MTP (llama.cpp)",
-            ModelPath          = $@"{ModelsDir}\gemma4-12b-qat.gguf",
-            DraftModelPath     = $@"{ModelsDir}\gemma4-12b-qat-mtp.gguf",
-            MmprojPath         = $@"{ModelsDir}\gemma4-12b-qat-mmproj.gguf",
+            ModelPath          = Chemin("gemma4-12b-qat.gguf"),
+            DraftModelPath     = Chemin("gemma4-12b-qat-mtp.gguf"),
+            MmprojPath         = Chemin("gemma4-12b-qat-mmproj.gguf"),
             ExpectedSizeBytes  = 6_716_356_800,   // taille publiée par Hugging Face
             MaxContextSize     = 131072,
             DefaultContextSize = 131072,
@@ -224,7 +239,7 @@ namespace MedCompanion.Services.LLM
             SupportsReasoning  = false,
         };
 
-        public static readonly IReadOnlyList<LlamaCppModelProfile> All = new[] { Qwen, Gemma4, Gemma4Qat };
+        public static readonly IReadOnlyList<LlamaCppModelProfile> All = new[] { Qwen, Gemma4Qat };
 
         static LlamaCppProfiles()
         {

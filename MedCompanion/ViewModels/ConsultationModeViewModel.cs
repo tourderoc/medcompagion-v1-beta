@@ -7968,14 +7968,12 @@ source: ""MedCompanion""
                 {
                     if (_whisperService == null) return;
 
-                    // Libère la VRAM de Gemma avant de démarrer Whisper : sans ça, un modèle
-                    // encore chargé depuis une tâche précédente (courrier, chat Med...) reste
-                    // résident pendant toute la dictée et se dispute la carte graphique avec
-                    // Whisper (mesuré : dégradation de la qualité de transcription). Le
-                    // rechargement au prochain appel LLM coûte quelques secondes, largement
-                    // rentable sur la durée d'une dictée.
-                    if (_llmService != null)
-                        await _llmService.UnloadAsync();
+                    // Le LLM n'est PLUS déchargé avant la dictée. Il l'était quand Whisper et le
+                    // modèle de langage partageaient la même carte et se disputaient sa VRAM.
+                    // Depuis le 11/09/2026, Whisper a la 3050 et le LLM la 5060 Ti : le décharger ne
+                    // libérait plus rien pour Whisper, et faisait payer un rechargement complet à
+                    // l'extraction qui suit la dictée — exactement quand le médecin attend.
+                    // Vérifié le 14/09/2026 : dictée sur la 3050, 5060 Ti inchangée.
 
                     _whisperService.Mode                 = UseBatchMode ? RecordingMode.Batch : RecordingMode.Streaming;
                     _whisperService.BatchDurationSeconds = BatchDurationSeconds;

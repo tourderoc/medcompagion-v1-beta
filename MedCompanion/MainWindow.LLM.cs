@@ -18,23 +18,18 @@ public partial class MainWindow : Window
     {
         try
         {
-            // La factory est déjà initialisée de manière synchrone dans le constructeur
-            // On lance juste le warm-up en arrière-plan
-            
-            // S'abonner aux événements de warm-up
-            _warmupService.StatusChanged += OnLLMWarmupStatusChanged;
+            // Le voyant suit l'état publié par le moteur lui-même (voir AfficherEtatMoteur).
+            LlamaCppServerManager.EtatChange += OnEtatMoteurChange;
+            AfficherEtatMoteur();
 
             // Badge de débit : alimenté par les providers locaux après chaque génération.
             Services.LLM.LlmThroughputMonitor.Measured += OnThroughputMeasured;
 
-            // Charger les modèles Ollama disponibles et peupler le ComboBox
+            // Lancé avant de remplir le sélecteur, qui interroge Ollama et peut prendre quelques secondes :
+            // le modèle commence à charger sans l'attendre.
+            _ = ChargerModeleOuvertureAsync();
+
             await PopulateLLMComboBoxAsync();
-            
-            // Lancer le warm-up automatique en arrière-plan
-            _ = Task.Run(async () =>
-            {
-                await _warmupService.WarmupAsync();
-            });
         }
         catch (Exception ex)
         {
@@ -45,47 +40,138 @@ public partial class MainWindow : Window
             });
         }
     }
-    
-    private void OnLLMWarmupStatusChanged(object? sender, WarmupStatusEventArgs e)
+
+    /// <summary>
+    /// Charge le modèle d'ouverture — UN seul chemin de démarrage. Il y en avait deux qui couraient en
+    /// parallèle : le service de warm-up, et la sélection initiale du sélecteur qui déclenchait une
+    /// bascule complète comme un clic. Le warm-up n'apportait rien sur llama.cpp (il rappelait la
+    /// fonction de démarrage déjà exécutée), et les deux écrivaient la couleur du voyant : le dernier
+    /// qui finissait gagnait. Supprimé le 14/09/2026 (PLAN_MOTEUR_LLM_LOCAL.md, étape 6).
+    /// </summary>
+    private async Task ChargerModeleOuvertureAsync()
     {
-        Dispatcher.Invoke(() =>
+        var fournisseur = _settings.LLMProvider;
+        var modele      = fournisseur == "OpenAI" ? null : _settings.OllamaModel;
+
+        var (ok, message) = await _llmFactory.SwitchProviderAsync(fournisseur, modele);
+
+        await Dispatcher.InvokeAsync(() =>
         {
-            // Mettre à jour l'indicateur selon le statut
-            switch (e.Status)
+            _currentLLMService = _llmFactory.GetCurrentProvider();
+            if (fournisseur != "LlamaCpp")
+                _etatFournisseurExterne = (ok, message);
+
+            var nom = fournisseur == "LlamaCpp"
+                ? LlamaCppServerManager.RunningProfile?.ShortName ?? modele
+                : _llmFactory.GetActiveModelName();
+
+            StatusTextBlock.Text       = ok ? $"✅ {nom} prêt" : $"❌ {message}";
+            StatusTextBlock.Foreground = new SolidColorBrush(ok ? Colors.Green : Colors.Red);
+            AfficherEtatMoteur();
+        });
+    }
+
+    // ── Voyant ───────────────────────────────────────────────────────────────
+
+    private static readonly Color CouleurArrete     = Color.FromRgb(149, 165, 166);
+    private static readonly Color CouleurChargement = Color.FromRgb(255, 193, 7);
+    private static readonly Color CouleurPret       = Color.FromRgb(76, 175, 80);
+    private static readonly Color CouleurErreur     = Color.FromRgb(244, 67, 54);
+
+    /// <summary>
+    /// Résultat de la dernière bascule pour un fournisseur dont l'état n'est pas suivi en direct
+    /// (Ollama, OpenAI). llama.cpp, lui, publie son état : ce champ ne le concerne pas.
+    /// </summary>
+    private (bool ok, string message)? _etatFournisseurExterne;
+
+    private bool _voyantPulse;
+
+    private void OnEtatMoteurChange() => Dispatcher.BeginInvoke(new Action(AfficherEtatMoteur));
+
+    /// <summary>
+    /// Seul endroit qui décide de l'aspect du voyant. Pour llama.cpp il traduit l'état publié par
+    /// <see cref="LlamaCppServerManager"/> — veille, bascule vision, arrêt depuis Pilotage, serveur mort
+    /// compris — et nomme le modèle RÉELLEMENT chargé, pas celui du sélecteur.
+    /// </summary>
+    private void AfficherEtatMoteur()
+    {
+        Color  couleur;
+        string infobulle;
+        var    pulse  = false;
+        var    vision = false;
+
+        if (_llmFactory.GetActiveProviderName() is not ("LlamaCpp" or "Aucun"))
+        {
+            var etat = _etatFournisseurExterne;
+            couleur   = etat is null ? CouleurChargement : etat.Value.ok ? CouleurPret : CouleurErreur;
+            infobulle = etat?.message ?? "Initialisation du modèle…";
+        }
+        else
+        {
+            var profil = LlamaCppServerManager.RunningProfile;
+            vision     = LlamaCppServerManager.ModeVisionEnCours;
+            var nom    = profil == null ? "" : profil.ShortName + (vision ? " — mode vision (lecture d'image)" : "");
+
+            // Le sélecteur ne bouge PAS pendant une lecture d'image : il dit quel modèle sert le texte, et
+            // ce choix n'a pas changé. C'est le voyant qui montre la substitution, et le retour prévu.
+            var retourTexte = vision
+                ? $"\n{LlamaCppServerManager.CurrentProfile.ShortName} reprendra au prochain appel texte."
+                : "";
+
+            switch (LlamaCppServerManager.Etat)
             {
-                case "initializing":
-                case "checking":
-                case "warming":
-                    LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(255, 193, 7)); // Orange
-                    LLMStatusIndicator.ToolTip = e.Message;
+                case EtatMoteurLlm.Chargement:
+                    couleur   = CouleurChargement;
+                    infobulle = LlamaCppServerManager.EtatMessage + retourTexte;
                     break;
-                
-                case "ready":
-                    LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(76, 175, 80)); // Vert
-                    LLMStatusIndicator.ToolTip = e.Message;
-                    _currentLLMService = _llmFactory.GetCurrentProvider();
+
+                case EtatMoteurLlm.Pret:
+                    couleur   = CouleurPret;
+                    infobulle = $"{nom}\nChargé et prêt · contexte {profil?.ContextSize:N0} tokens{retourTexte}";
                     break;
-                
-                case "error":
-                    LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(244, 67, 54)); // Rouge
-                    LLMStatusIndicator.ToolTip = e.Message;
+
+                case EtatMoteurLlm.Genere:
+                    couleur   = CouleurPret;
+                    pulse     = true;
+                    infobulle = $"{nom}\nGénération en cours{retourTexte}";
                     break;
-                
-                case "fallback":
-                case "warning":
-                    LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(255, 152, 0)); // Orange foncé
-                    LLMStatusIndicator.ToolTip = e.Message;
+
+                case EtatMoteurLlm.Erreur:
+                    couleur   = CouleurErreur;
+                    infobulle = LlamaCppServerManager.EtatMessage;
+                    break;
+
+                default:
+                    couleur   = CouleurArrete;
+                    infobulle = $"{LlamaCppServerManager.EtatMessage}\n" +
+                                $"Le prochain appel chargera {LlamaCppServerManager.CurrentProfile.ShortName} " +
+                                "(quelques secondes si le fichier est en cache, jusqu'à ~70 s sinon).";
                     break;
             }
-            
-            // Mettre à jour le texte de statut
-            StatusTextBlock.Text = e.Message;
-            StatusTextBlock.Foreground = new SolidColorBrush(
-                e.Status == "ready" ? Colors.Green :
-                e.Status == "error" ? Colors.Red :
-                Colors.Blue
-            );
-        });
+        }
+
+        LLMStatusIndicator.Background = new SolidColorBrush(couleur);
+        LLMStatusIndicator.ToolTip    = infobulle;
+        LLMStatusIcon.Text            = vision ? "👁" : "🤖";
+
+        if (pulse != _voyantPulse)
+        {
+            _voyantPulse = pulse;
+            if (pulse)
+            {
+                LLMStatusIndicator.BeginAnimation(UIElement.OpacityProperty,
+                    new System.Windows.Media.Animation.DoubleAnimation(1.0, 0.45, TimeSpan.FromMilliseconds(650))
+                    {
+                        AutoReverse    = true,
+                        RepeatBehavior = System.Windows.Media.Animation.RepeatBehavior.Forever
+                    });
+            }
+            else
+            {
+                LLMStatusIndicator.BeginAnimation(UIElement.OpacityProperty, null);
+                LLMStatusIndicator.Opacity = 1.0;
+            }
+        }
     }
     
     private async Task PopulateLLMComboBoxAsync()
@@ -323,21 +409,32 @@ public partial class MainWindow : Window
         });
     }
 
+    /// <summary>
+    /// Aligne le sélecteur sur le modèle mémorisé, SANS déclencher de bascule. Sans le garde, poser
+    /// SelectedItem relançait LLMModelCombo_SelectionChanged comme un clic : au démarrage c'était un
+    /// second chargement du modèle en course avec le premier, et après un échec de bascule une
+    /// nouvelle tentative au lieu d'un simple retour à l'affichage précédent.
+    /// </summary>
     private void SelectCurrentModel()
     {
-        foreach (var item in LLMModelCombo.Items)
+        _syncSelecteurModele = true;
+        try
         {
-            if (item is ComboBoxItem comboItem && comboItem.Tag != null)
+            foreach (var item in LLMModelCombo.Items)
             {
-                var tag = comboItem.Tag as dynamic;
-                if (tag.Provider == _settings.LLMProvider && 
-                    (_settings.LLMProvider == "OpenAI" || tag.Model == _settings.OllamaModel))
+                if (item is ComboBoxItem comboItem && comboItem.Tag != null)
                 {
-                    LLMModelCombo.SelectedItem = comboItem;
-                    return;
+                    var tag = comboItem.Tag as dynamic;
+                    if (tag.Provider == _settings.LLMProvider &&
+                        (_settings.LLMProvider == "OpenAI" || tag.Model == _settings.OllamaModel))
+                    {
+                        LLMModelCombo.SelectedItem = comboItem;
+                        return;
+                    }
                 }
             }
         }
+        finally { _syncSelecteurModele = false; }
     }
     
     /// <summary>
@@ -380,29 +477,25 @@ public partial class MainWindow : Window
                 return;
             }
 
-            // 2. KV cache vidé → rechargement immédiat pour que Med reste disponible
-            LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(255, 193, 7));   // orange : rechargement
-            LLMStatusIndicator.ToolTip    = "KV cache effacé — rechargement de Med...";
+            // 2. KV cache vidé → rechargement immédiat pour que Med reste disponible.
+            //    Le voyant suit tout seul (état publié par le moteur) ; seul le texte de statut est posé ici.
             StatusTextBlock.Text          = "💤 Cache effacé. Rechargement de Med...";
             StatusTextBlock.Foreground    = new SolidColorBrush(Colors.DarkOrange);
 
-            var (warmupOk, warmupMsg) = await provider.WarmupAsync();
-            if (warmupOk)
+            var (reloadOk, _) = await provider.WarmupAsync();
+            if (reloadOk)
             {
                 UnloadModelBtn.BorderBrush    = new SolidColorBrush(Color.FromRgb(76, 175, 80));
-                LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(76, 175, 80));   // vert
-                LLMStatusIndicator.ToolTip    = $"Med prêt ({warmupMsg})";
                 StatusTextBlock.Text          = $"✅ KV cache vidé et Med rechargé.";
                 StatusTextBlock.Foreground    = new SolidColorBrush(Colors.Green);
             }
             else
             {
-                // Warmup échoué : Med est déchargé mais accessible au prochain appel (Ollama auto-reload)
-                LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(149, 165, 166));   // gris
-                LLMStatusIndicator.ToolTip    = "Med déchargé. Premier appel : ~5-10s de réveil.";
-                StatusTextBlock.Text          = "💤 KV cache vidé. Premier appel : ~5-10s.";
+                // Rechargement échoué : Med est déchargé mais accessible au prochain appel.
+                StatusTextBlock.Text          = "💤 KV cache vidé. Rechargement au prochain appel.";
                 StatusTextBlock.Foreground    = new SolidColorBrush(Colors.Gray);
             }
+            AfficherEtatMoteur();
         }
         catch (Exception ex)
         {
@@ -528,16 +621,16 @@ public partial class MainWindow : Window
             var provider = tag.Provider as string;
             var model = tag.Model as string;
             
-            // Indicateur en orange pendant le changement
-            LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(255, 193, 7));
-            LLMStatusIndicator.ToolTip = $"Changement vers {provider} ({model})...";
-            
+            // Le voyant n'est plus posé ici : llama.cpp publie lui-même « chargement » puis « prêt ».
             StatusTextBlock.Text = $"⏳ Changement vers {provider} ({model})...";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-            
-            // Effectuer le changement avec warm-up
+
             var (success, message) = await _llmFactory.SwitchProviderAsync(provider!, model);
-            
+
+            if (provider != "LlamaCpp")
+                _etatFournisseurExterne = (success, message);
+            AfficherEtatMoteur();
+
             if (success)
             {
                 _currentLLMService = _llmFactory.GetCurrentProvider();
@@ -579,17 +672,11 @@ public partial class MainWindow : Window
                 // Sauvegarder le choix dans les paramètres
                 _settings.Save();
 
-                LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(76, 175, 80)); // Vert
-                LLMStatusIndicator.ToolTip = message;
-
                 StatusTextBlock.Text = message;
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
             }
             else
             {
-                LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(244, 67, 54)); // Rouge
-                LLMStatusIndicator.ToolTip = message;
-                
                 StatusTextBlock.Text = $"❌ {message}";
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
                 
@@ -601,9 +688,10 @@ public partial class MainWindow : Window
         {
             StatusTextBlock.Text = $"❌ Erreur: {ex.Message}";
             StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
-            
-            LLMStatusIndicator.Background = new SolidColorBrush(Color.FromRgb(244, 67, 54));
-            LLMStatusIndicator.ToolTip = $"Erreur: {ex.Message}";
+
+            if (_llmFactory.GetActiveProviderName() != "LlamaCpp")
+                _etatFournisseurExterne = (false, $"Erreur : {ex.Message}");
+            AfficherEtatMoteur();
         }
     }
 }

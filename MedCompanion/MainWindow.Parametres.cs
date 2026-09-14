@@ -67,40 +67,34 @@ public partial class MainWindow : Window
             StatusTextBlock.Text = "⏳ Rechargement du service LLM...";
             StatusTextBlock.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Blue);
 
-            // Indicateur en orange pendant le rechargement
-            LLMStatusIndicator.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(255, 193, 7));
-            LLMStatusIndicator.ToolTip = "Rechargement du service LLM...";
-
             // Réinitialiser le service LLM
             _currentLLMService = await _llmFactory.InitializeAsync();
 
-            // Vérifier la connexion
+            // Vérifier la connexion. Pour llama.cpp elle démarre le serveur, qui publie son état : le
+            // voyant suit seul. Pour les fournisseurs externes, seul ce résultat est connu.
             var (isConnected, message) = await _currentLLMService.CheckConnectionAsync();
+
+            if (_llmFactory.GetActiveProviderName() != "LlamaCpp")
+                _etatFournisseurExterne = (isConnected, message);
+            AfficherEtatMoteur();
 
             if (isConnected)
             {
-                // Indicateur vert
-                LLMStatusIndicator.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(76, 175, 80));
-                LLMStatusIndicator.ToolTip = message;
-                
                 StatusTextBlock.Text = "✅ Service LLM rechargé avec succès";
                 StatusTextBlock.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Green);
             }
             else
             {
-                // Indicateur rouge
-                LLMStatusIndicator.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 67, 54));
-                LLMStatusIndicator.ToolTip = message;
-                
                 StatusTextBlock.Text = $"⚠️ {message}";
                 StatusTextBlock.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Orange);
             }
         }
         catch (Exception ex)
         {
-            LLMStatusIndicator.Background = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Color.FromRgb(244, 67, 54));
-            LLMStatusIndicator.ToolTip = $"Erreur: {ex.Message}";
-            
+            if (_llmFactory.GetActiveProviderName() != "LlamaCpp")
+                _etatFournisseurExterne = (false, $"Erreur : {ex.Message}");
+            AfficherEtatMoteur();
+
             StatusTextBlock.Text = $"❌ Erreur rechargement LLM: {ex.Message}";
             StatusTextBlock.Foreground = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.Red);
         }
