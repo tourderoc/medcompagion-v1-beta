@@ -93,6 +93,9 @@ namespace MedCompanion.Dialogs
             // Charger les paramètres Handy (dictée vocale)
             LoadHandySettings();
 
+            // Charger les paramètres de sauvegarde
+            LoadBackupSettings();
+
             SettingsSaved = false;
         }
 
@@ -111,6 +114,7 @@ namespace MedCompanion.Dialogs
                 SaveSmtpPassword();
                 SaveVpsSettings();
                 SaveHandySettings();
+                SaveBackupSettings();
 
                 // Ensuite sauvegarder dans le fichier JSON
                 _viewModel.SaveSettings();
@@ -1555,6 +1559,161 @@ namespace MedCompanion.Dialogs
             {
                 TestHandyBtn.IsEnabled = true;
             }
+        }
+
+        // ===== SAUVEGARDE =====
+
+        private void LoadBackupSettings()
+        {
+            try
+            {
+                var s = Models.BackupSettings.Load();
+
+                BackupEnabledCheckBox.IsChecked = s.Enabled;
+                BackupDestinationTextBox.Text = s.DestinationRoot;
+                BackupVolumeLabelTextBox.Text = s.ExpectedVolumeLabel;
+                BackupAtStartupCheckBox.IsChecked = s.RunAtStartup;
+                BackupAtCloseCheckBox.IsChecked = s.RunAtClose;
+                BackupKeepVersionsSlider.Value = Math.Clamp(s.KeepVersionsDays, 7, 180);
+
+                SelectionnerIntervalle(s.IntervalMinutes);
+                AfficherEtatSauvegarde(s);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[ParametresDialog] Erreur chargement sauvegarde : {ex.Message}");
+            }
+        }
+
+        private void SelectionnerIntervalle(int minutes)
+        {
+            foreach (var obj in BackupIntervalComboBox.Items)
+            {
+                if (obj is ComboBoxItem item &&
+                    int.TryParse(item.Tag?.ToString(), out var valeur) &&
+                    valeur == minutes)
+                {
+                    BackupIntervalComboBox.SelectedItem = item;
+                    return;
+                }
+            }
+            BackupIntervalComboBox.SelectedIndex = 1;   // toutes les heures
+        }
+
+        private void AfficherEtatSauvegarde(Models.BackupSettings s)
+        {
+            if (s.LastRunUtc == null)
+            {
+                BackupEtatTextBlock.Text = "Jamais exécutée.";
+                return;
+            }
+
+            var quand = s.LastRunUtc.Value.ToLocalTime();
+            var resume = string.IsNullOrWhiteSpace(s.LastRunSummary) ? "" : $" — {s.LastRunSummary}";
+            BackupEtatTextBlock.Text = $"{quand:dddd d MMMM yyyy à HH:mm}{resume}";
+        }
+
+        private Models.BackupSettings LireReglagesSauvegarde()
+        {
+            var s = Models.BackupSettings.Load();
+
+            s.Enabled = BackupEnabledCheckBox.IsChecked ?? false;
+            s.DestinationRoot = (BackupDestinationTextBox.Text ?? "").Trim();
+            s.ExpectedVolumeLabel = (BackupVolumeLabelTextBox.Text ?? "").Trim();
+            s.RunAtStartup = BackupAtStartupCheckBox.IsChecked ?? true;
+            s.RunAtClose = BackupAtCloseCheckBox.IsChecked ?? true;
+            s.KeepVersionsDays = (int)BackupKeepVersionsSlider.Value;
+
+            if (BackupIntervalComboBox.SelectedItem is ComboBoxItem item &&
+                int.TryParse(item.Tag?.ToString(), out var minutes))
+            {
+                s.IntervalMinutes = minutes;
+            }
+
+            return s;
+        }
+
+        private void SaveBackupSettings()
+        {
+            var s = LireReglagesSauvegarde();
+
+            // On refuse d'activer une sauvegarde qui n'écrirait nulle part, ou au mauvais endroit :
+            // une sauvegarde que l'on croit active sans qu'elle le soit est pire que pas de sauvegarde.
+            if (s.Enabled)
+            {
+                var (ok, erreur) = new Services.Backup.BackupService().VerifierDestination(s);
+                if (!ok)
+                {
+                    s.Enabled = false;
+                    MessageBox.Show(
+                        $"La sauvegarde automatique n'a pas été activée :\n\n{erreur}",
+                        "Sauvegarde",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            }
+
+            s.SaveUserFields();
+        }
+
+        private void BtnParcourirSauvegarde_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dialogue = new Microsoft.Win32.OpenFolderDialog
+                {
+                    Title = "Choisir le dossier de sauvegarde"
+                };
+
+                if (!string.IsNullOrWhiteSpace(BackupDestinationTextBox.Text) &&
+                    Directory.Exists(BackupDestinationTextBox.Text))
+                {
+                    dialogue.InitialDirectory = BackupDestinationTextBox.Text;
+                }
+
+                if (dialogue.ShowDialog(this) == true)
+                {
+                    BackupDestinationTextBox.Text = dialogue.FolderName;
+
+                    // Pré-remplir le nom du volume : l'utilisateur n'a pas à aller le chercher.
+                    var racine = Path.GetPathRoot(dialogue.FolderName);
+                    if (!string.IsNullOrEmpty(racine) && string.IsNullOrWhiteSpace(BackupVolumeLabelTextBox.Text))
+                    {
+                        try
+                        {
+                            var nom = new DriveInfo(racine).VolumeLabel;
+                            if (!string.IsNullOrWhiteSpace(nom)) BackupVolumeLabelTextBox.Text = nom;
+                        }
+                        catch { /* nom de volume indisponible : le contrôle reste simplement désactivé */ }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Erreur lors du choix du dossier :\n{ex.Message}",
+                    "Sauvegarde", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        private void BtnSauvegarderMaintenant_Click(object sender, RoutedEventArgs e)
+        {
+            var s = LireReglagesSauvegarde();
+
+            var (ok, erreur) = new Services.Backup.BackupService().VerifierDestination(s);
+            if (!ok)
+            {
+                MessageBox.Show(erreur, "Sauvegarde", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Les réglages affichés sont enregistrés avant de lancer : une sauvegarde manuelle
+            // ne doit pas utiliser une destination que l'utilisateur croit avoir changée.
+            s.SaveUserFields();
+
+            var fenetre = new BackupDialog(s) { Owner = this };
+            fenetre.ShowDialog();
+
+            AfficherEtatSauvegarde(Models.BackupSettings.Load());
         }
     }
 }

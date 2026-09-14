@@ -145,6 +145,9 @@ public partial class MainWindow : Window
         {
             System.Diagnostics.Debug.WriteLine($"[Messages] Erreur sync au démarrage: {ex.Message}");
         }
+
+        // Sauvegarde automatique : démarrage, battement horaire et reprise au réveil du poste.
+        DemarrerSauvegardeAutomatique();
     }
 
     /// <summary>
@@ -164,6 +167,11 @@ public partial class MainWindow : Window
         {
             System.Diagnostics.Debug.WriteLine($"Erreur lors de la sauvegarde de l'état de la fenêtre: {ex.Message}");
         }
+
+        // Dernière sauvegarde avant de partir, si elle est configurée et qu'elle a du retard.
+        // Placée avant l'arrêt du serveur LLM : elle est modale et peut être interrompue.
+        SauvegarderAvantFermeture();
+        ArreterSauvegardeAutomatique();
 
         // Éviter de laisser llama-server.exe orphelin (VRAM occupée) après fermeture de l'app.
         Services.LLM.LlamaCppServerManager.Stop();

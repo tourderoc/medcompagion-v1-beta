@@ -1273,8 +1273,122 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- Onglet Sauvegarde -->
+            <TabItem Header="💾 Sauvegarde">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Margin="20">
+
+                        <!-- En-tête explicatif -->
+                        <Border Background="#E7F3FF" Padding="15" CornerRadius="5" Margin="0,0,0,20">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="13" Foreground="#0066CC" Margin="0,0,0,5">
+                                    💾 Sauvegarde des dossiers patients
+                                </TextBlock>
+                                <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#0066CC">
+                                    Copie sur un second disque les dossiers patients, les templates, la bibliothèque MCC et les prompts. Seuls les ajouts et les modifications sont recopiés. Rien n'est jamais supprimé du disque de sauvegarde, et la version précédente d'un fichier modifié est conservée avant d'être remplacée.
+                                </TextBlock>
+                            </StackPanel>
+                        </Border>
+
+                        <CheckBox x:Name="BackupEnabledCheckBox"
+                                  Content="Activer la sauvegarde automatique"
+                                  FontWeight="SemiBold" FontSize="13" Margin="0,0,0,18"/>
+
+                        <!-- Destination -->
+                        <TextBlock Text="Dossier de sauvegarde" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBox x:Name="BackupDestinationTextBox"
+                                     Grid.Column="0" Padding="8,6" FontSize="12"
+                                     VerticalContentAlignment="Center" Margin="0,0,10,0"/>
+                            <Button Grid.Column="1" Content="Parcourir…"
+                                    Click="BtnParcourirSauvegarde_Click"
+                                    Style="{StaticResource ModernButtonStyle}"
+                                    Background="#6C757D" Foreground="White" Width="110"/>
+                        </Grid>
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="Gray" Margin="0,0,0,18">
+                            Doit se trouver sur un disque différent de celui des dossiers patients — sur le même disque, une sauvegarde ne protège de rien.
+                        </TextBlock>
+
+                        <!-- Nom du volume -->
+                        <TextBlock Text="Nom du disque attendu (facultatif)" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <TextBox x:Name="BackupVolumeLabelTextBox"
+                                 Padding="8,6" FontSize="12" Margin="0,0,0,6"
+                                 VerticalContentAlignment="Center"/>
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="Gray" Margin="0,0,0,18">
+                            Renseigné, la sauvegarde vérifie ce nom avant d'écrire. Cela évite d'écrire sur une clé USB qui aurait récupéré la lettre du disque de sauvegarde.
+                        </TextBlock>
+
+                        <!-- Fréquence -->
+                        <TextBlock Text="Fréquence" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <ComboBox x:Name="BackupIntervalComboBox"
+                                  Padding="8,6" FontSize="12" Margin="0,0,0,6">
+                            <ComboBoxItem Content="Toutes les 30 minutes" Tag="30"/>
+                            <ComboBoxItem Content="Toutes les heures (recommandé)" Tag="60"/>
+                            <ComboBoxItem Content="Toutes les 2 heures" Tag="120"/>
+                            <ComboBoxItem Content="Toutes les 4 heures" Tag="240"/>
+                            <ComboBoxItem Content="Une fois par jour" Tag="1440"/>
+                            <ComboBoxItem Content="Seulement au démarrage et à la fermeture" Tag="0"/>
+                        </ComboBox>
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="Gray" Margin="0,0,0,18">
+                            Une sauvegarde quotidienne ne dure que quelques secondes : la faire toutes les heures ne coûte rien et ramène la perte possible d'une journée entière à une heure.
+                        </TextBlock>
+
+                        <CheckBox x:Name="BackupAtStartupCheckBox"
+                                  Content="Sauvegarder peu après l'ouverture de MedCompanion"
+                                  FontSize="12" Margin="0,0,0,10"/>
+                        <CheckBox x:Name="BackupAtCloseCheckBox"
+                                  Content="Sauvegarder à la fermeture de MedCompanion"
+                                  FontSize="12" Margin="0,0,0,18"/>
+
+                        <!-- Conservation -->
+                        <TextBlock Text="Conservation des versions précédentes (jours)" FontWeight="Bold" Margin="0,0,0,8"/>
+                        <Grid Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <Slider x:Name="BackupKeepVersionsSlider"
+                                    Grid.Column="0" Minimum="7" Maximum="180" Value="60"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    VerticalAlignment="Center" Margin="0,0,15,0"/>
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding ElementName=BackupKeepVersionsSlider, Path=Value, StringFormat={}{0:N0} j}"
+                                       FontFamily="Consolas" FontSize="13" FontWeight="Bold"
+                                       Foreground="#007BFF" VerticalAlignment="Center"
+                                       MinWidth="60" TextAlignment="Right"/>
+                        </Grid>
+                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="Gray" Margin="0,0,0,20">
+                            Avant d'écraser un fichier, l'ancienne version est rangée dans un dossier daté. Sans cela, un fichier abîmé à la source écraserait sa dernière version correcte.
+                        </TextBlock>
+
+                        <!-- État -->
+                        <Border x:Name="BackupEtatBorder" Background="#FFF3CD" Padding="15" CornerRadius="5" Margin="0,0,0,15">
+                            <StackPanel>
+                                <TextBlock FontWeight="Bold" FontSize="12" Foreground="#856404" Margin="0,0,0,6">
+                                    📋 Dernière sauvegarde
+                                </TextBlock>
+                                <TextBlock x:Name="BackupEtatTextBlock"
+                                           TextWrapping="Wrap" FontSize="11" Foreground="#856404"
+                                           Text="Jamais exécutée."/>
+                            </StackPanel>
+                        </Border>
+
+                        <Button Content="💾 Sauvegarder maintenant"
+                                Click="BtnSauvegarderMaintenant_Click"
+                                Style="{StaticResource ModernButtonStyle}"
+                                Background="#28A745" Foreground="White"
+                                HorizontalAlignment="Left" Width="240" Margin="0,0,0,0"/>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
-        
+
         <!-- Boutons d'action -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right">
             <Button Content="Annuler"
