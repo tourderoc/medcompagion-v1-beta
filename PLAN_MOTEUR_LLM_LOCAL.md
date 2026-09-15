@@ -314,7 +314,7 @@ Puis suppression des anciens emplacements sur C:.
 
 ### Étape 8 — Retrait d'Ollama
 
-*Plus tard, une fois les étapes 1 à 7 stables.* — **Statut : à faire**
+*Plus tard, une fois les étapes 1 à 7 stables.* — **Statut : déplacée le 15/09/2026 dans [PLAN_MED_100_LOCAL.md](PLAN_MED_100_LOCAL.md)**, avec l'inventaire complet : l'OCR n'était pas la seule dépendance (agents, formulaires, régénération, structuration des notes), et le retrait d'Ollama y est lié à celui du cloud et de l'anonymisation. Texte d'origine conservé ci-dessous.
 
 1. **Dépendance à traiter d'abord :** l'OCR (`GlmOcrService`, réglage `OcrModel = glm-ocr:latest`) est servi par Ollama. Il lui faut une alternative, par exemple la vision de Gemma QAT sur llama.cpp.
 2. Retirer Ollama du sélecteur et de la fabrique, ainsi que la bascule automatique vers OpenAI prévue quand Ollama est absent.

@@ -117,10 +117,8 @@ namespace MedCompanion
             string noteBrute,
             CancellationToken cancellationToken = default)
         {
-            if (!IsApiKeyConfigured())
-            {
-                return (false, "LLM non configuré. Vérifiez la configuration dans la barre LLM.", 0.0);
-            }
+            // Pas de vérification du fournisseur courant : la structuration n'utilise jamais le modèle
+            // du sélecteur (voir plus bas), un OpenAI non configuré ne doit pas la bloquer.
 
             if (string.IsNullOrWhiteSpace(nomComplet) || string.IsNullOrWhiteSpace(noteBrute))
             {
@@ -132,27 +130,9 @@ namespace MedCompanion
                 // Vérifier l'annulation
                 cancellationToken.ThrowIfCancellationRequested();
 
-                // ✅ ÉTAPE 1 : Créer métadonnées pour l'anonymisation
-                var parts = nomComplet.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                var prenom = parts.Length > 0 ? parts[0] : "";
-                var nom = parts.Length > 1 ? string.Join(" ", parts.Skip(1)) : "";
-                
-                // Si un seul mot, on le considère comme Nom
-                if (string.IsNullOrEmpty(nom) && !string.IsNullOrEmpty(prenom))
-                {
-                    nom = prenom;
-                    prenom = "";
-                }
-
-                var patientMeta = new PatientMetadata 
-                { 
-                    Nom = nom, 
-                    Prenom = prenom, 
-                    Sexe = sexe 
-                };
-
-                // Anonymiser le nom du patient (attendre le résultat async)
-                var (nomAnonymise, anonContext) = await _anonymizationService.AnonymizeAsync(nomComplet, patientMeta);
+                // Plus d'anonymisation : la note est structurée par un modèle LOCAL (llama.cpp), rien ne
+                // quitte la machine. Pseudonymiser le nom pour le rétablir ensuite n'apportait rien, et
+                // un modèle qui écrit sur un pseudonyme se trompe parfois d'accord ou de prénom.
 
                 // Vérifier si une date est déjà présente dans la note brute
                 var hasDate = System.Text.RegularExpressions.Regex.IsMatch(
@@ -165,10 +145,16 @@ namespace MedCompanion
                     ? ""
                     : $"\n\nIMPORTANT: Aucune date de consultation n'est mentionnée dans la note brute. Utilise automatiquement la date d'aujourd'hui ({DateTime.Now:dd/MM/yyyy}) comme date de l'entretien dans le compte-rendu.";
 
-                // ✅ ÉTAPE 2 : Utiliser le pseudonyme dans le prompt
+                // Le sexe choisissait autrefois un pseudonyme masculin ou féminin, qui portait donc l'accord.
+                // Avec le vrai prénom, rien ne le dit au modèle quand le prénom est épicène (Camille,
+                // Charlie…) : on le précise, pour que la note ne se trompe pas d'accord.
+                var sexeInstruction = string.IsNullOrWhiteSpace(sexe)
+                    ? ""
+                    : $"\n\nSexe du patient : {sexe}. Accorde le compte-rendu en conséquence.";
+
                 var basePrompt = _cachedNoteStructurationPrompt
-                    .Replace("{{Nom_Complet}}", nomAnonymise)  // ✅ Pseudonyme au lieu du vrai nom
-                    .Replace("{{Date_Instruction}}", dateInstruction)
+                    .Replace("{{Nom_Complet}}", nomComplet)
+                    .Replace("{{Date_Instruction}}", dateInstruction + sexeInstruction)
                     .Replace("{{Note_Brute}}", noteBrute);
 
                 // NOUVEAU : Ajouter évaluation du poids de pertinence
@@ -188,16 +174,31 @@ Après avoir structuré la note, évalue son importance pour mettre à jour la s
 POIDS_SYNTHESE: X.X
 ";
 
-                // ✅ UTILISER LE MODÈLE LOCAL OLLAMA pour la structuration (sécurité des données)
-                ILLMService structurationProvider = new OllamaLLMProvider(_settings.OllamaBaseUrl, _settings.AnonymizationModel);
-                System.Diagnostics.Debug.WriteLine($"[OpenAIService] ✅ Structuration note via modèle LOCAL Ollama : {_settings.AnonymizationModel}");
+                // Structuration TOUJOURS par Gemma 4 12B QAT + MTP sur llama.cpp, quel que soit le modèle
+                // du sélecteur. Elle appelait Ollama en direct (modèle AnonymizationModel) : Ollama fermé,
+                // la structuration échouait. On bascule le moteur comme le fait une étape de consultation
+                // (un seul modèle en VRAM à la fois) : le sélecteur suit, et reste fidèle au modèle chargé.
+                var gemma = LlamaCppProfiles.Gemma4Qat.Id;
+                if (_llmFactory.GetActiveProviderName() != "LlamaCpp" ||
+                    !string.Equals(_llmFactory.GetActiveModelName(), gemma, StringComparison.OrdinalIgnoreCase))
+                {
+                    var (bascule, messageBascule) = await _llmFactory.SwitchProviderAsync("LlamaCpp", gemma);
+                    if (!bascule)
+                        return (false, $"Structuration impossible : Gemma 4 QAT n'a pas pu être chargé ({messageBascule}).", 0.0);
+                }
+
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var structurationProvider = _llmFactory.GetCurrentProvider();
+                System.Diagnostics.Debug.WriteLine($"[OpenAIService] Structuration note via llama.cpp : {_llmFactory.GetActiveModelName()}");
 
                 var systemPrompt = BuildSystemPrompt();
                 var messages = new List<(string role, string content)>
                 {
                     ("user", userPrompt)
                 };
-                var (success, result, error) = await structurationProvider.ChatAsync(systemPrompt, messages);
+                var (success, result, error) = await structurationProvider.ChatAsync(
+                    systemPrompt, messages, cancellationToken: cancellationToken);
 
                 if (!success)
                 {
@@ -210,10 +211,7 @@ POIDS_SYNTHESE: X.X
                 // Retirer la ligne POIDS_SYNTHESE du markdown
                 string cleanedMarkdown = RemoveWeightLine(result ?? "");
 
-                // ✅ ÉTAPE 3 : Désanonymiser le résultat
-                string deanonymizedMarkdown = _anonymizationService.Deanonymize(cleanedMarkdown, anonContext);
-
-                // ✅ ÉTAPE 4 : Logger le prompt (si tracker disponible)
+                // Logger le prompt (si tracker disponible)
                 if (_promptTracker != null)
                 {
                     try
@@ -231,8 +229,8 @@ POIDS_SYNTHESE: X.X
                             Timestamp = DateTime.Now,
                             Module = "Note",  // ✅ Correspond au filtre dans l'UI
                             SystemPrompt = systemPrompt,  // Prompt système (pas de données patient)
-                            UserPrompt = userPrompt,      // ⚠️ Contient le PSEUDONYME (anonymisé)
-                            AIResponse = deanonymizedMarkdown,  // ✅ Réponse DÉSANONYMISÉE (vrai nom)
+                            UserPrompt = userPrompt,
+                            AIResponse = cleanedMarkdown,
                             TokensUsed = 0,  // TODO: récupérer depuis la réponse LLM si disponible
                             LLMProvider = providerName,
                             ModelName = modelName,
@@ -247,7 +245,7 @@ POIDS_SYNTHESE: X.X
                     }
                 }
 
-                return (true, deanonymizedMarkdown, weight);
+                return (true, cleanedMarkdown, weight);
             }
             catch (Exception ex)
             {
