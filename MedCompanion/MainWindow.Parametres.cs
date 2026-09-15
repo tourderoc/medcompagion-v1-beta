@@ -168,6 +168,7 @@ public partial class MainWindow : Window
         ArreterSauvegardeAutomatique();
 
         // Éviter de laisser llama-server.exe orphelin (VRAM occupée) après fermeture de l'app.
+        Services.LLM.LlamaCppPrelecture.Arreter();
         Services.LLM.LlamaCppServerManager.Stop();
     }
 

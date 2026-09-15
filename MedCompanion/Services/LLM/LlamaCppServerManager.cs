@@ -206,6 +206,15 @@ namespace MedCompanion.Services.LLM
 
         private static bool _chargementVision;
 
+        private static readonly Stopwatch _chronoChargement = new();
+
+        /// <summary>Durée du dernier chargement réussi, de la décision de démarrer à la première réponse du
+        /// serveur (préparatifs compris). Mesure de référence du switch — voir LlamaCppPrelecture.</summary>
+        public static TimeSpan DureeDernierChargement { get; private set; }
+
+        /// <summary>Incrémenté à chaque chargement réussi : permet de ne journaliser chaque chargement qu'une fois.</summary>
+        public static int NumeroDernierChargement { get; private set; }
+
         /// <summary>Le modèle chargé — ou en cours de chargement — est le modèle de vision. Contrairement à
         /// <see cref="RunningModeIsVision"/>, vaut aussi pendant le chargement, pour que le voyant l'annonce
         /// dès le début d'une lecture de formulaire.</summary>
@@ -405,6 +414,7 @@ namespace MedCompanion.Services.LLM
                 _runningReasoningEnabled = null;
                 _runningProfile          = null;
                 _chargementVision        = forVision;
+                _chronoChargement.Restart();
                 PublierEtat(EtatMoteurLlm.Chargement,
                     $"Chargement de {profile.ShortName}{(forVision ? " (vision)" : "")}…");
 
@@ -507,6 +517,8 @@ namespace MedCompanion.Services.LLM
                         _runningModeIsVision      = forVision;
                         _runningReasoningEnabled  = ReasoningEnabled;
                         _runningProfile           = profile;
+                        DureeDernierChargement    = _chronoChargement.Elapsed;
+                        NumeroDernierChargement++;
                         StartIdleWatcher();
                         return (true, "llama-server démarré et prêt.");
                     }

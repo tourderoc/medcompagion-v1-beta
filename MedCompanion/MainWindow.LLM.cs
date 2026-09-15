@@ -22,6 +22,9 @@ public partial class MainWindow : Window
             LlamaCppServerManager.EtatChange += OnEtatMoteurChange;
             AfficherEtatMoteur();
 
+            // Garde l'autre modèle prêt dans le cache Windows (étape 7 du plan moteur).
+            LlamaCppPrelecture.Demarrer();
+
             // Badge de débit : alimenté par les providers locaux après chaque génération.
             Services.LLM.LlmThroughputMonitor.Measured += OnThroughputMeasured;
 

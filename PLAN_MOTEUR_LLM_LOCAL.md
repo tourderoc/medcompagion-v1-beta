@@ -270,17 +270,25 @@ Puis suppression des anciens emplacements sur C:.
 
 ### Étape 7 — Optimiser le switch Qwen ↔ Gemma
 
-*Code + mesures.* — **Statut : à faire**
+*Code + mesures.* — **Statut : en cours (14/09/2026)**
 
-1. **Pré-lecture du modèle inactif** dans le cache Windows : lecture séquentielle, basse priorité, en arrière-plan. **Seulement si la RAM utilisée est sous 12 Go.** Jamais de second serveur.
-2. **Anticipation par le schéma** : à l'ouverture d'une phase, pré-lire le modèle de la prochaine étape qui en change. Exemple : pendant l'extraction Gemma du 1er entretien, pré-lire Qwen.
-3. **Étendre le schéma aux tâches hors consultation** — proposition à valider :
-   - dossier de restitution et synthèse patient → Qwen ;
-   - courriers, attestations, chat → Gemma.
-4. **Gemma à 32 768 de contexte** au lieu de 131 072 : 1,1 Go de VRAM rendu, même temps de chargement.
-5. Corriger l'estimation `SecondesEstimees` : ses 8 s par bascule ne sont vraies que si le fichier est en cache.
+> **Simplifiée le 14/09/2026 sur proposition du médecin.** Deux modèles seulement, et ce sera le cas « pour l'instant » : « l'autre » modèle est toujours connu. Règle unique — **quand l'un est chargé sur la carte, l'autre est gardé prêt dans le cache Windows.** L'anticipation par le schéma de consultation est abandonnée : elle n'apporte plus rien.
+>
+> **Attendu réaliste :** switch de ~70 s (fichier froid) à ~4-5 s (fichier en cache, mesuré le 12/09). Pas zéro : Qwen (14,6 Go) et Gemma (9 Go) ne tiennent pas ensemble dans les 16 Go de la 5060 Ti, il faut toujours décharger l'un pour charger l'autre.
+>
+> **Mesure de la RAM (étape 5) décalée après cette étape**, pour mesurer la configuration finale, pré-lecture comprise.
 
-**Validation :** un 1er entretien complet chronométré ; switch en ~5 s quand la RAM utilisée est sous 12 Go ; la pré-lecture n'augmente pas la RAM *utilisée* (seulement le cache).
+1. **Pré-lecture de l'autre modèle** dès que le moteur est prêt, puis rafraîchie toutes les 30 min : fichier GGUF + compagnons (brouillon MTP, projecteur vision). Lecture séquentielle, fil de basse priorité, E/S en priorité basse ; **interrompue dès qu'un chargement commence**, pour laisser le disque au serveur. Jamais de second serveur.
+2. **Garde-fou mémoire revu :** la règle « RAM utilisée < 12 Go » bloquerait presque toujours (11 Go utilisés Med fermé, relevé du 14/09). Le cache étant repris instantanément par Windows, il ne peut pas faire planter la machine ; la règle devient **RAM disponible ≥ taille du fichier + 4 Go**, vérifiée avant chaque fichier et pendant la lecture.
+3. **Journal** `%APPDATA%\MedCompanion\prelecture-modeles.log` : chaque pré-lecture (fichier, durée, débit — un débit très élevé signe un fichier déjà en cache) et chaque chargement de modèle (durée réelle). Sert à valider l'étape et à recouper la journée de mesure.
+4. Réglage `LlamaCppPrelectureActive` (activée par défaut) pour couper la pré-lecture sans recompiler.
+
+**Hors switch, à décider à part :**
+- **Gemma à 32 768 de contexte** au lieu de 131 072 : 1,1 Go de VRAM rendu, même temps de chargement.
+- Corriger l'estimation `SecondesEstimees` affichée dans Pilotage (8 s par bascule, vrai seulement si le fichier est en cache).
+- Étendre le schéma aux tâches hors consultation (dossier de restitution, synthèse patient → Qwen ; courriers, attestations, chat → Gemma).
+
+**Validation :** au démarrage, le journal montre la pré-lecture de Qwen ; switch Gemma → Qwen puis Qwen → Gemma chronométrés dans le journal (~4-5 s) ; la pré-lecture n'augmente pas la RAM *utilisée* (seulement le cache) ; après un redémarrage du PC, le premier switch vers Qwen reste court une fois la pré-lecture terminée.
 
 ### Étape 8 — Retrait d'Ollama
 
@@ -298,22 +306,47 @@ Puis suppression des anciens emplacements sur C:.
 
 | Question | Proposition | Statut |
 |---|---|---|
-| Taille de la partition M: | 48 Go | à confirmer |
-| Liste des suppressions de l'étape 1 | celle de l'étape 1 | à confirmer |
-| Filet de déchargement au repos | 2 h, réglable | à confirmer (alternative : jamais tant que Med est ouvert) |
-| Affectation des tâches hors consultation | restitution + synthèse → Qwen ; courriers, attestations, chat → Gemma | à valider à l'étape 7 |
+| Taille de la partition M: | 48 Go | ✅ décidé et fait le 14/09 |
+| Liste des suppressions de l'étape 1 | celle de l'étape 1 | ✅ décidé et fait le 14/09 |
+| Filet de déchargement au repos | 2 h, réglable | ✅ adopté le 14/09 (LLM et Whisper) |
+| Stratégie de switch | l'autre modèle gardé en cache, un seul à la fois | ✅ décidé le 14/09 (proposition du médecin) |
+| Matériel | aucun achat sur AM4 ; machine AM5 étudiée d'ici ~6 mois sur mesures | ✅ décidé le 14/09 |
+| Affectation des tâches hors consultation | restitution + synthèse → Qwen ; courriers, attestations, chat → Gemma | ouvert |
+| Gemma à 32 768 de contexte | 1,1 Go de VRAM rendu | ouvert |
 
 ---
 
-## 7. Option matérielle — seulement si le résultat reste insuffisant
+## 7. Matériel — aucun achat sur AM4, machine AM5 à étudier d'ici ~6 mois
 
-**Décision du 14/09/2026 :** le plan est mené jusqu'au bout **avec le matériel actuel**. Un changement de carte mère n'est envisagé qu'après l'étape 7, sur mesures.
+### Décision du 14/09/2026 (fin de journée) — elle remplace l'option B550 ci-dessous
+
+**Plus aucune dépense sur ce poste.** La plateforme AM4 est en fin de vie : le Ryzen 7 5700X est déjà de la dernière génération qu'elle accepte, et une carte mère B550 ou de la RAM DDR4 ne se réutiliseraient pas sur AM5 (DDR5). Le seul achat qui se serait reporté — un NVMe — est inutilisable aujourd'hui, puisqu'il désactiverait le slot de la 3050. **Les deux cartes graphiques (5060 Ti, 3050), elles, passeront dans la future machine.**
+
+**Une machine AM5 sera étudiée dans environ six mois**, quand les besoins de Med seront fixés : l'application évolue encore et tout n'y est pas intégré. D'ici là, on accumule des **mesures** plutôt que des impressions, pour dimensionner sur des chiffres.
+
+Ce qui justifie d'attendre : le logiciel a déjà apporté l'essentiel du gain — switch d'une minute à ~5 s, travail décrit comme « fluide » par le médecin (14/09), sans rien acheter. Ce qui reste lié au matériel (premier chargement à froid, RAM tendue quand le poste est chargé) est gênant, pas bloquant.
+
+### Cahier des besoins à renseigner d'ici là
+
+| Question encore ouverte | Ce qu'elle dimensionne | Où trouver la réponse |
+|---|---|---|
+| Reste-t-on sur Qwen 27B + Gemma 12B, ou un modèle plus gros deviendra-t-il utile ? | La **VRAM** — c'est la carte graphique, pas la plateforme, qui borne le choix des modèles | Usage de Med, qualité des sorties |
+| RAM réellement utilisée par Med, Whisper, Doctolib, navigateurs sur une journée | **64 Go ou plus** de DDR5 | Enregistreur RAM (étape 5), `mesures\ram-*.txt` |
+| Fréquence des switchs Qwen ↔ Gemma, durée des chargements, efficacité du cache | Nécessité d'un **NVMe dédié aux modèles** | `prelecture-modeles.log` (étape 7) |
+| Deux cartes sur la durée ? | Carte mère capable de donner **8 lignes PCIe à chacune** (toutes ne le font pas) | Usage Whisper / LLM |
+| Ollama retiré, OCR passé sur la vision de Gemma ? | Charge quotidienne de la machine | Étape 8 |
+
+Processeur : l'inférence se fait entièrement sur la carte graphique, un milieu de gamme AM5 suffira probablement. Durée de vie de la plateforme : AMD a annoncé un support AM5 sur plusieurs générations (jusqu'en 2027 au moins selon les annonces connues) — **à revérifier au moment d'acheter**.
+
+---
+
+> *Historique, conservé pour mémoire : l'analyse ci-dessous a précédé la décision de ne plus investir sur AM4.*
 
 ### Pourquoi pas un NVMe sur la carte actuelle
 
 Sur l'**ASRock AB350 Pro4**, l'emplacement NVMe (M2_1, Ultra M.2) et le slot **PCIE4** se partagent les 4 mêmes lignes du processeur : **occuper M2_1 désactive PCIE4**. Or la 3050 (Whisper) est dans PCIE4 — `nvidia-smi` la voit en Gen3 x4, et le BIOS nomme l'emplacement `PCIE4_M2_1`. Le second M.2 (M2_2) n'accepte que du SATA : aucun gain. Avec deux cartes graphiques, **NVMe et 3050 sont incompatibles sur cette carte mère.**
 
-### Critères de déclenchement de l'achat
+### Critères de déclenchement de l'achat *(abandonnés le 14/09/2026)*
 
 Mesurés après l'étape 7, en usage réel :
 
@@ -321,7 +354,7 @@ Mesurés après l'étape 7, en usage réel :
 - ou le premier chargement après le démarrage du PC (~70 s depuis le SSD SATA) reste gênant malgré la pré-lecture ;
 - ou la saturation mémoire persiste et l'étape 5 montre un besoin réel, pas un défaut corrigeable.
 
-### Cible : une B550 + un NVMe Gen4
+### Cible envisagée : une B550 + un NVMe Gen4 *(abandonnée le 14/09/2026 — plateforme AM4 sans avenir)*
 
 Sur B550, M2_1 et le 1er slot x16 sont reliés au processeur, en Gen4 ; le 2e slot x16 dépend du chipset. NVMe et 3050 cohabitent donc. Le processeur (Ryzen 7 5700X) et la RAM DDR4 sont conservés.
 
@@ -357,3 +390,5 @@ Gain attendu, pour garder les pieds sur terre : lecture de Qwen à froid de ~70 
 | 14/09/2026 | 6 | Warm-up supprimé, démarrage unique, état publié par le moteur, voyant piloté par l'état, veille LLM 2 h, surveillance de santé. Compilé, à valider en réel. |
 | 14/09/2026 | 6 | ✅ Scénarios 1 à 6 validés par le médecin (ouverture, pulsation en génération, bascule Qwen, lecture vision, arrêt Pilotage → gris, serveur tué → rouge). Deux défauts relevés et corrigés : bouton Redémarrer de Pilotage inactif une fois le serveur arrêté (défaut antérieur — devient « ▶ Démarrer ») ; lecture d'image invisible dans l'en-tête (voyant 👁 + « X reprendra au prochain appel texte », le sélecteur restant sur le modèle texte). Correctifs compilés, à valider. |
 | 14/09/2026 | 6 | ✅ Correctifs validés par le médecin (bouton Démarrer, voyant 👁 en lecture d'image). Étape 6 close. |
+| 14/09/2026 | 7 | Étape simplifiée (l'autre modèle gardé en cache) et codée : `LlamaCppPrelecture`, journal `prelecture-modeles.log`, durée de chaque chargement. Premier usage réel : switchs **4,6 à 6,5 s** ; rafraîchissement utile (Qwen partiellement évincé en 20 min, relu) ; **anomalie : 1er switch vers Qwen en 31,5 s** malgré la pré-lecture terminée, suivants à 4,6 s — cause inconnue, à observer après redémarrage ; rafraîchissement de 16:41 ignoré (16,6 Go disponibles pour 17,0 requis) : ~16 Go utilisés par les programmes + 12,9 Go de Qwen + 4 Go de marge dépassent les 32 Go — seul l'autre modèle est pré-lu, le cache laissé par Windows sur le modèle chargé compte comme disponible et ne bloque rien ; marge peut-être un peu stricte, à trancher avec la mesure du 15/09. Impression du médecin : « fluide, je travaille avec aisance, mieux que l'ancien setup ». Journée complète de mesure le 15/09. |
+| 14/09/2026 | — | **Matériel : aucun achat sur AM4** (plateforme en fin de vie, B550/DDR4 non réutilisables). Les cartes graphiques suivront. **Machine AM5 à étudier dans ~6 mois**, sur un cahier des besoins chiffré (section 7), quand les besoins de Med seront fixés. L'option B550 + NVMe est abandonnée. |

@@ -111,6 +111,11 @@ namespace MedCompanion
         /// réservée au LLM. Lu au démarrage de l'application.</summary>
         public int LlamaCppIdleUnloadMinutes { get; set; } = 120;
 
+        /// <summary>Pré-lecture de l'autre modèle llama.cpp dans le cache Windows, pour que le switch Qwen ↔
+        /// Gemma parte d'un fichier déjà en mémoire (~4-5 s) plutôt que du disque (~70 s). Voir
+        /// LlamaCppPrelecture. Lu au démarrage de l'application.</summary>
+        public bool LlamaCppPrelectureActive { get; set; } = true;
+
         /// <summary>
         /// Carte graphique réservée à llama-server, désignée par son UUID CUDA
         /// (nvidia-smi --query-gpu=uuid --format=csv). Vide = comportement d'origine, llama.cpp
