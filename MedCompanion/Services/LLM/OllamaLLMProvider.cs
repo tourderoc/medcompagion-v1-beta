@@ -228,6 +228,13 @@ namespace MedCompanion.Services.LLM
         public static async Task<int> DechargerModelesResidentsAsync(string baseUrl)
         {
             var liberes = 0;
+
+            // Ollama fermé : aucun process, donc aucune VRAM à rendre. Sans ce test, la requête partait
+            // quand même vers un port fermé et coûtait 4,2 s sous Windows (« localhost » essaie ::1
+            // puis 127.0.0.1, chaque tentative refusée durant ~2 s) — à CHAQUE démarrage de llama.cpp,
+            // soit la moitié d'une bascule vers Gemma déjà en cache (mesuré le 15/09/2026).
+            if (!OllamaEnCours()) return 0;
+
             try
             {
                 var racine = baseUrl.TrimEnd('/');
@@ -273,6 +280,27 @@ namespace MedCompanion.Services.LLM
             }
             catch { /* Ollama absent ou injoignable : il n'y a rien à libérer */ }
             return liberes;
+        }
+
+        /// <summary>
+        /// Vrai si un process Ollama tourne : le serveur (<c>ollama</c>, qui porte aussi ses runners
+        /// dans les versions récentes) ou l'ancien runner séparé. Instantané, contrairement à une
+        /// requête HTTP vers un port fermé. L'icône seule (« ollama app ») ne tient pas de VRAM.
+        /// </summary>
+        private static bool OllamaEnCours()
+        {
+            foreach (var nom in new[] { "ollama", "ollama_llama_server" })
+            {
+                try
+                {
+                    var procs = System.Diagnostics.Process.GetProcessesByName(nom);
+                    var trouve = procs.Length > 0;
+                    foreach (var p in procs) p.Dispose();
+                    if (trouve) return true;
+                }
+                catch { return true; /* doute : on garde l'ancien comportement, prudent */ }
+            }
+            return false;
         }
 
         public async Task<(bool success, string message)> WarmupAsync()

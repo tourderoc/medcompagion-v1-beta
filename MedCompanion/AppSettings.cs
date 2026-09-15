@@ -116,6 +116,13 @@ namespace MedCompanion
         /// LlamaCppPrelecture. Lu au démarrage de l'application.</summary>
         public bool LlamaCppPrelectureActive { get; set; } = true;
 
+        /// <summary>Mode de lecture du modèle au démarrage de llama-server : « no-mmap » (historique : le
+        /// fichier est lu dans une copie en mémoire puis envoyé à la carte) ou « mmap » (le fichier est
+        /// projeté en mémoire, sans copie quand il est déjà dans le cache Windows). En essai le 15/09/2026 :
+        /// comparer la phase de lecture des poids dans logs\llama-server_*.log. Relu à chaque démarrage
+        /// du serveur.</summary>
+        public string LlamaCppLoadMode { get; set; } = "no-mmap";
+
         /// <summary>
         /// Carte graphique réservée à llama-server, désignée par son UUID CUDA
         /// (nvidia-smi --query-gpu=uuid --format=csv). Vide = comportement d'origine, llama.cpp

@@ -1,6 +1,6 @@
 # PLAN — Moteur LLM local : modèles sur SSD, deux cartes, voyant fidèle, switch optimisé
 
-> **Statut :** plan validé dans son principe le 14 septembre 2026. Aucune étape démarrée.
+> **Statut :** plan validé dans son principe le 14 septembre 2026. Étapes 1 à 4, 6 et 7 faites et validées (7 le 15/09 : bascules de 4,6 à 5,5 s) ; restent l'étape 5 (mesure RAM) et l'étape 8 (retrait d'Ollama). Point ouvert : le garde-fou de la pré-lecture écarte Qwen en pleine journée.
 > **Date d'ouverture :** 14 septembre 2026
 > **Méthode :** une étape à la fois, validée en réel avant de passer à la suivante.
 > **Déclencheurs :** RAM saturée à 100 % pendant une génération (12/09), voyant vert qui ne correspond pas à l'état du modèle, switch Qwen ↔ Gemma lent, modèles présents en trois copies.
@@ -270,7 +270,7 @@ Puis suppression des anciens emplacements sur C:.
 
 ### Étape 7 — Optimiser le switch Qwen ↔ Gemma
 
-*Code + mesures.* — **Statut : en cours (14/09/2026)**
+*Code + mesures.* — **Statut : ✅ fait et validé le 15/09/2026** — bascules de **4,6 à 5,5 s** dans les deux sens, fichiers en cache. Reste ouvert : le garde-fou mémoire, qui écarte Qwen en pleine journée (voir « Réalisé le 15/09 »).
 
 > **Simplifiée le 14/09/2026 sur proposition du médecin.** Deux modèles seulement, et ce sera le cas « pour l'instant » : « l'autre » modèle est toujours connu. Règle unique — **quand l'un est chargé sur la carte, l'autre est gardé prêt dans le cache Windows.** L'anticipation par le schéma de consultation est abandonnée : elle n'apporte plus rien.
 >
@@ -289,6 +289,28 @@ Puis suppression des anciens emplacements sur C:.
 - Étendre le schéma aux tâches hors consultation (dossier de restitution, synthèse patient → Qwen ; courriers, attestations, chat → Gemma).
 
 **Validation :** au démarrage, le journal montre la pré-lecture de Qwen ; switch Gemma → Qwen puis Qwen → Gemma chronométrés dans le journal (~4-5 s) ; la pré-lecture n'augmente pas la RAM *utilisée* (seulement le cache) ; après un redémarrage du PC, le premier switch vers Qwen reste court une fois la pré-lecture terminée.
+
+> **Réalisé le 15/09/2026 — ce qui manquait pour tenir les 4-5 s.**
+>
+> **1. Un journal par chargement.** `llama-server.log` était écrasé à chaque démarrage et jamais refermé : au lancement suivant, l'ouverture échouait sans rien dire, et le nouveau chargement n'avait aucun journal. Désormais `logs\llama-server_AAAAMMJJ_HHMMSS_<modèle>.log` (40 conservés), avec en tête les arguments exacts et le temps écoulé avant le lancement (`port · Ollama`), en pied la durée « serveur prêt ». C'est ce qui a permis les mesures ci-dessous.
+>
+> **2. Où partent les secondes** — le « contexte quantifié » était soupçonné ; les journaux l'innocentent. La fin du chargement (contexte MTP, cache KV q8_0) prend **0,3 à 0,4 s** chez Qwen. Tout le reste est la **lecture des poids**, qui dépend du cache Windows :
+>
+> | Chargement | Avant lancement | Lecture des poids | Fin | Total |
+> |---|---|---|---|---|
+> | Qwen, fichier froid | 4,1 s | 29,5 s | 0,4 s | 35,6 s |
+> | Qwen, en partie en cache | 4,1 s | 9,2 s | 0,3 s | 15,6 s |
+> | Gemma, en cache | 4,1 s | 1,9 s | 0,7 s | 8,6 s |
+> | **Qwen, en cache, après correctif** | **0,0 s** | 4,0 s | 0,3 s | **4,6 s** |
+> | **Gemma, en cache, après correctif** | **0,0 s** | 3,2 s | 0,8 s | **4,6 s** |
+>
+> **3. Les 4,1 s « avant lancement » : Ollama.** Chaque démarrage appelait `localhost:11434/api/ps` pour libérer la VRAM d'Ollama. Ollama fermé, la requête échouait en **4,23 s** (mesuré : Windows essaie ::1 puis 127.0.0.1, ~2 s par tentative refusée). `DechargerModelesResidentsAsync` vérifie maintenant qu'un process `ollama` tourne avant d'appeler : 0,0 s.
+>
+> **4. Pistes écartées.** *mmap* au lieu de `--no-mmap` : réglage `LlamaCppLoadMode` ajouté pour comparer, **non poursuivi** — le gain possible (1-2 s) ne justifie pas de revenir sur le principe acquis de la section 4 (`--no-mmap` divise par dix la RAM occupée par le serveur) ; reste sur `no-mmap`. *Direct I/O* (`--load-mode dio`) : non intégré sous Windows (PR llama.cpp #26014 ouverte), contourne le cache — donc plus lent dans notre cas favorable — et plafonné par le SATA. *Quantification plus petite de Qwen* : perte de qualité, non.
+>
+> **Point ouvert — le garde-fou mémoire en pleine journée.** Le 15/09, de 13 h à 16 h, la pré-lecture a écarté Qwen à chaque tentative (10,7 à 14,8 Go disponibles pour 17,0 requis). Dans ces conditions la bascule vers Qwen retombe à ~30 s. À trancher avec la mesure de RAM de l'étape 5 : assouplir la marge, ou constater que 32 Go ne suffisent pas à garder les deux modèles en cache (critère matériel de la section 7).
+>
+> **Avertissement vu au lancement de Qwen, sans conséquence constatée :** llama.cpp signale qu'il ne peut pas « faire tenir les réglages dans la mémoire libre » (couches imposées par `-ngl 99`) ; la mémoire partagée du GPU reste plate et la génération normale. À surveiller si le débit de Qwen baisse.
 
 ### Étape 8 — Retrait d'Ollama
 
@@ -313,6 +335,8 @@ Puis suppression des anciens emplacements sur C:.
 | Matériel | aucun achat sur AM4 ; machine AM5 étudiée d'ici ~6 mois sur mesures | ✅ décidé le 14/09 |
 | Affectation des tâches hors consultation | restitution + synthèse → Qwen ; courriers, attestations, chat → Gemma | ouvert |
 | Gemma à 32 768 de contexte | 1,1 Go de VRAM rendu | ouvert |
+| Garde-fou de la pré-lecture en journée | marge « taille + 4 Go » à revoir : Qwen écarté de 13 h à 16 h le 15/09 | ouvert — avec la mesure de l'étape 5 |
+| Mode de chargement mmap | réglage `LlamaCppLoadMode` disponible | non poursuivi le 15/09 (reste `no-mmap`) |
 
 ---
 
@@ -392,3 +416,6 @@ Gain attendu, pour garder les pieds sur terre : lecture de Qwen à froid de ~70 
 | 14/09/2026 | 6 | ✅ Correctifs validés par le médecin (bouton Démarrer, voyant 👁 en lecture d'image). Étape 6 close. |
 | 14/09/2026 | 7 | Étape simplifiée (l'autre modèle gardé en cache) et codée : `LlamaCppPrelecture`, journal `prelecture-modeles.log`, durée de chaque chargement. Premier usage réel : switchs **4,6 à 6,5 s** ; rafraîchissement utile (Qwen partiellement évincé en 20 min, relu) ; **anomalie : 1er switch vers Qwen en 31,5 s** malgré la pré-lecture terminée, suivants à 4,6 s — cause inconnue, à observer après redémarrage ; rafraîchissement de 16:41 ignoré (16,6 Go disponibles pour 17,0 requis) : ~16 Go utilisés par les programmes + 12,9 Go de Qwen + 4 Go de marge dépassent les 32 Go — seul l'autre modèle est pré-lu, le cache laissé par Windows sur le modèle chargé compte comme disponible et ne bloque rien ; marge peut-être un peu stricte, à trancher avec la mesure du 15/09. Impression du médecin : « fluide, je travaille avec aisance, mieux que l'ancien setup ». Journée complète de mesure le 15/09. |
 | 14/09/2026 | — | **Matériel : aucun achat sur AM4** (plateforme en fin de vie, B550/DDR4 non réutilisables). Les cartes graphiques suivront. **Machine AM5 à étudier dans ~6 mois**, sur un cahier des besoins chiffré (section 7), quand les besoins de Med seront fixés. L'option B550 + NVMe est abandonnée. |
+| 15/09/2026 | 7 | Journaux par chargement (l'ancien fichier unique, jamais refermé, empêchait de journaliser après une bascule). Mesures : le contexte quantifié prend 0,3-0,4 s ; le temps part dans la lecture des poids (Qwen 29,5 s à froid) et dans **4,1 s d'attente d'Ollama fermé** avant chaque lancement. Correctif Ollama. |
+| 15/09/2026 | 7 | ✅ Validé par le médecin : bascules **4,6 à 5,5 s** (Qwen et Gemma, fichiers en cache), « c'est excellent ». mmap et Direct I/O écartés. Point ouvert : garde-fou de la pré-lecture qui écarte Qwen en journée. |
+| 15/09/2026 | — | Sélecteur de modèles : la section llama.cpp s'affiche aussi quand Ollama est fermé (elle était imbriquée dans le test « Ollama répond »). |

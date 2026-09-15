@@ -58,6 +58,17 @@ namespace MedCompanion.Services.LLM
             }
         }
 
+        /// <summary>« mmap » ou « no-mmap » (défaut, et repli si le réglage est illisible ou inconnu).</summary>
+        private static string LireModeChargement()
+        {
+            try
+            {
+                var mode = AppSettings.Load().LlamaCppLoadMode?.Trim().ToLowerInvariant();
+                return mode == "mmap" ? "mmap" : "no-mmap";
+            }
+            catch { return "no-mmap"; }
+        }
+
         private static string ResoudreExePath()
         {
             try
@@ -85,11 +96,22 @@ namespace MedCompanion.Services.LLM
         /// <summary>Profil du process en cours (null si rien ne tourne).</summary>
         private static LlamaCppModelProfile? _runningProfile;
 
-        /// <summary>Journal du process (démarrage, vitesse par requête...) — utile pour diagnostiquer
-        /// une lenteur signalée après coup, écrasé à chaque redémarrage du serveur.</summary>
-        public static readonly string LogPath = Path.Combine(
+        /// <summary>
+        /// Dossier des journaux du serveur : UN fichier par chargement, horodaté et nommé d'après le
+        /// modèle. Il n'y avait qu'un fichier, écrasé à chaque démarrage — et jamais refermé : au
+        /// lancement suivant, il était encore tenu par l'ancien serveur, l'ouverture échouait sans
+        /// rien dire, et le nouveau chargement n'avait AUCUN journal. Après une première bascule, on
+        /// ne pouvait donc plus mesurer le chargement de l'autre modèle.
+        /// </summary>
+        public static readonly string LogDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "MedCompanion", "llama-server.log");
+            "MedCompanion", "logs");
+
+        /// <summary>Journal du chargement en cours, ou du dernier (null avant le premier démarrage).</summary>
+        public static string? LogPath { get; private set; }
+
+        /// <summary>Nombre de journaux de chargement conservés — assez pour couvrir une journée de bascules.</summary>
+        private const int JournauxConserves = 40;
 
         public static string BaseUrl => $"http://127.0.0.1:{Port}";
 
@@ -385,11 +407,14 @@ namespace MedCompanion.Services.LLM
                 // souhaitable ici.
                 var kvArgs = profile.KvQuantized ? "-ctk q8_0 -ctv q8_0 " : "";
 
+                // Mode de lecture du fichier, réglable pour comparer (voir AppSettings.LlamaCppLoadMode).
+                var loadArgs = LireModeChargement() == "mmap" ? "--load-mode mmap " : "--no-mmap ";
+
                 var psi = new ProcessStartInfo
                 {
                     FileName               = ExePath,
                     // Vision et MTP s'excluent : chaque mode a son jeu d'arguments (voir forVision).
-                    Arguments              = $"-m \"{profile.ModelPath}\" --no-mmap " +
+                    Arguments              = $"-m \"{profile.ModelPath}\" " + loadArgs +
                                               visionArgs +
                                               reasoningArgs +
                                               mtpArgs +
@@ -424,6 +449,7 @@ namespace MedCompanion.Services.LLM
                 // l'on s'est trompé — serveur d'une session précédente, process perdu de vue après un
                 // timeout, bascule concurrente.
                 LibererLePort();
+                var apresPort = _chronoChargement.Elapsed;
 
                 // Rendre la VRAM tenue par l'AUTRE moteur avant d'allouer la nôtre. La fabrique le
                 // fait déjà lors d'une bascule de provider, mais trois écrans instancient leur
@@ -435,6 +461,11 @@ namespace MedCompanion.Services.LLM
                     try { await LibererVramConcurrente(); }
                     catch { /* best-effort : ne doit jamais empêcher le moteur local de démarrer */ }
                 }
+
+                // Temps passé AVANT de lancer le process : arrêt de l'ancien serveur, port, Ollama. Le
+                // « prêt en X s » publié l'inclut ; sans cette ligne, on ne saurait pas distinguer un
+                // chargement lent d'un arrêt lent.
+                var avantLancement = _chronoChargement.Elapsed;
 
                 _process = Process.Start(psi);
                 if (_process == null)
@@ -465,12 +496,38 @@ namespace MedCompanion.Services.LLM
                 // Drainer la sortie vers un fichier de log : indispensable, sinon le tampon du pipe
                 // se remplit (llama-server est très verbeux) et le process peut se bloquer en
                 // attendant qu'on le lise.
+                StreamWriter? journal = null;
                 try
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(LogPath)!);
+                    Directory.CreateDirectory(LogDir);
+                    NettoyerAnciensJournaux();
+
+                    LogPath = Path.Combine(LogDir,
+                        $"llama-server_{DateTime.Now:yyyyMMdd_HHmmss}_{NomDeFichierSur(profile.Id)}{(forVision ? "_vision" : "")}.log");
                     var logWriter = new StreamWriter(LogPath, append: false) { AutoFlush = true };
-                    _process.OutputDataReceived += (_, e) => { if (e.Data != null) SafeWriteLog(logWriter, e.Data); };
-                    _process.ErrorDataReceived  += (_, e) => { if (e.Data != null) SafeWriteLog(logWriter, e.Data); };
+                    journal = logWriter;
+
+                    // En-tête : les horodatages de llama.cpp partent du lancement du process, pas de
+                    // l'heure ni de la demande de chargement. On pose les deux repères.
+                    SafeWriteLog(logWriter, $"# {DateTime.Now:yyyy-MM-dd HH:mm:ss} · {profile.ShortName}{(forVision ? " (vision)" : "")}");
+                    SafeWriteLog(logWriter, $"# process lancé {avantLancement.TotalSeconds:0.0} s après la demande de chargement " +
+                                            $"(port {apresPort.TotalSeconds:0.0} s · Ollama {(avantLancement - apresPort).TotalSeconds:0.0} s)");
+                    SafeWriteLog(logWriter, $"# llama-server {psi.Arguments}");
+
+                    // Fermé quand les DEUX flux sont taris — pas à l'événement Exited, qui peut arriver
+                    // avant les dernières lignes. Un journal resté ouvert est précisément la panne corrigée.
+                    var fluxOuverts = 2;
+                    void FinDeFlux()
+                    {
+                        lock (_logSync)
+                        {
+                            if (--fluxOuverts > 0) return;
+                            try { logWriter.Dispose(); } catch { /* best-effort */ }
+                        }
+                    }
+
+                    _process.OutputDataReceived += (_, e) => { if (e.Data != null) SafeWriteLog(logWriter, e.Data); else FinDeFlux(); };
+                    _process.ErrorDataReceived  += (_, e) => { if (e.Data != null) SafeWriteLog(logWriter, e.Data); else FinDeFlux(); };
                     _process.BeginOutputReadLine();
                     _process.BeginErrorReadLine();
                 }
@@ -519,6 +576,13 @@ namespace MedCompanion.Services.LLM
                         _runningProfile           = profile;
                         DureeDernierChargement    = _chronoChargement.Elapsed;
                         NumeroDernierChargement++;
+
+                        // Pied du journal : la durée vue par Med, décomposée. /health est interrogé
+                        // chaque seconde, d'où une précision d'environ 1 s.
+                        if (journal != null)
+                            SafeWriteLog(journal,
+                                $"# serveur prêt · {DureeDernierChargement.TotalSeconds:0.0} s après la demande · " +
+                                $"{(DureeDernierChargement - avantLancement).TotalSeconds:0.0} s après le lancement du process");
                         StartIdleWatcher();
                         return (true, "llama-server démarré et prêt.");
                     }
@@ -672,8 +736,31 @@ namespace MedCompanion.Services.LLM
         {
             lock (_logSync)
             {
+                // Un écrit sur un journal déjà refermé lève ObjectDisposedException : ignoré.
                 try { writer.WriteLine(line); } catch { /* best-effort */ }
             }
+        }
+
+        /// <summary>Garde les <see cref="JournauxConserves"/> journaux de chargement les plus récents.</summary>
+        private static void NettoyerAnciensJournaux()
+        {
+            try
+            {
+                var anciens = new DirectoryInfo(LogDir).GetFiles("llama-server_*.log")
+                    .OrderByDescending(f => f.LastWriteTimeUtc)
+                    .Skip(JournauxConserves - 1);   // -1 : place pour celui qu'on ouvre
+                foreach (var f in anciens)
+                {
+                    try { f.Delete(); } catch { /* encore ouvert ou verrouillé : il partira la fois suivante */ }
+                }
+            }
+            catch { /* best-effort */ }
+        }
+
+        private static string NomDeFichierSur(string s)
+        {
+            foreach (var c in Path.GetInvalidFileNameChars()) s = s.Replace(c, '-');
+            return s;
         }
 
         private static async Task<bool> IsHealthyAsync()
