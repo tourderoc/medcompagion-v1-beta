@@ -182,15 +182,61 @@ public partial class MainWindow : Window
         try
         {
             LLMModelCombo.Items.Clear();
-            
+
+            // Le moteur local passe EN TÊTE et ne dépend plus d'Ollama. Il était construit à
+            // l'intérieur du bloc « Ollama répond » : Ollama fermé, le sélecteur n'offrait plus
+            // qu'OpenAI, et restait vide puisque le modèle actif — llama.cpp — n'y figurait pas.
+            // Or llama.cpp tourne sans Ollama, et c'est lui qui doit rester quand Ollama sera retiré.
+            bool entreesAuDessus = false;
+            if (LlamaCppProfiles.Enabled)
+            {
+                LLMModelCombo.Items.Add(new ComboBoxItem
+                {
+                    Content = "⚙️ MOTEUR LOCAL (llama.cpp)",
+                    IsEnabled = false,
+                    FontWeight = FontWeights.Bold,
+                    Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34))
+                });
+
+                // Un profil = une entrée, avec ses propres réglages (contexte, MTP, cache KV)
+                // pilotables dans Pilotage → Moteur local.
+                foreach (var profile in LlamaCppProfiles.All)
+                {
+                    // Suffixe « cpp » : le nom du modèle seul ne suffit pas à distinguer la
+                    // version servie par Ollama de celle servie ici, et une fois la liste
+                    // refermée seul l'item sélectionné reste visible (pas son en-tête).
+                    var label = $"  {profile.ShortName} · cpp";
+
+                    // Un téléchargement en cours laisse un fichier présent mais tronqué :
+                    // le proposer ferait échouer le chargement. On affiche la progression.
+                    var progress = profile.DownloadProgress;
+                    if (progress is double pct)
+                        label = $"  {profile.ShortName} · cpp (téléchargement {pct * 100:0}%)";
+                    else if (!profile.IsReady)
+                        label = $"  {profile.ShortName} · cpp (fichier absent)";
+
+                    LLMModelCombo.Items.Add(new ComboBoxItem
+                    {
+                        Content   = label,
+                        IsEnabled = profile.IsReady,
+                        Tag       = new { Provider = "LlamaCpp", Model = profile.Id }
+                    });
+                }
+                entreesAuDessus = true;
+
+                // Sélection immédiate : interroger un Ollama fermé prend quelques secondes, et le
+                // sélecteur resterait vide pendant ce temps alors que le modèle actif est déjà listé.
+                SelectCurrentModel();
+            }
+
             // Vérifier si Ollama est disponible
             var ollamaAvailable = await _llmFactory.IsOllamaAvailableAsync();
-            
+
             if (ollamaAvailable)
             {
                 // Récupérer les modèles Ollama
                 var ollamaModels = await _llmFactory.GetAvailableOllamaModelsAsync();
-                
+
                 if (ollamaModels.Any())
                 {
                     // Les modèles Ollama suffixés "-cloud" ne sont PAS locaux : aucun poids sur le
@@ -211,9 +257,9 @@ public partial class MainWindow : Window
                         };
                         LLMModelCombo.Items.Add(localHeader);
 
-                        // Les modèles Ollama restent servis par Ollama. Les variantes llama.cpp sont
-                        // listées séparément ci-dessous plutôt que de détourner ces entrées : un même
-                        // modèle peut ainsi être essayé via l'un ou l'autre moteur et comparé.
+                        // Les modèles Ollama restent servis par Ollama, listés à part des profils
+                        // llama.cpp : un même modèle peut ainsi être essayé via l'un ou l'autre
+                        // moteur et comparé.
                         foreach (var model in localModels)
                         {
                             var item = new ComboBoxItem
@@ -223,42 +269,7 @@ public partial class MainWindow : Window
                             };
                             LLMModelCombo.Items.Add(item);
                         }
-                    }
-
-                    // Section dédiée au moteur local : un profil = une entrée, avec ses propres
-                    // réglages (contexte, MTP, cache KV) pilotables dans Pilotage → Moteur local.
-                    if (LlamaCppProfiles.Enabled)
-                    {
-                        LLMModelCombo.Items.Add(new ComboBoxItem
-                        {
-                            Content = "⚙️ MOTEUR LOCAL (llama.cpp)",
-                            IsEnabled = false,
-                            FontWeight = FontWeights.Bold,
-                            Foreground = new SolidColorBrush(Color.FromRgb(230, 126, 34))
-                        });
-
-                        foreach (var profile in LlamaCppProfiles.All)
-                        {
-                            // Suffixe « cpp » : le nom du modèle seul ne suffit pas à distinguer la
-                            // version servie par Ollama de celle servie ici, et une fois la liste
-                            // refermée seul l'item sélectionné reste visible (pas son en-tête).
-                            var label = $"  {profile.ShortName} · cpp";
-
-                            // Un téléchargement en cours laisse un fichier présent mais tronqué :
-                            // le proposer ferait échouer le chargement. On affiche la progression.
-                            var progress = profile.DownloadProgress;
-                            if (progress is double pct)
-                                label = $"  {profile.ShortName} · cpp (téléchargement {pct * 100:0}%)";
-                            else if (!profile.IsReady)
-                                label = $"  {profile.ShortName} · cpp (fichier absent)";
-
-                            LLMModelCombo.Items.Add(new ComboBoxItem
-                            {
-                                Content   = label,
-                                IsEnabled = profile.IsReady,
-                                Tag       = new { Provider = "LlamaCpp", Model = profile.Id }
-                            });
-                        }
+                        entreesAuDessus = true;
                     }
 
                     if (cloudModels.Any())
@@ -284,18 +295,21 @@ public partial class MainWindow : Window
                             };
                             LLMModelCombo.Items.Add(item);
                         }
+                        entreesAuDessus = true;
                     }
-
-                    // Séparateur
-                    var separator = new ComboBoxItem
-                    {
-                        Content = "─────────────",
-                        IsEnabled = false
-                    };
-                    LLMModelCombo.Items.Add(separator);
                 }
             }
-            
+
+            // Séparateur avant OpenAI — seulement s'il y a quelque chose au-dessus.
+            if (entreesAuDessus)
+            {
+                LLMModelCombo.Items.Add(new ComboBoxItem
+                {
+                    Content = "─────────────",
+                    IsEnabled = false
+                });
+            }
+
             // Ajouter header CLOUD
             var cloudHeader = new ComboBoxItem
             {
