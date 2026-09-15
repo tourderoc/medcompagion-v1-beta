@@ -209,9 +209,90 @@
   line-height: 1.6;
 }
 </style>
+<style>
+/* ─ Ajouts V2 : grille unique, profils avec pôles, deux colonnes ─ */
+.an-scale {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 4px;
+  margin-bottom: 8px;
+}
+.an-scale-7 { grid-template-columns: repeat(7, 1fr); }
+.an-scale-cell {
+  border: 1px solid #E2E8F0;
+  border-radius: 5px;
+  padding: 4px 4px 5px 4px;
+  text-align: center;
+  background: #F8FAFC;
+}
+.an-scale-val { font-size: 10.5px; font-weight: 800; color: #1A3A6A; }
+.an-scale-lbl { font-size: 9px; color: #475569; margin-top: 2px; white-space: nowrap; }
+.an-scale-cell .nv-dot { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-top: 3px; }
+
+.an-rule ul { margin: 2px 0 0 0; padding-left: 14px; }
+.an-rule li { margin-bottom: 2px; }
+
+.an-legend {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 10px;
+  color: #334155;
+  line-height: 1.5;
+}
+.an-legend > div {
+  background: #F0F4F8;
+  border: 1px solid #CBD5E1;
+  border-radius: 4px;
+  padding: 5px 10px;
+}
+.an-pcard-sub { font-size: 9px; color: #64748B; font-style: italic; margin: -3px 0 5px 0; }
+.an-axes { margin: 0; padding: 0; list-style: none; }
+.an-axes li { padding: 3px 0; border-bottom: 1px dotted #E2E8F0; }
+.an-axes li:last-child { border-bottom: none; }
+.an-axe-nom { font-size: 10px; font-weight: 700; color: #1A3A6A; }
+.an-axe-poles { font-size: 8.8px; color: #64748B; line-height: 1.4; }
+.an-axe-poles b { color: #475569; font-weight: 700; }
+
+.an-env td.an-nerv { font-size: 10px; color: #334155; }
+.an-env td.an-num { text-align: center; font-weight: 700; color: #1A3A6A; }
+.an-feuille { font-weight: 800; color: #1A3A6A; }
+.an-feuille-sub { font-size: 9px; color: #64748B; font-style: italic; }
+
+.an-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 9px;
+}
+.an-box {
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-top: 3px solid #00A896;
+  border-radius: 6px;
+  padding: 7px 11px;
+  font-size: 10.3px;
+  color: #334155;
+  line-height: 1.55;
+}
+.an-box-title {
+  font-size: 10.5px;
+  font-weight: 800;
+  color: #1A3A6A;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  margin-bottom: 4px;
+}
+.an-box p { margin: 0 0 4px 0; }
+.an-box p:last-child { margin-bottom: 0; }
+</style>
 
 <!-- ════════════════════════════════════════════════════════════════
      ANNEXE MÉTHODOLOGIQUE — PAGE 1/2
+     Décrit les critères de la V2 : questionnaire à grille unique, items
+     par tranche d'âge, trois profils observés. Toute valeur citée ici
+     doit correspondre au code (CartographieItemsV2, ProfilsObservesV2).
      ════════════════════════════════════════════════════════════════ -->
 <div class="page annexe-page">
 
@@ -236,95 +317,101 @@
   </div>
 
   <!-- ── Section 1 ──────────────────────────────────────────────── -->
-  <div class="an-section">1. Évaluation neurodéveloppementale — Questionnaire Chenille (score 0–6)</div>
+  <div class="an-section">1. Cartographie de l'enfant — Questionnaire parents (score 0–6)</div>
   <p class="an-intro">
-    Cinq sphères du développement de l'enfant sont évaluées par questionnaire parental :
-    <strong>Attachement &amp; sécurité intérieure, Langage &amp; communication, Émotions &amp; régulation,
-    Imaginaire &amp; monde intérieur, Pensée &amp; organisation cognitive.</strong>
-    Chaque sphère comprend 6 items binaires (score brut 0–6). Le score brut est converti en niveau clinique
-    selon la <strong>tranche d'âge</strong> de l'enfant : les exigences développementales augmentant avec l'âge,
-    un même score traduit un niveau différent à 4 ans et à 9 ans.
+    Cinq axes du développement sont explorés par un questionnaire rempli par le parent pendant la séance :
+    <strong>Attachement &amp; sécurité intérieure, Langage &amp; communication, Émotions,
+    Imaginaire &amp; monde intérieur, Pensée &amp; organisation.</strong>
+    Chaque axe compte 6 affirmations cochées OUI / NON ; le score est le nombre de réponses favorables.
+  </p>
+  <p class="an-intro">
+    <strong>Ce sont les questions qui s'adaptent à l'âge, pas la grille.</strong>
+    Les affirmations existent en quatre versions — 3–4, 5–6, 7–9 et 10–11 ans, soit 120 items —
+    calibrées pour qu'un enfant qui va bien à cet âge en coche 5 ou 6.
+    Un même score se lit donc de la même façon à 4 ans et à 10 ans, selon une grille unique :
   </p>
 
-  <table class="an-matrix">
-    <thead>
-      <tr>
-        <th>Score</th>
-        <th>3–4 ans</th>
-        <th>5–6 ans</th>
-        <th>7–9 ans</th>
-        <th>10–11 ans</th>
-        <th>Lecture clinique du niveau (tranche la plus jeune)</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr>
-        <td>6 / 6</td>
-        <td><div class="nv"><span class="nv-dot" style="background:#1E8449"></span>Vert foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#1E8449"></span>Vert foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#1E8449"></span>Vert foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#1E8449"></span>Vert foncé</div></td>
-        <td>Compétence intégrée — lien stable, langage fluide, relation bien installée.</td>
-      </tr>
-      <tr>
-        <td>5 / 6</td>
-        <td><div class="nv"><span class="nv-dot" style="background:#82E0AA"></span>Vert clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#82E0AA"></span>Vert clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#82E0AA"></span>Vert clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#F39C12"></span>Jaune foncé</div></td>
-        <td>Base sécurisante présente — organisation fonctionnelle, bonne capacité d'expression.</td>
-      </tr>
-      <tr>
-        <td>4 / 6</td>
-        <td><div class="nv"><span class="nv-dot" style="background:#82E0AA"></span>Vert clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#F7DC6F; outline:1px solid #ccc"></span>Jaune clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#F7DC6F; outline:1px solid #ccc"></span>Jaune clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td>Ambivalence — équilibre fragile, vérification fréquente du lien, jeu symbolique irrégulier.</td>
-      </tr>
-      <tr>
-        <td>3 / 6</td>
-        <td><div class="nv"><span class="nv-dot" style="background:#F7DC6F; outline:1px solid #ccc"></span>Jaune clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#F39C12"></span>Jaune foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td>Fragilité marquée — instabilité, émotions intenses difficilement canalisées.</td>
-      </tr>
-      <tr>
-        <td>2 / 6</td>
-        <td><div class="nv"><span class="nv-dot" style="background:#F39C12"></span>Jaune foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#E74C3C"></span>Rouge clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td>Anxiété et tension — communication détournée, blocages ou débordements fréquents.</td>
-      </tr>
-      <tr>
-        <td>1 / 6</td>
-        <td><div class="nv"><span class="nv-dot" style="background:#E74C3C"></span>Rouge clair</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td rowspan="2" style="vertical-align:middle">Difficulté majeure — insécurité affective, désorganisation cognitive, repli persistant.</td>
-      </tr>
-      <tr>
-        <td>0 / 6</td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-        <td><div class="nv"><span class="nv-dot" style="background:#922B21"></span>Rouge foncé</div></td>
-      </tr>
-    </tbody>
-  </table>
+  <div class="an-scale">
+    <div class="an-scale-cell"><div class="an-scale-val">6 / 6</div><span class="nv-dot" style="background:#27AE60"></span><div class="an-scale-lbl">Vert foncé</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">5 / 6</div><span class="nv-dot" style="background:#82E0AA"></span><div class="an-scale-lbl">Vert clair</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">4 / 6</div><span class="nv-dot" style="background:#F9E79F; outline:1px solid #ccc"></span><div class="an-scale-lbl">Jaune clair</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">3 / 6</div><span class="nv-dot" style="background:#F1C40F"></span><div class="an-scale-lbl">Jaune foncé</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">2 / 6</div><span class="nv-dot" style="background:#F1948A"></span><div class="an-scale-lbl">Rouge clair</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">0–1 / 6</div><span class="nv-dot" style="background:#C0392B"></span><div class="an-scale-lbl">Rouge foncé</div></div>
+  </div>
 
-  <p class="an-intro" style="font-size:9.5px; color:#64748B; font-style:italic; margin-bottom:0;">
-    ✏ Le <strong>Tempérament</strong> est recueilli à titre descriptif uniquement, sans score global ni couleur (voir section 2 page suivante).
-    Les trois autres profils multi-axes (Psychomotricité, Tempérament, Attention &amp; FE) sont présentés en section 2.
+  <div class="an-rule">
+    <strong>Règles de lecture —</strong>
+    <ul>
+      <li>Le niveau oriente ; il ne dispense pas de lire les items. Un 4/6 ne dit pas la même chose selon les deux affirmations restées sans « oui ».</li>
+      <li>Un item <strong>sans réponse</strong> n'est pas compté favorable, et l'axe est signalé <em>incomplet</em> : sa lecture en est affaiblie.</li>
+      <li>La personne qui a rempli le questionnaire est nommée dans le dossier.</li>
+      <li>L'attention et les fonctions exécutives ne sont <strong>pas</strong> demandées aux parents : elles relèvent de l'observation clinique (section 2).</li>
+    </ul>
+  </div>
+
+  <!-- ── Section 2 ──────────────────────────────────────────────── -->
+  <div class="an-section">2. Profils observés par le médecin en séance (échelle 1–5)</div>
+  <p class="an-intro">
+    Trois profils sont cotés par le médecin à partir de ce qu'il <em>voit</em> pendant la séance — pas de ce qui lui est rapporté.
+    Chaque profil compte 6 axes cotés de 1 à 5 ; un axe non observé reste non renseigné. Aucun score global n'est calculé.
+    Une même observation n'est cotée qu'une fois : le niveau d'activité relève du Tempérament,
+    le contrôle du corps de la Psychomotricité, l'inhibition cognitive de l'Attention.
   </p>
+
+  <div class="an-legend">
+    <div><strong>Portrait — Tempérament.</strong> Axes bipolaires : aucun pôle n'est meilleur que l'autre. <strong>Pas de couleur.</strong></div>
+    <div><strong>Compétence — Psychomotricité, Attention.</strong> 5 est toujours le côté favorable.
+      <span class="nv-dot" style="display:inline-block;background:#E74C3C;width:9px;height:9px;vertical-align:middle"></span> 1–2 ·
+      3 neutre ·
+      <span class="nv-dot" style="display:inline-block;background:#27AE60;width:9px;height:9px;vertical-align:middle"></span> 4–5</div>
+  </div>
+
+  <div class="an-profiles">
+    <div class="an-pcard">
+      <div class="an-pcard-title">Tempérament</div>
+      <div class="an-pcard-sub">Portrait, sans couleur</div>
+      <ul class="an-axes">
+        <li><div class="an-axe-nom">Niveau d'activité</div><div class="an-axe-poles"><b>1</b> posé, économe de ses mouvements · <b>5</b> en mouvement permanent</div></li>
+        <li><div class="an-axe-nom">Approche / retrait</div><div class="an-axe-poles"><b>1</b> observe longtemps avant d'entrer · <b>5</b> va vers la nouveauté d'emblée</div></li>
+        <li><div class="an-axe-nom">Réactivité sensorielle</div><div class="an-axe-poles"><b>1</b> peu réactif aux stimulations · <b>5</b> très sensible aux stimulations</div></li>
+        <li><div class="an-axe-nom">Intensité émotionnelle</div><div class="an-axe-poles"><b>1</b> émotions discrètes · <b>5</b> émotions fortes et démonstratives</div></li>
+        <li><div class="an-axe-nom">Adaptabilité</div><div class="an-axe-poles"><b>1</b> a besoin de temps pour accepter le changement · <b>5</b> s'ajuste immédiatement</div></li>
+        <li><div class="an-axe-nom">Humeur de fond</div><div class="an-axe-poles"><b>1</b> sérieux, grave · <b>5</b> enjoué, souriant d'emblée</div></li>
+      </ul>
+    </div>
+    <div class="an-pcard">
+      <div class="an-pcard-title">Psychomotricité</div>
+      <div class="an-pcard-sub">Compétence, 5 favorable</div>
+      <ul class="an-axes">
+        <li><div class="an-axe-nom">Aisance motrice globale</div><div class="an-axe-poles"><b>1</b> malhabile, se cogne, trébuche · <b>5</b> se déplace et se pose avec aisance</div></li>
+        <li><div class="an-axe-nom">Précision des gestes fins</div><div class="an-axe-poles"><b>1</b> gestes imprécis, tenue du crayon difficile · <b>5</b> gestes précis et ajustés</div></li>
+        <li><div class="an-axe-nom">Régulation du tonus</div><div class="an-axe-poles"><b>1</b> tonus mal ajusté, avachi ou raide · <b>5</b> tonus ajusté à la situation</div></li>
+        <li><div class="an-axe-nom">Contrôle moteur</div><div class="an-axe-poles"><b>1</b> ne tient pas en place, ne freine pas · <b>5</b> peut rester posé, retenir un geste</div></li>
+        <li><div class="an-axe-nom">Repérage corporel et spatial</div><div class="an-axe-poles"><b>1</b> se repère mal · <b>5</b> se repère bien</div></li>
+        <li><div class="an-axe-nom">Praxies / imitation gestuelle</div><div class="an-axe-poles"><b>1</b> ne reproduit pas un geste · <b>5</b> reproduit et enchaîne une séquence</div></li>
+      </ul>
+    </div>
+    <div class="an-pcard">
+      <div class="an-pcard-title">Attention &amp; fonctions exécutives</div>
+      <div class="an-pcard-sub">Compétence, 5 favorable</div>
+      <ul class="an-axes">
+        <li><div class="an-axe-nom">Attention soutenue</div><div class="an-axe-poles"><b>1</b> décroche en quelques secondes · <b>5</b> reste plusieurs minutes sur une activité</div></li>
+        <li><div class="an-axe-nom">Résistance à la distraction</div><div class="an-axe-poles"><b>1</b> le moindre bruit le détourne · <b>5</b> reste sur ce qu'il fait</div></li>
+        <li><div class="an-axe-nom">Mémoire de travail</div><div class="an-axe-poles"><b>1</b> perd la consigne en route · <b>5</b> garde la consigne en tête</div></li>
+        <li><div class="an-axe-nom">Inhibition</div><div class="an-axe-poles"><b>1</b> répond avant la fin, coupe · <b>5</b> attend son tour, laisse finir</div></li>
+        <li><div class="an-axe-nom">Planification</div><div class="an-axe-poles"><b>1</b> se lance sans savoir par où · <b>5</b> sait par où commencer</div></li>
+        <li><div class="an-axe-nom">Maintien de l'effort</div><div class="an-axe-poles"><b>1</b> abandonne dès que ça résiste · <b>5</b> persévère quand c'est difficile</div></li>
+      </ul>
+    </div>
+  </div>
 
 </div>
 
 <!-- ════════════════════════════════════════════════════════════════
      ANNEXE MÉTHODOLOGIQUE — PAGE 2/2
+     Environnement V2 (LectureEnvironnementV2), évaluation ciblée,
+     fiabilité des sources (FiabiliteCartographie).
      ════════════════════════════════════════════════════════════════ -->
 <div class="page annexe-page">
 
@@ -339,118 +426,93 @@
   </div>
   <hr class="an-hr">
 
-  <!-- ── Section 2 ──────────────────────────────────────────────── -->
-  <div class="an-section">2. Portraits multi-axes descriptifs (Échelle 1–5, sans score global)</div>
-  <p class="an-intro">
-    Trois sphères font l'objet d'un profilage par <strong>6 axes cotés de 1 à 5</strong>, sans score agrégé ni niveau couleur.
-    Ces portraits sont <em>purement descriptifs</em> et servent de base à la discussion clinique — ils ne produisent pas de marqueur normatif.
-    Pour la Psychomotricité et l'Attention, 1 signale une défaillance fonctionnelle et 5 une ressource sur laquelle appuyer la thérapie.
-    Pour le Tempérament, l'échelle mesure l'<em>intensité</em> — pas la performance.
-  </p>
-
-  <div class="an-profiles">
-    <div class="an-pcard">
-      <div class="an-pcard-title">Psychomotricité</div>
-      <ul>
-        <li>Motricité globale</li>
-        <li>Motricité fine</li>
-        <li>Tonus</li>
-        <li>Dextérité</li>
-        <li>Coordination</li>
-        <li>Impulsivité motrice</li>
-      </ul>
-      <div class="an-pcard-note">1 = déficit fonctionnel · 5 = ressource</div>
-    </div>
-    <div class="an-pcard">
-      <div class="an-pcard-title">Tempérament</div>
-      <ul>
-        <li>Niveau d'activité</li>
-        <li>Régularité</li>
-        <li>Réactivité sensorielle</li>
-        <li>Intensité émotionnelle</li>
-        <li>Adaptabilité</li>
-        <li>Temps de réaction</li>
-      </ul>
-      <div class="an-pcard-note">Portrait descriptif — intensité, pas performance</div>
-    </div>
-    <div class="an-pcard">
-      <div class="an-pcard-title">Attention &amp; Fonctions Exécutives</div>
-      <ul>
-        <li>Attention soutenue</li>
-        <li>Attention sélective</li>
-        <li>Attention divisée</li>
-        <li>Inhibition</li>
-        <li>Planification</li>
-        <li>Flexibilité attentionnelle</li>
-      </ul>
-      <div class="an-pcard-note">1 = déficit fonctionnel · 5 = ressource</div>
-    </div>
-  </div>
-
   <!-- ── Section 3 ──────────────────────────────────────────────── -->
-  <div class="an-section">3. Cartographie de l'environnement — Feuilles dimensionnelles</div>
+  <div class="an-section">3. Cartographie de l'environnement — 4 feuilles, 11 nervures</div>
   <p class="an-intro">
-    Cinq feuilles dimensionnelles explorent les sphères environnementales :
-    <strong>Famille, École &amp; Pairs, Écrans &amp; Médias, Valeurs Sociétales, Cadre Éducatif.</strong>
-    Chaque feuille est structurée en une <em>nervure centrale</em> (5 items) et quatre <em>nervures secondaires</em> (3 à 4 items).
-    Cette évaluation est indépendante de l'âge de l'enfant.
+    Quatre feuilles explorent le milieu de vie de l'enfant, chacune organisée en une <em>nervure centrale</em> et une ou deux
+    <em>nervures secondaires</em>. Elles comptent <strong>36 affirmations favorables</strong>, cotées OUI / NON, indépendamment de l'âge :
+    <strong>22</strong> sur une feuille remplie par le parent, et <strong>14</strong> cotées par le médecin depuis l'entretien —
+    celles qui mettent en cause l'adulte qui remplit, et ne peuvent donc pas lui être posées.
   </p>
 
   <table class="an-env">
     <thead>
       <tr>
-        <th style="width:7%"></th>
-        <th style="width:14%">Seuil</th>
-        <th style="width:20%">Niveau</th>
-        <th>Signification clinique</th>
+        <th style="width:26%">Feuille</th>
+        <th>Nervures (centrale en gras)</th>
+        <th style="width:11%; text-align:center">Parent</th>
+        <th style="width:11%; text-align:center">Médecin</th>
       </tr>
     </thead>
     <tbody>
       <tr>
-        <td><span class="env-dot" style="background:#1E8449"></span></td>
-        <td>≥ 90 %</td>
-        <td><strong>Fluide</strong></td>
-        <td>Circulation harmonieuse ; l'enfant dispose d'un oxygène psychologique suffisant.</td>
+        <td><div class="an-feuille">Famille</div><div class="an-feuille-sub">Le socle</div></td>
+        <td class="an-nerv"><strong>Fonction parentale effective</strong> · Liens familiaux · Vécu émotionnel</td>
+        <td class="an-num">5</td><td class="an-num">5</td>
       </tr>
       <tr>
-        <td><span class="env-dot" style="background:#58D68D"></span></td>
-        <td>≥ 70 %</td>
-        <td><strong>Globalement fluide</strong></td>
-        <td>Globalement solide, avec quelques points à observer sans urgence.</td>
+        <td><div class="an-feuille">École &amp; Pairs</div><div class="an-feuille-sub">L'espace social</div></td>
+        <td class="an-nerv"><strong>Place dans le groupe</strong> · Vécu scolaire · Entourage face à l'école</td>
+        <td class="an-num">6</td><td class="an-num">4</td>
       </tr>
       <tr>
-        <td><span class="env-dot" style="background:#F1C40F"></span></td>
-        <td>≥ 50 %</td>
-        <td><strong>Mitigé</strong></td>
-        <td>Zones tenues et zones qui interrogent ; étayage à envisager.</td>
+        <td><div class="an-feuille">Écrans &amp; Médias</div><div class="an-feuille-sub">L'influence numérique</div></td>
+        <td class="an-nerv"><strong>Cadre et quantité</strong> · Ce qu'il en fait · Ce que ça produit chez lui</td>
+        <td class="an-num">9</td><td class="an-num">1</td>
       </tr>
       <tr>
-        <td><span class="env-dot" style="background:#E67E22"></span></td>
-        <td>≥ 30 %</td>
-        <td><strong>Fragile</strong></td>
-        <td>Plus de manques que de soutiens ; fragilité clinique nette.</td>
-      </tr>
-      <tr>
-        <td><span class="env-dot" style="background:#C0392B"></span></td>
-        <td>&lt; 30 %</td>
-        <td><strong>Bloqué</strong></td>
-        <td>Contradictions majeures ou absences nettes ; zone de surcharge ou de confusion clinique.</td>
+        <td><div class="an-feuille">Cadre &amp; repères</div><div class="an-feuille-sub">La structure invisible</div></td>
+        <td class="an-nerv"><strong>Tenir le cadre</strong> · Le monde autour</td>
+        <td class="an-num">2</td><td class="an-num">4</td>
       </tr>
     </tbody>
   </table>
 
+  <p class="an-intro" style="margin-bottom:5px">
+    Le niveau est la <strong>part d'affirmations favorables</strong>, sur la même palette de six couleurs que l'enfant :
+  </p>
+  <div class="an-scale an-scale-7">
+    <div class="an-scale-cell"><div class="an-scale-val">100 %</div><span class="nv-dot" style="background:#27AE60"></span><div class="an-scale-lbl">Vert foncé</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">≥ 70 %</div><span class="nv-dot" style="background:#82E0AA"></span><div class="an-scale-lbl">Vert clair</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">≥ 50 %</div><span class="nv-dot" style="background:#F9E79F; outline:1px solid #ccc"></span><div class="an-scale-lbl">Jaune clair</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">≥ 30 %</div><span class="nv-dot" style="background:#F1C40F"></span><div class="an-scale-lbl">Jaune foncé</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">&gt; 0 %</div><span class="nv-dot" style="background:#F1948A"></span><div class="an-scale-lbl">Rouge clair</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">0 %</div><span class="nv-dot" style="background:#C0392B"></span><div class="an-scale-lbl">Rouge foncé</div></div>
+    <div class="an-scale-cell"><div class="an-scale-val">incomplet</div><span class="nv-dot" style="background:#C3CEDA"></span><div class="an-scale-lbl">Gris</div></div>
+  </div>
+
   <div class="an-rule">
-    <strong>Règles de propagation —</strong>
-    La couleur d'une <em>feuille</em> est déterminée par la couleur la plus défavorable entre la nervure centrale et la pire nervure secondaire.
-    La <em>synthèse globale</em> de l'environnement retient la couleur la plus défavorable des cinq feuilles
-    <em>(logique « maillon faible » : un environnement est aussi fragile que son domaine le plus défaillant)</em>.
+    <strong>Règles de lecture —</strong>
+    <ul>
+      <li><strong>Case vide = non renseigné, jamais « non ».</strong> Les affirmations étant favorables, compter un vide comme un « non » peindrait en rouge tout ce qui n'a pas été abordé.</li>
+      <li>Une <em>nervure</em> ne prend sa couleur que si toutes ses réponses sont présentes ; une <em>feuille</em>, que si toutes ses nervures sont lisibles — sa couleur porte alors sur l'ensemble de ses affirmations. La <em>lecture globale</em> suit la même règle sur les quatre feuilles.</li>
+      <li><strong>Le gris dit « on ne sait pas encore ».</strong> C'est une information, pas un défaut d'affichage : une feuille revenue incomplète ne reçoit pas de couleur devinée.</li>
+      <li>La couleur vient toujours des cotations. Le mot qui l'accompagne dans le dossier (par exemple « Cadre porteur ») est une lecture clinique rédigée à partir d'elles.</li>
+    </ul>
+  </div>
+
+  <!-- ── Section 4 ──────────────────────────────────────────────── -->
+  <div class="an-section">4. Évaluation ciblée et fiabilité des sources</div>
+  <div class="an-two">
+    <div class="an-box">
+      <div class="an-box-title">Évaluation ciblée</div>
+      <p>Au plus <strong>5 axes</strong> d'observation, proposés à partir de l'orientation clinique validée par le médecin. Chaque axe dit la question qu'il vient trancher et porte <strong>4 à 6 constats</strong> observables au cabinet, cochés OUI / NON.</p>
+      <p>Un constat décrit un comportement (« attend son tour de parole »), jamais une conclusion. Case vide = non observé.</p>
+      <p><strong>Aucun score n'est calculé</strong> : compter les « oui » donnerait un chiffre qui ressemble à une gravité.</p>
+    </div>
+    <div class="an-box">
+      <div class="an-box-title">Fiabilité des deux sources</div>
+      <p>Pour la cartographie de l'enfant, le médecin qualifie <strong>séparément</strong> le questionnaire des parents et sa propre observation : <strong>Fiable · Moyennement fiable · Peu fiable · Non exploitable.</strong></p>
+      <p>Une source non exploitable est écartée du raisonnement et dite comme telle.</p>
+      <p><strong>La fiabilité qualifie la source, elle ne modifie jamais une valeur</strong> : un 4/6 reste un 4/6, et sa couleur ne bouge pas.</p>
+    </div>
   </div>
 
   <div class="an-limits">
     <div class="an-limits-title">Limites méthodologiques</div>
     <p>• L'outil n'est pas normé sur population : les niveaux indiquent des repères fonctionnels, pas des percentiles ou des seuils diagnostiques.</p>
-    <p>• Les scores reflètent un état fonctionnel au moment de la saisie et ne constituent pas un diagnostic.</p>
-    <p>• La qualité des données dépend du contexte d'entretien. Un contexte de crise ou une consultation courte peuvent affecter les résultats.</p>
+    <p>• Les affirmations et les seuils sont fixes et communs à tous les patients : c'est ce qui rend les dossiers comparables entre eux.</p>
+    <p>• Les cotations reflètent un état fonctionnel au moment de l'évaluation et ne constituent pas un diagnostic. Un contexte de crise ou une première rencontre brève peuvent les affecter — c'est l'objet des curseurs de fiabilité.</p>
     <p>• Les suggestions générées par l'application (MedCompanion) constituent des hypothèses de travail soumises à validation clinique. Aucune valeur calculée ni aucun texte généré par l'application n'a valeur diagnostique autonome.</p>
   </div>
 
