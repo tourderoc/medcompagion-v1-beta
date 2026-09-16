@@ -13,7 +13,7 @@
 
 Décision du médecin, 15 septembre 2026 : **Med tourne en local, tout le temps.**
 
-1. **Deux modèles, un seul moteur :** Qwen3.8-27B et Gemma 4 12B QAT + MTP, sur llama.cpp. Plus aucun appel à Ollama.
+1. **Deux modèles, un seul moteur :** Qwen3.8-27B et Gemma 4 12B QAT + MTP, sur llama.cpp. Plus aucun appel à Ollama. Ollama **reste installé** sur le poste mais endormi (étape 7) : l'application fait comme s'il n'existait plus.
 2. **Plus d'accès cloud pour les données patient :** ni OpenAI, ni modèles « -cloud » d'Ollama.
 3. **Plus d'anonymisation.** Elle n'existait que pour protéger les envois vers le cloud ; en local, rien ne quitte la machine. La passerelle LLM la saute déjà quand le modèle est local.
 4. **GLM-OCR n'est plus utilisé** (confirmé par le médecin) : il sort sans remplaçant.
@@ -131,13 +131,18 @@ Tissée dans une dizaine de fichiers : `AnonymizationService`, `LLMGatewayServic
 
 **Validation :** compilation sans aucune référence à Ollama ; ouverture de Med sur Gemma ; parcours complet d'une consultation.
 
-### Étape 7 — Retirer Ollama du poste
+### Étape 7 — Endormir Ollama sur le poste (sans le désinstaller)
 
-*Manuel, en administrateur.*
+*Manuel.* — **Statut : ✅ fait le 16/09/2026**
 
-1. Retirer `demarrer-ollama-5060ti.vbs` et sa clé Run.
-2. Désinstaller Ollama.
-3. Libérer `D:\PosteTravail\.ollama\models` (garder une copie froide quelques semaines si l'espace le permet).
+> **Décision du médecin, 16/09/2026 : on garde Ollama installé**, au cas où on en aurait besoin ; l'application, elle, fait comme s'il n'existait plus. Le coût est nul : 87 Go de modèles sur D: (disque mécanique, 1,6 To libre), et rien en mémoire tant qu'il ne tourne pas.
+>
+> **La nuance qui compte : installation et code sont deux choses séparées.** Aucune branche Ollama « au cas où » n'est gardée dans l'application (étapes 1 à 6) — ce serait du code mort que personne ne teste, et la porte des modèles « -cloud » resterait ouverte. Si le besoin revient, le code est dans l'historique git et se rebranche en une heure.
+
+1. ✅ **Démarrage automatique coupé** le 16/09/2026 : clé `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` → `Ollama` supprimée. Elle valait `wscript.exe "C:\Users\nair\AppData\Local\Programs\Ollama\demarrer-ollama-5060ti.vbs"` — à recréer à l'identique pour revenir en arrière. Le script `.vbs` est conservé.
+   *Pourquoi :* un Ollama qui tourne prend de la RAM, parfois de la VRAM, et concurrence le cache Windows dont dépendent les bascules à 4-5 s.
+2. Ollama **reste installé**, ainsi que ses modèles dans `D:\PosteTravail\.ollama\models`. Il se relance à la main en cas de besoin.
+3. **À revoir dans quelques mois** : si rien ne l'a rappelé, désinstaller et libérer les 87 Go.
 
 ---
 
@@ -148,6 +153,7 @@ Tissée dans une dizaine de fichiers : `AnonymizationService`, `LLMGatewayServic
 | Recherche internet | garder, raisonnement local sur Gemma | à décider (étape 2) |
 | Modèle de l'agent de Pilotage | Gemma QAT (tri court, fréquent) | à valider sur vrais messages |
 | Retrait complet d'OpenAI | oui — Med 100 % local | à confirmer par le médecin |
+| Désinstaller Ollama du poste | non : gardé installé et endormi, l'application fait comme s'il n'existait plus | ✅ décidé le 16/09 — à revoir dans quelques mois |
 
 ---
 
@@ -157,3 +163,4 @@ Tissée dans une dizaine de fichiers : `AnonymizationService`, `LLMGatewayServic
 |---|---|---|
 | 15/09/2026 | — | Inventaire et plan rédigés. Constat : l'agent Web raisonne sur un modèle cloud d'Ollama ; les modèles « -cloud » sont classés locaux par la passerelle, donc jamais anonymisés. |
 | 15/09/2026 | 0 | Structuration des notes sur Gemma 4 QAT + MTP (llama.cpp), sans anonymisation, sexe précisé au modèle. Compilé, à valider sur une vraie note. |
+| 16/09/2026 | 7 | ✅ Ollama gardé installé mais endormi : clé de démarrage automatique supprimée (valeur notée à l'étape 7 pour revenir en arrière). Le code, lui, le retire complètement — pas de branche « au cas où ». |

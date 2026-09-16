@@ -332,7 +332,8 @@ Puis suppression des anciens emplacements sur C:.
 | Liste des suppressions de l'étape 1 | celle de l'étape 1 | ✅ décidé et fait le 14/09 |
 | Filet de déchargement au repos | 2 h, réglable | ✅ adopté le 14/09 (LLM et Whisper) |
 | Stratégie de switch | l'autre modèle gardé en cache, un seul à la fois | ✅ décidé le 14/09 (proposition du médecin) |
-| Matériel | aucun achat sur AM4 ; machine AM5 étudiée d'ici ~6 mois sur mesures | ✅ décidé le 14/09 |
+| Matériel | aucun achat sur AM4 ; machine AM5 étudiée d'ici ~6 mois sur mesures | ✅ décidé le 14/09, **reconfirmé le 16/09** (carte mère X570 reconditionnée écartée, section 7) |
+| Passer à 64 Go de DDR4 (~65 €) | seul levier matériel restant : il règle la pré-lecture écartée faute de RAM | ouvert — DDR4 non réutilisable sur AM5 |
 | Affectation des tâches hors consultation | restitution + synthèse → Qwen ; courriers, attestations, chat → Gemma | ouvert |
 | Gemma à 32 768 de contexte | 1,1 Go de VRAM rendu | ouvert |
 | Garde-fou de la pré-lecture en journée | marge « taille + 4 Go » à revoir : Qwen écarté de 13 h à 16 h le 15/09 | ouvert — avec la mesure de l'étape 5 |
@@ -349,6 +350,19 @@ Puis suppression des anciens emplacements sur C:.
 **Une machine AM5 sera étudiée dans environ six mois**, quand les besoins de Med seront fixés : l'application évolue encore et tout n'y est pas intégré. D'ici là, on accumule des **mesures** plutôt que des impressions, pour dimensionner sur des chiffres.
 
 Ce qui justifie d'attendre : le logiciel a déjà apporté l'essentiel du gain — switch d'une minute à ~5 s, travail décrit comme « fluide » par le médecin (14/09), sans rien acheter. Ce qui reste lié au matériel (premier chargement à froid, RAM tendue quand le poste est chargé) est gênant, pas bloquant.
+
+### Confirmé le 16/09/2026 — carte mère X570 reconditionnée écartée
+
+Une **ASUS ROG STRIX X570-E GAMING reconditionnée (~285 €)** a été examinée : socket AM4, donc tout le matériel actuel compatible, deux ports M.2, PCIe 4.0.
+
+**Écartée.** Elle ne lève aucune des deux limites mesurées, et coûte 285 € sur une plateforme en fin de vie :
+
+- le NVMe qu'elle permettrait ferait passer un chargement à froid de ~30 s à ~2,5 s, contre ~4 s avec un Gen3 — **une seconde et demie**, sur un événement devenu rare depuis que la pré-lecture fonctionne ;
+- **le port M.2 de la carte actuelle reste inutilisable** : l'occuper désactiverait le slot de la 3050. C'est la raison pour laquelle les modèles vivent sur un SSD SATA, et non un oubli.
+
+**Seul levier matériel encore ouvert sur ce poste : la mémoire.** L'AB350 Pro4 a 4 emplacements, deux libres, et accepte 64 Go ; le poste tourne aujourd'hui avec 2 × 16 Go à 2667. Passer à 64 Go (~60-70 €) réglerait le défaut réellement observé — la pré-lecture qui écarte Qwen faute de RAM libre entre 13 h et 16 h. À mettre en regard du fait que cette DDR4 ne se réutilisera pas sur AM5.
+
+**Position tenue : on reste sur ce matériel, la vraie transition se fera sur AM5**, selon les besoins constatés.
 
 ### Cahier des besoins à renseigner d'ici là
 
