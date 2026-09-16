@@ -22,7 +22,7 @@ namespace MedCompanion.Services.Restitutions
     /// Au fur et à mesure que chaque section sera retravaillée, les pages dédiées
     /// remplaceront ces pages-brouillon.
     /// </summary>
-    public class RestitutionHtmlPreviewService
+    public partial class RestitutionHtmlPreviewService
     {
         private readonly PathService _pathService;
         private readonly EvaluationPhaseService? _evaluationService;
@@ -111,6 +111,12 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("</style></head><body>");
             sb.Append(coverHtml);
             sb.Append(blocsHtml);
+
+            // Annexe contacts AVANT l'annexe méthodologique : les contacts sont la page que les
+            // parents chercheront juste après la conclusion. La méthodologique est un document
+            // générique destiné aux professionnels — elle ferme le dossier.
+            sb.Append(BuildAnnexeContactsPage(patientNomComplet, dossier, coverFields));
+
             if (!string.IsNullOrWhiteSpace(_annexeMethodologiqueRaw))
                 sb.Append(_annexeMethodologiqueRaw);
             sb.AppendLine("</body></html>");
@@ -1855,6 +1861,35 @@ namespace MedCompanion.Services.Restitutions
                 Degre.Contains("non indiqu", StringComparison.OrdinalIgnoreCase);
         }
 
+        /// <summary>
+        /// L'encadré d'indication en tête de section — partagé par 7.2, 7.3 et 7.4. Une seule
+        /// écriture pour les trois : elles disent la même chose et doivent se lire pareil.
+        /// Rien ne sort si l'indication n'a pas été renseignée.
+        /// </summary>
+        private static string RendreIndication(PtIndication ind)
+        {
+            if (!ind.EstRenseignee) return "";
+
+            var sb      = new StringBuilder();
+            var couleur = PtDegreColor(ind.Degre);
+
+            sb.AppendLine($"  <div class='pt-indication' style='border-left:4px solid {couleur}'>");
+            sb.AppendLine("    <div class='pt-indication-hdr'>");
+            sb.AppendLine("      <span class='pt-indication-label'>INDICATION</span>");
+            if (!string.IsNullOrWhiteSpace(ind.Degre))
+                sb.AppendLine($"      <span class='pt-tag' style='background:{couleur}'>{WebUtility.HtmlEncode(ind.Degre)}</span>");
+            if (!string.IsNullOrWhiteSpace(ind.Porteur))
+                sb.AppendLine($"      <span class='pt-tag' style='background:{PtPorteurColor(ind.Porteur)}'>{WebUtility.HtmlEncode(ind.Porteur)}</span>");
+            sb.AppendLine("    </div>");
+            if (!string.IsNullOrWhiteSpace(ind.Motif))
+                sb.AppendLine($"    <div class='pt-indication-motif'>{WebUtility.HtmlEncode(ind.Motif)}</div>");
+            if (!string.IsNullOrWhiteSpace(ind.CritereReevaluation))
+                sb.AppendLine($"    <div class='pt-indication-crit'><strong>À reconsidérer si :</strong> {WebUtility.HtmlEncode(ind.CritereReevaluation)}</div>");
+            sb.AppendLine("  </div>");
+
+            return sb.ToString();
+        }
+
         private sealed class PtS2Data
         {
             public PtIndication Indication       { get; set; } = new();
@@ -1904,23 +1939,7 @@ namespace MedCompanion.Services.Restitutions
 
             // ── L'indication, en tête : elle décide de ce qui suit ──────────
             var ind = data.Indication;
-            if (ind.EstRenseignee)
-            {
-                var couleur = PtDegreColor(ind.Degre);
-                sb.AppendLine($"  <div class='pt-indication' style='border-left:4px solid {couleur}'>");
-                sb.AppendLine("    <div class='pt-indication-hdr'>");
-                sb.AppendLine("      <span class='pt-indication-label'>INDICATION</span>");
-                if (!string.IsNullOrWhiteSpace(ind.Degre))
-                    sb.AppendLine($"      <span class='pt-tag' style='background:{couleur}'>{WebUtility.HtmlEncode(ind.Degre)}</span>");
-                if (!string.IsNullOrWhiteSpace(ind.Porteur))
-                    sb.AppendLine($"      <span class='pt-tag' style='background:{PtPorteurColor(ind.Porteur)}'>{WebUtility.HtmlEncode(ind.Porteur)}</span>");
-                sb.AppendLine("    </div>");
-                if (!string.IsNullOrWhiteSpace(ind.Motif))
-                    sb.AppendLine($"    <div class='pt-indication-motif'>{WebUtility.HtmlEncode(ind.Motif)}</div>");
-                if (!string.IsNullOrWhiteSpace(ind.CritereReevaluation))
-                    sb.AppendLine($"    <div class='pt-indication-crit'><strong>À reconsidérer si :</strong> {WebUtility.HtmlEncode(ind.CritereReevaluation)}</div>");
-                sb.AppendLine("  </div>");
-            }
+            sb.Append(RendreIndication(ind));
 
             if (!string.IsNullOrWhiteSpace(data.Intro))
                 sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
@@ -2027,6 +2046,7 @@ namespace MedCompanion.Services.Restitutions
         /// </summary>
         private sealed class PtS3Data
         {
+            public PtIndication  Indication       { get; set; } = new();
             public string        Intro            { get; set; } = "";
             public List<string>  Objectifs        { get; set; } = new();
             public List<PtAction> Reeducations    { get; set; } = new();
@@ -2068,8 +2088,19 @@ namespace MedCompanion.Services.Restitutions
                 return sb.ToString();
             }
 
+            // L'indication ouvre la section et décide de ce qui suit — comme en 7.2.
+            sb.Append(RendreIndication(data.Indication));
+
             if (!string.IsNullOrWhiteSpace(data.Intro))
                 sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
+
+            // Soutien écarté ou différé : l'indication et son critère disent tout. Aligner des
+            // rééducations sous une indication qu'on vient d'écarter serait se contredire.
+            if (data.Indication.EstDifferee && data.Reeducations.Count == 0 && data.Objectifs.Count == 0)
+            {
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
 
             sb.AppendLine("  <div class='pt-cards-wrapper'>");
             int num = 1;
@@ -2157,6 +2188,7 @@ namespace MedCompanion.Services.Restitutions
         /// </summary>
         private sealed class PtS4Data
         {
+            public PtIndication  Indication              { get; set; } = new();
             public string        Intro                   { get; set; } = "";
             public List<string>  Objectifs               { get; set; } = new();
             public List<PtAction> AccompagnementParents  { get; set; } = new();
@@ -2198,8 +2230,20 @@ namespace MedCompanion.Services.Restitutions
                 return sb.ToString();
             }
 
+            // L'indication ouvre la section et décide de ce qui suit — comme en 7.2.
+            sb.Append(RendreIndication(data.Indication));
+
             if (!string.IsNullOrWhiteSpace(data.Intro))
                 sb.AppendLine($"  <div class='pt-intro'>{WebUtility.HtmlEncode(data.Intro)}</div>");
+
+            // Accompagnement écarté ou différé : le motif et le critère disent tout.
+            if (data.Indication.EstDifferee
+             && data.AccompagnementParents.Count == 0 && data.InterventionsEducatives.Count == 0
+             && data.Objectifs.Count == 0)
+            {
+                sb.AppendLine("</div>");
+                return sb.ToString();
+            }
 
             sb.AppendLine("  <div class='pt-cards-wrapper'>");
             int num = 1;

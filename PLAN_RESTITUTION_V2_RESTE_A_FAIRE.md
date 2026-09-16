@@ -1,6 +1,6 @@
 # PLAN — Dossier de Restitution V2 : ce qui reste à faire
 
-> **Statut :** refonte page par page terminée le 11 septembre 2026 (blocs 1 → 32), testée en réel. Quatre chantiers restent ouverts, aucun n'est démarré.
+> **Statut :** refonte page par page terminée le 11 septembre 2026 (blocs 1 → 32), testée en réel. Le chantier 3.1 (annexe contacts) est fait le 16 septembre 2026 ; **trois chantiers restent ouverts.**
 > **Date d'ouverture :** 11 septembre 2026
 > **Docs liés :** [PLAN_RESTITUTION_PARENTS.md](PLAN_RESTITUTION_PARENTS.md), [PLAN_CARTOGRAPHIE_ENFANT_V2.md](PLAN_CARTOGRAPHIE_ENFANT_V2.md), [CLAUDE.md](CLAUDE.md)
 
@@ -19,6 +19,7 @@ L'audit page par page du **Dossier de Restitution Clinique** (32 blocs) est term
 | 27-31 — Projet thérapeutique (7.1 → 7.5) | Structuré en actions (`quoi / porteur / échéance / degré`), éditeur miroir du modèle, cycle générer → modifier → régénérer sans effacement |
 | 2 — Feuille de route | Alimentée par les actions structurées, triées par priorité puis par échéance |
 | 32 — Conclusion | Quatre blocs : l'enfant rendu entier, ses forces ancrées, ce qui reste ouvert, ce qu'est ce document |
+| 33 — Annexe contacts | Qui est qui autour de l'enfant, lu du dossier bleu : parents, école, médecin traitant, intervenants des bilans, et les professionnels qui restent à trouver |
 
 **Conséquence hors périmètre :** la Restitution était le dernier consommateur des formes de l'Évaluation V1. Sa suppression (~7 300 lignes) n'est plus bloquée — voir la note de suivi correspondante.
 
@@ -42,26 +43,52 @@ Ces règles ont été posées une par une pendant la refonte, souvent après un 
 
 **Déclenchements manuels.** Le médecin clique, rien ne part tout seul. « Plus simple c'est mieux. »
 
+**Écarter une section est une décision, pas un trou.** *(posé le 16/09/2026)* Une section du projet peut n'avoir aucune indication — un enfant sans besoin développemental particulier, une famille qui n'a besoin d'aucun accompagnement. Le dire, avec son motif et ce qui ferait reconsidérer, est une information clinique ; laisser la page vide se lit comme un oubli.
+
+La mécanique est celle de la 7.2, généralisée aux **7.3 et 7.4** : un champ `indication` en tête de section (`degre` / `porteur` / `motif` / `critereReevaluation`), avec un degré de plus que les actions — **« non indiqué à ce stade »**, qui ne vaut que pour une section entière et jamais pour une action isolée.
+
+- **Éditeur** : choisir « non indiqué à ce stade » ou « à réévaluer plus tard » replie les sous-sections et affiche un bandeau. Rien n'est effacé — un lien « afficher quand même » les rouvre, et changer de degré réarme le repli.
+- **Document** : la page porte l'indication, le motif et « À reconsidérer si… », puis s'arrête. Aucune carte n'est alignée sous une indication qu'on vient d'écarter.
+- **7.5 École garde sa logique propre** : le cadre scolaire est une décision administrative, pas une indication clinique. **7.1 Médical** aussi : ses actions portent déjà leur degré, une indication globale par-dessus ferait doublon.
+
+**L'ordre d'édition n'est pas l'ordre de lecture.** *(posé le 16/09/2026)* Le médecin rédige dans l'ordre où l'information devient disponible ; les parents lisent dans l'ordre du document. Les deux listes sont désormais distinctes : `_dossier.Blocs` est l'ordre du document — c'est elle que l'aperçu et le PDF parcourent — et `RestitutionEditorViewModel.OrdreEdition` donne l'ordre de rédaction.
+
+Un seul écart aujourd'hui : la **« Restitution 1-page parents » descend juste après le projet thérapeutique** dans l'éditeur, et reste en page 2 dans le document. Sa section « Notre feuille de route » ne se rédige pas depuis le dossier mais depuis le projet que le médecin vient de décider (`RedigerFeuilleDeRouteAsync`). La laisser en deuxième position coûtait deux fois : « Générer tout » atteignait cette page avant le projet — la feuille de route retombait immanquablement sur son message d'attente — et il fallait remonter trente blocs après avoir fini le projet, ce qui s'oubliait. Les cinq autres sections se rédigent depuis les notes du patient, lues dès l'ouverture : les descendre ne leur enlève rien.
+
+Si un bloc du projet manque (dossier d'un ancien parcours), rien n'est déplacé — on ne devine pas une position.
+
 **Voix selon le destinataire.** Clinique sobre pour le médecin, voix du livre pour les parents — et sur la dernière page, un ton mixte sans condescendance.
 
 ---
 
-## 3. Les quatre chantiers ouverts
+## 3. Les chantiers
 
-### 3.1 Annexe contacts, en toute fin de document
+### 3.1 Annexe contacts — ✅ fait le 16 septembre 2026
 
-**Demandé il y a longtemps, jamais construit.** C'est le chantier le plus mûr et le moins risqué des quatre.
+Une page entre la conclusion et l'annexe méthodologique, qui rassemble **qui est qui** autour de l'enfant. Code : `RestitutionHtmlPreviewService.Contacts.cs`. Tests : section 33 du TestRunner (18 vérifications).
 
-Une page en fin de dossier, après la conclusion, qui rassemble **qui est qui** : le médecin traitant, et pour chaque bilan cité dans le parcours de soins, le professionnel qui l'a réalisé.
+**Rien n'est généré et rien n'est à saisir** — tout existe déjà dans le dossier bleu :
 
-Ce qui existe déjà :
-- `PatientMetadata` porte `MedecinTraitantNom`, `Prenom`, `Adresse`, `CodePostal`, `Ville`, `Telephone` — la donnée est là, structurée, il n'y a rien à générer.
-- Le parcours de soins et son annexe détaillée (page 6) citent les bilans. Reste à décider si le praticien y est déjà saisissable ou s'il faut un champ.
+| Carte | Source |
+|---|---|
+| Mère, Père | `patient.json` — prénom, nom, téléphone, email |
+| Accompagnant | `patient.json`, **seulement si ce n'est ni la mère ni le père** — sinon on ferait croire à un tiers |
+| École | `patient.json` — nom, classe, adresse assemblée, téléphone, email (coordonnées de l'annuaire Éducation Nationale) |
+| Médecin traitant, médecin référent | `patient.json` — « Dr » ajouté seulement si le nom saisi ne le porte pas déjà |
+| Intervenants | `info_patient/intervenants.json` — extraits automatiquement à l'import de chaque bilan, avec le document d'origine rendu lisible (`2025-03-12_bilan_orthophonique.pdf` → « bilan orthophonique ») |
 
-Questions ouvertes avant de coder :
-- Le praticien de chaque bilan : champ structuré dans le bloc antécédents, ou extraction depuis le texte existant ?
-- Page numérotée dans le dossier, ou annexe hors numérotation comme la page 6 ?
-- Les coordonnées des professionnels à trouver (« professionnel à trouver » dans le projet) : on les laisse vides, ou la page dit explicitement qu'ils restent à identifier ?
+**Réponses aux trois questions qui étaient ouvertes :**
+- *Le praticien de chaque bilan* → aucun champ à créer : `IntervenantService` le capte déjà à l'import, et `SourceDocument` dit de quel bilan il vient.
+- *Position* → **avant** l'annexe méthodologique. Les contacts sont la page utile aux parents, ils la chercheront juste après la conclusion ; la méthodologique est générique et destinée aux professionnels, elle ferme le dossier.
+- *Les professionnels « à trouver »* → une section **« Reste à identifier »** en bas de page, avec une ligne pointillée à remplir à la main. Elle recopie mot pour mot les actions du projet dont le porteur est `professionnel à trouver` — jamais reformulées, sinon la page contacts et la section 7 diraient deux choses différentes.
+
+**Deux règles tenues, les mêmes que sur la conclusion :**
+- Un champ vide ne s'écrit pas, une carte vide ne se dessine pas, et un dossier sans aucun contact n'ouvre pas de page blanche. Les parents n'ont pas à lire les trous du dossier administratif.
+- Rien n'est inventé : la page n'affiche que ce qui est saisi quelque part.
+
+**Un piège traité :** `.page` est en `overflow: hidden`. Un dossier très suivi aurait vu ses derniers intervenants **disparaître du PDF sans le moindre signe**. La page se répartit donc sur plusieurs A4 selon la hauteur estimée des cartes, avec « (suite) » et une numérotation ; « Reste à identifier » n'est jamais coupé en deux.
+
+**Effet de bord utile :** `PathService` accepte désormais une racine patients optionnelle (`new PathService(dossierTemporaire)`), uniquement pour que les tests écrivent un patient fictif sans jamais toucher aux vrais dossiers du cabinet.
 
 ### 3.2 Synthèse Globale déjà validée + nouveau dossier de Restitution
 
@@ -91,7 +118,14 @@ Reste à trancher si le dossier s'aligne sur les 5 axes de la V2, ou si les 8 sp
 
 ## 4. Ordre suggéré
 
-1. **3.1 Annexe contacts** — autonome, la donnée existe, aucun risque de régression sur l'existant.
-2. **3.2 Patch v2 de la Synthèse Globale** — c'est celui qui protège des documents déjà signés.
+1. ~~**3.1 Annexe contacts**~~ — fait le 16/09/2026.
+2. **3.2 Patch v2 de la Synthèse Globale** — c'est celui qui protège des documents déjà signés. **Prochain.**
 3. **3.3 Sens de la source de vérité du Projet** — dépend de 3.2, qui fixe le statut de la Synthèse Globale.
 4. **3.4 Sphères vs axes** — refonte de présentation, à faire quand le reste est stable.
+
+---
+
+## 5. À surveiller sur l'annexe contacts
+
+- **Les intervenants dépendent de l'extraction à l'import.** Un bilan importé avant que `IntervenantService` n'existe, ou dont l'en-tête n'a pas été lu, ne produit pas de carte. Rien ne sera faux — il manquera simplement quelqu'un. À regarder sur les premiers dossiers réels.
+- **Le champ médecin traitant est libre.** « Dr » est ajouté seulement s'il est absent, mais un nom saisi bizarrement s'affichera tel quel.

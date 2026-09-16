@@ -735,8 +735,14 @@ namespace MedCompanion.ViewModels.Restitutions
             // mais un objectif obligatoire). « Axes prioritaires » faisait doublon avec les
             // objectifs, et « Ressources de l'enfant » était la troisième occurrence des points
             // forts dans le dossier — elle rejoint l'intro.
+            //
+            // L'indication ouvre la section depuis le 16/09/2026, comme en 7.2 : un soutien
+            // développemental n'est pas automatique. Sans elle, un enfant sans besoin particulier
+            // à ce niveau recevait une page qui ne portait qu'un titre — un trou, que les parents
+            // lisent comme un oubli plutôt que comme une décision.
             "pt_s3" => new PtFieldDef[]
             {
+                new("indication",       "Indication d'un soutien développemental", PtFieldKind.Indication),
                 new("intro",            "Intro",                    PtFieldKind.Text),
                 new("objectifs",        "Objectifs",                PtFieldKind.List),
                 new("reeducations",     "Rééducations et prises en charge", PtFieldKind.Actions,
@@ -755,8 +761,12 @@ namespace MedCompanion.ViewModels.Restitutions
             // délais tout autres), et ce que la FAMILLE ajuste elle-même (ni degré ni échéance,
             // mais du concret). « Axes prioritaires » et « Objectifs court terme » répétaient les
             // objectifs ; « Forces familiales » rejoint l'intro.
+            // L'indication ouvre aussi cette section depuis le 16/09/2026 : certaines familles
+            // n'ont besoin d'aucun accompagnement, et le dire — avec son motif — vaut mieux que
+            // de laisser la page vide.
             "pt_s4" => new PtFieldDef[]
             {
+                new("indication",              "Indication d'un accompagnement familial", PtFieldKind.Indication),
                 new("intro",                   "Intro",                        PtFieldKind.Text),
                 new("objectifs",               "Objectifs",                    PtFieldKind.List),
                 new("accompagnementParents",   "Accompagnement des parents",   PtFieldKind.Actions,
@@ -833,6 +843,73 @@ namespace MedCompanion.ViewModels.Restitutions
                 }
                 PtFields.Add(field);
             }
+
+            // L'indication commande la section : quand elle est écartée, tout ce qui suit se
+            // replie. On s'abonne à son degré plutôt que de recalculer à chaque frappe.
+            var indication = PtFields.FirstOrDefault(f => f.IsIndication);
+            if (indication != null)
+            {
+                indication.Indication.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName != nameof(PtIndicationVm.EstEcartee)) return;
+                    // Un changement de degré réarme le repli : « afficher quand même » vaut pour
+                    // la décision en cours, pas pour toutes celles qui suivront.
+                    _afficherMalgreIndication = false;
+                    RafraichirMasquageSousSections();
+                };
+                RafraichirMasquageSousSections();
+            }
+        }
+
+        // ── Repli des sous-sections quand l'indication est écartée ───────────────
+
+        private bool _afficherMalgreIndication;
+
+        /// <summary>Vrai quand la section est écartée et que ses sous-sections sont repliées.</summary>
+        public bool SousSectionsRepliees
+        {
+            get
+            {
+                var ind = PtFields.FirstOrDefault(f => f.IsIndication);
+                return ind != null && ind.Indication.EstEcartee && !_afficherMalgreIndication;
+            }
+        }
+
+        /// <summary>Vrai dès que l'indication est écartée — que le repli soit levé ou non.</summary>
+        public bool IndicationEcartee
+        {
+            get
+            {
+                var ind = PtFields.FirstOrDefault(f => f.IsIndication);
+                return ind != null && ind.Indication.EstEcartee;
+            }
+        }
+
+        public string LibelleBasculeSousSections => SousSectionsRepliees
+            ? "▸ Afficher quand même les sous-sections"
+            : "▾ Replier les sous-sections";
+
+        public ICommand BasculeSousSectionsCommand => _basculeSousSections ??= new RelayCommand(_ =>
+        {
+            _afficherMalgreIndication = !_afficherMalgreIndication;
+            RafraichirMasquageSousSections();
+        });
+        private ICommand? _basculeSousSections;
+
+        /// <summary>
+        /// Replie ou déplie tout ce qui suit l'indication. Aucun contenu n'est effacé : le champ
+        /// garde ce qu'il portait, et le JSON du bloc n'est pas retouché. Le médecin peut écarter
+        /// une section, changer d'avis, et retrouver sa saisie intacte.
+        /// </summary>
+        private void RafraichirMasquageSousSections()
+        {
+            var replier = SousSectionsRepliees;
+            foreach (var f in PtFields)
+                f.MasqueParIndication = !f.IsIndication && replier;
+
+            OnPropertyChanged(nameof(SousSectionsRepliees));
+            OnPropertyChanged(nameof(IndicationEcartee));
+            OnPropertyChanged(nameof(LibelleBasculeSousSections));
         }
 
         private PtFieldViewModel? FindPtField(string jsonPath)
@@ -1437,6 +1514,44 @@ namespace MedCompanion.ViewModels.Restitutions
         /// </summary>
         public event Action? PreviewRefreshRequested;
 
+        /// <summary>
+        /// Ordre dans lequel le médecin RÉDIGE les blocs — distinct de l'ordre dans lequel les
+        /// parents LISENT le dossier. La liste <c>_dossier.Blocs</c> reste l'ordre du document et
+        /// n'est jamais touchée : c'est elle que l'aperçu et le PDF parcourent, la page destinée
+        /// aux parents reste donc en page 2.
+        ///
+        /// Un seul écart, et il répare une incohérence : la « Restitution 1-page parents »
+        /// descend juste après le projet thérapeutique. Sa section « Notre feuille de route »
+        /// ne se rédige pas depuis le dossier mais depuis LE PROJET que le médecin vient de
+        /// décider — c'est pour ça qu'elle est différée (voir
+        /// <c>RestitutionSuggesterService.RedigerFeuilleDeRouteAsync</c>). La laisser en
+        /// deuxième position coûtait deux fois :
+        ///
+        /// • « Générer tout » atteignait cette page avant le projet — la feuille de route
+        ///   retombait immanquablement sur son message d'attente ;
+        /// • le médecin devait remonter trente blocs après avoir fini le projet, et l'oubliait.
+        ///
+        /// Les cinq autres sections de cette page se rédigent depuis les notes du patient, qui
+        /// sont lues dès l'ouverture : les descendre ne leur enlève rien.
+        /// </summary>
+        private static IEnumerable<RestitutionBloc> OrdreEdition(IEnumerable<RestitutionBloc> blocs)
+        {
+            var liste = blocs.ToList();
+
+            var page2 = liste.FirstOrDefault(b => b.Key == "restitution_1page");
+            if (page2 == null) return liste;
+
+            // Ancre : le dernier bloc du projet. Absent — un dossier d'un ancien parcours —
+            // on ne déplace rien plutôt que de deviner une position.
+            var ancre = liste.FindIndex(b => b.Key == "pt_s5");
+            if (ancre < 0) return liste;
+
+            liste.Remove(page2);
+            ancre = liste.FindIndex(b => b.Key == "pt_s5");
+            liste.Insert(ancre + 1, page2);
+            return liste;
+        }
+
         public RestitutionEditorViewModel(
             DossierRestitutionInitial dossier,
             string patientName,
@@ -1454,7 +1569,7 @@ namespace MedCompanion.ViewModels.Restitutions
             _dossierReader      = dossierReader;
             _previewService     = previewService;
 
-            foreach (var bloc in _dossier.Blocs)
+            foreach (var bloc in OrdreEdition(_dossier.Blocs))
             {
                 var vm = new RestitutionBlocViewModel(bloc, GenerateBlocAsync, GenerateSectionBlocAsync, ReformulateBlocAsync);
                 // Quand le médecin tape dans un bloc, on déclenche un refresh de l'aperçu (debounce).

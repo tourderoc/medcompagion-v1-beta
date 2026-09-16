@@ -178,8 +178,26 @@ namespace MedCompanion.ViewModels.Restitutions
         public string Degre
         {
             get => _degre;
-            set { if (_degre == value) return; _degre = value ?? ""; OnPropertyChanged(); Flush?.Invoke(); }
+            set
+            {
+                if (_degre == value) return;
+                _degre = value ?? "";
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(EstEcartee));
+                Flush?.Invoke();
+            }
         }
+
+        /// <summary>
+        /// Vrai quand la section n'est pas engagée maintenant — « non indiqué à ce stade » ou
+        /// « à réévaluer plus tard ». Le motif et le critère de réévaluation disent alors tout ;
+        /// aligner des objectifs sous une indication qu'on vient d'écarter serait se contredire
+        /// dans la même page. C'est déjà la lecture que fait le rendu du dossier.
+        /// </summary>
+        public bool EstEcartee =>
+            _degre.IndexOf("non indiqu", StringComparison.OrdinalIgnoreCase) >= 0 ||
+            _degre.IndexOf("réévaluer",  StringComparison.OrdinalIgnoreCase) >= 0 ||
+            _degre.IndexOf("reevaluer",  StringComparison.OrdinalIgnoreCase) >= 0;
 
         private string _porteur = "";
         public string Porteur
@@ -222,6 +240,18 @@ namespace MedCompanion.ViewModels.Restitutions
         public bool IsIndication => Kind == PtFieldKind.Indication;
 
         public PtIndicationVm Indication { get; } = new();
+
+        /// <summary>
+        /// Replié parce que l'indication de la section a été écartée. Rien n'est effacé : le
+        /// contenu déjà saisi reste en mémoire et reparaît si le médecin change d'avis ou clique
+        /// sur « afficher quand même ». Piloté par le bloc, jamais par le champ lui-même.
+        /// </summary>
+        private bool _masqueParIndication;
+        public bool MasqueParIndication
+        {
+            get => _masqueParIndication;
+            set { if (_masqueParIndication == value) return; _masqueParIndication = value; OnPropertyChanged(); }
+        }
 
         /// <summary>Valeurs d'une action fraîchement ajoutée — cf. PtFieldDef.</summary>
         public string PorteurParDefaut  { get; init; } = "";

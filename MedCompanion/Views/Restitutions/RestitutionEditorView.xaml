@@ -1574,7 +1574,19 @@
                                             <ItemsControl ItemsSource="{Binding PtFields}">
                                                 <ItemsControl.ItemTemplate>
                                                     <DataTemplate DataType="{x:Type vm:PtFieldViewModel}">
+                                                        <!-- Replié quand l'indication de la section a été écartée. Rien
+                                                             n'est effacé : le contenu revient si le médecin change d'avis. -->
                                                         <Border Margin="0,0,0,8" BorderBrush="#D0D7DE" BorderThickness="1" CornerRadius="6" Background="White">
+                                                            <Border.Style>
+                                                                <Style TargetType="Border">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding MasqueParIndication}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Border.Style>
                                                             <StackPanel>
                                                                 <!-- En-tête section : titre + bouton Reformuler -->
                                                                 <Border Background="#EBF5FB" CornerRadius="5,5,0,0" Padding="10,7">
@@ -1720,6 +1732,41 @@
                                                                              FontSize="11" FontFamily="Segoe UI" FontStyle="Italic" Padding="5,3"
                                                                              BorderBrush="#D6DBDF" BorderThickness="1"
                                                                              AcceptsReturn="True" TextWrapping="Wrap" MinHeight="30"/>
+
+                                                                    <!-- Section écartée : on le dit, et on laisse la porte ouverte.
+                                                                         Le bandeau et le lien n'apparaissent que dans ce cas. -->
+                                                                    <Border Margin="0,8,0,0" Padding="8,6" CornerRadius="4"
+                                                                            Background="#FEF9E7" BorderBrush="#F1C40F" BorderThickness="1">
+                                                                        <Border.Style>
+                                                                            <Style TargetType="Border">
+                                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                <Style.Triggers>
+                                                                                    <!-- Le DataContext de ce panneau est déjà l'indication. -->
+                                                                                    <DataTrigger Binding="{Binding EstEcartee}" Value="True">
+                                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                                    </DataTrigger>
+                                                                                </Style.Triggers>
+                                                                            </Style>
+                                                                        </Border.Style>
+                                                                        <StackPanel>
+                                                                            <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#7D6608"
+                                                                                       Text="Section écartée — le dossier s'arrêtera au motif et à ce qui ferait reconsidérer. Les sous-sections sont repliées, rien n'est effacé."/>
+                                                                            <Button Command="{Binding DataContext.BasculeSousSectionsCommand, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                    Content="{Binding DataContext.LibelleBasculeSousSections, RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                                                    HorizontalAlignment="Left" Margin="0,5,0,0"
+                                                                                    Padding="0" Cursor="Hand" FontSize="11"
+                                                                                    Background="Transparent" BorderThickness="0" Foreground="#7D6608">
+                                                                                <Button.Template>
+                                                                                    <ControlTemplate TargetType="Button">
+                                                                                        <TextBlock Text="{TemplateBinding Content}"
+                                                                                                   TextDecorations="Underline"
+                                                                                                   Foreground="{TemplateBinding Foreground}"
+                                                                                                   FontSize="{TemplateBinding FontSize}"/>
+                                                                                    </ControlTemplate>
+                                                                                </Button.Template>
+                                                                            </Button>
+                                                                        </StackPanel>
+                                                                    </Border>
                                                                 </StackPanel>
 
                                                                 <!-- Contenu ACTIONS : ce qu'on fait, qui le porte, pour quand,

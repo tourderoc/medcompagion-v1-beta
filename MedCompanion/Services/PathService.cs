@@ -13,8 +13,20 @@ namespace MedCompanion.Services
     {
         private readonly string _baseDirectory;
 
-        public PathService()
+        /// <param name="racinePatients">
+        /// Dossier racine des patients. Null — le cas de toute l'application — pointe sur
+        /// Documents\MedCompanion\patients. N'est renseigné que par les tests, pour qu'ils
+        /// puissent écrire un patient fictif dans un dossier temporaire sans jamais toucher
+        /// aux vrais dossiers du cabinet.
+        /// </param>
+        public PathService(string? racinePatients = null)
         {
+            if (!string.IsNullOrWhiteSpace(racinePatients))
+            {
+                _baseDirectory = racinePatients!;
+                return;
+            }
+
             var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             _baseDirectory = Path.Combine(documentsPath, "MedCompanion", "patients");
         }

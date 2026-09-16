@@ -2673,6 +2673,438 @@ class Program
                 && vmConcl.PtFields.First(f => f.JsonPath == "forces").Items.Count == 2);
         }
 
+        // ── 33. Annexe contacts : qui est qui, sans rien inventer ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : l'annexe contacts rassemble le dossier bleu, elle ne le complète pas ──");
+        {
+            // Un patient fictif dans un dossier temporaire — les vrais dossiers du cabinet ne
+            // sont jamais touchés, ni en lecture ni en écriture.
+            var racine33 = Path.Combine(Path.GetTempPath(), "med_test_contacts_" + Guid.NewGuid().ToString("N"));
+            var infoDir33 = Path.Combine(racine33, "Adrien_GOBLET", "info_patient");
+            Directory.CreateDirectory(infoDir33);
+
+            var chemin33 = new PathService(racine33);
+
+            static MedCompanion.Models.Restitutions.DossierRestitutionInitial DossierProjet33()
+            {
+                var d = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                d.Blocs.First(b => b.Key == "pt_s1").ContenuValide = """
+                    {
+                      "bilans": [
+                        { "quoi": "Bilan orthophonique", "porteur": "professionnel à trouver", "echeance": "ce trimestre" }
+                      ],
+                      "suivi": [
+                        { "quoi": "Consultation de titration", "porteur": "le médecin", "echeance": "sous 1 mois" }
+                      ]
+                    }
+                    """;
+                d.Blocs.First(b => b.Key == "pt_s3").ContenuValide = """
+                    {
+                      "reeducations": [
+                        { "quoi": "Suivi psychomoteur", "porteur": "professionnel à trouver", "echeance": "cette année scolaire" },
+                        { "quoi": "Rééducation déjà en place", "porteur": "professionnel en place", "echeance": "ce trimestre" }
+                      ]
+                    }
+                    """;
+                return d;
+            }
+
+            try
+            {
+                // (a) Dossier bleu complet : parents, école, médecin traitant, intervenants.
+                File.WriteAllText(Path.Combine(infoDir33, "patient.json"), """
+                    {
+                      "prenom": "Adrien", "nom": "GOBLET", "ecole": "École Jean Moulin", "classe": "CM1",
+                      "ecoleAdresse": "12 rue des Lilas", "ecoleCodePostal": "34000", "ecoleCommune": "Montpellier",
+                      "ecoleTelephone": "04 67 00 00 00",
+                      "merePrenom": "Sophie", "mereNom": "GOBLET", "mereTelephone": "06 11 22 33 44",
+                      "perePrenom": "Marc", "pereNom": "GOBLET", "pereEmail": "marc.goblet@example.fr",
+                      "accompagnantLien": "Mère", "accompagnantNom": "GOBLET", "accompagnantPrenom": "Sophie",
+                      "medecinTraitantPrenom": "Claire", "medecinTraitantNom": "BERNARD",
+                      "medecinTraitantVille": "Montpellier", "medecinTraitantTelephone": "04 67 11 11 11"
+                    }
+                    """, System.Text.Encoding.UTF8);
+
+                File.WriteAllText(Path.Combine(infoDir33, "intervenants.json"), """
+                    [
+                      { "Nom": "Dr Hélène MARTIN", "Profession": "Orthophoniste", "Ville": "Montpellier",
+                        "Telephone": "04 67 22 22 22", "SourceDocument": "2025-03-12_bilan_orthophonique.pdf" }
+                    ]
+                    """, System.Text.Encoding.UTF8);
+
+                var html33 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin33)
+                    .BuildPreviewHtml(DossierProjet33(), "GOBLET Adrien");
+
+                // Les assertions vérifient le contenu, pas la mise en page. Pour regarder la page
+                // à l'œil : MED_DUMP_CONTACTS=chemin.html dotnet run --project TestRunner
+                var dump33 = Environment.GetEnvironmentVariable("MED_DUMP_CONTACTS");
+                if (!string.IsNullOrWhiteSpace(dump33)) File.WriteAllText(dump33, html33, System.Text.Encoding.UTF8);
+
+                var iAnnexe = html33.IndexOf("Annexe — Contacts", StringComparison.Ordinal);
+                Verifie("l'annexe contacts est rendue", iAnnexe >= 0);
+
+                var page33 = iAnnexe >= 0 ? html33.Substring(iAnnexe) : "";
+                var iMetho = page33.IndexOf("Annexe Méthodologique", StringComparison.Ordinal);
+                if (iMetho > 0) page33 = page33.Substring(0, iMetho);
+
+                // Les valeurs venues du dossier passent par HtmlEncode, qui écrit les accents en
+                // entités numériques. On relit la page décodée pour vérifier ce que l'œil verra.
+                page33 = System.Net.WebUtility.HtmlDecode(page33);
+
+                Verifie("elle passe AVANT l'annexe méthodologique",
+                    iAnnexe >= 0 && html33.IndexOf("Annexe Méthodologique", StringComparison.Ordinal) > iAnnexe);
+
+                Verifie("les deux parents sont là avec leurs coordonnées",
+                    page33.Contains("Sophie GOBLET") && page33.Contains("06 11 22 33 44")
+                    && page33.Contains("Marc GOBLET") && page33.Contains("marc.goblet@example.fr"));
+                Verifie("l'école porte son adresse assemblée et sa classe",
+                    page33.Contains("École Jean Moulin")
+                    && page33.Contains("12 rue des Lilas · 34000 · Montpellier")
+                    && page33.Contains("CM1"));
+                Verifie("le médecin traitant est repris du dossier bleu, avec son titre",
+                    page33.Contains("Dr Claire BERNARD") && page33.Contains("04 67 11 11 11"));
+                Verifie("l'intervenant vient de intervenants.json, avec son bilan source",
+                    page33.Contains("Dr Hélène MARTIN") && page33.Contains("Orthophoniste")
+                    && page33.Contains("bilan orthophonique"));
+                Verifie("le nom de fichier brut n'est pas montré aux parents",
+                    !page33.Contains(".pdf") && !page33.Contains("2025-03-12"));
+
+                // L'accompagnant est la mère : le répéter ferait croire à une troisième personne.
+                Verifie("l'accompagnant n'est pas dupliqué quand c'est déjà un parent",
+                    !page33.Contains("Accompagnant"));
+
+                // (b) La section « reste à identifier » recopie le projet, sans le reformuler.
+                Verifie("les professionnels à trouver ont leur section",
+                    page33.Contains("Reste à identifier")
+                    && page33.Contains("Bilan orthophonique") && page33.Contains("Suivi psychomoteur"));
+                Verifie("un professionnel déjà en place n'y figure pas",
+                    !page33.Contains("Rééducation déjà en place"));
+                Verifie("une action portée par le médecin n'y figure pas non plus",
+                    !page33.Contains("Consultation de titration"));
+
+                // (c) Un champ vide ne s'écrit pas, une carte vide ne se dessine pas.
+                var infoVide33 = Path.Combine(racine33, "Lea_SANSFICHE", "info_patient");
+                Directory.CreateDirectory(infoVide33);
+                File.WriteAllText(Path.Combine(infoVide33, "patient.json"),
+                    """{ "prenom": "Lea", "nom": "SANSFICHE", "merePrenom": "Julie", "mereNom": "SANSFICHE" }""",
+                    System.Text.Encoding.UTF8);
+
+                var htmlVide33 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin33)
+                    .BuildPreviewHtml(new MedCompanion.Models.Restitutions.DossierRestitutionInitial(), "SANSFICHE Lea");
+                var iVide = htmlVide33.IndexOf("Annexe — Contacts", StringComparison.Ordinal);
+                var pageVide33 = iVide >= 0 ? htmlVide33.Substring(iVide) : "";
+                var iMethoVide = pageVide33.IndexOf("Annexe Méthodologique", StringComparison.Ordinal);
+                if (iMethoVide > 0) pageVide33 = pageVide33.Substring(0, iMethoVide);
+                pageVide33 = System.Net.WebUtility.HtmlDecode(pageVide33);
+
+                Verifie("la seule carte renseignée est rendue",
+                    pageVide33.Contains("Julie SANSFICHE"));
+                Verifie("les cartes sans aucune donnée ne sont pas dessinées",
+                    !pageVide33.Contains("Médecin traitant") && !pageVide33.Contains("École")
+                    && !pageVide33.Contains("Père"));
+                Verifie("sans professionnel à trouver, la section n'apparaît pas",
+                    !pageVide33.Contains("Reste à identifier"));
+
+                // (d) Rien du tout à montrer → pas de page blanche en fin de dossier.
+                var htmlRien33 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin33)
+                    .BuildPreviewHtml(new MedCompanion.Models.Restitutions.DossierRestitutionInitial(), "INCONNU Personne");
+                Verifie("un dossier sans aucun contact n'ouvre pas une page vide",
+                    !htmlRien33.Contains("Annexe — Contacts"));
+                Verifie("l'annexe méthodologique reste là dans ce cas",
+                    htmlRien33.Contains("Annexe Méthodologique"));
+
+                // (e) Le champ du dossier bleu est libre : « Dr » y est parfois déjà écrit.
+                var infoDeja33 = Path.Combine(racine33, "Tom_DEJADR", "info_patient");
+                Directory.CreateDirectory(infoDeja33);
+                File.WriteAllText(Path.Combine(infoDeja33, "patient.json"),
+                    """{ "prenom": "Tom", "nom": "DEJADR", "medecinTraitantNom": "Dr LEROY", "medecinTraitantTelephone": "04 67 33 33 33" }""",
+                    System.Text.Encoding.UTF8);
+                var htmlDeja33 = System.Net.WebUtility.HtmlDecode(
+                    new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin33)
+                        .BuildPreviewHtml(new MedCompanion.Models.Restitutions.DossierRestitutionInitial(), "DEJADR Tom"));
+                Verifie("un nom qui porte déjà « Dr » n'est pas doublé",
+                    htmlDeja33.Contains("Dr LEROY") && !htmlDeja33.Contains("Dr Dr"));
+
+                // (f) Beaucoup d'intervenants : la page se dédouble au lieu d'être rognée.
+                // `.page` est en overflow:hidden — un débordement partirait du PDF sans rien dire.
+                var infoLong33 = Path.Combine(racine33, "Nora_SUIVIE", "info_patient");
+                Directory.CreateDirectory(infoLong33);
+                File.WriteAllText(Path.Combine(infoLong33, "patient.json"),
+                    """{ "prenom": "Nora", "nom": "SUIVIE", "merePrenom": "Ines", "mereNom": "SUIVIE" }""",
+                    System.Text.Encoding.UTF8);
+                var beaucoup = string.Join(",", Enumerable.Range(1, 24).Select(n =>
+                    $$"""{ "Nom": "Praticien {{n}}", "Profession": "Psychomotricien", "Ville": "Montpellier", "Telephone": "04 67 00 00 {{n:00}}" }"""));
+                File.WriteAllText(Path.Combine(infoLong33, "intervenants.json"), "[" + beaucoup + "]",
+                    System.Text.Encoding.UTF8);
+
+                var htmlLong33 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin33)
+                    .BuildPreviewHtml(DossierProjet33(), "SUIVIE Nora");
+                var nbPages33 = System.Text.RegularExpressions.Regex.Matches(htmlLong33, "class='page ac-page'").Count;
+                Verifie("un dossier très suivi ouvre une deuxième page au lieu de rogner",
+                    nbPages33 >= 2, $"{nbPages33} page(s)");
+                Verifie("aucun intervenant n'est perdu dans la coupe",
+                    htmlLong33.Contains("Praticien 1") && htmlLong33.Contains("Praticien 24"));
+                Verifie("les pages suivantes sont numérotées et dites « suite »",
+                    htmlLong33.Contains("Page 1 / ") && htmlLong33.Contains("(suite)"));
+                Verifie("« reste à identifier » ferme le bloc, une seule fois",
+                    System.Text.RegularExpressions.Regex.Matches(htmlLong33, "Reste à identifier").Count == 1);
+
+                // (g) patient.json existe en PascalCase sur les dossiers anciens.
+                var infoAncien33 = Path.Combine(racine33, "Paul_ANCIEN", "info_patient");
+                Directory.CreateDirectory(infoAncien33);
+                File.WriteAllText(Path.Combine(infoAncien33, "patient.json"),
+                    """{ "Prenom": "Paul", "Nom": "ANCIEN", "MereTelephone": "06 99 88 77 66", "MerePrenom": "Anne" }""",
+                    System.Text.Encoding.UTF8);
+                var htmlAncien33 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin33)
+                    .BuildPreviewHtml(new MedCompanion.Models.Restitutions.DossierRestitutionInitial(), "ANCIEN Paul");
+                Verifie("un dossier ancien en PascalCase est lu comme les autres",
+                    htmlAncien33.Contains("06 99 88 77 66") && htmlAncien33.Contains("Anne"));
+            }
+            finally
+            {
+                try { Directory.Delete(racine33, recursive: true); } catch { /* dossier temporaire */ }
+            }
+        }
+
+        // ── 34. L'ordre d'édition n'est pas l'ordre de lecture ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : la page parents se rédige après le projet, elle se lit toujours en page 2 ──");
+        {
+            var racine34 = Path.Combine(Path.GetTempPath(), "med_test_ordre_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(racine34);
+            var chemin34 = new PathService(racine34);
+
+            try
+            {
+                var dossier34 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                var reader34  = new MedCompanion.Services.Restitutions.DossierReaderService(chemin34);
+                var vm34 = new MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel(
+                    dossier34, "GOBLET Adrien",
+                    new MedCompanion.Services.Restitutions.RestitutionService(chemin34),
+                    new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                        new FauxMoteur { Reponse = _ => (true, "x") }, reader34),
+                    reader34);
+
+                var clesEditeur = vm34.Blocs.Select(b => b.Model.Key).ToList();
+                var clesDossier = dossier34.Blocs.Select(b => b.Key).ToList();
+
+                var iPage2 = clesEditeur.IndexOf("restitution_1page");
+                var iPtS5  = clesEditeur.IndexOf("pt_s5");
+                var iConcl = clesEditeur.IndexOf("conclusion");
+
+                Verifie("dans l'éditeur, la page parents vient juste après le projet",
+                    iPage2 == iPtS5 + 1, $"page2 en {iPage2}, pt_s5 en {iPtS5}");
+                Verifie("la conclusion reste le dernier bloc à rédiger",
+                    iConcl == clesEditeur.Count - 1 && iConcl > iPage2);
+
+                // Le document, lui, ne bouge pas : c'est cette liste que l'aperçu et le PDF lisent.
+                Verifie("dans le document, la page parents reste en page 2",
+                    clesDossier[1] == "restitution_1page");
+                Verifie("l'ordre du document est intact",
+                    clesDossier[0] == "couverture" && clesDossier[2] == "patient_identification"
+                    && clesDossier[^1] == "conclusion");
+
+                // Un déplacement, pas une perte : les mêmes blocs, ni doublon ni disparu.
+                Verifie("aucun bloc n'est perdu ni dupliqué par le réordonnancement",
+                    clesEditeur.Count == clesDossier.Count
+                    && clesEditeur.Distinct().Count() == clesEditeur.Count
+                    && !clesDossier.Except(clesEditeur).Any());
+
+                // L'aperçu se construit depuis le dossier : il doit rendre la page parents avant
+                // les cartographies, quel que soit l'ordre dans lequel le médecin l'a rédigée.
+                dossier34.Blocs.First(b => b.Key == "restitution_1page").ContenuValide =
+                    "**Ce que nous avons compris**\nAdrien avance.\n\n**Notre feuille de route**\n1. **Orthophonie :** poursuivre.";
+                dossier34.Blocs.First(b => b.Key == "conclusion").ContenuValide =
+                    """{"intro":"Adrien.","forces":[],"resteOuvert":[]}""";
+                var html34 = new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin34)
+                    .BuildPreviewHtml(dossier34, "GOBLET Adrien");
+                var iFdr34   = html34.IndexOf("NOTRE FEUILLE DE ROUTE", StringComparison.Ordinal);
+                var iConcl34 = html34.IndexOf("CONCLUSION ET PERSPECTIVES", StringComparison.Ordinal);
+                Verifie("l'aperçu rend la page parents avant la conclusion",
+                    iFdr34 > 0 && iConcl34 > 0 && iFdr34 < iConcl34,
+                    $"feuille de route en {iFdr34}, conclusion en {iConcl34}");
+            }
+            finally
+            {
+                try { Directory.Delete(racine34, recursive: true); } catch { /* dossier temporaire */ }
+            }
+        }
+
+        // ── 35. « Pas d'indication » : écarter une section est une décision, pas un trou ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : une section de projet peut être écartée, avec son motif ──");
+        {
+            var racine35 = Path.Combine(Path.GetTempPath(), "med_test_indic_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(racine35);
+            var chemin35 = new PathService(racine35);
+
+            try
+            {
+                // (a) L'éditeur expose l'indication en tête des trois sections concernées.
+                foreach (var (cle35, attendu35) in new[]
+                {
+                    ("pt_s2", "Indication de l'accompagnement"),
+                    ("pt_s3", "Indication d'un soutien développemental"),
+                    ("pt_s4", "Indication d'un accompagnement familial"),
+                })
+                {
+                    var bloc35 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial()
+                        .Blocs.First(b => b.Key == cle35);
+                    var vmB35 = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(
+                        bloc35, _ => Task.CompletedTask);
+                    var premier = vmB35.PtFields.FirstOrDefault();
+                    Verifie($"{cle35} : l'indication ouvre la section",
+                        premier != null && premier.JsonPath == "indication" && premier.Title == attendu35,
+                        premier?.Title ?? "(aucun champ)");
+                }
+
+                // 7.5 garde sa logique propre : le cadre scolaire est administratif, pas clinique.
+                var vmS5 = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(
+                    new MedCompanion.Models.Restitutions.DossierRestitutionInitial().Blocs.First(b => b.Key == "pt_s5"),
+                    _ => Task.CompletedTask);
+                Verifie("7.5 École n'a pas d'indication — le cadre scolaire est une décision administrative",
+                    !vmS5.PtFields.Any(f => f.JsonPath == "indication"));
+
+                // (b) Écarter l'indication replie les sous-sections, sans rien effacer.
+                var blocS3 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial()
+                    .Blocs.First(b => b.Key == "pt_s3");
+                var vm35 = new MedCompanion.ViewModels.Restitutions.RestitutionBlocViewModel(
+                    blocS3, _ => Task.CompletedTask);
+                var indic35 = vm35.PtFields.First(f => f.IsIndication);
+                var intro35 = vm35.PtFields.First(f => f.JsonPath == "intro");
+
+                intro35.Content = "Adrien progresse bien.";
+                Verifie("au départ, rien n'est replié",
+                    !vm35.SousSectionsRepliees && !intro35.MasqueParIndication);
+
+                indic35.Indication.Degre = "non indiqué à ce stade";
+                Verifie("« non indiqué à ce stade » replie les sous-sections",
+                    vm35.SousSectionsRepliees && intro35.MasqueParIndication);
+                Verifie("l'indication elle-même reste visible",
+                    !indic35.MasqueParIndication);
+                Verifie("rien n'est effacé — la saisie est conservée",
+                    intro35.Content == "Adrien progresse bien.");
+
+                // « à réévaluer plus tard » compte aussi : le suivi n'est pas engagé maintenant.
+                indic35.Indication.Degre = "à réévaluer plus tard";
+                Verifie("« à réévaluer plus tard » replie aussi",
+                    vm35.SousSectionsRepliees);
+
+                // (c) « Afficher quand même » rouvre, sans changer la décision.
+                vm35.BasculeSousSectionsCommand.Execute(null);
+                Verifie("« afficher quand même » rouvre les sous-sections",
+                    !vm35.SousSectionsRepliees && !intro35.MasqueParIndication);
+                Verifie("la décision, elle, ne bouge pas",
+                    vm35.IndicationEcartee && indic35.Indication.Degre == "à réévaluer plus tard");
+
+                // Changer de degré réarme le repli : le « quand même » valait pour cette décision.
+                indic35.Indication.Degre = "non indiqué à ce stade";
+                Verifie("changer de degré réarme le repli",
+                    vm35.SousSectionsRepliees);
+
+                indic35.Indication.Degre = "recommandé";
+                Verifie("revenir à une indication engagée redéplie tout",
+                    !vm35.SousSectionsRepliees && !vm35.IndicationEcartee && !intro35.MasqueParIndication);
+
+                // (d) Le document : la page dit pourquoi, au lieu de laisser un trou.
+                var dossier35 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dossier35.Blocs.First(b => b.Key == "pt_s3").ContenuValide = """
+                    {
+                      "indication": {
+                        "degre": "non indiqué à ce stade", "porteur": "le médecin",
+                        "motif": "Le developpement est harmonieux sur les cinq axes.",
+                        "critereReevaluation": "Si les acquisitions scolaires stagnent au prochain trimestre."
+                      },
+                      "intro": "", "objectifs": [], "reeducations": [], "ressourcesVie": [],
+                      "reperesEvolution": [], "reevaluation": []
+                    }
+                    """;
+                var html35 = System.Net.WebUtility.HtmlDecode(
+                    new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin35)
+                        .BuildPreviewHtml(dossier35, "GOBLET Adrien"));
+                // Pour regarder la page à l'œil : MED_DUMP_INDIC=chemin.html dotnet run --project TestRunner
+                var dump35 = Environment.GetEnvironmentVariable("MED_DUMP_INDIC");
+                if (!string.IsNullOrWhiteSpace(dump35))
+                    File.WriteAllText(dump35,
+                        new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin35)
+                            .BuildPreviewHtml(dossier35, "GOBLET Adrien"), System.Text.Encoding.UTF8);
+
+                var iS3 = html35.IndexOf("7.3 Soutien développemental", StringComparison.Ordinal);
+                var iS4 = html35.IndexOf("7.4 Accompagnement parental", StringComparison.Ordinal);
+                var page35 = iS3 >= 0 && iS4 > iS3 ? html35.Substring(iS3, iS4 - iS3) : "";
+
+                Verifie("la page 7.3 porte l'indication et son motif",
+                    page35.Contains("INDICATION") && page35.Contains("non indiqué à ce stade")
+                    && page35.Contains("Le developpement est harmonieux"));
+                Verifie("elle dit ce qui ferait reconsidérer",
+                    page35.Contains("À reconsidérer si") && page35.Contains("acquisitions scolaires stagnent"));
+                Verifie("elle n'aligne aucune carte sous une indication écartée",
+                    !page35.Contains("OBJECTIFS") && !page35.Contains("RÉÉDUCATIONS"));
+
+                // (e) Une indication engagée rend la section normalement.
+                dossier35.Blocs.First(b => b.Key == "pt_s3").ContenuValide = """
+                    {
+                      "indication": { "degre": "recommandé", "porteur": "professionnel à trouver",
+                                      "motif": "Retard de coordination.", "critereReevaluation": "" },
+                      "intro": "Le soutien vise la coordination.",
+                      "objectifs": ["Ameliorer la coordination"],
+                      "reeducations": [ { "quoi": "Psychomotricite", "porteur": "professionnel à trouver",
+                                          "echeance": "ce trimestre", "degre": "recommandé", "objectif": "coordination" } ],
+                      "ressourcesVie": [], "reperesEvolution": [], "reevaluation": []
+                    }
+                    """;
+                var htmlOk35 = System.Net.WebUtility.HtmlDecode(
+                    new MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService(chemin35)
+                        .BuildPreviewHtml(dossier35, "GOBLET Adrien"));
+                var jS3 = htmlOk35.IndexOf("7.3 Soutien développemental", StringComparison.Ordinal);
+                var jS4 = htmlOk35.IndexOf("7.4 Accompagnement parental", StringComparison.Ordinal);
+                var pageOk35 = jS3 >= 0 && jS4 > jS3 ? htmlOk35.Substring(jS3, jS4 - jS3) : "";
+                Verifie("indiquée, la section rend ses cartes comme avant",
+                    pageOk35.Contains("OBJECTIFS") && pageOk35.Contains("Psychomotricite")
+                    && pageOk35.Contains("recommandé"));
+
+                // (f) Le prompt dit au modèle comment trancher, et quoi laisser vide.
+                var moteur35 = new FauxMoteur { Reponse = _ => (true, "{}") };
+                var reader35 = new MedCompanion.Services.Restitutions.DossierReaderService(chemin35);
+                var svc35 = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(moteur35, reader35);
+                var lecture35 = new MedCompanion.Services.Restitutions.DossierReading
+                { PatientNomComplet = "GOBLET Adrien", PatientJson = "{}" };
+
+                var dossierPret35 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                foreach (var k in new[] { "synthese_diag_s1", "synthese_diag_s2", "synthese_diag_s3",
+                                          "synthese_diag_s4", "synthese_diag_s5" })
+                    dossierPret35.Blocs.First(b => b.Key == k).ContenuValide = "Rédigé.";
+
+                await svc35.SuggestPtS3Async(lecture35, _ => { }, dossierPret35);
+                var p3 = moteur35.Prompts.Count > 0 ? moteur35.Prompts[0] : "";
+                Verifie("7.3 : le format demandé inclut l'indication",
+                    p3.Contains("\"indication\"") && p3.Contains("critereReevaluation"));
+                Verifie("7.3 : le modèle sait qu'un soutien n'est pas automatique",
+                    p3.Contains("L'INDICATION COMMANDE TOUTE LA SECTION")
+                    && p3.Contains("non indiqué à ce stade"));
+                Verifie("7.3 : écarté, il doit laisser les listes vides",
+                    p3.Contains("NON INDIQUÉ ou DIFFÉRÉ") && p3.Contains("se contredire dans la même page"));
+
+                moteur35.Prompts.Clear();
+                await svc35.SuggestPtS4Async(lecture35, _ => { }, dossierPret35);
+                var p4 = moteur35.Prompts.Count > 0 ? moteur35.Prompts[0] : "";
+                Verifie("7.4 : le format demandé inclut l'indication",
+                    p4.Contains("\"indication\"") && p4.Contains("critereReevaluation"));
+                Verifie("7.4 : le modèle sait que certaines familles n'ont besoin de rien",
+                    p4.Contains("L'INDICATION COMMANDE TOUTE LA SECTION")
+                    && p4.Contains("non indiqué à ce stade"));
+
+                // Le degré « non indiqué » ne doit jamais descendre sur une action isolée.
+                Verifie("« non indiqué » reste réservé à la section entière",
+                    p3.Contains("jamais pour une action isolée")
+                    && p4.Contains("jamais pour une action isolée"));
+            }
+            finally
+            {
+                try { Directory.Delete(racine35, recursive: true); } catch { /* dossier temporaire */ }
+            }
+        }
+
         Console.WriteLine();
         Console.WriteLine(echecs == 0 ? "=== SÉANCE 3 OK ===" : $"=== {echecs} ÉCHEC(S) ===");
         return echecs == 0 ? 0 : 1;
