@@ -66,6 +66,11 @@ namespace MedCompanion.Services.Consultation
         private const int   MinAudioDurationMs    = 500;     // capturer aussi les courtes réponses ("oui", "non")
         private const float SegmentRmsThreshold   = 0.020f;  // anti-hallucination : RMS segment
 
+        // Mode Batch : une fois la durée atteinte, on attend une pause de SilenceFlushMs pour couper
+        // sur un blanc plutôt qu'au milieu d'un mot ; au-delà de RallongeMaxMs on coupe quand même.
+        private const int   SilenceFlushMs        = 400;
+        private const int   RallongeMaxMs         = 10000;
+
         // Prompt neutre de base + vocabulaire custom injecté dynamiquement
         private const string BasePrompt =
             "Conversation médicale entre un médecin et une famille en français. ";
@@ -169,7 +174,7 @@ namespace MedCompanion.Services.Consultation
         /// Réserver une carte à Whisper évite qu'une dictée vienne disputer sa VRAM au modèle de
         /// langage. Aucun des deux réglages = comportement d'origine, ggml choisit lui-même.
         /// </summary>
-        private static WhisperFactory CreerFactory(string modelPath)
+        internal static WhisperFactory CreerFactory(string modelPath)
         {
             try
             {
@@ -292,6 +297,10 @@ namespace MedCompanion.Services.Consultation
         private readonly object      _bufferLock   = new();
         private int    _silentMs            = 0;
         private int    _bufferMs            = 0;
+
+        /// <summary>Mode Batch : instant où la durée du cycle a été atteinte. Non nul = on cherche une
+        /// pause pour couper. Remis à null dès que la coupe est faite.</summary>
+        private DateTime? _coupeDemandeeA;
         private int    _newWordCount        = 0;
         private string _segmentAccumulator  = "";
 
@@ -340,14 +349,29 @@ namespace MedCompanion.Services.Consultation
 
                 StatusChanged?.Invoke("Chargement modèle GPU...");
 
-                // Charger le vocabulaire personnalisé
+                // Prompt : désactivé par défaut depuis le 16/09/2026 (réglage WhisperVocabPromptActif).
+                // Mesuré sur trois séances réelles : il doublait le temps de transcription, n'apportait
+                // aucun terme que le modèle ne trouvait déjà, et c'est lui qui était recraché en boucle
+                // sur les passages sans parole. Aucun prompt du tout — pas même la phrase d'amorce,
+                // c'est la configuration qui a été mesurée.
                 _vocabService.Load();
-                var vocabFragment = _vocabService.BuildPromptFragment();
-                _dynamicPrompt = string.IsNullOrWhiteSpace(vocabFragment)
-                    ? BasePrompt
-                    : BasePrompt + vocabFragment;
-                System.Diagnostics.Debug.WriteLine(
-                    $"[Whisper] Prompt dynamique : {_vocabService.Count} termes custom chargés.");
+                bool promptActif = true;
+                try { promptActif = AppSettings.Load().WhisperVocabPromptActif; } catch { }
+
+                if (promptActif)
+                {
+                    var vocabFragment = _vocabService.BuildPromptFragment();
+                    _dynamicPrompt = string.IsNullOrWhiteSpace(vocabFragment)
+                        ? BasePrompt
+                        : BasePrompt + vocabFragment;
+                    System.Diagnostics.Debug.WriteLine(
+                        $"[Whisper] Prompt dynamique : {_vocabService.Count} termes custom chargés.");
+                }
+                else
+                {
+                    _dynamicPrompt = "";
+                    System.Diagnostics.Debug.WriteLine("[Whisper] Prompt désactivé (WhisperVocabPromptActif = false).");
+                }
 
                 _modelPath = modelManager.ModelPath;
                 _factory   = CreerFactory(modelManager.ModelPath);
@@ -726,6 +750,7 @@ namespace MedCompanion.Services.Consultation
                 _audioBuffer.Clear();
                 _silentMs = 0;
                 _bufferMs = 0;
+                _coupeDemandeeA = null;
             }
             _segmentAccumulator = "";
             _newWordCount       = 0;
@@ -745,14 +770,30 @@ namespace MedCompanion.Services.Consultation
             _currentAudioRms = rms;
             _lastAudioAt     = DateTime.Now;
 
-            // En mode Batch : on accumule SANS flush automatique, le timer s'en occupe
+            // En mode Batch : on accumule. Le timer ne coupe plus lui-même — il DEMANDE une coupe, et
+            // on attend la prochaine pause (jusqu'à RallongeMaxMs) pour ne pas trancher au milieu d'une
+            // phrase. Mesuré le 16/09/2026 : à 30 s coupés sur silence, le texte est identique à celui
+            // obtenu en 90 s, pour un temps GPU inchangé et trois fois moins d'attente.
             if (Mode == RecordingMode.Batch)
             {
+                bool couper = false;
                 lock (_bufferLock)
                 {
                     _audioBuffer.AddRange(samples);
                     _bufferMs += chunkMs;
+
+                    if (_coupeDemandeeA != null)
+                    {
+                        if (rms < SilenceRmsThreshold) _silentMs += chunkMs;
+                        else                           _silentMs = 0;
+
+                        var attente = (DateTime.Now - _coupeDemandeeA.Value).TotalMilliseconds;
+                        couper = _silentMs >= SilenceFlushMs || attente >= RallongeMaxMs;
+                        if (couper) { _coupeDemandeeA = null; _silentMs = 0; }
+                    }
                 }
+
+                if (couper) FlushBufferToQueue(force: true);
                 return;
             }
 
@@ -784,8 +825,10 @@ namespace MedCompanion.Services.Consultation
                     await Task.Delay(BatchDurationSeconds * 1000, ct);
                     if (!IsActive) return;
 
-                    Log($"Batch timer : flush {BatchDurationSeconds}s");
-                    FlushBufferToQueue(force: true);
+                    // On ne coupe pas ici : on demande la coupe, et OnDataAvailable la fait à la
+                    // prochaine pause de parole (ou au plus tard après RallongeMaxMs).
+                    lock (_bufferLock) { _coupeDemandeeA = DateTime.Now; _silentMs = 0; }
+                    Log($"Batch timer : coupe demandée à {BatchDurationSeconds}s, en attente d'un silence");
                 }
             }
             catch (OperationCanceledException) { /* normal */ }
@@ -967,7 +1010,7 @@ namespace MedCompanion.Services.Consultation
 
         // ── CUDA PATH ─────────────────────────────────────────────────────────
 
-        private static void EnsureCudaInPath()
+        internal static void EnsureCudaInPath()
         {
             var cudaCandidates = new[]
             {

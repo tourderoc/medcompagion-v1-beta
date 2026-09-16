@@ -50,6 +50,25 @@ namespace MedCompanion
         public string WhisperModelsDir { get; set; } = "";
 
         /// <summary>
+        /// Fichier de modèle Whisper à utiliser, chemin complet. Renseigné, il PRIME sur le catalogue
+        /// des quatre tailles standard et rien n'est téléchargé : c'est ainsi qu'on sert un modèle qui
+        /// n'existe pas chez OpenAI, comme le large-v3 spécialisé français (bofenghuang).
+        /// Vide = comportement d'origine (tailles standard, téléchargées si absentes).
+        /// Mesuré le 16/09/2026 : le modèle français supprime les boucles d'hallucination que le
+        /// large-v3 générique produisait (28 répétitions d'une même phrase sur 16 min de consultation).
+        /// </summary>
+        public string WhisperModelPath { get; set; } = "";
+
+        /// <summary>
+        /// Injecter le vocabulaire personnalisé dans le prompt de Whisper. Désactivé par défaut depuis
+        /// le 16/09/2026 : mesuré sur trois séances réelles, ce prompt DOUBLE le temps de transcription
+        /// (il est retraité à chaque tronçon), n'améliore aucun terme que le modèle français ne trouvait
+        /// déjà, et c'est lui que le modèle recrachait en boucle sur les passages sans parole.
+        /// Le fichier de vocabulaire reste en place : réactiver ce réglage suffit à le réutiliser.
+        /// </summary>
+        public bool WhisperVocabPromptActif { get; set; } = false;
+
+        /// <summary>
         /// Index CUDA de la carte sur laquelle charger Whisper. -1 = laisser ggml choisir
         /// (comportement d'origine, la première carte).
         ///

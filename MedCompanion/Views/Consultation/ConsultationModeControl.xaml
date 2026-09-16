@@ -3612,12 +3612,12 @@
                                             HorizontalAlignment="Right" Margin="0,8,0,0">
 
                                     <!-- Sélecteur mode dictée (visible quand pas en cours) -->
-                                    <CheckBox Content="Mode Batch (90s)"
+                                    <CheckBox Content="Mode Batch (30s)"
                                               IsChecked="{Binding UseBatchMode}"
                                               VerticalAlignment="Center" Margin="0,0,12,0"
                                               FontSize="11"
                                               Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
-                                              ToolTip="Coché : transcription toutes les 90s (qualité max, recommandé pour consultation)&#x0a;Décoché : streaming temps réel (peut fragmenter sur débit lent)"/>
+                                              ToolTip="Coché : transcription toutes les 30s, coupée sur une pause de la conversation (recommandé)&#x0a;Décoché : streaming temps réel (peut fragmenter sur débit lent)"/>
 
                                     <!-- V0b : Bouton Vocabulaire Whisper -->
                                     <Button x:Name="VocabBtn" Content="📝 Vocab"
@@ -3653,10 +3653,10 @@
                                               Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
                                               DropDownOpened="MicrophoneComboBox_DropDownOpened"/>
 
-                                    <!-- Toggle modèle Whisper (Medium ↔ Large-v3) -->
+                                    <!-- Sélecteur du modèle Whisper : Français → Large-v3 → Medium -->
                                     <Button Content="{Binding WhisperModelLabel}"
                                             Command="{Binding SwitchWhisperModelCommand}"
-                                            ToolTip="Basculer entre Whisper Medium et Large-v3 (chargement au prochain démarrage)"
+                                            ToolTip="Changer de modèle Whisper : Français (spécialisé, recommandé) → Large-v3 → Medium.&#x0a;Le nouveau modèle est chargé au prochain démarrage de dictée."
                                             Padding="8,7" Cursor="Hand" FontSize="11"
                                             Background="#8E44AD" Foreground="White"
                                             BorderThickness="0" Margin="0,0,6,0"
@@ -3854,12 +3854,14 @@
                                                 </ProgressBar.Style>
                                             </ProgressBar>
 
-                                            <!-- Label : "45s / 90s" ou "✓ Envoyé" -->
+                                            <!-- Label : progression du cycle en %, ou "✓ Envoyé".
+                                                 En % et non en secondes : la coupe attend une pause,
+                                                 la durée réelle du tronçon varie donc un peu. -->
                                             <TextBlock Grid.Column="1" FontSize="10" Margin="6,0,0,0"
                                                        VerticalAlignment="Center">
                                                 <TextBlock.Style>
                                                     <Style TargetType="TextBlock">
-                                                        <Setter Property="Text" Value="{Binding BatchProgressPct, StringFormat='{}{0}s / 90s'}"/>
+                                                        <Setter Property="Text" Value="{Binding BatchProgressPct, StringFormat='{}{0} %'}"/>
                                                         <Setter Property="Foreground" Value="#558B2F"/>
                                                         <Style.Triggers>
                                                             <DataTrigger Binding="{Binding IsBatchSent}" Value="True">
@@ -5150,10 +5152,10 @@
                                                           Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
                                                           DropDownOpened="MicrophoneComboBox_DropDownOpened"/>
 
-                                                <!-- Toggle modèle Whisper (Medium ↔ Large-v3) -->
+                                                <!-- Sélecteur du modèle Whisper : Français → Large-v3 → Medium -->
                                                 <Button Content="{Binding WhisperModelLabel}"
                                                         Command="{Binding SwitchWhisperModelCommand}"
-                                                        ToolTip="Basculer entre Whisper Medium et Large-v3 (chargement au prochain démarrage)"
+                                                        ToolTip="Changer de modèle Whisper : Français (spécialisé, recommandé) → Large-v3 → Medium.&#x0a;Le nouveau modèle est chargé au prochain démarrage de dictée."
                                                         Padding="8,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
                                                         Background="#8E44AD" Foreground="White" BorderThickness="0"
                                                         Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}">

@@ -2986,8 +2986,10 @@ namespace MedCompanion.ViewModels
             set => SetProperty(ref _useBatchMode, value);
         }
 
-        // Durée du chunk en mode Batch (60s / 90s / 120s)
-        private int _batchDurationSeconds = 90;
+        // Durée visée du chunk en mode Batch. 30 s depuis le 16/09/2026 : mesuré sur une consultation
+        // réelle, le texte est identique à celui obtenu en 90 s, le temps GPU inchangé, et l'attente
+        // avant de voir le texte passe de ~100 s à ~35 s. La coupe effective attend une pause.
+        private int _batchDurationSeconds = 30;
         public int BatchDurationSeconds
         {
             get => _batchDurationSeconds;
@@ -3026,7 +3028,20 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(WhisperModelLabel));
             }
         }
-        public string WhisperModelLabel => _selectedWhisperModel == WhisperModelSize.LargeV3 ? "🔊 Large-v3" : "🔊 Medium";
+        /// <summary>
+        /// Vrai quand la dictée tourne sur le modèle spécialisé français (réglage WhisperModelPath).
+        /// Il n'appartient pas au catalogue des tailles standard, d'où cet état à part.
+        /// </summary>
+        private bool _modeleFrancais;
+        public bool ModeleFrancais
+        {
+            get => _modeleFrancais;
+            set { if (SetProperty(ref _modeleFrancais, value)) OnPropertyChanged(nameof(WhisperModelLabel)); }
+        }
+
+        public string WhisperModelLabel => _modeleFrancais
+            ? "🔊 Français"
+            : _selectedWhisperModel == WhisperModelSize.LargeV3 ? "🔊 Large-v3" : "🔊 Medium";
 
         // ── État du moteur Whisper (indicateur visuel) ──────────────────────────
         // Objectif : ne jamais commencer à parler avant que le micro soit réellement ouvert.
@@ -7884,6 +7899,8 @@ source: ""MedCompanion""
             _selectedWhisperModel = savedSettings.WhisperModel == "LargeV3"
                 ? WhisperModelSize.LargeV3
                 : WhisperModelSize.Medium;
+            // Un modèle imposé (le français) prime sur la taille : l'étiquette doit le dire.
+            _modeleFrancais = !string.IsNullOrWhiteSpace(savedSettings.WhisperModelPath);
 
             // V0b : initialiser le suggester avec le resolver
             _blockSuggester = new ContextualBlockSuggester(_blockSetResolver);
@@ -7947,19 +7964,38 @@ source: ""MedCompanion""
                 InterrogatoireState = InterrogatoireState.Saisie;
             });
 
+            // Le bouton fait défiler les modèles RÉELLEMENT présents sur le disque :
+            // Français → Large-v3 → Medium → Français… Il ne basculait qu'entre Medium et Large-v3,
+            // et restait donc muet sur le modèle français imposé par le réglage WhisperModelPath :
+            // l'étiquette annonçait « Large-v3 » alors que Med chargeait le français.
             SwitchWhisperModelCommand = new RelayCommand(
                 async _ =>
                 {
                     if (_whisperService == null) return;
-                    var newModel = _selectedWhisperModel == WhisperModelSize.Medium
-                        ? WhisperModelSize.LargeV3
-                        : WhisperModelSize.Medium;
+
+                    bool francaisDispo = WhisperModelManager.ModeleFrancaisDisponible;
+
+                    bool versFrancais  = false;
+                    var  versTaille    = _selectedWhisperModel;
+
+                    if (_modeleFrancais)                               versTaille = WhisperModelSize.LargeV3;
+                    else if (_selectedWhisperModel == WhisperModelSize.LargeV3) versTaille = WhisperModelSize.Medium;
+                    else if (francaisDispo)                            versFrancais = true;
+                    else                                               versTaille = WhisperModelSize.LargeV3;
+
                     await _whisperService.UnloadModelAsync();
-                    SelectedWhisperModel = newModel;
+
                     var settings = AppSettings.Load();
-                    settings.WhisperModel = newModel == WhisperModelSize.LargeV3 ? "LargeV3" : "Medium";
+                    settings.WhisperModelPath = versFrancais ? WhisperModelManager.CheminModeleFrancais : "";
+                    if (!versFrancais)
+                        settings.WhisperModel = versTaille == WhisperModelSize.LargeV3 ? "LargeV3" : "Medium";
                     settings.Save();
-                    ExtractionStatus = $"Modèle Whisper basculé : {WhisperModelLabel} (chargement au prochain démarrage de dictée)";
+
+                    ModeleFrancais = versFrancais;
+                    if (!versFrancais) SelectedWhisperModel = versTaille;
+                    OnPropertyChanged(nameof(WhisperModelLabel));
+
+                    ExtractionStatus = $"Modèle Whisper : {WhisperModelLabel} (chargement au prochain démarrage de dictée)";
                 },
                 _ => !IsRecording && _whisperService != null);
 

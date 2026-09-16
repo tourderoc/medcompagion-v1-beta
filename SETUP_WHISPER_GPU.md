@@ -163,6 +163,42 @@ C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.0\bin
 
 **Fix code** : `WhisperGgmlDownloader.Default.GetGgmlModelAsync(...)` (instance singleton).
 
+### 🐛 Piège 8 : boucles d'hallucination — le modèle recrache le vocabulaire, ou répète une phrase
+
+**Symptôme (16/09/2026).** Un tronçon entier transcrit ainsi : *« Test de bilan : WISC-V, WPPSI-IV, ADOS-2, Termes cliniques : … »* répété quinze fois ; le tronçon suivant redevient normal. Ou bien une phrase plausible mais fausse répétée en boucle : *« Les études de la médecine ont été réalisées en 2018. »*
+
+**Cause.** Le premier cas est le **prompt lui-même** : le vocabulaire personnalisé injecté par `WhisperVocabService` conditionne le décodeur ; quand un tronçon ne contient pas de parole, le modèle n'a rien à transcrire et **continue le texte qu'on lui a donné**. Le second est une boucle de répétition classique de Whisper, indépendante du prompt. Le filtre `KnownHallucinations` n'attrape ni l'un ni l'autre : il ne connaît que des phrases types (« Sous-titres réalisés par… »).
+
+**Ce que la mesure a montré** — banc d'essai `WhisperBench`, trois séances réelles rejouées, 16/09/2026 :
+
+| Configuration | Phrase la plus répétée (16 min de consultation) | Mots produits |
+|---|---|---|
+| large-v3 + vocabulaire complet (**ancienne config**) | **28 répétitions** | 2 062 |
+| large-v3 sans prompt | 17 | 1 174 |
+| **large-v3-french sans prompt** | **2** (« Oui. ») | 1 049 |
+
+Sur les mêmes tronçons, le modèle français transcrit la parole réelle là où le large-v3 générique boucle. Il corrige aussi la contamination du prompt sur du texte normal (« SVT » au lieu de « Test de B.S.V.T. »).
+
+Le prompt, lui, **double le temps de transcription** (80 s → 144 s pour 16 min d'audio) : il est retraité à chaque tronçon. Et il n'a amélioré aucun terme que le modèle français ne trouvait déjà (« Concerta » correct dans les quatre configurations testées).
+
+**Correctif appliqué le 16/09/2026** — trois réglages :
+
+1. `WhisperModelPath = M:\whisper\ggml-large-v3-french.bin` — modèle [bofenghuang/whisper-large-v3-french](https://huggingface.co/bofenghuang/whisper-large-v3-french), fichier `ggml-model.bin` (3,1 Go), téléchargé à la main. Renseigné, ce réglage **prime sur le catalogue des quatre tailles et rien n'est téléchargé** ; le fichier manquant lève une erreur explicite plutôt que de rapatrier un large-v3 générique sous ce nom.
+2. `WhisperVocabPromptActif = false` — plus aucun prompt. Le fichier de vocabulaire reste en place, réactivable.
+3. Mode Batch **30 s coupé sur une pause** (au lieu de 90 s sèches) : texte identique, temps GPU inchangé, attente ramenée de ~100 s à ~35 s.
+
+**Réserve connue** : aucun enregistrement de test ne contenait Médikinet, Vyvanse ou Quasym. Si un nom rare est mal transcrit, remettre un prompt **court** — les noms propres seuls, sans les intitulés de sections, qui sont ce qui bouclait.
+
+**Rejouer la mesure** après tout changement (modèle, prompt, découpage) :
+
+```
+WhisperBench --session %APPDATA%\MedCompanion\recordings\session_AAAAMMJJ_HHMMSS
+             [--modele large-v3|francais|tous] [--prompt complet|court|aucun|tous]
+             [--seg 90|30vad|tous] [--ref transcription_corrigee.txt]
+```
+
+Il rejoue l'audio déjà enregistré hors de Med, compte les échos du prompt et les répétitions, et écrit un `rapport.md`. Avec `--ref`, il donne un taux d'erreur mot.
+
 ---
 
 ## Vérification post-installation (checklist)

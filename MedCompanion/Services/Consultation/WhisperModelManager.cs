@@ -48,7 +48,34 @@ namespace MedCompanion.Services.Consultation
 
         public WhisperModelSize ModelSize { get; set; } = WhisperModelSize.Medium;
 
-        public string ModelPath => Path.Combine(ModelsFolder, GetModelFileName(ModelSize));
+        /// <summary>
+        /// Modèle imposé par le réglage <c>WhisperModelPath</c>, ou null. Il permet de servir un modèle
+        /// hors catalogue — le large-v3 spécialisé français, par exemple — que le téléchargeur officiel
+        /// ne connaît pas. Lu à chaque accès : changer de modèle ne demande que de rouvrir Med.
+        /// </summary>
+        private static string? CheminImpose
+        {
+            get
+            {
+                try
+                {
+                    var c = AppSettings.Load().WhisperModelPath;
+                    return string.IsNullOrWhiteSpace(c) ? null : c.Trim();
+                }
+                catch { return null; }
+            }
+        }
+
+        public string ModelPath => CheminImpose ?? Path.Combine(ModelsFolder, GetModelFileName(ModelSize));
+
+        /// <summary>
+        /// Chemin attendu du large-v3 spécialisé français, dans le dossier des modèles. Il ne fait pas
+        /// partie du catalogue officiel : il se sert par <see cref="AppSettings.WhisperModelPath"/>.
+        /// </summary>
+        public static string CheminModeleFrancais => Path.Combine(ModelsFolder, "ggml-large-v3-french.bin");
+
+        /// <summary>Vrai si le modèle français est présent sur le disque.</summary>
+        public static bool ModeleFrancaisDisponible => File.Exists(CheminModeleFrancais);
 
         public bool IsModelAvailable => File.Exists(ModelPath);
 
@@ -77,6 +104,15 @@ namespace MedCompanion.Services.Consultation
                                            CancellationToken ct = default)
         {
             if (IsModelAvailable) return;
+
+            // Modèle imposé mais absent : on ne télécharge RIEN. Le téléchargeur ne connaît que les
+            // quatre tailles officielles ; il rapporterait un large-v3 générique sous le nom demandé,
+            // et la dictée tournerait sur un autre modèle que celui qu'on croit servir.
+            var impose = CheminImpose;
+            if (impose != null)
+                throw new FileNotFoundException(
+                    $"Modèle Whisper introuvable : {impose}. Corrigez le réglage WhisperModelPath, " +
+                    "ou videz-le pour revenir aux modèles standard.", impose);
 
             Directory.CreateDirectory(ModelsFolder);
 
