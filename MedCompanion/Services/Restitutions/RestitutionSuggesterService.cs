@@ -2760,7 +2760,7 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine();
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
-            sb.AppendLine("  \"intro\": \"1 phrase décrivant le rôle de la prise en charge médicale pour cet enfant.\",");
+            sb.AppendLine("  \"intro\": \"1 phrase ANCRÉE DANS CE QUI A ÉTÉ OBSERVÉ chez cet enfant et qui motive un suivi médical. N'ouvre PAS sur le rôle ni sur l'objectif de la section : « La prise en charge médicale vise à… » est la tournure à ne pas écrire.\",");
             sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
             sb.AppendLine("  \"traitement\": {");
             sb.AppendLine("    \"situationActuelle\": \"Situation médicamenteuse actuelle — 1 phrase.\",");
@@ -2879,7 +2879,7 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("    \"motif\": \"Pourquoi un suivi psychologique EST ou N'EST PAS indiqué pour CET enfant.\",");
             sb.AppendLine("    \"critereReevaluation\": \"Ce qui ferait reconsidérer — uniquement si le suivi est différé ou non indiqué.\"");
             sb.AppendLine("  },");
-            sb.AppendLine("  \"intro\": \"1 phrase situant l'accompagnement psychologique pour cet enfant.\",");
+            sb.AppendLine("  \"intro\": \"1 phrase ANCRÉE DANS CE QUI A ÉTÉ OBSERVÉ chez cet enfant et qui motive un accompagnement psychologique. N'ouvre PAS sur l'objectif de la section : « L'accompagnement psychologique vise à… » est la tournure à ne pas écrire.\",");
             sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
             sb.AppendLine("  \"modalites\": [\"Psychothérapie individuelle\", \"Groupe d'habiletés sociales\"],");
             sb.AppendLine("  \"axesTravail\": [\"Axe de travail 1\", \"Axe 2\", \"Axe 3\"],");
@@ -2996,7 +2996,7 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("    \"motif\": \"Pourquoi un soutien développemental EST ou N'EST PAS indiqué pour CET enfant.\",");
             sb.AppendLine("    \"critereReevaluation\": \"Ce qui ferait reconsidérer — uniquement si le soutien est différé ou non indiqué.\"");
             sb.AppendLine("  },");
-            sb.AppendLine("  \"intro\": \"1 à 2 phrases : l'objectif du soutien développemental, en s'appuyant sur les ressources de l'enfant.\",");
+            sb.AppendLine("  \"intro\": \"1 à 2 phrases ANCRÉES DANS CE QUI A ÉTÉ OBSERVÉ chez cet enfant, en s'appuyant sur ses ressources. N'ouvre PAS sur l'objectif de la section : « L'objectif est de… » et « Nous allons mettre en place… » sont les tournures à ne pas écrire.\",");
             sb.AppendLine("  \"objectifs\": [\"Objectif 1\", \"Objectif 2\", \"Objectif 3\"],");
             sb.AppendLine("  \"reeducations\": [");
             sb.AppendLine("    { \"quoi\": \"Rééducation ou prise en charge\", \"porteur\": \"...\", \"echeance\": \"...\", \"degre\": \"...\", \"objectif\": \"ce qu'elle vise pour CET enfant\" }");
@@ -3318,7 +3318,7 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("  \"cadreScolaire\": [");
             sb.AppendLine("    { \"quoi\": \"Dispositif\", \"statut\": \"...\", \"porteur\": \"...\", \"echeance\": \"...\", \"degre\": \"...\", \"objectif\": \"ce qu'il permet pour cet enfant\" }");
             sb.AppendLine("  ],");
-            sb.AppendLine("  \"intro\": \"1 à 2 phrases situant la scolarité de cet enfant.\",");
+            sb.AppendLine("  \"intro\": \"1 à 2 phrases ANCRÉES DANS CE QUE L'ÉCOLE OBSERVE de cet enfant. N'ouvre PAS sur l'objectif de la section.\",");
             sb.AppendLine("  \"amenagements\": [\"Aménagement concret 1\", \"2\", \"3\"],");
             sb.AppendLine("  \"coordination\": [\"Modalité de lien avec l'école 1\", \"2\"],");
             sb.AppendLine("  \"reperesEvolution\": [\"Ce qui montrerait que ça avance 1\", \"2\", \"3\"]");
