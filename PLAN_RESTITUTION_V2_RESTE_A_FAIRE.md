@@ -144,7 +144,13 @@ Trois phases, dans cet ordre. **Rien ne se corrige tout seul.**
 
 **La mesure, pas l'estimation.** La phase exécute un script dans le WebView2 de l'aperçu — le même moteur que l'export. Il neutralise le plancher `min-height` le temps de la mesure, sinon toute page non débordante mesurerait exactement 297 mm et la marge restante serait invisible.
 
-Trois niveaux de constat : **■ bloquant** (dépasse, en mm), **▲ vigilance** (au-dessus de 92 % de remplissage — tient, mais deux lignes de plus la couperaient), **● conforme**.
+**La correction est automatique.** La repagination (§6.2) a déjà réparti les blocs au moment où la mesure a lieu : ce que la phase signale est donc ce qu'elle n'a **pas** pu corriger — un bloc unique trop haut pour tenir sur une page, où qu'on le mette. La seule issue est alors de raccourcir son texte, et le message le dit.
+
+Deux niveaux de constat : **■ bloquant** (dépasse encore après repagination, en mm) et **● conforme**.
+
+Les pages denses (au-dessus de 92 % de remplissage) ne font **pas** un constat chacune. Avant la repagination, « remplie à 99 % » annonçait une coupure ; maintenant une page qui bascule est découpée automatiquement, donc les énumérer n'appelle aucune action — et un rapport qui énumère l'inactionnable apprend à être ignoré. Une ligne récapitulative suffit : *« 3 pages sont remplies à plus de 92 % : si leur texte s'allonge, des pages seront ajoutées automatiquement. »* *(Leçon du 17/09, après un rapport qui affichait quatre cartes sur lesquelles le médecin ne pouvait rien.)*
+
+**Un seul seuil pour les deux.** `RestitutionHtmlPreviewService.ToleranceArrondiPx` (4 px ≈ 1 mm, soit le quart d'une ligne) est partagé par le script du navigateur et le contrôle qualité. Ils ont divergé une fois — 4 px dans le script, 2 px dans le contrôle — et une page à +1 mm était signalée au médecin alors que la repagination refusait de la corriger. **Un test vérifie que les deux valeurs restent égales** (section 37 du TestRunner, qui lit le `var GARDE` du script).
 
 **Deux règles tenues :**
 - *Un contrôle muet n'existe pas.* Quand tout va bien, le rapport dit combien de pages il a vérifiées, et combien il n'a pas surveillées. Sinon « rien à signaler » est indiscernable de « le contrôle n'a pas tourné ».

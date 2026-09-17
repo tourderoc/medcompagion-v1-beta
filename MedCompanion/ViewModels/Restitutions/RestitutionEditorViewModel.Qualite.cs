@@ -7,6 +7,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using MedCompanion.Commands;
+using MedCompanion.Services.Restitutions;
 
 namespace MedCompanion.ViewModels.Restitutions
 {
@@ -242,10 +243,12 @@ namespace MedCompanion.ViewModels.Restitutions
         private const double HauteurA4Px = 297.0 / 25.4 * 96.0;
 
         /// <summary>
-        /// En dessous, on ne signale rien : un pixel ou deux d'écart relèvent de l'arrondi du
-        /// moteur de rendu, pas d'un débordement.
+        /// Seuil de signalement, partagé avec le repaginateur du navigateur — voir
+        /// <see cref="RestitutionHtmlPreviewService.ToleranceArrondiPx"/>. Les deux DOIVENT
+        /// rester égaux : signaler ce que la repagination refuse de corriger apprend au
+        /// médecin à ignorer le rapport.
         /// </summary>
-        private const double SeuilDepassementPx = 2.0;
+        private const double SeuilDepassementPx = RestitutionHtmlPreviewService.ToleranceArrondiPx;
 
         /// <param name="Fixe">
         /// Page dont le contenu ne dépend pas de l'enfant — la couverture (gabarit à champs) et
@@ -292,8 +295,16 @@ namespace MedCompanion.ViewModels.Restitutions
         }
 
         /// <summary>
-        /// Traduit les mesures en constats. Le rapport dit aussi ce qu'il a vérifié quand tout
-        /// va bien : un contrôle muet est indiscernable d'un contrôle qui n'a pas tourné.
+        /// Traduit les mesures en constats.
+        ///
+        /// CE QUE MESURE CETTE PHASE. Le document a DÉJÀ été repaginé par le script du
+        /// navigateur : les cartes sont réparties sur autant d'A4 que nécessaire. Ce qui est
+        /// signalé ici est donc ce que la repagination n'a PAS pu corriger — en pratique, un
+        /// bloc unique trop haut pour tenir sur une page, où qu'on le mette. La seule issue
+        /// est alors de raccourcir le texte.
+        ///
+        /// Le rapport dit aussi ce qu'il a vérifié quand tout va bien : un contrôle muet est
+        /// indiscernable d'un contrôle qui n'a pas tourné.
         /// </summary>
         private static List<ConstatQualite> ConstruireConstatsMiseEnPage(List<MesurePage> mesures)
         {
@@ -308,37 +319,40 @@ namespace MedCompanion.ViewModels.Restitutions
                     Phase   = 1,
                     Gravite = GraviteConstat.Bloquant,
                     Ou      = Situer(m),
-                    Message = $"Dépasse l'A4 de {mm.ToString("F0", CultureInfo.InvariantCulture)} mm — "
-                            + "ce qui dépasse sera coupé du PDF, sans trait ni avertissement. "
-                            + "Raccourcissez la section, ou signalez-le pour qu'elle soit paginée."
+                    Message = $"Dépasse l'A4 de {mm.ToString("F0", CultureInfo.InvariantCulture)} mm "
+                            + "APRÈS repagination — un bloc unique y est trop haut pour tenir sur "
+                            + "une page, le découper davantage ne servirait à rien. "
+                            + "Raccourcissez son texte : ce qui dépasse sera coupé du PDF."
                 });
             }
 
-            // Les pages qui passent de justesse : elles tiennent aujourd'hui et casseront à la
-            // prochaine phrase ajoutée. C'est ce que la mesure du 17/09 a révélé — 38 pages
-            // au-dessus de 90 % pour seulement deux débordements.
-            foreach (var m in mesures.Where(m => m.Depassement <= SeuilDepassementPx
-                                              && !m.Fixe
-                                              && m.Contenu > HauteurA4Px * 0.92)
-                                     .OrderByDescending(m => m.Contenu))
-            {
-                constats.Add(new ConstatQualite
-                {
-                    Phase   = 1,
-                    Gravite = GraviteConstat.Vigilance,
-                    Ou      = Situer(m),
-                    Message = $"Remplie à {m.Remplissage.ToString("F0", CultureInfo.InvariantCulture)} % — "
-                            + "elle tient, mais deux lignes de plus la feraient couper."
-                });
-            }
+            // Les pages denses ne font PLUS l'objet d'un constat par page. Avant la
+            // repagination, « remplie à 99 % » annonçait une coupure à venir ; maintenant, une
+            // page qui bascule est découpée automatiquement. Le signaler quatre fois par
+            // dossier n'appelle aucune action — et un rapport qui énumère l'inactionnable
+            // apprend à être ignoré. Une ligne récapitulative suffit.
+            var denses = mesures.Where(m => m.Depassement <= SeuilDepassementPx
+                                         && !m.Fixe
+                                         && m.Contenu > HauteurA4Px * 0.92)
+                                .ToList();
+
+            var fixes   = mesures.Count(m => m.Fixe);
+            var suivies = mesures.Count - fixes;
+
+            var noteDenses = denses.Count == 0 ? ""
+                : denses.Count == 1
+                  ? " Une page est remplie à plus de 92 % : si son texte s'allonge, une page sera ajoutée automatiquement."
+                  : $" {denses.Count} pages sont remplies à plus de 92 % : si leur texte s'allonge, "
+                  + "des pages seront ajoutées automatiquement.";
+
+            var noteFixes = fixes == 0 ? ""
+                : fixes == 1
+                  ? " La page générique (couverture ou annexe méthodologique) n'est pas surveillée : "
+                  + "son contenu ne bouge pas d'un dossier à l'autre."
+                  : $" Les {fixes} pages génériques (couverture, annexe méthodologique) ne sont pas "
+                  + "surveillées : leur contenu ne bouge pas d'un dossier à l'autre.";
 
             if (constats.Count == 0)
-            {
-                // Le rapport dit aussi ce qu'il N'A PAS regardé : sans ça, « tout va bien »
-                // laisserait croire que les pages génériques ont été surveillées.
-                var fixes = mesures.Count(m => m.Fixe);
-                var suivies = mesures.Count - fixes;
-
                 constats.Add(new ConstatQualite
                 {
                     Phase   = 1,
@@ -347,15 +361,17 @@ namespace MedCompanion.ViewModels.Restitutions
                     Message = (suivies == 1
                                 ? "La seule page qui varie selon l'enfant tient sur une A4"
                                 : $"Les {suivies} pages qui varient selon l'enfant tiennent sur une A4")
-                            + ", aucune au-dessus de 92 % de remplissage — rien ne sera coupé."
-                            + (fixes == 0 ? ""
-                               : fixes == 1
-                                 ? " La page générique (couverture ou annexe méthodologique) n'est pas "
-                                 + "surveillée : son contenu ne bouge pas d'un dossier à l'autre."
-                                 : $" Les {fixes} pages génériques (couverture, annexe méthodologique) "
-                                 + "ne sont pas surveillées : leur contenu ne bouge pas d'un dossier à l'autre.")
+                            + " — rien ne sera coupé à l'impression."
+                            + noteDenses + noteFixes
                 });
-            }
+            else if (denses.Count > 0)
+                constats.Add(new ConstatQualite
+                {
+                    Phase   = 1,
+                    Gravite = GraviteConstat.Conforme,
+                    Ou      = "Pages denses",
+                    Message = noteDenses.TrimStart()
+                });
 
             return constats;
         }

@@ -84,6 +84,23 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
+                <!-- Moteur de génération — accessible ici pour ne pas avoir à passer par le
+                     panneau Pilotage pendant qu'on travaille un dossier. Trois entrées pour
+                     deux modèles : ce qui change entre les deux Gemma est la quantification du
+                     cache de contexte, pas les poids. -->
+                <StackPanel Orientation="Vertical" VerticalAlignment="Center"
+                            Margin="0,0,14,0">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="MOTEUR" FontSize="9" FontWeight="SemiBold" Foreground="#7F8C8D"
+                                   VerticalAlignment="Center" Margin="0,0,7,0"/>
+                        <ComboBox ItemsSource="{Binding MoteursGeneration}"
+                                  SelectedItem="{Binding MoteurGeneration, Mode=TwoWay}"
+                                  Width="235" FontSize="11" Padding="4,2"
+                                  ToolTip="Sert à générer les blocs du dossier. Les deux entrées Gemma partagent les mêmes poids : seule la quantification du cache de contexte diffère."/>
+                    </StackPanel>
+                    <TextBlock Text="{Binding MoteurGenerationNote}" FontSize="10" Foreground="#95A5A6"
+                               TextWrapping="Wrap" MaxWidth="290" Margin="0,3,0,0"/>
+                </StackPanel>
                     <Button Command="{Binding GenerateAllCommand}" Content="✨ Tout préremplir"
                             Padding="12,8" Background="#3498DB" Foreground="White" BorderThickness="0" Cursor="Hand"
                             Visibility="{Binding IsGeneratingAll, Converter={StaticResource BoolToVisInverse}}"
@@ -2196,7 +2213,7 @@
                             </StackPanel>
                         </DockPanel>
                         <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6" Margin="0,7,0,0"
-                                   Text="Mesure la hauteur réelle de chaque page dans l&#39;aperçu. À l&#39;écran une page trop longue s&#39;allonge et tout reste lisible ; à l&#39;impression elle est coupée à 297 mm, sans trait ni avertissement. C&#39;est le seul endroit où ça se voit."/>
+                                   Text="Les pages sont déjà réparties automatiquement : dès qu&#39;un bloc ferait dépasser l&#39;A4, une page est ajoutée. Ce que la mesure signale ici est donc ce que la répartition n&#39;a PAS pu corriger — un bloc trop haut pour tenir sur une page, où qu&#39;on le mette. La seule issue est alors de raccourcir son texte."/>
                     </StackPanel>
                 </Border>
 

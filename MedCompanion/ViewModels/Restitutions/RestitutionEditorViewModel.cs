@@ -1538,6 +1538,22 @@ namespace MedCompanion.ViewModels.Restitutions
         {
             var liste = blocs.ToList();
 
+            // « Environnement — Cadre Éducatif (ancien parcours) » quitte l'éditeur.
+            //
+            // Il n'a plus d'équivalent dans le parcours V2 : la feuille 4 « Cadre & repères » a
+            // fusionné les anciennes « Valeurs sociétales » et « Cadre éducatif ». Il ne servait
+            // donc plus qu'à encombrer une liste de trente-deux blocs.
+            //
+            // IL N'EST PAS SUPPRIMÉ DE `_dossier.Blocs`, ET C'EST VOULU. Six dossiers du poste
+            // portent du vrai contenu dans cette section (7 à 8 lignes chacun, vérifié le
+            // 17/09/2026 ; quatorze autres n'ont que le texte de remplacement). L'ôter de la
+            // liste des blocs le ferait disparaître du fichier au prochain enregistrement —
+            // une perte silencieuse sur des dossiers déjà rédigés.
+            //
+            // Le document, lui, ne dépend pas de ce bloc : la feuille 5 est dessinée à partir de
+            // la cartographie V1 (`carto.CadreEducatif`), le bloc n'en était que le commentaire.
+            liste = liste.Where(b => b.Key != "env_edu_f5").ToList();
+
             var page2 = liste.FirstOrDefault(b => b.Key == "restitution_1page");
             if (page2 == null) return liste;
 

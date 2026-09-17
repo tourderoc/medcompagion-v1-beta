@@ -31,7 +31,19 @@ namespace MedCompanion.Services.Restitutions
     /// </summary>
     public partial class RestitutionHtmlPreviewService
     {
-        private const string ScriptRepagination = @"
+        /// <summary>
+        /// Tolérance d'arrondi du moteur de rendu, en pixels — environ 1 mm, soit le quart
+        /// d'une ligne de texte. En dessous, rien de lisible ne peut être perdu.
+        ///
+        /// LE SCRIPT ET LE CONTRÔLE QUALITÉ DOIVENT UTILISER LA MÊME VALEUR. Ils ont divergé
+        /// une fois — 4 px dans le script, 2 px dans le contrôle — et une page à +1 mm était
+        /// donc signalée au médecin alors que la repagination refusait de la corriger. Un
+        /// détecteur qui rapporte ce que le correcteur ne répare pas apprend à être ignoré.
+        /// Un test vérifie que les deux valeurs restent égales.
+        /// </summary>
+        public const double ToleranceArrondiPx = 4.0;
+
+        internal const string ScriptRepagination = @"
 <script>
 (function () {
   var A4 = 297 / 25.4 * 96;          // 1122,5 px

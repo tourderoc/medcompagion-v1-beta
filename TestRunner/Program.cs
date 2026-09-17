@@ -3165,10 +3165,13 @@ class Program
                 vmBord.MesurerPagesDansApercu = () => Task.FromResult<string?>(
                     "[{\"i\":4,\"h\":1110,\"t\":\"PATIENT & CONTEXTE\"}]");
                 await vmBord.LancerPhase1Async();
-                Verifie("une page à 99 % est mise en vigilance",
+                // Une page dense n'est PLUS un constat à elle seule : la repagination la
+                // découpera si elle bascule. Elle est récapitulée, avec ce qui arrivera.
+                Verifie("une page dense est récapitulée, pas signalée page par page",
                     vmBord.Constats.Count == 1
-                    && vmBord.Constats[0].Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Vigilance
-                    && vmBord.Constats[0].Message.Contains("99 %"),
+                    && vmBord.Constats[0].Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Conforme
+                    && vmBord.Constats[0].Message.Contains("Une page est remplie à plus de 92 %")
+                    && vmBord.Constats[0].Message.Contains("une page sera ajoutée automatiquement"),
                     vmBord.Constats.Count == 1 ? vmBord.Constats[0].Message : "");
                 Verifie("elle n'est pas comptée comme coupée",
                     vmBord.Phase1Resume.Contains("aucune coupée") && vmBord.Phase1Resume.Contains("surveiller"),
@@ -3254,10 +3257,12 @@ class Program
                   + "{\"i\":21,\"h\":1070,\"t\":\"Annexe Méthodologique\",\"x\":1}]");
                 await vmFixes.LancerPhase1Async();
 
-                Verifie("une page générique à 95 % n'est pas mise en vigilance",
+                // Trois pages à 95 %, dont deux génériques : une seule est comptée comme dense.
+                Verifie("les pages génériques denses ne sont pas comptées",
                     vmFixes.Constats.Count == 1
-                    && vmFixes.Constats[0].Ou.Contains("Page 7"),
-                    string.Join(" | ", vmFixes.Constats.Select(c => c.Ou)));
+                    && vmFixes.Constats[0].Message.Contains("Une page est remplie à plus de 92 %")
+                    && vmFixes.Constats[0].Message.Contains("2 pages génériques"),
+                    vmFixes.Constats[0].Message);
                 Verifie("le résumé ne compte que les pages réellement surveillées",
                     vmFixes.Phase1Resume.Contains("1 à surveiller"), vmFixes.Phase1Resume);
 
@@ -3290,6 +3295,106 @@ class Program
             finally
             {
                 try { Directory.Delete(racine36, recursive: true); } catch { /* dossier temporaire */ }
+            }
+        }
+
+        // ── 37. Le détecteur et le correcteur partagent le même seuil ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : ce qui est signalé est ce que la repagination n'a pas pu corriger ──");
+        {
+            // Les deux ont divergé une fois — 4 px dans le script du navigateur, 2 px dans le
+            // contrôle qualité — et une page à +1 mm était signalée au médecin alors que la
+            // repagination refusait de la corriger. Remonté après le premier essai réel.
+            var script = MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService.ScriptRepagination;
+            var mGarde = System.Text.RegularExpressions.Regex.Match(script, @"var GARDE\s*=\s*([0-9.]+)");
+            Verifie("le script du navigateur déclare bien sa tolérance", mGarde.Success);
+
+            var garde = mGarde.Success
+                ? double.Parse(mGarde.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)
+                : -1;
+            Verifie("elle est égale à celle du contrôle qualité",
+                Math.Abs(garde - MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService.ToleranceArrondiPx) < 0.001,
+                $"script {garde} px, contrôle {MedCompanion.Services.Restitutions.RestitutionHtmlPreviewService.ToleranceArrondiPx} px");
+
+            // Le script doit aussi être là, et poser son témoin d'exécution : une erreur de
+            // syntaxe JS ne fait pas échouer la compilation C#.
+            Verifie("le script pose un témoin d'exécution vérifiable",
+                script.Contains("data-repagine"));
+            Verifie("il attend le chargement des polices avant de mesurer",
+                script.Contains("document.fonts"));
+            Verifie("il ne coupe jamais une carte : il la déplace entière",
+                script.Contains("removeChild") && script.Contains("appendChild"));
+
+            var racine37 = Path.Combine(Path.GetTempPath(), "med_test_seuil_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(racine37);
+            var chemin37 = new PathService(racine37);
+
+            try
+            {
+                var reader37 = new MedCompanion.Services.Restitutions.DossierReaderService(chemin37);
+                MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel Vm37() =>
+                    new MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel(
+                        new MedCompanion.Models.Restitutions.DossierRestitutionInitial(), "GOBLET Adrien",
+                        new MedCompanion.Services.Restitutions.RestitutionService(chemin37),
+                        new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                            new FauxMoteur { Reponse = _ => (true, "x") }, reader37),
+                        reader37);
+
+                // 1123 px = 297 mm. +3 px reste dans la tolérance : la repagination ne le
+                // corrigerait pas, le contrôle ne doit donc pas le signaler.
+                var vmTolere = Vm37();
+                vmTolere.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":21,\"h\":1126,\"t\":\"PROJET 7.4\",\"x\":0}]");
+                await vmTolere.LancerPhase1Async();
+                Verifie("un dépassement dans la tolérance d'arrondi n'est pas signalé",
+                    !vmTolere.Constats.Any(c =>
+                        c.Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Bloquant),
+                    vmTolere.Phase1Resume);
+
+                // Au-delà, c'est un vrai débordement que la repagination n'a pas su corriger.
+                var vmVrai = Vm37();
+                vmVrai.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":21,\"h\":1200,\"t\":\"PROJET 7.4\",\"x\":0}]");
+                await vmVrai.LancerPhase1Async();
+                var bloc37 = vmVrai.Constats.FirstOrDefault(c =>
+                    c.Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Bloquant);
+                Verifie("au-delà, le débordement est signalé", bloc37 != null);
+                Verifie("le message dit que la repagination a déjà essayé, et quoi faire",
+                    bloc37 != null && bloc37.Message.Contains("APRÈS repagination")
+                    && bloc37.Message.Contains("Raccourcissez"),
+                    bloc37?.Message ?? "");
+
+                // (b) Les pages denses ne font plus un constat chacune : la repagination les
+                // rattrapera si elles basculent. Une ligne récapitulative, pas quatre cartes.
+                var vmDenses = Vm37();
+                vmDenses.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":8,\"h\":1100,\"t\":\"A\",\"x\":0},"
+                  + "{\"i\":9,\"h\":1090,\"t\":\"B\",\"x\":0},"
+                  + "{\"i\":20,\"h\":1080,\"t\":\"C\",\"x\":0},"
+                  + "{\"i\":11,\"h\":600,\"t\":\"D\",\"x\":0}]");
+                await vmDenses.LancerPhase1Async();
+                Verifie("trois pages denses ne produisent pas trois constats",
+                    vmDenses.Constats.Count == 1, $"{vmDenses.Constats.Count} constat(s)");
+                Verifie("elles sont récapitulées en une ligne, avec ce qui se passera",
+                    vmDenses.Constats[0].Message.Contains("3 pages sont remplies")
+                    && vmDenses.Constats[0].Message.Contains("ajoutées automatiquement"),
+                    vmDenses.Constats[0].Message);
+
+                // Un débordement ET des pages denses : les deux sont dits, sans se noyer.
+                var vmMixte = Vm37();
+                vmMixte.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":21,\"h\":1200,\"t\":\"A\",\"x\":0},"
+                  + "{\"i\":8,\"h\":1100,\"t\":\"B\",\"x\":0}]");
+                await vmMixte.LancerPhase1Async();
+                Verifie("un débordement n'efface pas la note sur les pages denses",
+                    vmMixte.Constats.Count == 2
+                    && vmMixte.Constats.Any(c => c.Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Bloquant)
+                    && vmMixte.Constats.Any(c => c.Message.Contains("remplie à plus de 92 %")),
+                    string.Join(" | ", vmMixte.Constats.Select(c => c.Ou)));
+            }
+            finally
+            {
+                try { Directory.Delete(racine37, recursive: true); } catch { /* dossier temporaire */ }
             }
         }
 
