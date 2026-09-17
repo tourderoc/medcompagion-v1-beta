@@ -6,6 +6,7 @@
              xmlns:local="clr-namespace:MedCompanion.Views.Restitutions"
              xmlns:vm="clr-namespace:MedCompanion.ViewModels.Restitutions"
              xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
+             xmlns:converters="clr-namespace:MedCompanion.Converters"
              mc:Ignorable="d"
              d:DesignHeight="800" d:DesignWidth="1400"
              Loaded="UserControl_Loaded"
@@ -13,6 +14,10 @@
 
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <!-- BoolToVis est le convertisseur NATIF de WPF : il ignore ConverterParameter.
+             « ConverterParameter=Invert » ne faisait donc rien, et masquait les éléments
+             censés être visibles au repos. Pour inverser, il faut ce convertisseur-ci. -->
+        <converters:InverseBoolToVisibilityConverter x:Key="BoolToVisInverse"/>
 
         <!-- Style pour donner une bordure gauche bleue aux 5 blocs constituant la section centrale (pages 3-4) -->
         <Style x:Key="BlocBorderStyle" TargetType="Border">
@@ -81,7 +86,7 @@
                 <StackPanel Grid.Column="2" Orientation="Horizontal">
                     <Button Command="{Binding GenerateAllCommand}" Content="✨ Tout préremplir"
                             Padding="12,8" Background="#3498DB" Foreground="White" BorderThickness="0" Cursor="Hand"
-                            Visibility="{Binding IsGeneratingAll, Converter={StaticResource BoolToVis}, ConverterParameter=Invert}"
+                            Visibility="{Binding IsGeneratingAll, Converter={StaticResource BoolToVisInverse}}"
                             ToolTip="Lecture du dossier patient puis génération séquentielle des sections vides">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -142,7 +147,8 @@
             </Grid.ColumnDefinitions>
 
         <!-- Editor List -->
-        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="0,0,10,0">
+        <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"
+                      Visibility="{Binding ModeQualite, Converter={StaticResource BoolToVisInverse}}">
             <ItemsControl ItemsSource="{Binding Blocs}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -2100,6 +2106,137 @@
             </ItemsControl>
         </ScrollViewer>
 
+        <!-- PANNEAU QUALITÉ — prend la place de l'éditeur, l'aperçu reste à droite.
+             On regarde la page dont on parle pendant qu'on corrige. -->
+        <Border Grid.Column="0" Margin="0,0,10,0" Background="White" CornerRadius="8"
+                BorderBrush="#D0D7DE" BorderThickness="1"
+                Visibility="{Binding ModeQualite, Converter={StaticResource BoolToVis}}">
+            <DockPanel>
+
+                <!-- En-tête du panneau -->
+                <Border DockPanel.Dock="Top" Background="#F4ECF7" CornerRadius="7,7,0,0" Padding="14,11"
+                        BorderBrush="#D7BDE2" BorderThickness="0,0,0,1">
+                    <DockPanel>
+                        <Button DockPanel.Dock="Right" Command="{Binding FermerQualiteCommand}"
+                                Content="✕ Revenir à l'éditeur" Padding="9,5" FontSize="11" Cursor="Hand"
+                                Background="White" BorderBrush="#D7BDE2" BorderThickness="1" Foreground="#5B2C6F">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                            BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4"
+                                            Padding="{TemplateBinding Padding}">
+                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#EBDEF0"/></Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                        <StackPanel>
+                            <TextBlock Text="Contrôle qualité du dossier" FontSize="15" FontWeight="Bold" Foreground="#4A235A"/>
+                            <TextBlock Text="Trois phases. Rien ne se corrige tout seul — vous décidez à chaque point."
+                                       FontSize="11" Foreground="#7D6B8A" Margin="0,2,0,0"/>
+                        </StackPanel>
+                    </DockPanel>
+                </Border>
+
+                <!-- Choix du moteur, pour les phases 2 et 3 -->
+                <Border DockPanel.Dock="Top" Padding="14,10" Background="#FBFCFD"
+                        BorderBrush="#E8EDF3" BorderThickness="0,0,0,1">
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="MOTEUR" FontSize="9" FontWeight="SemiBold" Foreground="#7F8C8D"
+                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+                            <ComboBox ItemsSource="{Binding MoteursQualite}"
+                                      SelectedItem="{Binding MoteurQualite, Mode=TwoWay}"
+                                      Width="120" FontSize="11" Padding="4,2"/>
+                        </StackPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6" Margin="0,6,0,0"
+                                   Text="Sert aux phases 2 et 3. Chaque constat porte le nom du moteur qui l&#39;a produit — pour comparer, lancez les deux AVANT d&#39;accepter quoi que ce soit : une correction déjà appliquée change le texte que le second moteur lira."/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Phase 1 -->
+                <Border DockPanel.Dock="Top" Padding="14,12" BorderBrush="#E8EDF3" BorderThickness="0,0,0,1">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Command="{Binding LancerPhase1Command}"
+                                    Padding="12,6" FontSize="11" Cursor="Hand" VerticalAlignment="Top"
+                                    Background="#6C3483" Foreground="White" BorderThickness="0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#5B2C6F"/></Trigger>
+                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#BDC3C7"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <TextBlock>
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="Mesurer les pages"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Phase1EnCours}" Value="True">
+                                                    <Setter Property="Text" Value="⏳ Mesure…"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Button>
+                            <StackPanel>
+                                <TextBlock Text="1 · Mise en page" FontSize="12" FontWeight="SemiBold" Foreground="#1B4F72"/>
+                                <TextBlock Text="{Binding Phase1Resume}" FontSize="11" Foreground="#16A085" Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6" Margin="0,7,0,0"
+                                   Text="Mesure la hauteur réelle de chaque page dans l&#39;aperçu. À l&#39;écran une page trop longue s&#39;allonge et tout reste lisible ; à l&#39;impression elle est coupée à 297 mm, sans trait ni avertissement. C&#39;est le seul endroit où ça se voit."/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Phases 2 et 3 : pas encore branchées -->
+                <Border DockPanel.Dock="Bottom" Padding="14,10" Background="#FBFCFD"
+                        BorderBrush="#E8EDF3" BorderThickness="0,1,0,0">
+                    <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6"
+                               Text="Phases 2 (contradictions) et 3 (linguistique) : pas encore branchées."/>
+                </Border>
+
+                <!-- Les constats -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="14,10">
+                    <ItemsControl ItemsSource="{Binding Constats}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Margin="0,0,0,7" Padding="10,8" CornerRadius="5"
+                                        Background="#FBFCFD" BorderBrush="#E8EDF3" BorderThickness="1">
+                                    <DockPanel>
+                                        <TextBlock DockPanel.Dock="Left" Text="{Binding Pastille}"
+                                                   Foreground="{Binding Couleur}" FontSize="13"
+                                                   Margin="0,0,9,0" VerticalAlignment="Top"/>
+                                        <StackPanel>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding Ou}" FontSize="11" FontWeight="SemiBold"
+                                                           Foreground="#1B4F72" TextWrapping="Wrap"/>
+                                                <TextBlock Text="{Binding EtiquetteMoteur}" FontSize="10"
+                                                           Foreground="#95A5A6" Margin="6,1,0,0"/>
+                                            </StackPanel>
+                                            <TextBlock Text="{Binding Message}" FontSize="11" Foreground="#34495E"
+                                                       TextWrapping="Wrap" Margin="0,3,0,0"/>
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </DockPanel>
+        </Border>
+
             <!-- Splitter -->
             <GridSplitter Grid.Column="1" Width="6" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
                           Background="#D0D7DE" ShowsPreview="True"
@@ -2129,6 +2266,30 @@
                     <ColumnDefinition Width="Auto"/>
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
+
+
+                <!-- Contrôle qualité — AVANT l'export, pas après : les phases 2 et 3 modifient
+                     les blocs, donc le PDF. Contrôler après obligerait à réexporter. -->
+                <Button Grid.Column="0" HorizontalAlignment="Left"
+                        Command="{Binding OuvrirQualiteCommand}"
+                        Content="🔍 Qualité"
+                        Padding="15,8" Background="White" Foreground="#5B2C6F"
+                        BorderBrush="#D7BDE2" BorderThickness="1" Cursor="Hand"
+                        Visibility="{Binding ModeQualite, Converter={StaticResource BoolToVisInverse}}"
+                        ToolTip="Vérifie la mise en page, les contradictions et la fluidité avant d&#39;exporter">
+                    <Button.Template>
+                        <ControlTemplate TargetType="Button">
+                            <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                    BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4"
+                                    Padding="{TemplateBinding Padding}">
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            </Border>
+                            <ControlTemplate.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#F4ECF7"/></Trigger>
+                            </ControlTemplate.Triggers>
+                        </ControlTemplate>
+                    </Button.Template>
+                </Button>
 
                 <!-- Export PDF -->
                 <Button x:Name="ExportPdfButton" Grid.Column="1"

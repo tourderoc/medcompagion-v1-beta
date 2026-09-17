@@ -119,8 +119,50 @@ namespace MedCompanion.Services.Restitutions
 
             if (!string.IsNullOrWhiteSpace(_annexeMethodologiqueRaw))
                 sb.Append(_annexeMethodologiqueRaw);
+
+            // La repagination a le dernier mot : elle mesure dans le moteur de rendu, là
+            // où une hauteur de texte est exacte. Voir RestitutionHtmlPreviewService.Repagination.cs.
+            sb.AppendLine(ScriptRepagination);
             sb.AppendLine("</body></html>");
-            return sb.ToString();
+            // Les marqueurs de numérotation sont résolus ici, quand toutes les pages existent.
+            return NumeroterPages(sb.ToString());
+        }
+
+        // ── Numérotation des pages, en deux temps ───────────────────────────
+        //
+        // Les pages ne sont plus comptées à l'avance. Une page dont le contenu déborde se
+        // dédouble — huit sphères tiennent parfois sur trois pages, parfois sur quatre — et un
+        // comptage préalable finirait toujours par mentir sur un dossier ou l'autre.
+        //
+        // Chaque en-tête pose donc un marqueur, et NumeroterPages() les remplace une fois le
+        // document entier construit, dans l'ordre du DOM. La couverture est la page 1 et ne
+        // porte pas de marqueur : la séquence commence à 2.
+        private const string MarqueurNumeroPage = "@@MC_NUM_PAGE@@";
+        private const string MarqueurTotalPages = "@@MC_TOT_PAGE@@";
+
+        private static string NumeroterPages(string html)
+        {
+            var total = 1;   // la couverture
+            var i = 0;
+            while ((i = html.IndexOf(MarqueurNumeroPage, i, StringComparison.Ordinal)) >= 0)
+            {
+                total++;
+                i += MarqueurNumeroPage.Length;
+            }
+
+            var numero = 1;
+            var sb = new StringBuilder(html.Length);
+            var pos = 0;
+            while (true)
+            {
+                var j = html.IndexOf(MarqueurNumeroPage, pos, StringComparison.Ordinal);
+                if (j < 0) { sb.Append(html, pos, html.Length - pos); break; }
+                sb.Append(html, pos, j - pos);
+                sb.Append(++numero);
+                pos = j + MarqueurNumeroPage.Length;
+            }
+
+            return sb.ToString().Replace(MarqueurTotalPages, total.ToString());
         }
 
         // ── Assets ──────────────────────────────────────────────────────────
@@ -535,10 +577,9 @@ namespace MedCompanion.Services.Restitutions
                     var carto     = LoadLatestCartographieEnfant(patientNomComplet);
                     var cartoV2   = LoadLatestCartographieV2(patientNomComplet);
                     var perSphere = BuildPerSphereFromBlocs(dossier.Blocs);
-                    sb.Append(BuildCartoEnfantPageA(carto, cartoV2, perSphere, pageNumber,     totalPages));
-                    sb.Append(BuildCartoEnfantPageB(carto, cartoV2, perSphere, pageNumber + 1, totalPages));
-                    sb.Append(BuildCartoEnfantPageC(carto, cartoV2, perSphere, pageNumber + 2, totalPages));
-                    pageNumber += 3;
+                    // Le nombre de pages dépend de la longueur des observations : il n'est plus
+                    // figé à trois. La numérotation est résolue après coup (cf. NumeroterPages).
+                    sb.Append(BuildCartoEnfantPages(carto, cartoV2, perSphere));
                     continue;
                 }
                 // carto_s2..carto_s8 : déjà intégrés dans carto_s1, on saute.
@@ -558,14 +599,14 @@ namespace MedCompanion.Services.Restitutions
                 }
                 if (bloc.Key.StartsWith("env_edu_", StringComparison.Ordinal)) continue;
 
-                // Synthèse Globale et Diagnostique — 2 pages, rendu sur synthese_diag_s1.
+                // Synthèse Globale et Diagnostique — rendue sur synthese_diag_s1. La 5.2 se
+                // dédouble quand ses trois cartes ne tiennent pas ensemble sur une A4.
                 if (bloc.Key == "synthese_diag_s1")
                 {
                     var bilanFinal = LoadLatestBilanFinal(patientNomComplet);
                     var sdBlocs    = BuildSyntheseDiagBlocsDict(dossier.Blocs);
-                    sb.Append(BuildSyntheseDiagPage1(sdBlocs, bilanFinal, coverFields, pageNumber, totalPages));
-                    sb.Append(BuildSyntheseDiagPage2(sdBlocs, bilanFinal, coverFields, pageNumber + 1, totalPages));
-                    pageNumber += 2;
+                    sb.Append(BuildSyntheseDiagPage1(sdBlocs, bilanFinal, coverFields, 0, 0));
+                    sb.Append(BuildSyntheseDiagPage2Pages(sdBlocs, bilanFinal, coverFields));
                     continue;
                 }
                 if (bloc.Key.StartsWith("synthese_diag_s", StringComparison.Ordinal)) continue;
@@ -615,7 +656,7 @@ namespace MedCompanion.Services.Restitutions
                     : MarkdownToHtmlLite(bloc.ContenuValide);
 
                 sb.AppendLine("<div class='page draft-page'>");
-                sb.AppendLine($"  <div class='page-num'>Page {pageNumber}/{totalPages}</div>");
+                sb.AppendLine($"  <div class='page-num'>Page {MarqueurNumeroPage}/{MarqueurTotalPages}</div>");
                 sb.AppendLine($"  <h1 class='draft-title'>{WebUtility.HtmlEncode(bloc.Titre)}</h1>");
                 sb.AppendLine($"  <div class='draft-meta'>Voix cible : <strong>{WebUtility.HtmlEncode(bloc.VoixCible)}</strong></div>");
                 sb.AppendLine($"  <div class='draft-content'>{content}</div>");
@@ -1399,11 +1440,17 @@ namespace MedCompanion.Services.Restitutions
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Page 5.2 de la Synthèse. <paramref name="sections"/> dit lesquelles des trois cartes
+        /// (4, 5, 6) figurent ici : quand elles ne tiennent pas ensemble sur une A4, l'appelant
+        /// rend deux pages plutôt que de laisser Edge en couper le bas.
+        /// </summary>
         private string BuildSyntheseDiagPage2(
             Dictionary<string, string> blocs,
             BilanFinal? bilan,
             CoverFields cover,
-            int pageNumber, int totalPages)
+            IReadOnlyList<int> sections,
+            string badgePage)
         {
             blocs.TryGetValue("synthese_diag_s3", out var s3Text);
             blocs.TryGetValue("synthese_diag_s4", out var s4Text);
@@ -1414,8 +1461,10 @@ namespace MedCompanion.Services.Restitutions
             sb.Append(BuildPcHeader(
                 "SYNTHÈSE GLOBALE ET DIAGNOSTIQUE",
                 "5.2 Vue intégrative — Diagnostics différentiels écartés, intégration des cartographies et conclusion.",
-                "2/2", pageNumber, totalPages));
+                badgePage, 0, 0));
 
+            if (sections.Contains(4))
+            {
             // ── Section 4 : Différentiels écartés ───────────────────────────
             sb.AppendLine("  <div class='sd-card'>");
             sb.AppendLine("    <div class='sd-card-hdr sd-blue'>4. DIAGNOSTICS DIFFÉRENTIELS ÉCARTÉS</div>");
@@ -1472,7 +1521,10 @@ namespace MedCompanion.Services.Restitutions
                 sb.AppendLine("      <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Différentiels écartés »)</em></p>");
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
+            }
 
+            if (sections.Contains(5))
+            {
             // ── Section 5 : Intégration des cartographies ────────────────────
             sb.AppendLine("  <div class='sd-card'>");
             sb.AppendLine("    <div class='sd-card-hdr sd-green'>5. INTÉGRATION DES CARTOGRAPHIES</div>");
@@ -1535,7 +1587,10 @@ namespace MedCompanion.Services.Restitutions
                 sb.AppendLine("      <p class='placeholder'><em>(Section à compléter — utilisez ✨ Suggérer sur « Intégration cartographies »)</em></p>");
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
+            }
 
+            if (sections.Contains(6))
+            {
             // ── Section 6 : Conclusion intégrative ──────────────────────────
             sb.AppendLine("  <div class='sd-card'>");
             sb.AppendLine("    <div class='sd-card-hdr sd-gray'>6. CONCLUSION INTÉGRATIVE</div>");
@@ -1546,6 +1601,7 @@ namespace MedCompanion.Services.Restitutions
                 sb.Append(MarkdownToHtmlLite(s5Text));
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
+            }
 
             sb.AppendLine("</div>");
             return sb.ToString();
@@ -4297,7 +4353,10 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("      <div class='pc-brand'>");
             sb.AppendLine("        <strong>MedCompanion</strong>");
             sb.AppendLine("      </div>");
-            sb.AppendLine($"      <div class='pc-page-num'>PAGE {pageNumber}/{totalPages}</div>");
+            // Le numéro n'est pas connu ici : une page dont le contenu déborde se dédouble, et
+            // le total ne se fige qu'une fois toutes les pages construites. On pose un marqueur,
+            // NumeroterPages() le remplace à la fin. Voir BuildPreviewHtml.
+            sb.AppendLine($"      <div class='pc-page-num'>PAGE {MarqueurNumeroPage}/{MarqueurTotalPages}</div>");
             sb.AppendLine("    </div>");
             sb.AppendLine("  </div>");
             sb.AppendLine("  <hr class='pc-header-rule'/>");

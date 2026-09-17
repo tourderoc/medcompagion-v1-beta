@@ -1440,7 +1440,7 @@ namespace MedCompanion.ViewModels.Restitutions
         }
     }
 
-    public class RestitutionEditorViewModel : INotifyPropertyChanged
+    public partial class RestitutionEditorViewModel : INotifyPropertyChanged
     {
         private readonly RestitutionService _restitutionService;
         private readonly RestitutionSuggesterService _suggesterService;

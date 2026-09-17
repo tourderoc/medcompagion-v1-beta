@@ -3104,6 +3104,195 @@ class Program
                 try { Directory.Delete(racine35, recursive: true); } catch { /* dossier temporaire */ }
             }
         }
+        // ── 36. Panneau qualité, phase 1 : mesurer, pas estimer ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : le contrôle qualité mesure les pages et dit ce qu'il a vérifié ──");
+        {
+            var racine36 = Path.Combine(Path.GetTempPath(), "med_test_qualite_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(racine36);
+            var chemin36 = new PathService(racine36);
+
+            MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel Vm36()
+            {
+                var reader = new MedCompanion.Services.Restitutions.DossierReaderService(chemin36);
+                return new MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel(
+                    new MedCompanion.Models.Restitutions.DossierRestitutionInitial(), "GOBLET Adrien",
+                    new MedCompanion.Services.Restitutions.RestitutionService(chemin36),
+                    new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                        new FauxMoteur { Reponse = _ => (true, "x") }, reader),
+                    reader);
+            }
+
+            // 297 mm à 96 dpi = 1122,5 px. C'est le seuil que la phase 1 applique.
+            const int A4 = 1123;
+
+            try
+            {
+                // (a) Le panneau ne s'ouvre pas tout seul, et il rend l'éditeur.
+                var vmOuvre = Vm36();
+                Verifie("au départ, l'éditeur est affiché et le panneau fermé", !vmOuvre.ModeQualite);
+                vmOuvre.OuvrirQualiteCommand.Execute(null);
+                Verifie("le bouton Qualité ouvre le panneau", vmOuvre.ModeQualite);
+                vmOuvre.FermerQualiteCommand.Execute(null);
+                Verifie("on revient à l'éditeur", !vmOuvre.ModeQualite);
+
+                // (b) Une page qui déborde est signalée comme bloquante, en millimètres.
+                var vmDeborde = Vm36();
+                vmDeborde.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":1,\"h\":800,\"t\":\"COUVERTURE\"},"
+                  + "{\"i\":15,\"h\":1168,\"t\":\"SYNTHÈSE GLOBALE\"}]");
+                await vmDeborde.LancerPhase1Async();
+
+                var bloquants = vmDeborde.Constats.Where(c =>
+                    c.Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Bloquant).ToList();
+                Verifie("une page trop haute est signalée comme bloquante",
+                    bloquants.Count == 1, $"{bloquants.Count} constat(s)");
+                Verifie("le constat situe la page et chiffre le dépassement en mm",
+                    bloquants.Count == 1 && bloquants[0].Ou.Contains("Page 15")
+                    && bloquants[0].Ou.Contains("SYNTHÈSE GLOBALE")
+                    && bloquants[0].Message.Contains("12 mm"),
+                    bloquants.Count == 1 ? bloquants[0].Ou + " / " + bloquants[0].Message : "");
+                Verifie("il dit ce qui se passera si on n'y touche pas",
+                    bloquants.Count == 1 && bloquants[0].Message.Contains("coupé du PDF"));
+                Verifie("le résumé annonce le nombre de pages coupées",
+                    vmDeborde.Phase1Resume.Contains("2 pages") && vmDeborde.Phase1Resume.Contains("1 coupée"),
+                    vmDeborde.Phase1Resume);
+
+                // (c) Une page qui passe de justesse est une vigilance, pas un silence.
+                // C'est ce que la mesure du 17/09 a montré : 38 pages au-dessus de 90 % pour
+                // seulement deux débordements réels.
+                var vmBord = Vm36();
+                vmBord.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":4,\"h\":1110,\"t\":\"PATIENT & CONTEXTE\"}]");
+                await vmBord.LancerPhase1Async();
+                Verifie("une page à 99 % est mise en vigilance",
+                    vmBord.Constats.Count == 1
+                    && vmBord.Constats[0].Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Vigilance
+                    && vmBord.Constats[0].Message.Contains("99 %"),
+                    vmBord.Constats.Count == 1 ? vmBord.Constats[0].Message : "");
+                Verifie("elle n'est pas comptée comme coupée",
+                    vmBord.Phase1Resume.Contains("aucune coupée") && vmBord.Phase1Resume.Contains("surveiller"),
+                    vmBord.Phase1Resume);
+
+                // (d) Tout va bien : le rapport dit quand même ce qu'il a vérifié.
+                // Un contrôle muet est indiscernable d'un contrôle qui n'a pas tourné.
+                var vmOk = Vm36();
+                vmOk.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":1,\"h\":700,\"t\":\"A\"},{\"i\":2,\"h\":900,\"t\":\"B\"},{\"i\":3,\"h\":1000,\"t\":\"C\"}]");
+                await vmOk.LancerPhase1Async();
+                Verifie("sans anomalie, la phase produit un constat conforme",
+                    vmOk.Constats.Count == 1
+                    && vmOk.Constats[0].Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Conforme);
+                Verifie("le constat conforme dit COMBIEN de pages ont été vérifiées",
+                    vmOk.Constats[0].Ou.Contains("3 pages"), vmOk.Constats[0].Ou);
+                Verifie("le résumé le confirme",
+                    vmOk.Phase1Resume.Contains("3 pages") && vmOk.Phase1Resume.Contains("tiennent"),
+                    vmOk.Phase1Resume);
+
+                // (e) Exactement 297 mm passe : le seuil ne se déclenche pas sur un arrondi.
+                var vmPile = Vm36();
+                vmPile.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":1,\"h\":" + A4 + ",\"t\":\"A\"}]");
+                await vmPile.LancerPhase1Async();
+                Verifie("une page pile à 297 mm n'est pas signalée comme coupée",
+                    !vmPile.Constats.Any(c => c.Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Bloquant));
+
+                // (f) L'aperçu pas prêt, ou une mesure illisible : on le dit, on n'invente pas.
+                var vmSansApercu = Vm36();
+                await vmSansApercu.LancerPhase1Async();
+                Verifie("sans aperçu, la phase le dit au lieu de conclure que tout va bien",
+                    vmSansApercu.Constats.Count == 1
+                    && vmSansApercu.Constats[0].Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Vigilance
+                    && vmSansApercu.Constats[0].Message.Contains("pas prêt"));
+
+                var vmCasse = Vm36();
+                vmCasse.MesurerPagesDansApercu = () => Task.FromResult<string?>("ceci n'est pas du JSON");
+                await vmCasse.LancerPhase1Async();
+                Verifie("une mesure illisible ne produit jamais un « tout va bien »",
+                    !vmCasse.Constats.Any(c => c.Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Conforme)
+                    && vmCasse.Phase1Resume.Contains("Aucune page"),
+                    vmCasse.Phase1Resume);
+
+                // (g) ExecuteScriptAsync rend parfois une chaîne JSON encodée : on déballe.
+                var vmEncode = Vm36();
+                vmEncode.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "\"[{\\\"i\\\":1,\\\"h\\\":1200,\\\"t\\\":\\\"A\\\"}]\"");
+                await vmEncode.LancerPhase1Async();
+                Verifie("une mesure renvoyée encodée est lue correctement",
+                    vmEncode.Constats.Any(c => c.Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Bloquant),
+                    vmEncode.Phase1Resume);
+
+                // (h) Relancer la phase remplace ses constats, elle ne les empile pas.
+                var vmRelance = Vm36();
+                vmRelance.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":1,\"h\":1200,\"t\":\"A\"}]");
+                await vmRelance.LancerPhase1Async();
+                await vmRelance.LancerPhase1Async();
+                Verifie("relancer la phase 1 ne double pas les constats",
+                    vmRelance.Constats.Count == 1, $"{vmRelance.Constats.Count} constat(s)");
+
+                // (i) Le moteur se choisit dans une liste fermée et reste retenu.
+                var vmMoteur = Vm36();
+                Verifie("deux moteurs sont proposés, Qwen et Gemma",
+                    vmMoteur.MoteursQualite.Count == 2
+                    && vmMoteur.MoteursQualite.Contains("Qwen") && vmMoteur.MoteursQualite.Contains("Gemma"));
+                vmMoteur.MoteurQualite = "Gemma";
+                Verifie("le choix du moteur est retenu pour la prochaine ouverture",
+                    Vm36().MoteurQualite == "Gemma", Vm36().MoteurQualite);
+                vmMoteur.MoteurQualite = "Qwen";
+                Verifie("et il se change dans les deux sens",
+                    Vm36().MoteurQualite == "Qwen", Vm36().MoteurQualite);
+
+                // (j) On ne surveille la marge que là où le contenu bouge.
+                // La couverture est un gabarit à champs, l'annexe méthodologique une ressource
+                // figée : les signaler « à 95 % » sur chaque dossier apprendrait à ignorer le
+                // rapport. Remonté par le médecin le 17/09 après le premier essai réel.
+                var vmFixes = Vm36();
+                vmFixes.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":1,\"h\":1070,\"t\":\"MedCompanion\",\"x\":1},"
+                  + "{\"i\":7,\"h\":1070,\"t\":\"CARTOGRAPHIE DE L'ENFANT\",\"x\":0},"
+                  + "{\"i\":21,\"h\":1070,\"t\":\"Annexe Méthodologique\",\"x\":1}]");
+                await vmFixes.LancerPhase1Async();
+
+                Verifie("une page générique à 95 % n'est pas mise en vigilance",
+                    vmFixes.Constats.Count == 1
+                    && vmFixes.Constats[0].Ou.Contains("Page 7"),
+                    string.Join(" | ", vmFixes.Constats.Select(c => c.Ou)));
+                Verifie("le résumé ne compte que les pages réellement surveillées",
+                    vmFixes.Phase1Resume.Contains("1 à surveiller"), vmFixes.Phase1Resume);
+
+                // Mais un DÉBORDEMENT sur une page générique reste signalé : ce serait un
+                // défaut du gabarit, à corriger une fois pour tous les patients.
+                var vmFixeDeborde = Vm36();
+                vmFixeDeborde.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":21,\"h\":1200,\"t\":\"Annexe Méthodologique\",\"x\":1}]");
+                await vmFixeDeborde.LancerPhase1Async();
+                Verifie("un débordement sur une page générique est signalé quand même",
+                    vmFixeDeborde.Constats.Any(c =>
+                        c.Gravite == MedCompanion.ViewModels.Restitutions.GraviteConstat.Bloquant));
+
+                // Et quand tout va bien, le rapport dit ce qu'il n'a PAS regardé.
+                var vmDitTout = Vm36();
+                vmDitTout.MesurerPagesDansApercu = () => Task.FromResult<string?>(
+                    "[{\"i\":1,\"h\":700,\"t\":\"A\",\"x\":1},"
+                  + "{\"i\":2,\"h\":800,\"t\":\"B\",\"x\":0},"
+                  + "{\"i\":3,\"h\":900,\"t\":\"C\",\"x\":0}]");
+                await vmDitTout.LancerPhase1Async();
+                Verifie("le constat conforme distingue les pages suivies des pages génériques",
+                    vmDitTout.Constats[0].Message.Contains("2 pages qui varient")
+                    && vmDitTout.Constats[0].Message.Contains("La page générique"),
+                    vmDitTout.Constats[0].Message);
+
+                // La phase 1 ne consulte aucun modèle : ses constats ne portent pas de moteur.
+                Verifie("les constats de mise en page ne sont pas estampillés d'un moteur",
+                    vmDeborde.Constats.All(c => string.IsNullOrEmpty(c.Moteur)));
+            }
+            finally
+            {
+                try { Directory.Delete(racine36, recursive: true); } catch { /* dossier temporaire */ }
+            }
+        }
+
 
         Console.WriteLine();
         Console.WriteLine(echecs == 0 ? "=== SÉANCE 3 OK ===" : $"=== {echecs} ÉCHEC(S) ===");

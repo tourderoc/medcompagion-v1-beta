@@ -30,6 +30,7 @@
     <!-- Le banc d'essai Whisper (WhisperBench) rejoue des enregistrements avec les MÊMES réglages
          que Med : carte graphique et chemin CUDA résolus par WhisperStreamingService. -->
     <InternalsVisibleTo Include="WhisperBench" />
+    <InternalsVisibleTo Include="RestitutionBench" />
 
     <PackageReference Include="Whisper.net" Version="1.9.0" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.0" />

@@ -143,6 +143,15 @@ namespace MedCompanion
         public string LlamaCppLoadMode { get; set; } = "no-mmap";
 
         /// <summary>
+        /// Moteur utilisé par le service qualité du Dossier de Restitution : « qwen » ou
+        /// « gemma ». Les deux sont en essai — Qwen raisonne plus finement, Gemma répond plus
+        /// vite — et le médecin veut comparer leurs signalements sur ses propres dossiers.
+        /// Chaque constat porte le nom du moteur qui l'a produit, sinon la comparaison ne dit
+        /// rien. Retenu ici pour ne pas être redemandé à chaque ouverture.
+        /// </summary>
+        public string QualiteMoteur { get; set; } = "qwen";
+
+        /// <summary>
         /// Carte graphique réservée à llama-server, désignée par son UUID CUDA
         /// (nvidia-smi --query-gpu=uuid --format=csv). Vide = comportement d'origine, llama.cpp
         /// utilise toutes les cartes visibles.

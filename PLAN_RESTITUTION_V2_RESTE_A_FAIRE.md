@@ -1,6 +1,6 @@
 # PLAN — Dossier de Restitution V2 : ce qui reste à faire
 
-> **Statut :** refonte page par page terminée le 11 septembre 2026 (blocs 1 → 32), testée en réel. Le chantier 3.1 (annexe contacts) est fait le 16 septembre 2026 ; **trois chantiers restent ouverts.**
+> **Statut :** refonte page par page terminée le 11 septembre 2026 (blocs 1 → 32), testée en réel. Annexe contacts faite le 16/09. **Service qualité ouvert le 17/09 : phase 1 (mise en page) et repagination automatique faites — 0 débordement sur 175 pages mesurées** ; voir §6. Trois chantiers de fond restent ouverts.
 > **Date d'ouverture :** 11 septembre 2026
 > **Docs liés :** [PLAN_RESTITUTION_PARENTS.md](PLAN_RESTITUTION_PARENTS.md), [PLAN_CARTOGRAPHIE_ENFANT_V2.md](PLAN_CARTOGRAPHIE_ENFANT_V2.md), [CLAUDE.md](CLAUDE.md)
 
@@ -129,3 +129,89 @@ Reste à trancher si le dossier s'aligne sur les 5 axes de la V2, ou si les 8 sp
 
 - **Les intervenants dépendent de l'extraction à l'import.** Un bilan importé avant que `IntervenantService` n'existe, ou dont l'en-tête n'a pas été lu, ne produit pas de carte. Rien ne sera faux — il manquera simplement quelqu'un. À regarder sur les premiers dossiers réels.
 - **Le champ médecin traitant est libre.** « Dr » est ajouté seulement s'il est absent, mais un nom saisi bizarrement s'affichera tel quel.
+
+---
+
+## 6. Service qualité du dossier — ouvert le 17 septembre 2026
+
+Un bouton **🔍 Qualité** dans la barre du bas, **avant** l'export PDF : les phases 2 et 3 modifient les blocs, donc le PDF ; contrôler après obligerait à réexporter. Le panneau prend la place de l'éditeur à gauche, l'aperçu reste à droite — on regarde la page dont on parle.
+
+Trois phases, dans cet ordre. **Rien ne se corrige tout seul.**
+
+### 6.1 Phase 1 — Mise en page ✅ faite
+
+**Le défaut qu'elle révèle.** À l'écran, `.page` est en `min-height: 297mm` : une page trop longue s'allonge et tout reste lisible. En impression, elle passe en `height: 297mm; overflow: hidden` — Edge imprime 297 mm et **coupe le reste, sans trait ni avertissement**. L'aperçu montrait donc du contenu que le PDF supprimait, et rien ne prévenait le médecin.
+
+**La mesure, pas l'estimation.** La phase exécute un script dans le WebView2 de l'aperçu — le même moteur que l'export. Il neutralise le plancher `min-height` le temps de la mesure, sinon toute page non débordante mesurerait exactement 297 mm et la marge restante serait invisible.
+
+Trois niveaux de constat : **■ bloquant** (dépasse, en mm), **▲ vigilance** (au-dessus de 92 % de remplissage — tient, mais deux lignes de plus la couperaient), **● conforme**.
+
+**Deux règles tenues :**
+- *Un contrôle muet n'existe pas.* Quand tout va bien, le rapport dit combien de pages il a vérifiées, et combien il n'a pas surveillées. Sinon « rien à signaler » est indiscernable de « le contrôle n'a pas tourné ».
+- *On ne surveille la marge que là où le contenu bouge.* La couverture est un gabarit à champs, l'annexe méthodologique une ressource figée : les signaler « à 95 % » sur chaque dossier apprend à ignorer le rapport. Un **débordement** y reste signalé — ce serait un défaut du gabarit, à corriger une fois pour tous. *(Remonté par le médecin après le premier essai réel.)*
+
+### 6.2 Repagination automatique ✅ faite
+
+`RestitutionHtmlPreviewService.Repagination.cs` — un script injecté dans le HTML, qui tourne dans l'aperçu **et** dans l'export.
+
+Pour chaque page bâtie sur des cartes : il les retire, les remet une par une, et **mesure après chaque ajout**. Dès qu'une carte ferait dépasser l'A4, elle ouvre une page suivante — clone de l'ossature, « (suite) » au sous-titre. **Une carte n'est jamais coupée en deux.** Les numéros de page sont réécrits à la fin.
+
+**Deux niveaux**, parce qu'un ne suffisait pas : une page qui n'a qu'**une seule carte** débordant à elle seule (`Situation quotidienne et ressources`, +56 mm) se découpe **à l'intérieur** de la carte, sur ses blocs internes, en reproduisant son en-tête.
+
+`--virtual-time-budget=10000` a été ajouté à l'export PDF : sans lui, Edge pouvait imprimer avant que le script ait fini.
+
+**Résultat mesuré : 0 débordement sur 175 pages**, 7 dossiers dont un rempli en réel.
+
+### 6.3 Pourquoi l'estimation en C# a été abandonnée
+
+Deux estimateurs de hauteur ont été calibrés sur des mesures réelles. **Les deux se sont trompés** :
+
+| Estimateur | Erreur | Conséquence |
+|---|---|---|
+| Cartographie | surestime de 6 % | découpages inutiles |
+| Synthèse 5.2 | sous-estime de 21 % | page coupée quand même |
+
+Et la conclusion « le Projet thérapeutique a de la marge », tirée de 7 dossiers du poste, **s'est effondrée au premier dossier réellement rempli** : trois de ses pages dépassaient, jusqu'à **+76 mm** — une quinzaine de lignes perdues. L'échantillon n'était pas représentatif.
+
+**La leçon : une hauteur de texte ne se calcule pas hors du moteur qui la rend.**
+
+Les paginations C# (cartographie, synthèse 5.2, annexe contacts) sont **conservées** : elles donnent un meilleur point de départ, et restent le seul filet si le script ne s'exécute pas.
+
+**Piège à connaître :** le script vit dans une chaîne C#. Une erreur de syntaxe JavaScript **ne fait pas échouer la compilation** et désactive silencieusement toute la repagination. D'où l'attribut `data-repagine` posé sur `<html>` quand le script a tourné — que le banc vérifie. Trois bugs silencieux ont été trouvés comme ça le premier jour (clone inséré dans la page, clone pris sur la page courante, `return` prématuré sur les pages à une seule carte).
+
+### 6.4 Le banc de mesure — `RestitutionBench/`
+
+Un projet console qui charge les dossiers du disque, rend leur HTML, le mesure dans Edge headless et rapporte les hauteurs. **Il ne sort que des chiffres : aucun contenu de dossier n'est affiché.**
+
+C'est lui qui a corrigé chacune de mes erreurs de la journée. Il expose aussi `EstimationsSynthese52` (via `InternalsVisibleTo`) pour confronter estimation et mesure côte à côte.
+
+```
+dotnet run --project RestitutionBench            # les 7 plus gros dossiers
+dotnet run --project RestitutionBench -- 20      # les 20 plus gros
+```
+
+### 6.5 Phases 2 et 3 — à faire
+
+**Phase 2 — Contradictions.** Deux moteurs pour deux choses différentes :
+- **Déterministe (code)** pour les faits : une classe en page 1 et une autre en 7.5, une date de bilan qui diffère entre le parcours et le projet, un « professionnel en place » sans intervenant au dossier, un diagnostic cité dans la conclusion et absent de la synthèse.
+- **LLM** pour le sens : « l'enfant est bien entouré » face à « épuisement parental marqué ». Aucun code ne verra jamais ça.
+
+**Pas une passe sur les 25 pages d'un coup** — des **confrontations ciblées**, deux sections à la fois (Environnement ↔ 7.4, Synthèse ↔ Conclusion, Cartographie ↔ Synthèse, Projet ↔ Feuille de route). C'est là qu'un modèle modeste est fiable, et la trouvaille arrive déjà localisée.
+
+**Phase 3 — Linguistique : en réserve, volontairement.** Le seul tic repéré — « la mère est en couple avec le père » — venait du **prompt lui-même**, qui donnait « en couple avec X » en exemple sur la fiche de chaque parent. Corrigé à la source le 17/09. Réparer en aval coûterait un appel modèle par bloc à chaque dossier, pour toujours ; réparer la consigne a coûté trois lignes, une fois.
+
+**Méthode à retenir : quand un tic revient, chercher d'abord d'où il vient.** Le plus souvent, ce n'est pas le modèle qui dérape, c'est la consigne qui le lui demande.
+
+### 6.6 Le sélecteur de moteur
+
+Qwen ou Gemma, retenu dans les réglages (`QualiteMoteur`). Les deux sont en essai. Deux conditions pour que la comparaison vaille quelque chose :
+
+- **Chaque constat porte le nom du moteur qui l'a produit** — sinon on a deux listes sans savoir laquelle vient d'où.
+- **Ne rien accepter avant d'avoir lancé les deux** : une correction déjà appliquée change le texte que le second moteur lira, et on le jugerait sur un autre dossier que le premier.
+
+C'est la règle « propose, n'applique jamais » qui rend la comparaison possible.
+
+### 6.7 Ce qui reste ouvert
+
+- **35 pages sur 175 entre 90 et 100 %** de remplissage. Elles tiennent, la repagination les rattrapera si elles basculent, et la phase 1 les signale.
+- Les tests de la phase 1 utilisent des mesures simulées (section 36 du TestRunner). Le trajet réel WebView2 ↔ ViewModel a été validé à la main le 17/09.

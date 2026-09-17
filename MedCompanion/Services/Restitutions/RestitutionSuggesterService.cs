@@ -1073,8 +1073,11 @@ namespace MedCompanion.Services.Restitutions
                  "PAS de père (champ absent, formulaire non rempli), cherche comment le père est nommé " +
                  "ailleurs dans le dossier (notes, contexte patient) et utilise ce que tu y trouves. " +
                  "Si aucune des deux sources ne le nomme, écris « Non renseigné » — n'invente jamais. " +
-                 "Complète avec ce que les notes disent de lui : âge, activité professionnelle, lieu de vie, " +
-                 "statut conjugal/familial (célibataire, en couple avec X, recomposition…). " +
+                 "Complète avec ce que les notes disent de lui : âge, activité professionnelle, lieu de vie. " +
+                 "NE RÉPÈTE PAS ici la situation du couple parental : le récit familial vient de la dire, " +
+                 "et « en couple avec la mère » sur la fiche du père écrit trois fois le même fait. " +
+                 "Ne mentionne une situation conjugale QUE si elle apprend quelque chose sur LUI et " +
+                 "sur lui seul — nouveau conjoint, famille recomposée, vit seul. " +
                  "Format : `- Item : valeur.` Si une donnée manque écrire « Non renseigné ». " +
                  "Commence directement par la liste."),
 
@@ -1085,8 +1088,11 @@ namespace MedCompanion.Services.Restitutions
                  "PAS de mère (champ absent, formulaire non rempli), cherche comment la mère est nommée " +
                  "ailleurs dans le dossier (notes, contexte patient) et utilise ce que tu y trouves. " +
                  "Si aucune des deux sources ne la nomme, écris « Non renseigné » — n'invente jamais. " +
-                 "Complète avec ce que les notes disent d'elle : âge, activité professionnelle, lieu de vie, " +
-                 "statut conjugal/familial. " +
+                 "Complète avec ce que les notes disent d'elle : âge, activité professionnelle, lieu de vie. " +
+                 "NE RÉPÈTE PAS ici la situation du couple parental : le récit familial vient de la dire, " +
+                 "et « en couple avec le père » sur la fiche de la mère écrit trois fois le même fait. " +
+                 "Ne mentionne une situation conjugale QUE si elle apprend quelque chose sur ELLE et " +
+                 "sur elle seule — nouveau conjoint, famille recomposée, vit seule. " +
                  "Format : `- Item : valeur.` Si une donnée manque écrire « Non renseigné ». " +
                  "Commence directement par la liste."),
 
@@ -3896,6 +3902,19 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
         }
 
         /// <summary>
+        /// Traduit la valeur stockée de la situation parentale en une phrase lisible. Le champ est
+        /// persisté sous forme de code (« separes_garde_alternee ») ; le transmettre tel quel
+        /// obligeait le modèle à l'interpréter, alors que c'est un fait validé par le médecin.
+        /// </summary>
+        private static string SituationParentaleLisible(string code) => (code ?? "").Trim() switch
+        {
+            "ensemble"                 => "les parents vivent ensemble (en couple)",
+            "separes_garde_principale" => "parents séparés, garde principale chez un parent",
+            "separes_garde_alternee"   => "parents séparés, garde alternée",
+            _                          => code ?? ""
+        };
+
+        /// <summary>
         /// L'identité des parents et de l'accompagnant, telle que déclarée dans la fiche
         /// administrative — jamais devinée dans les notes.
         ///
@@ -3938,7 +3957,7 @@ Pour chaque puce : phrase courte clinique, sans verbe d'opinion. Si une sphère 
                 if (pere.Length > 0) sb.AppendLine($"  Père : {pere}");
                 if (mere.Length > 0) sb.AppendLine($"  Mère : {mere}");
                 if (acc.Length  > 0) sb.AppendLine($"  Accompagnant habituel : {acc}" + (string.IsNullOrWhiteSpace(accLien) ? "" : $" ({accLien})"));
-                if (!string.IsNullOrWhiteSpace(situation)) sb.AppendLine($"  Situation parentale : {situation}");
+                if (!string.IsNullOrWhiteSpace(situation)) sb.AppendLine($"  Situation parentale : {SituationParentaleLisible(situation)}");
                 return sb.ToString();
             }
             catch { return ""; }

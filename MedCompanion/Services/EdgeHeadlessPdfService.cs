@@ -74,6 +74,11 @@ namespace MedCompanion.Services
                     Arguments = $"--headless --disable-gpu --no-sandbox " +
                                 $"--user-data-dir=\"{HeadlessProfileDir}\" --no-first-run " +
                                 $"--print-to-pdf=\"{absPdf}\" " +
+                                // Laisse la repagination (script injecté dans le HTML) mesurer et
+                                // répartir les cartes AVANT l'impression. Sans ce budget, Edge peut
+                                // imprimer le document tel que le C# l'a produit — donc des pages
+                                // coupées. Voir RestitutionHtmlPreviewService.Repagination.cs.
+                                $"--virtual-time-budget=10000 " +
                                 $"--no-pdf-header-footer " +
                                 $"\"file:///{absHtml.Replace('\\', '/')}\"",
                     UseShellExecute        = false,
