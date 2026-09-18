@@ -398,8 +398,25 @@ namespace MedCompanion.Services.LLM
                     ? ""
                     : "--reasoning off --reasoning-budget 0 ";
 
+                // Plafond de la réflexion quand elle N'EST PAS coupée. Distinct de --reasoning-effort,
+                // qui règle l'intensité et non la durée : mesuré en effort « low », Qwen délibérait
+                // encore ~2 000 tokens pour ~640 de réponse. Le compteur est côté serveur, donc il
+                // s'applique aussi aux modèles qui ne déclarent pas la réflexion mais en produisent.
+                // Posé seulement si la réflexion reste active, pour ne pas contredire le
+                // `--reasoning-budget 0` ci-dessus, qui serait alors écrit deux fois.
+                var budgetArgs = (reasoningArgs.Length == 0 && profile.ReasoningBudget > 0)
+                    ? $"--reasoning-budget {profile.ReasoningBudget} " +
+                      "--reasoning-budget-message \"Je dispose de ce que je sais ; je rédige maintenant la réponse.\" "
+                    : "";
+
                 // Niveau de réflexion par défaut du serveur : uniquement pour les modèles dont le
                 // template l'accepte. L'envoyer à Gemma ferait échouer le rendu du template.
+                //
+                // ATTENTION EN DIAGNOSTIC : ce « medium » est un DÉFAUT DE REPLI, presque jamais
+                // celui qui s'applique. Chaque requête porte son propre `reasoning_effort`, issu du
+                // sélecteur de l'interface (voir LlamaCppProvider.BuildRequestBody), et il prime.
+                // Le journal de démarrage affiche donc « medium » alors que les générations tournent
+                // au niveau choisi — ne pas en conclure le niveau réel.
                 var effortArgs = profile.SupportsReasoning ? "--reasoning-effort medium " : "";
 
                 // Cache KV compressé : c'est lui qui rend les contextes longs possibles sans
@@ -421,7 +438,7 @@ namespace MedCompanion.Services.LLM
                                               $"-ngl 99 -np 1 -kvu " +
                                               $"-fa on " + kvArgs +
                                               $"-c {profile.ContextSize} " +
-                                              effortArgs +
+                                              effortArgs + budgetArgs +
                                               $"--port {Port}",
                     UseShellExecute        = false,
                     CreateNoWindow         = true,

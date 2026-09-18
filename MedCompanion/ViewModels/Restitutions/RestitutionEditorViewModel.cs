@@ -1787,7 +1787,7 @@ namespace MedCompanion.ViewModels.Restitutions
 
                     case "restitution_1page":
                         await RunProgressiveAsync(blocVm, "Restitution parents", 6,
-                            (cb, c) => _suggesterService.SuggestRestitution1PageProgressiveAsync(_currentReading!, cb, c), ct);
+                            (cb, c) => _suggesterService.SuggestRestitution1PageProgressiveAsync(_currentReading!, cb, c, _dossier), ct);
                         break;
 
                     case "patient_contexte_familial":
@@ -2008,7 +2008,7 @@ namespace MedCompanion.ViewModels.Restitutions
 
                             case "restitution_1page":
                                 await RunProgressiveAsync(blocVm, "Restitution parents", 6,
-                                    (cb, c) => _suggesterService.SuggestRestitution1PageProgressiveAsync(_currentReading, cb, c), ct);
+                                    (cb, c) => _suggesterService.SuggestRestitution1PageProgressiveAsync(_currentReading, cb, c, _dossier), ct);
                                 break;
 
                             case "patient_contexte_familial":

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json;
@@ -24,11 +25,12 @@ namespace MedCompanion.ViewModels.Restitutions
     }
 
     /// <summary>
-    /// Un constat du service qualité. Immuable : un constat décrit ce qui a été observé à un
-    /// instant, il ne se met pas à jour tout seul. Une nouvelle passe produit de nouveaux
-    /// constats.
+    /// Un constat du service qualité. Ce qu'il OBSERVE est figé : un constat décrit un instant, il
+    /// ne se réévalue pas tout seul, et une nouvelle passe produit de nouveaux constats. Seul
+    /// <see cref="Appliquee"/> bouge — il ne dit rien du texte observé, seulement si le médecin a
+    /// déjà tranché sur la proposition qui l'accompagne.
     /// </summary>
-    public class ConstatQualite
+    public class ConstatQualite : INotifyPropertyChanged
     {
         /// <summary>1 = mise en page, 2 = contradictions, 3 = linguistique.</summary>
         public int Phase { get; init; }
@@ -61,6 +63,51 @@ namespace MedCompanion.ViewModels.Restitutions
         };
 
         public string EtiquetteMoteur => string.IsNullOrWhiteSpace(Moteur) ? "" : $"· {Moteur}";
+
+        // ── Une proposition de réécriture (phase 3) ──────────────────────────
+        //
+        // ELLE NE S'APPLIQUE JAMAIS TOUTE SEULE. Le modèle propose, le médecin dispose : un texte
+        // clinique remis à des parents et à l'école ne se fait pas corriger dans le dos de celui qui
+        // le signe. Tant que personne n'a cliqué, le dossier n'a pas bougé.
+
+        /// <summary>Bloc visé, pour y reposer la réécriture acceptée.</summary>
+        public string BlocKey { get; init; } = "";
+
+        /// <summary>Chemin JSON dans le bloc, vide pour un bloc en texte simple.</summary>
+        public string Chemin { get; init; } = "";
+
+        /// <summary>Texte d'origine, tel qu'il est dans le dossier — la clé du remplacement.</summary>
+        public string Original { get; init; } = "";
+
+        /// <summary>Réécriture proposée, ou vide si le constat ne fait que signaler.</summary>
+        public string Proposition { get; init; } = "";
+
+        public bool EstProposition =>
+            !string.IsNullOrWhiteSpace(Original) && !string.IsNullOrWhiteSpace(Proposition);
+
+        private bool _appliquee;
+
+        /// <summary>
+        /// Passe à vrai une fois la réécriture posée dans le dossier. Le constat RESTE affiché —
+        /// le faire disparaître priverait le médecin de la trace de ce qu'il vient d'accepter — mais
+        /// l'action ne se rejoue pas : le texte d'origine n'est plus là.
+        /// </summary>
+        public bool Appliquee
+        {
+            get => _appliquee;
+            set
+            {
+                if (_appliquee == value) return;
+                _appliquee = value;
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Appliquee)));
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ProposableEncore)));
+            }
+        }
+
+        /// <summary>Une proposition encore en attente de décision.</summary>
+        public bool ProposableEncore => EstProposition && !Appliquee;
+
+        public event PropertyChangedEventHandler? PropertyChanged;
     }
 
     public partial class RestitutionEditorViewModel

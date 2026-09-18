@@ -85,10 +85,19 @@ namespace MedCompanion.Services.Restitutions
         /// Après chaque section, <paramref name="onSectionReady"/> reçoit le texte Markdown
         /// accumulé jusqu'ici — le ViewModel met à jour l'UI au fil de l'eau.
         /// </summary>
+        /// <param name="dossier">
+        /// Le dossier en cours, d'où la feuille de route tire le projet de soins. Sans lui la
+        /// feuille reste en attente : c'était le comportement AVANT le 17/09/2026, quand la page
+        /// parents se rédigeait au rang 2, donc forcément avant le projet. Depuis qu'elle se rédige
+        /// APRÈS le projet, le projet EST là au moment du clic — ne pas le passer obligeait le
+        /// médecin à cliquer « Reformuler » derrière chaque génération pour obtenir une section que
+        /// le réordonnancement était justement censé rendre automatique.
+        /// </param>
         public async Task SuggestRestitution1PageProgressiveAsync(
             DossierReading reading,
             Action<string> onSectionReady,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            RestitutionBase? dossier = null)
         {
             var context = reading.RenderForLlm();
             if (string.IsNullOrWhiteSpace(context))
@@ -109,19 +118,27 @@ namespace MedCompanion.Services.Restitutions
             {
                 if (ct.IsCancellationRequested) break;
 
-                // La feuille de route attend le projet de soins : on pose sa place et son attente,
-                // sans rien inventer.
+                // La feuille de route ne lit pas le dossier bleu : elle traduit le projet de soins.
+                // Si le projet est là, elle se rédige ici même — c'est tout l'intérêt d'avoir
+                // déplacé ce bloc après le projet. S'il manque encore, on pose sa place et son
+                // attente, sans rien inventer.
                 if (instruction == InstructionDifferee)
                 {
+                    var feuille = dossier == null
+                        ? FeuilleDeRouteEnAttente
+                        : await RedigerFeuilleDeRouteAsync(dossier, ct);
+
+                    if (ct.IsCancellationRequested) break;
+
                     if (accumulated.Length > 0) accumulated.AppendLine();
                     accumulated.AppendLine(title);
                     accumulated.AppendLine();
-                    accumulated.AppendLine(FeuilleDeRouteEnAttente);
+                    accumulated.AppendLine(feuille);
                     onSectionReady(accumulated.ToString());
                     continue;
                 }
 
-                var userPrompt = BuildSubsectionPrompt(context, instruction, blocp2.VoixCible);
+                var userPrompt = BuildSubsectionPrompt(context, instruction, blocp2.VoixCible, blocp2.Key);
                 var messages   = new List<(string role, string content)> { ("user", userPrompt) };
                 var result     = await _llmService.ChatAsync(systemPrompt, messages, 800, ct);
 
@@ -959,7 +976,7 @@ namespace MedCompanion.Services.Restitutions
 
             var blocp2 = new RestitutionBloc("restitution_1page", "Restitution 1-page parents", 2, "livre");
             var systemPrompt = BuildSystemPrompt(blocp2);
-            var userPrompt = BuildSubsectionPrompt(context, instruction, blocp2.VoixCible);
+            var userPrompt = BuildSubsectionPrompt(context, instruction, blocp2.VoixCible, blocp2.Key);
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(systemPrompt, messages, 800, ct);
             return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
@@ -1001,7 +1018,13 @@ namespace MedCompanion.Services.Restitutions
             return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
         }
 
-        private static string BuildSubsectionPrompt(string dossierContext, string instruction, string voixCible)
+        /// <param name="blocKey">
+        /// Clé du bloc, pour la consigne sur la cartographie. Facultative : sans elle aucune consigne
+        /// n'est posée, ce qui est le comportement juste pour tous les blocs situés APRÈS la
+        /// cartographie — c'est-à-dire tous sauf trois (1-page parents et situation actuelle). Les
+        /// nommer explicitement évite de faire passer une clé inutile à une douzaine d'appelants.
+        /// </param>
+        private static string BuildSubsectionPrompt(string dossierContext, string instruction, string voixCible, string blocKey = "")
         {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine(dossierContext);
@@ -1028,6 +1051,11 @@ namespace MedCompanion.Services.Restitutions
                 sb.AppendLine("RAPPEL TON OBLIGATOIRE : Voix mixte. Précis sans jargon excessif. " +
                               "Lisible par les parents ET utile aux professionnels. Réponds directement en Markdown.");
             }
+
+            // Même place qu'en génération standard : après le dossier, jamais avant — voir
+            // ContrainteCartographie et la note sur la réutilisation du préfixe.
+            var carto = ContrainteCartographie(blocKey);
+            if (carto.Length > 0) { sb.AppendLine(); sb.AppendLine(carto); }
 
             return sb.ToString();
         }
@@ -1127,7 +1155,7 @@ namespace MedCompanion.Services.Restitutions
                  "Commence directement par le paragraphe.")
             };
 
-            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocCf.VoixCible, subsections, onSectionReady, 500, ct);
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocCf.VoixCible, subsections, onSectionReady, 500, ct, blocCf.Key);
         }
 
         // ── Génération progressive Antécédents (6 sous-sections) ────────────
@@ -1204,7 +1232,7 @@ namespace MedCompanion.Services.Restitutions
                  "`Aucun antécédent de suivi ou de bilan identifié dans le dossier.`")
             };
 
-            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocAt.VoixCible, subsections, onSectionReady, 500, ct);
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocAt.VoixCible, subsections, onSectionReady, 500, ct, blocAt.Key);
         }
 
         // ── Génération progressive Situation actuelle (5 sous-sections) ─────
@@ -1227,7 +1255,7 @@ namespace MedCompanion.Services.Restitutions
 
             var subsections = GetSituationActuelleSubsections();
 
-            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocSa.VoixCible, subsections, onSectionReady, 400, ct);
+            await RunProgressiveSubsectionsAsync(systemPrompt, context, blocSa.VoixCible, subsections, onSectionReady, 400, ct, blocSa.Key);
         }
 
         private static (string Title, string Instruction)[] GetSituationActuelleSubsections() => new[]
@@ -1275,7 +1303,7 @@ namespace MedCompanion.Services.Restitutions
             var blocSa       = new RestitutionBloc("patient_situation_actuelle", "Situation actuelle", 7, "clinique");
             var systemPrompt = BuildSystemPrompt(blocSa);
             var (_, instruction) = subsections[sectionIndex];
-            var userPrompt   = BuildSubsectionPrompt(context, instruction, blocSa.VoixCible);
+            var userPrompt   = BuildSubsectionPrompt(context, instruction, blocSa.VoixCible, blocSa.Key);
             var messages     = new List<(string role, string content)> { ("user", userPrompt) };
             var result       = await _llmService.ChatAsync(systemPrompt, messages, 600, ct);
             return result.success ? result.result.Trim() : $"(Erreur : {result.error})";
@@ -1724,7 +1752,8 @@ namespace MedCompanion.Services.Restitutions
             (string Title, string Instruction)[] subsections,
             Action<string> onSectionReady,
             int maxTokensPerSection,
-            CancellationToken ct)
+            CancellationToken ct,
+            string blocKey = "")
         {
             var accumulated = new System.Text.StringBuilder();
 
@@ -1732,7 +1761,7 @@ namespace MedCompanion.Services.Restitutions
             {
                 if (ct.IsCancellationRequested) break;
 
-                var userPrompt = BuildSubsectionPrompt(context, instruction, voixCible);
+                var userPrompt = BuildSubsectionPrompt(context, instruction, voixCible, blocKey);
                 var messages   = new List<(string role, string content)> { ("user", userPrompt) };
                 var result     = await _llmService.ChatAsync(systemPrompt, messages, maxTokensPerSection, ct);
 
@@ -3635,6 +3664,158 @@ namespace MedCompanion.Services.Restitutions
             _          => "VOIX CIBLE — MIXTE : précis sans jargon excessif. Lisible par les parents ET utile aux professionnels. Définis brièvement les termes techniques quand tu en utilises."
         };
 
+        /// <summary>
+        /// Rang de chaque bloc DANS LE DOCUMENT, lu depuis la liste canonique.
+        ///
+        /// NE PAS utiliser le champ <c>Ordre</c> des RestitutionBloc reconstruits à la volée dans ce
+        /// service : ils sont créés avec des rangs approximatifs qui ne correspondent PAS au document
+        /// (« patient_contexte_familial » y est construit avec 6, alors que le document le place au
+        /// rang 5). Ces valeurs ne servent qu'à porter clé, titre et voix — s'en servir pour
+        /// raisonner sur l'ordre donnerait un résultat faux une fois sur deux.
+        /// </summary>
+        private static readonly Lazy<IReadOnlyDictionary<string, int>> RangsDuDocument =
+            new(() => new DossierRestitutionInitial().Blocs
+                        .GroupBy(b => b.Key)
+                        .ToDictionary(g => g.Key, g => g.First().Ordre));
+
+        /// <summary>Rang du premier bloc de cartographie : la frontière au-delà de laquelle elle est présentée.</summary>
+        private static readonly Lazy<int> RangPremiereCartographie =
+            new(() => RangsDuDocument.Value
+                        .Where(kv => kv.Key.StartsWith("carto_", StringComparison.Ordinal))
+                        .Select(kv => kv.Value)
+                        .DefaultIfEmpty(int.MaxValue)
+                        .Min());
+
+        /// <summary>
+        /// Consigne sur la cartographie, fonction de la place du bloc DANS LE DOCUMENT.
+        ///
+        /// LE PROBLÈME OBSERVÉ (18/09/2026, dossier Adrien G., bloc « Contexte familial », rang 5) :
+        /// « la stabilité du foyer est confirmée par la constance des scores parentaux entre les deux
+        /// passations de cartographie ». Le lecteur rencontre un outil, des scores et des passations
+        /// pages 3-4, alors que la cartographie n'est présentée qu'au rang 8.
+        ///
+        /// CE QU'ON CORRIGE, ET CE QU'ON NE CORRIGE PAS. Le constat clinique est juste et doit
+        /// rester : seule la CITATION de la source est prématurée. La consigne demande donc de
+        /// reformuler en observation, jamais de retirer l'information — un modèle à qui on dit
+        /// « ignore la cartographie » appauvrit son analyse au lieu de changer sa formulation.
+        ///
+        /// LA 1-PAGE PARENTS N'EST PAS UNE EXCEPTION, C'EST UN AUTRE RÉGIME. Elle se lit seule, hors
+        /// séquence, et s'adresse aux parents : l'ordre de lecture ne la contraint pas. Ce qui la
+        /// contraint est son destinataire — un score et un numéro de sphère ne veulent rien dire pour
+        /// un parent. Décision du Dr Lassoued le 18/09/2026, après avoir jugé le rendu de Qwen correct
+        /// sur ce bloc.
+        ///
+        /// Dérivée du rang, jamais d'une liste de clés écrite à la main : déplacer un bloc (ce qui
+        /// est déjà arrivé pour la feuille de route) doit déplacer la consigne avec lui.
+        /// </summary>
+        /// <summary>
+        /// Termes proscrits dans un bloc qui paraît AVANT la cartographie. Le mot « grille » y est :
+        /// il désigne l'outil aussi sûrement que son nom.
+        /// </summary>
+        private static readonly string[] TermesAvantCartographie =
+            { "cartographie", "sphère", "score", "passation", "grille" };
+
+        /// <summary>
+        /// Termes proscrits dans la 1-page parents. Liste plus courte : « cartographie » et
+        /// « grille » y restent permis, puisqu'on l'autorise justement à décrire la démarche. Ce qui
+        /// tombe, c'est ce qui n'a aucun sens pour un parent — un chiffre, un numéro de sphère, le
+        /// vocabulaire de passation.
+        /// </summary>
+        private static readonly string[] TermesPourLesParents =
+            { "sphère", "score", "passation" };
+
+        /// <summary>
+        /// Termes que ce bloc ne doit pas employer, ou une liste vide s'il est libre.
+        ///
+        /// UNE SEULE SOURCE POUR LA CONSIGNE ET POUR LE CONTRÔLE. La phase 2 du service qualité lit
+        /// cette même méthode : sans ça, le détecteur signalerait un mot que le prompt n'interdit
+        /// pas, ou laisserait passer ce qu'il interdit. Les deux avaient déjà divergé une fois sur
+        /// la phase 1 (4 px contre 2 px) et une page signalée n'était jamais réparable.
+        /// </summary>
+        internal static IReadOnlyList<string> TermesInterditsPour(string blocKey)
+        {
+            if (blocKey == "restitution_1page") return TermesPourLesParents;
+            if (!RangsDuDocument.Value.TryGetValue(blocKey, out var rang)) return Array.Empty<string>();
+            if (rang >= RangPremiereCartographie.Value) return Array.Empty<string>();
+            return TermesAvantCartographie;
+        }
+
+        internal static string ContrainteCartographie(string blocKey)
+        {
+            var termes = TermesInterditsPour(blocKey);
+            if (termes.Count == 0) return "";
+
+            var liste = string.Join(", ", termes.Select(t => $"« {t} »"));
+
+            if (blocKey == "restitution_1page")
+                return "RÉFÉRENCE À LA CARTOGRAPHIE — tu écris pour des parents : tu peux évoquer la " +
+                       "DÉMARCHE (un regard structuré sur plusieurs domaines du développement, une " +
+                       "grille remplie deux fois à quelques semaines d'intervalle) en mots simples. " +
+                       $"Mais JAMAIS de score, ni de numéro ou de nom de sphère. Mots à ne pas " +
+                       $"écrire : {liste}. Ils ne disent rien à un parent.";
+
+            return "INTERDIT ICI — CITER LA CARTOGRAPHIE. Ce bloc paraît AVANT que la cartographie " +
+                   $"soit présentée au lecteur : n'écris aucun de ces mots — {liste}. Sers-t'en pour " +
+                   "COMPRENDRE l'enfant, puis énonce ce que tu en tires comme une OBSERVATION. Écris " +
+                   "« le climat familial est resté stable sur les deux évaluations », pas « les " +
+                   "scores parentaux sont constants entre les deux passations ». Tu ne retires aucune " +
+                   "information : tu dis ce qui a été observé, pas où tu l'as lu.";
+        }
+
+        /// <summary>
+        /// Relecture linguistique de passages déjà rédigés — phase 3 du service qualité.
+        ///
+        /// CE QU'ON LUI DONNE : des passages de texte libre, découpés, NUMÉROTÉS, et rien d'autre.
+        /// Pas le dossier patient, pas les notes, pas les valeurs structurées. Le modèle n'a donc
+        /// aucun moyen de vérifier un fait, et c'est délibéré : la vérification des informations
+        /// reste au médecin. On ne lui demande que la langue.
+        ///
+        /// CE QU'ON LUI INTERDIT : ajouter, retirer ou nuancer une information. Une relecture de
+        /// style qui « améliore » le contenu produirait un dossier que le médecin croit avoir écrit
+        /// et qu'il n'a pas écrit — c'est la panne à éviter avant toutes les autres.
+        ///
+        /// Il ne renvoie QUE les passages à retoucher : demander une réécriture de tout produit des
+        /// reformulations gratuites, que le médecin doit ensuite trier une par une.
+        /// </summary>
+        public async Task<string> RelireLangueAsync(
+            IReadOnlyList<string> passages, CancellationToken ct = default)
+        {
+            if (passages == null || passages.Count == 0) return "[]";
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("Tu es relecteur de langue française. Tu relis des passages d'un document médical");
+            sb.AppendLine("déjà rédigé et validé. Tu ne juges QUE la langue.");
+            sb.AppendLine();
+            sb.AppendLine("INTERDICTIONS ABSOLUES :");
+            sb.AppendLine("- N'ajoute, ne retire et ne nuance AUCUNE information. Les faits sont acquis.");
+            sb.AppendLine("- Ne change aucun chiffre, aucune date, aucun nom, aucun terme diagnostique.");
+            sb.AppendLine("- Ne commente pas le contenu clinique : ce n'est pas ton rôle.");
+            sb.AppendLine();
+            sb.AppendLine("CE QUE TU CORRIGES : phrases mal construites, tournures lourdes ou");
+            sb.AppendLine("administratives, répétitions dans un même passage, formules creuses.");
+            sb.AppendLine();
+            sb.AppendLine("Ne renvoie QUE les passages qui en ont réellement besoin. Un passage correct");
+            sb.AppendLine("n'apparaît pas dans ta réponse — ne reformule jamais pour reformuler.");
+            sb.AppendLine();
+            sb.AppendLine("PASSAGES :");
+            for (int i = 0; i < passages.Count; i++)
+            {
+                sb.AppendLine($"--- {i} ---");
+                sb.AppendLine(passages[i]);
+            }
+            sb.AppendLine();
+            sb.AppendLine("Réponds UNIQUEMENT par un tableau JSON, sans texte autour :");
+            sb.AppendLine("[{\"i\": 0, \"reecrit\": \"le passage réécrit en entier\", \"motif\": \"ce qui n'allait pas, en 6 mots\"}]");
+            sb.AppendLine("Tableau vide [] si tout est correct.");
+
+            var messages = new List<(string role, string content)> { ("user", sb.ToString()) };
+            var result = await _llmService.ChatAsync(
+                "Tu es relecteur de langue française. Tu réponds uniquement en JSON.",
+                messages, 1200, ct);
+
+            return result.success ? result.result : "[]";
+        }
+
         private static string BuildUserPrompt(RestitutionBloc bloc, string dossierContext)
         {
             var focus = FocusHintForBloc(bloc.Key);
@@ -3646,6 +3827,13 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine();
             sb.AppendLine($"FOCUS SUGGÉRÉ : {focus}");
             sb.AppendLine();
+
+            // En queue de prompt, avec le focus : le dossier ouvre le prompt et c'est lui que le
+            // serveur réutilise d'un bloc à l'autre (88-96 % mesurés). Une consigne variable placée
+            // plus haut romprait ce préfixe commun et ferait relire le dossier à chaque bloc.
+            var carto = ContrainteCartographie(bloc.Key);
+            if (carto.Length > 0) { sb.AppendLine(carto); sb.AppendLine(); }
+
             sb.AppendLine("Rédige maintenant le contenu de ce bloc en suivant la voix cible et les règles strictes. Tu peux piocher partout dans le dossier ci-dessus, mais reste centré sur le focus.");
             return sb.ToString();
         }

@@ -104,6 +104,8 @@ if (!success) { MessageBox.Show(error); return; }
 
 ## Documents Liés
 
+- [REPRISE_19_09.md](REPRISE_19_09.md) — **À LIRE EN PREMIER pour reprendre le fil.** Les deux sujets en attente (bibliothèque d'infographies, montage du NVMe sur adaptateur PCIe x1 — et le nouveau chemin du projet à demander après le déplacement de `Desktop`), l'état non committé du 18/09, et les mesures moteur à ne pas refaire.
+
 - [VISION_V3.md](VISION_V3.md) — Vision écosystème Parent'aile + MedCompanion (V0 en cours)
 - [VISION_V2.md](VISION_V2.md) — Vision MedCompanion V2 (Focus Med, Mémoire, Mode Consultation)
 - [PLAN_MODE_CONSULTATION_V0A.md](PLAN_MODE_CONSULTATION_V0A.md) — Plan détaillé Mode Consultation V0a

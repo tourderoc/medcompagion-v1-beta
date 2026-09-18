@@ -99,7 +99,34 @@ namespace MedCompanion.Services.LLM
             set => _draftTokens = Math.Clamp(value, 1, 16);
         }
 
+        private int _reasoningBudget = -1;
+
+        /// <summary>
+        /// Plafond de la réflexion, en tokens (`--reasoning-budget`). -1 = illimité, valeur par
+        /// défaut du serveur.
+        ///
+        /// CE N'EST PAS UN NIVEAU DE RÉFLEXION. <c>--reasoning-effort</c> dit avec quelle intensité
+        /// le modèle délibère ; il ne borne PAS sa durée. Mesuré le 12/09/2026 sur le bloc 7.1 avec
+        /// Qwen3.8 en effort « low » — donc déjà au plancher : 2 642 tokens produits, dont ~2 000 de
+        /// délibération pour ~640 de réponse. Baisser encore l'effort ne pouvait donc rien donner ;
+        /// seul un plafond en tokens borne la rumination.
+        ///
+        /// Indépendant de <see cref="SupportsReasoning"/> : c'est un compteur côté serveur, pas une
+        /// variable de template. Il s'applique donc aussi à Gemma, qui ne déclare pas la réflexion
+        /// mais en produit — mesuré le 29/08/2026 : 4 770 caractères partis dans
+        /// <c>reasoning_content</c> et un <c>content</c> VIDE. Ici le plafond ne sert pas la vitesse
+        /// (Gemma génère 101 tokens en médiane) mais protège de cette panne-là.
+        /// </summary>
+        public int ReasoningBudget
+        {
+            get => _reasoningBudget;
+            set => _reasoningBudget = value < 0 ? -1 : Math.Clamp(value, 64, 32768);
+        }
+
         public required int DefaultDraftTokens { get; init; }
+
+        /// <summary>Plafond de réflexion par défaut, en tokens. -1 = illimité.</summary>
+        public int DefaultReasoningBudget { get; init; } = -1;
 
         /// <summary>
         /// Taille attendue du GGUF en octets, ou 0 si inconnue. Sert à distinguer un fichier
@@ -147,10 +174,11 @@ namespace MedCompanion.Services.LLM
 
         public void ResetToDefaults()
         {
-            ContextSize = DefaultContextSize;
-            MtpEnabled  = MtpAvailable;
-            DraftTokens = DefaultDraftTokens;
-            KvQuantized = true;
+            ContextSize     = DefaultContextSize;
+            MtpEnabled      = MtpAvailable;
+            DraftTokens     = DefaultDraftTokens;
+            KvQuantized     = true;
+            ReasoningBudget = DefaultReasoningBudget;
         }
     }
 
@@ -209,6 +237,9 @@ namespace MedCompanion.Services.LLM
             MaxContextSize     = 131072,
             DefaultContextSize = 32768,
             DefaultDraftTokens = 3,
+            // 800 : la délibération mesurée montait à ~2 000 tokens pour ~640 de réponse, effort
+            // « low » compris. Le plafond coupe la rumination, pas le raisonnement court.
+            DefaultReasoningBudget = 800,
             HasMtpTensors      = true,
             SupportsReasoning  = true,
         };
@@ -233,8 +264,14 @@ namespace MedCompanion.Services.LLM
             MmprojPath         = Chemin("gemma4-12b-qat-mmproj.gguf"),
             ExpectedSizeBytes  = 6_716_356_800,   // taille publiée par Hugging Face
             MaxContextSize     = 131072,
-            DefaultContextSize = 131072,
+            // 32768 et non 131072 : MESURÉ le 18/09/2026 sur 201 appels — médiane 5 533 tokens,
+            // p90 12 350, pire cas 17 739, et 582 en vision. Le cache KV était donc dimensionné pour
+            // 7,4 fois le pire cas réel. 32768 laisse 1,8× de marge au-dessus du maximum observé.
+            // 16384 avait été envisagé puis écarté : 4 appels sur 201 l'auraient dépassé.
+            DefaultContextSize = 32768,
             DefaultDraftTokens = 4,
+            // Filet de sécurité, pas un réglage de vitesse : voir ReasoningBudget (content vide).
+            DefaultReasoningBudget = 800,
             HasMtpTensors      = false,
             SupportsReasoning  = false,
         };
@@ -336,10 +373,23 @@ namespace MedCompanion.Services.LLM
                     if (profile == null) continue;
 
                     var parts = kv[1].Split(',');
-                    if (parts.Length >= 1 && int.TryParse(parts[0], out var ctx)) profile.ContextSize = ctx;
+
+                    // Le nombre de champs date la chaîne : quatre = enregistrée avant le 18/09/2026.
+                    // Ce jour-là, DEUX valeurs par défaut ont changé sur mesure (contexte de Gemma
+                    // 131072 → 32768, et le plafond de réflexion, nouveau). Or une valeur persistée
+                    // prime toujours sur un défaut : sans ce test, l'ancien 131072 serait relu à
+                    // chaque démarrage et le nouveau défaut n'aurait JAMAIS pris effet — la panne
+                    // classique du réglage « changé dans le code mais sans effet sur le poste ».
+                    // On ne relit donc pas le contexte d'une chaîne d'avant cette date ; MTP, cache
+                    // KV et brouillon, eux, sont conservés, leurs défauts n'ayant pas bougé. Dès la
+                    // première sauvegarde la chaîne a cinq champs et tout est relu normalement.
+                    var ancienneChaine = parts.Length < 5;
+
+                    if (!ancienneChaine && int.TryParse(parts[0], out var ctx)) profile.ContextSize = ctx;
                     if (parts.Length >= 2 && bool.TryParse(parts[1], out var mtp)) profile.MtpEnabled  = mtp;
                     if (parts.Length >= 3 && bool.TryParse(parts[2], out var kvq)) profile.KvQuantized = kvq;
                     if (parts.Length >= 4 && int.TryParse(parts[3], out var dft)) profile.DraftTokens = dft;
+                    if (parts.Length >= 5 && int.TryParse(parts[4], out var rsb)) profile.ReasoningBudget = rsb;
                 }
             }
             catch { /* réglages illisibles : on garde les valeurs par défaut */ }
@@ -350,7 +400,7 @@ namespace MedCompanion.Services.LLM
             try
             {
                 var raw = string.Join(";", All.Select(p =>
-                    $"{p.Id}={p.ContextSize},{p.MtpEnabled},{p.KvQuantized},{p.DraftTokens}"));
+                    $"{p.Id}={p.ContextSize},{p.MtpEnabled},{p.KvQuantized},{p.DraftTokens},{p.ReasoningBudget}"));
                 var settings = AppSettings.Load();
                 settings.LlamaCppProfileSettings = raw;
                 settings.LlamaCppEnabled         = Enabled;

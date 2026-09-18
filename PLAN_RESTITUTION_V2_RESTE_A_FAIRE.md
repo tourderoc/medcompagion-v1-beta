@@ -196,15 +196,33 @@ dotnet run --project RestitutionBench            # les 7 plus gros dossiers
 dotnet run --project RestitutionBench -- 20      # les 20 plus gros
 ```
 
-### 6.5 Phases 2 et 3 — à faire
+### 6.5 Phases 2 et 3 — premières couches faites le 18/09/2026
 
-**Phase 2 — Contradictions.** Deux moteurs pour deux choses différentes :
+**Phase 2 — couche déterministe ✅.** Bouton « Relire le document ». Relit le **texte produit**, jamais le dossier patient : la vérification des faits reste au médecin. Premier contrôle livré : **un bloc ne cite pas la cartographie avant qu'elle soit présentée au lecteur**.
+
+> Observé sur dossier réel : « Contexte familial » (rang 5) écrivait « la constance des scores parentaux entre les deux passations de cartographie », alors que la cartographie n'est présentée qu'au **rang 8**.
+
+Deux régimes, dérivés du **rang dans la liste canonique**, jamais d'une liste de clés écrite à la main — déplacer un bloc déplace la consigne avec lui :
+- **avant le rang 8** : ni « cartographie », ni « sphère », ni « score », ni « passation », ni « grille ». La consigne demande de **reformuler en observation**, pas de retirer l'information ;
+- **1-page parents** : autre régime, car elle se lit seule, hors séquence. La démarche peut être évoquée en mots simples ; les scores, numéros de sphère et « passation » non — ils ne disent rien à un parent.
+
+**Prévention dans le prompt + détection en phase 2**, et **une seule source pour les deux** : `RestitutionSuggesterService.TermesInterditsPour()`. Un test vérifie que chaque terme surveillé est nommé dans la consigne — c'est la leçon des deux seuils de la phase 1 qui avaient divergé.
+
+**Phase 3 — Langue ✅.** Bouton « Relire la langue », deux couches :
+- **déterministe** : neuf tournures nommées (« est en couple avec », « il est à noter que », « au niveau de »…) + les phrases recopiées d'un bloc à l'autre. Elle **conseille sans proposer de réécriture** : refaire une phrase demande de la comprendre ;
+- **modèle** : réécriture proposée, affichée avec le texte d'origine barré, acceptée d'un clic. Estampillée du moteur.
+
+**LA GARDE DE SÉCURITÉ — à ne jamais défaire.** `TexteLibreDuDossier` écarte `porteur`, `echeance`, `degre` et `statut` **avant même de les lire** : ce sont des vocabulaires fermés. « les parents » reformulé en « la famille » casserait les pastilles de couleur, l'annexe contacts et le tri de la feuille de route, **sans que rien ne le signale**. Double verrou (par la clé, puis par la valeur), et la liste des valeurs est **dérivée des vocabulaires eux-mêmes** pour qu'une nouvelle liste fermée soit protégée sans qu'on y pense.
+
+Autres garanties, toutes testées : rien n'est appliqué sans clic ; une retouche du médecin n'est jamais écrasée (le remplacement est ancré sur le texte d'origine) ; si le moteur échoue, la couche déterministe tient et le résumé le dit.
+
+**Reste à faire en phase 2 : la confrontation de deux sections par le modèle.** Deux moteurs pour deux choses différentes :
 - **Déterministe (code)** pour les faits : une classe en page 1 et une autre en 7.5, une date de bilan qui diffère entre le parcours et le projet, un « professionnel en place » sans intervenant au dossier, un diagnostic cité dans la conclusion et absent de la synthèse.
 - **LLM** pour le sens : « l'enfant est bien entouré » face à « épuisement parental marqué ». Aucun code ne verra jamais ça.
 
 **Pas une passe sur les 25 pages d'un coup** — des **confrontations ciblées**, deux sections à la fois (Environnement ↔ 7.4, Synthèse ↔ Conclusion, Cartographie ↔ Synthèse, Projet ↔ Feuille de route). C'est là qu'un modèle modeste est fiable, et la trouvaille arrive déjà localisée.
 
-**Phase 3 — Linguistique : en réserve, volontairement.** Le seul tic repéré — « la mère est en couple avec le père » — venait du **prompt lui-même**, qui donnait « en couple avec X » en exemple sur la fiche de chaque parent. Corrigé à la source le 17/09. Réparer en aval coûterait un appel modèle par bloc à chaque dossier, pour toujours ; réparer la consigne a coûté trois lignes, une fois.
+**Pourquoi la phase 3 a quand même été construite après avoir été mise « en réserve ».** Le tic « la mère est en couple avec le père » venait du **prompt**, corrigé à la source le 17/09 — et cette correction reste la bonne, elle ne coûte rien à l'exécution. La couche 3 ne la remplace pas : elle rattrape les **dossiers rédigés avant** la correction, et les fois où le modèle n'obéit pas. Sa couche déterministe ne consulte aucun modèle ; seule la couche de réécriture en appelle un, à la demande.
 
 **Méthode à retenir : quand un tic revient, chercher d'abord d'où il vient.** Le plus souvent, ce n'est pas le modèle qui dérape, c'est la consigne qui le lui demande.
 

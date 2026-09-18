@@ -2905,10 +2905,20 @@ class Program
                     && clesDossier[^1] == "conclusion");
 
                 // Un déplacement, pas une perte : les mêmes blocs, ni doublon ni disparu.
-                Verifie("aucun bloc n'est perdu ni dupliqué par le réordonnancement",
-                    clesEditeur.Count == clesDossier.Count
-                    && clesEditeur.Distinct().Count() == clesEditeur.Count
-                    && !clesDossier.Except(clesEditeur).Any());
+                // Un déplacement ne doit RIEN perdre — à une exception près, voulue : « Cadre
+                // Éducatif (ancien parcours) » n'est plus proposé à la rédaction depuis le 17/09/2026
+                // (plus de place dans le document), tout en restant dans les dossiers déjà écrits.
+                // Le test nomme cette exception au lieu de l'ignorer : si un autre bloc disparaissait
+                // un jour, il tomberait, alors qu'un simple écart de comptage laisserait passer.
+                var retires = clesDossier.Except(clesEditeur).ToList();
+
+                Verifie("aucun bloc n'est dupliqué par le réordonnancement",
+                    clesEditeur.Distinct().Count() == clesEditeur.Count);
+                Verifie("le seul bloc retiré de l'édition est le cadre éducatif de l'ancien parcours",
+                    retires.Count == 1 && retires[0] == "env_edu_f5",
+                    retires.Count == 0 ? "aucun retrait" : string.Join(", ", retires));
+                Verifie("aucun bloc n'est ajouté à l'édition",
+                    !clesEditeur.Except(clesDossier).Any());
 
                 // L'aperçu se construit depuis le dossier : il doit rendre la page parents avant
                 // les cartographies, quel que soit l'ordre dans lequel le médecin l'a rédigée.
@@ -3398,6 +3408,470 @@ class Program
             }
         }
 
+        // ── 38. La cartographie ne se cite pas avant d'avoir été présentée ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : un bloc ne cite pas la cartographie avant qu'elle soit lue ──");
+        {
+            // Observé le 18/09/2026 sur le dossier d'Adrien G. : le bloc « Contexte familial »
+            // (page 3-4) parlait de « la constance des scores parentaux entre les deux passations
+            // de cartographie », présentée seulement au rang 8.
+            static string C(string k) =>
+                MedCompanion.Services.Restitutions.RestitutionSuggesterService.ContrainteCartographie(k);
+
+            var rangs = new MedCompanion.Models.Restitutions.DossierRestitutionInitial().Blocs;
+            var rangCarto = rangs.Where(b => b.Key.StartsWith("carto_")).Min(b => b.Ordre);
+            Verifie("la cartographie est bien présentée après les blocs patient",
+                rangCarto == 8, $"rang {rangCarto}");
+
+            Verifie("le contexte familial reçoit l'interdiction",
+                C("patient_contexte_familial").Contains("INTERDIT ICI"));
+            Verifie("elle nomme les mots à ne pas écrire",
+                new[] { "cartographie", "sphère", "score", "passation", "grille" }
+                    .All(m => C("patient_motif").Contains(m)));
+            Verifie("elle demande de reformuler, PAS de retirer l'information",
+                C("patient_antecedents").Contains("Tu ne retires aucune information"));
+
+            // Le défaut corrigé était une CITATION, pas une analyse : le modèle doit continuer à
+            // se servir de la cartographie pour comprendre l'enfant.
+            Verifie("elle autorise explicitement à s'en servir pour comprendre",
+                C("patient_situation_actuelle").Contains("COMPRENDRE"));
+
+            // La 1-page parents relève d'un autre régime : elle se lit seule, hors séquence.
+            var p1 = C("restitution_1page");
+            Verifie("la 1-page parents garde le droit d'évoquer la démarche",
+                p1.Contains("DÉMARCHE") && !p1.Contains("INTERDIT ICI"));
+            Verifie("mais jamais un score ni un numéro de sphère",
+                p1.Contains("JAMAIS de score") && p1.Contains("passation"));
+
+            // Après la cartographie, plus aucune contrainte : elle est présentée, on la cite.
+            Verifie("les blocs de cartographie eux-mêmes sont libres",
+                C("carto_s1").Length == 0 && C("carto_s8").Length == 0);
+            Verifie("la synthèse et le projet sont libres",
+                C("synthese_diag_s1").Length == 0 && C("pt_s1").Length == 0
+                && C("conclusion").Length == 0);
+            Verifie("une clé inconnue ne pose aucune contrainte",
+                C("").Length == 0 && C("bloc_qui_n_existe_pas").Length == 0);
+
+            // La règle doit suivre le document, pas une liste écrite à la main : tout bloc placé
+            // avant la cartographie est contraint, sans exception ni oubli.
+            var avant = rangs.Where(b => b.Ordre < rangCarto && b.Key != "restitution_1page")
+                             .Select(b => b.Key).ToList();
+            Verifie("TOUS les blocs d'avant la cartographie sont couverts",
+                avant.All(k => C(k).Contains("INTERDIT ICI")),
+                string.Join(", ", avant.Where(k => !C(k).Contains("INTERDIT ICI"))));
+            Verifie("et aucun bloc d'après ne l'est",
+                rangs.Where(b => b.Ordre >= rangCarto).All(b => C(b.Key).Length == 0));
+        }
+
+        // ── 38b. La feuille de route se rédige dans la foulée, sans second clic ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : « Générer » la page parents rédige aussi la feuille de route ──");
+        {
+            var racine38b = Path.Combine(Path.GetTempPath(), "med_test_fdr_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(racine38b);
+            var chemin38b = new PathService(racine38b);
+
+            try
+            {
+                // Le bloc « page parents » se rédige depuis le 17/09 APRÈS le projet thérapeutique.
+                // La génération groupée posait pourtant toujours le texte d'attente, sans regarder
+                // si le projet existait : il fallait cliquer « Reformuler » derrière chaque
+                // génération — exactement ce que le réordonnancement devait éviter.
+                var reader38b = new MedCompanion.Services.Restitutions.DossierReaderService(chemin38b);
+
+                async Task<string> Generer(MedCompanion.Models.Restitutions.DossierRestitutionInitial d)
+                {
+                    var svc = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                        new FauxMoteur { Reponse = _ => (true, "1. **Orthophonie :** commencer le suivi.") },
+                        reader38b);
+                    var lecture = await reader38b.ReadAsync("GOBLET Adrien");
+                    var dernier = "";
+                    await svc.SuggestRestitution1PageProgressiveAsync(
+                        lecture, s => dernier = s, default, d);
+                    return dernier;
+                }
+
+                // Projet rédigé : la feuille de route doit sortir, pas le texte d'attente.
+                var dPlein = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dPlein.Blocs.First(b => b.Key == "pt_s1").ContenuValide =
+                    "Suivi orthophonique hebdomadaire à mettre en place dès la rentrée.";
+                var sortiePleine = await Generer(dPlein);
+
+                Verifie("la feuille de route est rédigée dès la génération",
+                    !sortiePleine.Contains(
+                        MedCompanion.Services.Restitutions.RestitutionSuggesterService.FeuilleDeRouteEnAttente),
+                    sortiePleine.Length > 260 ? sortiePleine[..260] : sortiePleine);
+                Verifie("sa section est bien présente dans la page",
+                    sortiePleine.Contains("**Notre feuille de route**"));
+
+                // Projet vide : le texte d'attente reste, on n'invente pas d'étapes.
+                var dVide = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                var sortieVide = await Generer(dVide);
+
+                Verifie("sans projet rédigé, l'attente est maintenue",
+                    sortieVide.Contains(
+                        MedCompanion.Services.Restitutions.RestitutionSuggesterService.FeuilleDeRouteEnAttente));
+
+                // Sans dossier du tout (appel historique), le comportement d'avant est conservé.
+                var svcSeul = new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                    new FauxMoteur { Reponse = _ => (true, "x") }, reader38b);
+                var lecture2 = await reader38b.ReadAsync("GOBLET Adrien");
+                var sansDossier = "";
+                await svcSeul.SuggestRestitution1PageProgressiveAsync(lecture2, s => sansDossier = s);
+                Verifie("sans dossier passé, l'attente est maintenue elle aussi",
+                    sansDossier.Contains(
+                        MedCompanion.Services.Restitutions.RestitutionSuggesterService.FeuilleDeRouteEnAttente));
+            }
+            finally
+            {
+                try { Directory.Delete(racine38b, recursive: true); } catch { /* dossier temporaire */ }
+            }
+        }
+
+        // ── 39. Phase 2 : le document relu contre ses propres règles ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : phase 2, la citation prématurée est détectée ──");
+        {
+            var racine39 = Path.Combine(Path.GetTempPath(), "med_test_ph2_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(racine39);
+            var chemin39 = new PathService(racine39);
+
+            try
+            {
+                MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel Vm(
+                    MedCompanion.Models.Restitutions.DossierRestitutionInitial d)
+                {
+                    var r = new MedCompanion.Services.Restitutions.DossierReaderService(chemin39);
+                    return new MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel(
+                        d, "GOBLET Adrien",
+                        new MedCompanion.Services.Restitutions.RestitutionService(chemin39),
+                        new MedCompanion.Services.Restitutions.RestitutionSuggesterService(
+                            new FauxMoteur { Reponse = _ => (true, "x") }, r),
+                        r);
+                }
+
+                // Le cas réel du 18/09/2026, recopié tel quel.
+                var d39 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                d39.Blocs.First(b => b.Key == "patient_contexte_familial").ContenuValide =
+                    "**Récit familial**\n\nLes parents vivent ensemble et constituent un socle parental "
+                  + "solide ; la stabilité du foyer est confirmée par la constance des scores parentaux "
+                  + "entre les deux passations de cartographie.";
+
+                var vm39 = Vm(d39);
+                vm39.LancerPhase2();
+
+                var ph2 = vm39.Constats.Where(c => c.Phase == 2).ToList();
+                Verifie("la citation prématurée est détectée", ph2.Count == 1, $"{ph2.Count} constat(s)");
+                Verifie("le constat désigne le bloc, pas une page",
+                    ph2[0].Ou == "Contexte familial", ph2[0].Ou);
+                Verifie("il nomme les mots trouvés",
+                    ph2[0].Message.Contains("« score »") && ph2[0].Message.Contains("« passation »")
+                    && ph2[0].Message.Contains("« cartographie »"), ph2[0].Message);
+                // L'extrait doit montrer le DÉBUT du problème, pas le dernier mot trouvé.
+                Verifie("il cite la phrase pour qu'elle soit retrouvable",
+                    ph2[0].Message.Contains("scores parentaux"), ph2[0].Message);
+                // « Ne commence pas au milieu d'un mot » se vérifie contre la source, pas sur
+                // l'apparence : un extrait pris en cours de phrase débute légitimement par une
+                // minuscule. La propriété réelle est qu'il s'aligne sur une frontière de mot.
+                var src39 = "La stabilité du foyer est confirmée par la constance des scores parentaux.";
+                var p39 = MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel
+                            .PremierPassage(src39, "score", 12);
+                Verifie("l'extrait s'aligne sur une frontière de mot",
+                    p39 != null && (src39.StartsWith(p39.Value.Extrait, StringComparison.Ordinal)
+                                    || src39.Contains(" " + p39.Value.Extrait, StringComparison.Ordinal)),
+                    p39?.Extrait ?? "(null)");
+                Verifie("et il contient bien le terme cherché",
+                    p39 != null && p39.Value.Extrait.Contains("scores"), p39?.Extrait ?? "(null)");
+                Verifie("il dit quoi faire",
+                    ph2[0].Message.Contains("dites ce qui a été observé"));
+
+                // Aucun modèle n'intervient : l'estampille resterait mensongère.
+                Verifie("aucun moteur n'est estampillé sur cette couche déterministe",
+                    ph2.All(c => string.IsNullOrEmpty(c.Moteur)));
+
+                // Trois mots dans la même phrase = UN constat : le médecin corrige un bloc.
+                Verifie("trois termes dans un bloc ne font qu'un constat", ph2.Count == 1);
+
+                // Le rapport dit son périmètre.
+                Verifie("le résumé dit combien de blocs ont été relus",
+                    vm39.Phase2Resume.Contains("blocs relus") && vm39.Phase2Resume.Contains("1 citent"),
+                    vm39.Phase2Resume);
+
+                // Un document propre ne produit rien, mais le dit.
+                var dOk = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dOk.Blocs.First(b => b.Key == "patient_contexte_familial").ContenuValide =
+                    "**Récit familial**\n\nLe climat familial est resté stable sur les deux évaluations.";
+                var vmOk = Vm(dOk);
+                vmOk.LancerPhase2();
+
+                Verifie("une formulation correcte ne déclenche rien",
+                    !vmOk.Constats.Any(c => c.Phase == 2));
+                Verifie("mais le contrôle dit quand même ce qu'il a relu",
+                    vmOk.Phase2Resume.Contains("aucun ne la cite"), vmOk.Phase2Resume);
+
+                // Après la cartographie, citer est normal : aucun constat.
+                var dApres = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dApres.Blocs.First(b => b.Key == "synthese_diag_s4").ContenuValide =
+                    "Les scores de la cartographie convergent entre les deux passations.";
+                var vmApres = Vm(dApres);
+                vmApres.LancerPhase2();
+                Verifie("citer la cartographie APRÈS sa présentation est normal",
+                    !vmApres.Constats.Any(c => c.Phase == 2));
+
+                // La 1-page parents : la démarche passe, le score non.
+                var dP1 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dP1.Blocs.First(b => b.Key == "restitution_1page").ContenuValide =
+                    "Nous avons regardé plusieurs domaines du développement d'Adrien, à l'aide d'une "
+                  + "grille que vous avez remplie deux fois.";
+                var vmP1 = Vm(dP1);
+                vmP1.LancerPhase2();
+                Verifie("la 1-page peut décrire la démarche sans être signalée",
+                    !vmP1.Constats.Any(c => c.Phase == 2),
+                    string.Join(" | ", vmP1.Constats.Where(c => c.Phase == 2).Select(c => c.Message)));
+
+                var dP2 = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dP2.Blocs.First(b => b.Key == "restitution_1page").ContenuValide =
+                    "Le score d'Adrien en sphère 4 est de 3 sur 6.";
+                var vmP2 = Vm(dP2);
+                vmP2.LancerPhase2();
+                var cP2 = vmP2.Constats.Where(c => c.Phase == 2).ToList();
+                Verifie("mais un score adressé aux parents est signalé", cP2.Count == 1);
+                Verifie("avec le message propre à la page parents",
+                    cP2.Count == 1 && cP2[0].Message.Contains("destinée aux parents"),
+                    cP2.Count == 1 ? cP2[0].Message : "");
+
+                // Relancer ne doit pas empiler.
+                vm39.LancerPhase2();
+                Verifie("relancer la phase 2 ne double pas les constats",
+                    vm39.Constats.Count(c => c.Phase == 2) == 1);
+
+                // Détecteur et consigne lisent la MÊME liste : ils avaient déjà divergé en phase 1.
+                foreach (var cle in new[] { "patient_contexte_familial", "restitution_1page" })
+                {
+                    var termes = MedCompanion.Services.Restitutions.RestitutionSuggesterService
+                                    .TermesInterditsPour(cle);
+                    var consigne = MedCompanion.Services.Restitutions.RestitutionSuggesterService
+                                    .ContrainteCartographie(cle);
+                    Verifie($"chaque terme surveillé est nommé dans la consigne ({cle})",
+                        termes.All(t => consigne.Contains(t)),
+                        string.Join(", ", termes.Where(t => !consigne.Contains(t))));
+                }
+
+                // L'accent ne doit pas faire rater une occurrence.
+                Verifie("« sphere » sans accent est trouvé comme « sphère »",
+                    MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel
+                        .PremierExtrait("Voir la sphere 4 du bilan.", "sphère") != null);
+                Verifie("la casse n'empêche pas la détection",
+                    MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel
+                        .PremierExtrait("SCORE global élevé.", "score") != null);
+                Verifie("un terme absent ne renvoie rien",
+                    MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel
+                        .PremierExtrait("Un texte sans rien de tel.", "passation") == null);
+
+                // L'extrait doit tomber sur le bon passage malgré les accents du texte.
+                var ex = MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel
+                            .PremierExtrait("Après évaluation répétée, les scores parentaux sont constants.", "score");
+                Verifie("l'extrait encadre bien le terme trouvé",
+                    ex != null && ex.Contains("scores parentaux"), ex ?? "(null)");
+            }
+            finally
+            {
+                try { Directory.Delete(racine39, recursive: true); } catch { /* dossier temporaire */ }
+            }
+        }
+
+
+        // ── 40. Phase 3 : la langue, sans jamais toucher aux valeurs structurées ──
+        Console.WriteLine();
+        Console.WriteLine("── restitution : phase 3, la couche linguistique ──");
+        {
+            var racine40 = Path.Combine(Path.GetTempPath(), "med_test_ph3_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(racine40);
+            var chemin40 = new PathService(racine40);
+
+            try
+            {
+                var reader40 = new MedCompanion.Services.Restitutions.DossierReaderService(chemin40);
+
+                MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel Vm(
+                    MedCompanion.Models.Restitutions.DossierRestitutionInitial d, FauxMoteur moteur)
+                    => new(d, "GOBLET Adrien",
+                           new MedCompanion.Services.Restitutions.RestitutionService(chemin40),
+                           new MedCompanion.Services.Restitutions.RestitutionSuggesterService(moteur, reader40),
+                           reader40);
+
+                // ── LA GARDE DE SÉCURITÉ ────────────────────────────────────
+                // Une valeur de liste fermée reformulée casse les pastilles, l'annexe contacts et
+                // le tri de la feuille de route, sans que rien ne le signale. Elle ne doit jamais
+                // sortir de l'extraction.
+                var blocPt = new MedCompanion.Models.Restitutions.RestitutionBloc(
+                    "pt_s1", "Projet — Prise en charge médicale", 27, "clinique")
+                {
+                    ContenuValide = """
+                    {"intro":"Adrien présente des difficultés attentionnelles qui justifient un suivi rapproché.",
+                     "objectifs":["Stabiliser l'attention en classe sur la durée d'une séance complète."],
+                     "bilans":[{"quoi":"Bilan neuropsychologique complet à visée diagnostique",
+                                "porteur":"professionnel à trouver","echeance":"sous 1 mois",
+                                "degre":"indispensable","statut":"à demander"}]}
+                    """
+                };
+
+                var segs = MedCompanion.ViewModels.Restitutions.TexteLibreDuDossier.Extraire(blocPt);
+                var textes = segs.Select(s => s.Texte).ToList();
+
+                Verifie("le porteur n'est jamais extrait",
+                    !textes.Any(t => t.Contains("professionnel à trouver")), string.Join(" | ", textes));
+                Verifie("l'échéance non plus", !textes.Any(t => t.Contains("sous 1 mois")));
+                Verifie("le degré non plus", !textes.Any(t => t.Contains("indispensable")));
+                Verifie("le statut non plus", !textes.Any(t => t.Contains("à demander")));
+
+                Verifie("mais le texte libre l'est",
+                    textes.Any(t => t.StartsWith("Adrien présente"))
+                    && textes.Any(t => t.Contains("Stabiliser l'attention"))
+                    && textes.Any(t => t.Contains("Bilan neuropsychologique")),
+                    string.Join(" | ", textes));
+
+                Verifie("le chemin permet de situer le passage",
+                    segs.Any(s => s.Chemin == "intro") && segs.Any(s => s.Chemin == "bilans[0].quoi"),
+                    string.Join(" | ", segs.Select(s => s.Chemin)));
+
+                // Une valeur de vocabulaire rangée sous une clé inattendue reste écartée.
+                var blocPiege = new MedCompanion.Models.Restitutions.RestitutionBloc(
+                    "pt_s2", "Projet", 28, "clinique")
+                {
+                    ContenuValide = """{"intro":"les parents","autreChamp":"cette année scolaire"}"""
+                };
+                Verifie("une valeur fermée sous une clé inattendue est écartée aussi",
+                    MedCompanion.ViewModels.Restitutions.TexteLibreDuDossier.Extraire(blocPiege).Count == 0);
+
+                // Les vocabulaires sont dérivés, pas recopiés.
+                var vf = MedCompanion.ViewModels.Restitutions.TexteLibreDuDossier.ValeursFermees;
+                Verifie("les valeurs surveillées viennent des vocabulaires eux-mêmes",
+                    MedCompanion.ViewModels.Restitutions.PtActionVm.PorteursPossibles.All(vf.Contains)
+                    && MedCompanion.ViewModels.Restitutions.PtActionVm.EcheancesPossibles.All(vf.Contains)
+                    && MedCompanion.ViewModels.Restitutions.PtActionVm.StatutsPossibles.All(vf.Contains)
+                    && MedCompanion.ViewModels.Restitutions.PtIndicationVm.DegresPossibles.All(vf.Contains));
+
+                // ── Couche déterministe ─────────────────────────────────────
+                var dTour = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dTour.Blocs.First(b => b.Key == "patient_contexte_familial").ContenuValide =
+                    "**Récit familial**\n\nLe père est en couple avec la mère depuis une quinzaine "
+                  + "d'années, et le climat du foyer est décrit comme apaisé par les deux parents.";
+
+                var vmTour = Vm(dTour, new FauxMoteur { Reponse = _ => (true, "[]") });
+                await vmTour.LancerPhase3Async();
+                var cTour = vmTour.Constats.Where(c => c.Phase == 3).ToList();
+
+                Verifie("« est en couple avec » est repéré", cTour.Count >= 1, $"{cTour.Count}");
+                Verifie("le constat dit quoi écrire à la place",
+                    cTour.Any(c => c.Message.Contains("les parents vivent ensemble")),
+                    cTour.Count > 0 ? cTour[0].Message : "");
+                Verifie("il ne propose PAS de réécriture mécanique",
+                    cTour.All(c => !c.EstProposition));
+
+                // ── Le modèle propose, il n'applique pas ────────────────────
+                var dProp = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                const string original =
+                    "Il est à noter que la situation scolaire d'Adrien demeure au niveau du plan "
+                  + "des apprentissages une source de préoccupation pour l'ensemble des adultes.";
+                const string reecrit =
+                    "La situation scolaire d'Adrien reste une source de préoccupation pour les adultes qui l'entourent.";
+                dProp.Blocs.First(b => b.Key == "patient_situation_actuelle").ContenuValide = original;
+
+                var moteurProp = new FauxMoteur
+                {
+                    Reponse = _ => (true, $$"""[{"i":0,"reecrit":"{{reecrit}}","motif":"Phrase alourdie par deux formules vides"}]""")
+                };
+                var vmProp = Vm(dProp, moteurProp);
+                await vmProp.LancerPhase3Async();
+
+                var prop = vmProp.Constats.FirstOrDefault(c => c.Phase == 3 && c.EstProposition);
+                Verifie("le moteur produit une proposition", prop != null);
+                Verifie("elle porte le nom du moteur",
+                    prop != null && !string.IsNullOrEmpty(prop.Moteur), prop?.Moteur ?? "");
+                Verifie("elle montre le texte d'origine et la réécriture",
+                    prop != null && prop.Original == original && prop.Proposition == reecrit);
+
+                // RIEN n'a bougé tant que personne n'a cliqué.
+                Verifie("le dossier n'a PAS été modifié par la relecture",
+                    dProp.Blocs.First(b => b.Key == "patient_situation_actuelle").ContenuValide == original);
+
+                vmProp.AppliquerProposition(prop!);
+                Verifie("après acceptation, le dossier porte la réécriture",
+                    dProp.Blocs.First(b => b.Key == "patient_situation_actuelle").ContenuValide == reecrit);
+                Verifie("le constat se marque comme appliqué", prop!.Appliquee && !prop.ProposableEncore);
+
+                // Rejouer ne doit rien refaire.
+                vmProp.AppliquerProposition(prop);
+                Verifie("réappliquer ne modifie plus rien",
+                    dProp.Blocs.First(b => b.Key == "patient_situation_actuelle").ContenuValide == reecrit);
+
+                // Texte retouché entre-temps : on n'écrase pas le travail du médecin.
+                var dBouge = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dBouge.Blocs.First(b => b.Key == "patient_situation_actuelle").ContenuValide = original;
+                var vmBouge = Vm(dBouge, moteurProp);
+                await vmBouge.LancerPhase3Async();
+                var pBouge = vmBouge.Constats.First(c => c.Phase == 3 && c.EstProposition);
+
+                dBouge.Blocs.First(b => b.Key == "patient_situation_actuelle").ContenuValide =
+                    "Le médecin a tout réécrit lui-même entre-temps.";
+                vmBouge.AppliquerProposition(pBouge);
+                Verifie("une retouche du médecin n'est jamais écrasée",
+                    dBouge.Blocs.First(b => b.Key == "patient_situation_actuelle").ContenuValide
+                        == "Le médecin a tout réécrit lui-même entre-temps.");
+
+                // ── Robustesse de la lecture du modèle ──────────────────────
+                var LR = (Func<string?, List<(int, string, string)>>)
+                         MedCompanion.ViewModels.Restitutions.RestitutionEditorViewModel.LireReecritures;
+
+                Verifie("une réponse vide ne casse rien", LR("").Count == 0 && LR(null).Count == 0);
+                Verifie("une réponse bavarde est lue quand même",
+                    LR("Voici mes corrections :\n[{\"i\":1,\"reecrit\":\"x\",\"motif\":\"y\"}]\nVoilà.").Count == 1);
+                Verifie("une réponse en bloc de code est lue",
+                    LR("```json\n[{\"i\":0,\"reecrit\":\"a\",\"motif\":\"b\"}]\n```").Count == 1);
+                Verifie("un JSON invalide ne produit aucune proposition et n'échoue pas",
+                    LR("[{\"i\":0, ceci n'est pas du json").Count == 0);
+
+                // Le moteur en panne ne doit pas emporter la couche déterministe.
+                var vmPanne = Vm(dTour, new FauxMoteur { Reponse = _ => (false, "moteur indisponible") });
+                await vmPanne.LancerPhase3Async();
+                Verifie("si le moteur échoue, les tournures restent signalées",
+                    vmPanne.Constats.Any(c => c.Phase == 3));
+
+                // Le rapport dit son périmètre.
+                Verifie("le résumé dit combien de passages ont été relus",
+                    vmTour.Phase3Resume.Contains("passages relus"), vmTour.Phase3Resume);
+
+                // Relancer ne doit pas empiler.
+                var avant40 = vmTour.Constats.Count(c => c.Phase == 3);
+                await vmTour.LancerPhase3Async();
+                Verifie("relancer la phase 3 ne double pas les constats",
+                    vmTour.Constats.Count(c => c.Phase == 3) == avant40);
+
+                // Chaque phase ne remplace QUE ses propres constats : lancer la langue ne doit pas
+                // effacer ce que la relecture des contradictions vient de signaler.
+                var dDeux = new MedCompanion.Models.Restitutions.DossierRestitutionInitial();
+                dDeux.Blocs.First(b => b.Key == "patient_contexte_familial").ContenuValide =
+                    "**Récit familial**\n\nLe père est en couple avec la mère ; la stabilité est "
+                  + "confirmée par la constance des scores entre les deux passations de cartographie.";
+
+                var vmDeux = Vm(dDeux, new FauxMoteur { Reponse = _ => (true, "[]") });
+                vmDeux.LancerPhase2();
+                var ph2Avant = vmDeux.Constats.Count(c => c.Phase == 2);
+                Verifie("la phase 2 a bien produit un constat sur ce dossier", ph2Avant == 1, $"{ph2Avant}");
+
+                await vmDeux.LancerPhase3Async();
+                Verifie("la phase 3 n'efface pas les constats de la phase 2",
+                    vmDeux.Constats.Count(c => c.Phase == 2) == ph2Avant,
+                    $"{vmDeux.Constats.Count(c => c.Phase == 2)} après");
+                Verifie("et elle a bien ajouté les siens",
+                    vmDeux.Constats.Any(c => c.Phase == 3));
+            }
+            finally
+            {
+                try { Directory.Delete(racine40, recursive: true); } catch { /* dossier temporaire */ }
+            }
+        }
 
         Console.WriteLine();
         Console.WriteLine(echecs == 0 ? "=== SÉANCE 3 OK ===" : $"=== {echecs} ÉCHEC(S) ===");

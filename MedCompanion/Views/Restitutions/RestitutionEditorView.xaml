@@ -2217,11 +2217,81 @@
                     </StackPanel>
                 </Border>
 
-                <!-- Phases 2 et 3 : pas encore branchées -->
-                <Border DockPanel.Dock="Bottom" Padding="14,10" Background="#FBFCFD"
-                        BorderBrush="#E8EDF3" BorderThickness="0,1,0,0">
-                    <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6"
-                               Text="Phases 2 (contradictions) et 3 (linguistique) : pas encore branchées."/>
+                <!-- Phase 2 — première couche : le document confronté à ses propres règles.
+                     Aucun modèle n'intervient ici, d'où l'absence d'estampille moteur. -->
+                <Border DockPanel.Dock="Top" Padding="14,12" BorderBrush="#E8EDF3" BorderThickness="0,0,0,1">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Command="{Binding LancerPhase2Command}"
+                                    Padding="12,6" FontSize="11" Cursor="Hand" VerticalAlignment="Top"
+                                    Background="#6C3483" Foreground="White" BorderThickness="0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#5B2C6F"/></Trigger>
+                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#BDC3C7"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <TextBlock Text="Relire le document"/>
+                            </Button>
+                            <StackPanel>
+                                <TextBlock Text="2 · Contradictions" FontSize="12" FontWeight="SemiBold" Foreground="#1B4F72"/>
+                                <TextBlock Text="{Binding Phase2Resume}" FontSize="11" Foreground="#16A085" Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6" Margin="0,7,0,0"
+                                   Text="Relit le TEXTE PRODUIT, jamais le dossier patient : la vérification des informations reste la vôtre. Cette première couche ne consulte aucun modèle — elle vérifie que le document respecte ses propres règles, par exemple qu&#39;il ne cite pas la cartographie avant de l&#39;avoir présentée au lecteur."/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Phase 3 — langue. Deux couches : les tournures qu'on sait nommer (sans modèle),
+                     puis la relecture par le moteur choisi, qui PROPOSE sans jamais appliquer. -->
+                <Border DockPanel.Dock="Top" Padding="14,12" BorderBrush="#E8EDF3" BorderThickness="0,0,0,1">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Command="{Binding LancerPhase3Command}"
+                                    Padding="12,6" FontSize="11" Cursor="Hand" VerticalAlignment="Top"
+                                    Background="#6C3483" Foreground="White" BorderThickness="0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#5B2C6F"/></Trigger>
+                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#BDC3C7"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <TextBlock>
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="Relire la langue"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Phase3EnCours}" Value="True">
+                                                    <Setter Property="Text" Value="⏳ Relecture…"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Button>
+                            <StackPanel>
+                                <TextBlock Text="3 · Langue" FontSize="12" FontWeight="SemiBold" Foreground="#1B4F72"/>
+                                <TextBlock Text="{Binding Phase3Resume}" FontSize="11" Foreground="#16A085" Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6" Margin="0,7,0,0"
+                                   Text="Tournures lourdes, phrases mal construites, répétitions d&#39;une section à l&#39;autre. Le moteur PROPOSE : rien n&#39;est modifié tant que vous n&#39;avez pas accepté. Les valeurs choisies dans une liste (porteur, échéance, degré, statut) ne sont jamais relues ni réécrites — elles commandent les pastilles, l&#39;annexe contacts et le tri de la feuille de route."/>
+                    </StackPanel>
                 </Border>
 
                 <!-- Les constats -->
@@ -2244,6 +2314,36 @@
                                             </StackPanel>
                                             <TextBlock Text="{Binding Message}" FontSize="11" Foreground="#34495E"
                                                        TextWrapping="Wrap" Margin="0,3,0,0"/>
+
+                                            <!-- Réécriture proposée. Le texte d'origine reste affiché
+                                                 au-dessus : on n'accepte pas une correction sans voir
+                                                 ce qu'elle remplace. -->
+                                            <StackPanel Margin="0,7,0,0"
+                                                        Visibility="{Binding EstProposition, Converter={StaticResource BoolToVis}}">
+                                                <Border Background="#FDF6F5" BorderBrush="#F2D7D5" BorderThickness="1"
+                                                        CornerRadius="4" Padding="7,5">
+                                                    <TextBlock Text="{Binding Original}" FontSize="10" Foreground="#7B7D7D"
+                                                               TextWrapping="Wrap" TextDecorations="Strikethrough"/>
+                                                </Border>
+                                                <Border Background="#F1F9F5" BorderBrush="#ABEBC6" BorderThickness="1"
+                                                        CornerRadius="4" Padding="7,5" Margin="0,4,0,0">
+                                                    <TextBlock Text="{Binding Proposition}" FontSize="11" Foreground="#186A3B"
+                                                               TextWrapping="Wrap"/>
+                                                </Border>
+                                                <DockPanel Margin="0,6,0,0">
+                                                    <Button DockPanel.Dock="Left"
+                                                            Command="{Binding DataContext.AppliquerPropositionCommand,
+                                                                      RelativeSource={RelativeSource AncestorType=ItemsControl}}"
+                                                            CommandParameter="{Binding}"
+                                                            Content="Accepter cette réécriture"
+                                                            Padding="9,4" FontSize="10" Cursor="Hand"
+                                                            Background="#16A085" Foreground="White" BorderThickness="0"
+                                                            Visibility="{Binding ProposableEncore, Converter={StaticResource BoolToVis}}"/>
+                                                    <TextBlock Text="✓ Appliquée au dossier" FontSize="10" Foreground="#16A085"
+                                                               VerticalAlignment="Center"
+                                                               Visibility="{Binding Appliquee, Converter={StaticResource BoolToVis}}"/>
+                                                </DockPanel>
+                                            </StackPanel>
                                         </StackPanel>
                                     </DockPanel>
                                 </Border>
