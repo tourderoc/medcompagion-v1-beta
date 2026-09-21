@@ -416,26 +416,10 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 $"detecteur={sig.DetecteurName}, passages={sig.Passages.Count}, fichier={sig.SignalFilePath}");
         };
 
-        // Phase d'évaluation V0/V0.1/V0.1.2/V0.2 : services + suggesters LLM + extractor
+        // Fiches d'évaluation V1 : plus d'écran, lues par la Synthèse, le Projet et la Restitution.
         // V0.3 Synthèse Globale : on injecte le SynthesisWeightTracker pour que Close()
         // enregistre une évaluation clôturée avec poids 1.0 (déclenche le badge 🔔).
         var evaluationPhaseService = new EvaluationPhaseService(_pathService, _synthesisWeightTracker);
-        PreparationSuggesterService? preparationSuggester = null;
-        AxesSuggesterService?        axesSuggester        = null;
-        AxisExtractorService?        axisExtractor        = null;
-        BilanFinalSuggesterService?            bilanFinalSuggester    = null;
-        FeuilleLectureService?               feuilleLecture       = null;
-        BrancheEnvironnementLectureService?  brancheLecture       = null;
-        if (_currentLLMService != null)
-        {
-            preparationSuggester = new PreparationSuggesterService(_llmServiceProxy);
-            axesSuggester        = new AxesSuggesterService(_llmServiceProxy);
-            axisExtractor        = new AxisExtractorService(_llmServiceProxy);
-            bilanFinalSuggester    = new BilanFinalSuggesterService(_llmServiceProxy);
-            feuilleLecture       = new FeuilleLectureService(_llmServiceProxy);
-            brancheLecture       = new BrancheEnvironnementLectureService(_llmServiceProxy);
-        }
-
         // Synthèse Globale V0.1 (persistance) + V0.2 (génération initiale par Med)
         // + V0.5 (relecture critique anti-contradictions)
         var syntheseGlobaleService = new SyntheseGlobaleService(_pathService);
@@ -449,20 +433,8 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
                 _llmServiceProxy, _patientContextService, evaluationPhaseService);
         }
 
-        // Projet Thérapeutique V1.0 → V1.4
+        // Projet Thérapeutique : plus d'écran d'édition, lu par l'onglet PROJET et la Restitution.
         var projetTherapeutiqueService = new ProjetTherapeutiqueService(_pathService);
-        ProjetTherapeutiqueSuggesterService? projetTherapeutiqueSuggester = null;
-        ProjetTherapeutiquePilotageService?  projetTherapeutiquePilotage  = null;
-        ProjetTherapeutiqueRelectureService? projetTherapeutiqueRelecteur = null;
-        if (_currentLLMService != null && _patientContextService != null)
-        {
-            projetTherapeutiqueSuggester = new ProjetTherapeutiqueSuggesterService(
-                _llmServiceProxy, _patientContextService, evaluationPhaseService, syntheseGlobaleService);
-            projetTherapeutiquePilotage  = new ProjetTherapeutiquePilotageService(
-                _llmServiceProxy, _patientContextService);
-            projetTherapeutiqueRelecteur = new ProjetTherapeutiqueRelectureService(
-                _llmServiceProxy, syntheseGlobaleService);
-        }
 
         // Initialiser ConsultationModeControl (Mode Consultation V0b — Whisper streaming)
         // Proxy (pas _currentLLMService) : ConsultationModeViewModel garde cette référence tant que
@@ -470,9 +442,9 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
         if (_currentLLMService != null)
             ConsultationModeContent.Initialize(_llmServiceProxy, _storageService, _whisperStreamingService,
                 _documentService, _scannerService, _patientIndex, urgenceDispatcher, urgenceLogService,
-                evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture,
+                evaluationPhaseService,
                 syntheseGlobaleService, syntheseGlobaleSuggester, _synthesisWeightTracker, syntheseGlobaleRelecteur,
-                projetTherapeutiqueService, projetTherapeutiqueSuggester, projetTherapeutiquePilotage, projetTherapeutiqueRelecteur);
+                projetTherapeutiqueService);
 
         // Affectation d'un modèle par étape (onglet Pilotage > Moteur local) : la consultation
         // bascule d'elle-même sur le modèle prévu avant chaque étape.

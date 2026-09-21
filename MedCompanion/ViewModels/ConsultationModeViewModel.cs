@@ -674,48 +674,15 @@ namespace MedCompanion.ViewModels
         private UrgenceDispatcher? _urgenceDispatcher;
         private UrgenceLogService? _urgenceLogService;
 
-        private EvaluationPhaseViewModel? _evaluationPhase;
-        /// <summary>
-        /// VM du panneau "Phase d'évaluation" (Étape 1 V0). Toujours présent une fois injecté ;
-        /// son état interne (CanStart / CanResume / IsWorkingPreparation) détermine ce qui s'affiche.
-        /// </summary>
-        public EvaluationPhaseViewModel? EvaluationPhase
-        {
-            get => _evaluationPhase;
-            private set => SetProperty(ref _evaluationPhase, value);
-        }
-
         private EvaluationPhaseService? _evaluationPhaseService;
 
-        public void InjectEvaluationServices(EvaluationPhaseService phaseService,
-                                             PreparationSuggesterService? suggester,
-                                             AxesSuggesterService? axesSuggester = null,
-                                             AxisExtractorService?  axisExtractor = null,
-                                             BilanFinalSuggesterService? bilanFinalSuggester = null,
-                                             FeuilleLectureService? feuilleLecture = null,
-                                             BrancheEnvironnementLectureService? brancheLecture = null)
+        /// <summary>
+        /// Service de lecture des fiches d'évaluation V1. L'écran V1 a été retiré ; les fiches
+        /// existantes restent lues par le dossier bleu, la Synthèse, le Projet et la Restitution.
+        /// </summary>
+        public void InjectEvaluationServices(EvaluationPhaseService phaseService)
         {
             _evaluationPhaseService = phaseService;
-            EvaluationPhase = new EvaluationPhaseViewModel(
-                phaseService, suggester, axesSuggester, axisExtractor, _whisperService, bilanFinalSuggester, feuilleLecture, brancheLecture);
-            // À chaque création/clôture d'évaluation, rafraîchit la frise + les blocs de synthèse
-            EvaluationPhase.PhaseStateChanged += LoadEvaluationCards;
-            // Quand l'utilisateur ferme la vue lecture seule (« ✕ Fermer la vue »), on sort
-            // du mode évaluation pour revenir à la frise normale — sinon on resterait sur
-            // l'écran « Aucune évaluation en cours — Commencer ».
-            EvaluationPhase.ReadOnlyViewClosed += () => IsEvaluationPhaseMode = false;
-            // Si un patient est déjà chargé, on lui passe tout de suite
-            if (_currentPatient != null) EvaluationPhase.SetCurrentPatient(_currentPatient);
-        }
-
-        private bool _isEvaluationPhaseMode;
-        /// <summary>
-        /// True quand le médecin a ouvert le panneau "Phase d'évaluation" via le combo "+".
-        /// </summary>
-        public bool IsEvaluationPhaseMode
-        {
-            get => _isEvaluationPhaseMode;
-            set => SetProperty(ref _isEvaluationPhaseMode, value);
         }
 
         // ── Cartographie de l'enfant (V2) ─────────────────────────────────────────
@@ -2057,22 +2024,6 @@ namespace MedCompanion.ViewModels
         public bool HasEvaluationCibleeBilans => EvaluationCibleeBilans.Count > 0;
         public bool HasSeanceEnvSyntheseBlocs => SeanceEnvSyntheseBlocs.Count > 0;
 
-        /// <summary>
-        /// La phase d'évaluation est achevée par le NOUVEAU parcours : une séance 3 clôturée, ou
-        /// sa synthèse rédigée.
-        ///
-        /// Existe pour déverrouiller la Synthèse Globale, qui était jusqu'ici conditionnée à une
-        /// évaluation V1 clôturée. Sans ce relais, un patient évalué par les séances 2 et 3 —
-        /// c'est-à-dire tous les nouveaux — resterait bloqué devant un jalon Synthèse verrouillé
-        /// par une étape qui n'existe plus pour lui.
-        /// </summary>
-        private bool _seanceEnvAchevee;
-        public bool SeanceEnvAchevee
-        {
-            get => _seanceEnvAchevee;
-            private set => SetProperty(ref _seanceEnvAchevee, value);
-        }
-
         private void LoadCartographieV2Bilans()
         {
             CartographieV2Bilans.Clear();
@@ -2104,8 +2055,6 @@ namespace MedCompanion.ViewModels
             EvaluationCibleeBilans.Clear();
             SeanceEnvSyntheseBlocs.Clear();
 
-            var achevee = false;
-
             var dir = CurrentPatient?.DirectoryPath;
             if (!string.IsNullOrEmpty(dir))
             {
@@ -2114,11 +2063,8 @@ namespace MedCompanion.ViewModels
                     if (s.HasReponsesParent || s.HasCotationEnv) SeanceEnvBilans.Add(new SeanceEnvCardViewModel(s));
                     if (s.HasEvaluation)  EvaluationCibleeBilans.Add(new EvaluationCibleeCardViewModel(s));
                     if (s.HasSynthese)    SeanceEnvSyntheseBlocs.Add(new SeanceEnvSyntheseBlocViewModel(s));
-                    if (s.EstCloturee || s.HasSynthese) achevee = true;
                 }
             }
-
-            SeanceEnvAchevee = achevee;
 
             OnPropertyChanged(nameof(HasSeanceEnvBilans));
             OnPropertyChanged(nameof(HasEvaluationCibleeBilans));
@@ -2193,14 +2139,6 @@ namespace MedCompanion.ViewModels
         {
             get => _isSyntheseGlobaleMode;
             set => SetProperty(ref _isSyntheseGlobaleMode, value);
-        }
-
-        private bool _isProjetTherapeutiqueMode;
-        /// <summary>True quand le médecin a ouvert le panneau "Projet Thérapeutique".</summary>
-        public bool IsProjetTherapeutiqueMode
-        {
-            get => _isProjetTherapeutiqueMode;
-            set => SetProperty(ref _isProjetTherapeutiqueMode, value);
         }
 
         private bool _isReadingPastConsultationMode;
@@ -2352,83 +2290,15 @@ namespace MedCompanion.ViewModels
 
         public bool IsViewingPastNote => SelectedPastConsultation != null;
 
-        private ProjetTherapeutiqueViewModel? _projetTherapeutiqueVM;
-        public ProjetTherapeutiqueViewModel? ProjetTherapeutiqueVM
-        {
-            get => _projetTherapeutiqueVM;
-            private set => SetProperty(ref _projetTherapeutiqueVM, value);
-        }
-
         private ProjetTherapeutiqueService? _projetTherapeutiqueService;
 
-        /// <summary>Injecte les services Projet Thérapeutique (V1.0 → V1.4).</summary>
-        public void InjectProjetTherapeutiqueService(ProjetTherapeutiqueService service,
-                                                     ProjetTherapeutiqueSuggesterService? suggester = null,
-                                                     ProjetTherapeutiquePilotageService? pilotage = null,
-                                                     ProjetTherapeutiqueRelectureService? relecteur = null)
+        /// <summary>
+        /// Service de lecture des projets thérapeutiques. L'écran d'édition a été retiré ; les
+        /// projets existants restent affichés dans l'onglet PROJET et lus par la Restitution.
+        /// </summary>
+        public void InjectProjetTherapeutiqueService(ProjetTherapeutiqueService service)
         {
             _projetTherapeutiqueService = service;
-            ProjetTherapeutiqueVM = new ProjetTherapeutiqueViewModel(service, suggester, pilotage, relecteur);
-            ProjetTherapeutiqueVM.Closed += () =>
-            {
-                IsProjetTherapeutiqueMode = false;
-                LoadProjetTherapeutiqueCards();
-            };
-            ProjetTherapeutiqueVM.BrouillonCreated += LoadProjetTherapeutiqueCards;
-        }
-
-        private void OuvrirProjetTherapeutique()
-        {
-            if (_projetTherapeutiqueService == null || ProjetTherapeutiqueVM == null)
-            {
-                System.Windows.MessageBox.Show("Service Projet Thérapeutique non initialisé.",
-                    "Projet Thérapeutique",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Warning);
-                return;
-            }
-            if (_currentPatient == null)
-            {
-                System.Windows.MessageBox.Show("Sélectionnez d'abord un patient.",
-                    "Projet Thérapeutique",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Information);
-                return;
-            }
-
-            Suivi.Reset();
-            ConsultationType = ConsultationType.Normal;
-            IsEditingConsultation = false;
-            ResetWorkspaceModes();
-
-            ProjetTherapeutiqueVM.OuvrirBrouillonOuCreer(
-                _currentPatient.NomComplet,
-                psychiatre: "",
-                patientDirectoryPath: _currentPatient.DirectoryPath ?? "");
-            IsProjetTherapeutiqueMode = true;
-        }
-
-        private void OpenProjetTherapeutiqueCard(ProjetTherapeutiqueCardViewModel card)
-        {
-            if (_projetTherapeutiqueService == null || ProjetTherapeutiqueVM == null || _currentPatient == null) return;
-            var full = _projetTherapeutiqueService.Load(card.FilePath);
-            if (full == null)
-            {
-                System.Windows.MessageBox.Show("Impossible de charger ce projet (fichier introuvable).",
-                    "Projet Thérapeutique",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Warning);
-                return;
-            }
-            Suivi.Reset();
-            ConsultationType = ConsultationType.Normal;
-            IsEditingConsultation = false;
-            ResetWorkspaceModes();
-            ProjetTherapeutiqueVM.Projet = full;
-            ProjetTherapeutiqueVM.StatusMessage = full.IsValidee
-                ? $"Lecture seule : v{full.Version} validé le {full.DateValidation:dd/MM/yyyy}."
-                : $"Brouillon v{full.Version} repris.";
-            IsProjetTherapeutiqueMode = true;
         }
 
         private void DeleteSyntheseGlobaleCard(SyntheseGlobaleCardViewModel card)
@@ -2464,45 +2334,6 @@ namespace MedCompanion.ViewModels
             {
                 System.Windows.MessageBox.Show(
                     $"Le fichier de synthèse n'a pas pu être supprimé : {ex.Message}",
-                    "Erreur",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Error);
-            }
-        }
-
-        private void DeleteProjetTherapeutiqueCard(ProjetTherapeutiqueCardViewModel card)
-        {
-            if (string.IsNullOrEmpty(card.FilePath)) return;
-
-            var label = card.IsActive
-                ? $"le brouillon de projet (Version {card.Version})"
-                : $"le projet validé v{card.Version} du {card.DateValidation:dd/MM/yyyy}";
-
-            var r = System.Windows.MessageBox.Show(
-                $"Supprimer définitivement {label} ?\n\nCette action est irréversible.",
-                "Supprimer le projet thérapeutique",
-                System.Windows.MessageBoxButton.YesNo,
-                System.Windows.MessageBoxImage.Warning);
-            if (r != System.Windows.MessageBoxResult.Yes) return;
-
-            try
-            {
-                if (System.IO.File.Exists(card.FilePath))
-                {
-                    System.IO.File.Delete(card.FilePath);
-                }
-
-                if (IsProjetTherapeutiqueMode && ProjetTherapeutiqueVM?.Projet?.FilePath == card.FilePath)
-                {
-                    ResetWorkspaceModes();
-                }
-
-                LoadProjetTherapeutiqueCards();
-            }
-            catch (Exception ex)
-            {
-                System.Windows.MessageBox.Show(
-                    $"Le fichier de projet n'a pas pu être supprimé : {ex.Message}",
                     "Erreur",
                     System.Windows.MessageBoxButton.OK,
                     System.Windows.MessageBoxImage.Error);
@@ -3257,11 +3088,9 @@ namespace MedCompanion.ViewModels
             IsFormulaireMode = false;
             IsRestitutionMode = false;
             IsRestitutionReviewMode = false;
-            IsEvaluationPhaseMode = false;
             IsCartographieMode = false;
             IsCartoEnvMode = false;
             IsSyntheseGlobaleMode = false;
-            IsProjetTherapeutiqueMode = false;
             IsSelectingRestitutionTypeMode = false;
             IsDossierRestitutionCliniqueMode = false;
             IsReadingPastConsultationMode = false;
@@ -3425,29 +3254,10 @@ namespace MedCompanion.ViewModels
                     ExtractionStatus = "";
                     break;
 
-                case "evaluation":
-                    // Bascule en mode "Phase d'évaluation" : sortie des autres modes,
-                    // affichage du panneau EvaluationPhaseControl (3 états gérés par sa VM).
-                    Suivi.Reset();
-                    ConsultationType = ConsultationType.Normal;
-                    IsEditingConsultation = false;
-                    ResetWorkspaceModes();
-                    IsEvaluationPhaseMode = true;
-                    // Si le panneau était sur une évaluation clôturée (lecture seule),
-                    // on revient au contexte actif pour pouvoir démarrer/reprendre.
-                    if (EvaluationPhase?.IsReadOnly == true)
-                        EvaluationPhase.ReturnToActiveContext();
-                    break;
-
                 case "synthese_globale":
                     // Bascule en mode "Synthèse Globale" : ouvre le brouillon courant
                     // ou crée un nouveau brouillon v(N+1).
                     OuvrirSyntheseGlobale();
-                    break;
-
-                case "projet_therapeutique":
-                    // V1.0 — Projet Thérapeutique : ouvre le brouillon courant ou crée v(N+1).
-                    OuvrirProjetTherapeutique();
                     break;
 
                 case "suivi":
@@ -3496,50 +3306,6 @@ namespace MedCompanion.ViewModels
         }
 
         /// <summary>
-        /// Ouvre une card d'évaluation depuis la frise.
-        /// - Active   : bascule sur le panneau Évaluation en mode reprise à l'étape courante,
-        ///              sans toucher au dossier bleu (on respecte le travail en cours).
-        /// - Clôturée : bascule sur le panneau Évaluation en lecture seule ET met le dossier bleu
-        ///              sur l'onglet SYNTHESE pour afficher la synthèse diagnostique.
-        /// </summary>
-        private void OpenEvaluationCard(EvaluationCardViewModel card)
-        {
-            if (EvaluationPhase == null || _evaluationPhaseService == null) return;
-
-            var phase = _evaluationPhaseService.Load(card.FilePath);
-            if (phase == null)
-            {
-                System.Windows.MessageBox.Show(
-                    "Impossible de charger cette évaluation (fichier introuvable ou illisible).",
-                    "Évaluation",
-                    System.Windows.MessageBoxButton.OK,
-                    System.Windows.MessageBoxImage.Warning);
-                return;
-            }
-
-            ResetWorkspaceModes();
-            IsEvaluationPhaseMode = true;
-            EvaluationPhase.ShowPhase(phase, readOnly: !phase.IsActive);
-
-            // Évaluation clôturée → on bascule le dossier bleu sur le tab pertinent :
-            // - BILANS si la cartographie a du contenu (la chenille est un bilan d'évaluation)
-            // - SYNTHESE sinon (uniquement la synthèse diagnostique à montrer)
-            if (!phase.IsActive)
-            {
-                var hasCartographie = phase.CartographieEnfant.IsValidated
-                    || phase.CartographieEnfant.Attachement.Score > 0
-                    || phase.CartographieEnfant.Psychomotricite.IsRenseigne
-                    || phase.CartographieEnfant.Langage.Score > 0
-                    || phase.CartographieEnfant.Emotions.Score > 0
-                    || phase.CartographieEnfant.Imaginaire.Score > 0
-                    || phase.CartographieEnfant.Pensee.Score > 0
-                    || phase.CartographieEnfant.Temperament.IsRenseigne
-                    || phase.CartographieEnfant.Attention.IsRenseigne;
-                ActiveDossierTab = hasCartographie ? DossierTab.Bilans : DossierTab.Synthese;
-            }
-        }
-
-        /// <summary>
         /// Supprime définitivement une évaluation après confirmation.
         /// Si c'était l'évaluation active, recharge l'état de l'EvaluationPhase pour libérer le slot.
         /// </summary>
@@ -3571,11 +3337,6 @@ namespace MedCompanion.ViewModels
             // Recharge à la fois les cards de la frise ET les blocs de synthèse du dossier bleu
             // (si on a supprimé une éval clôturée, son bloc disparaît aussi).
             LoadEvaluationCards();
-
-            // Si on a supprimé l'évaluation active, recharger l'état pour que le panneau Évaluation
-            // (CanStart / CanResume) reflète la réalité (plus aucune phase active).
-            if (card.IsActive && EvaluationPhase != null && CurrentPatient != null)
-                EvaluationPhase.SetCurrentPatient(CurrentPatient);
         }
 
         /// <summary>
@@ -7808,7 +7569,6 @@ source: ""MedCompanion""
         public ICommand EditPastPremiereCommand { get; private set; } = null!;
         public ICommand SavePastPremiereCommand { get; private set; } = null!;
         public ICommand CancelPastPremiereEditCommand { get; private set; } = null!;
-        public ICommand OpenEvaluationCardCommand { get; }    // param : EvaluationCardViewModel
         public ICommand PrintQuestionnaireCartographieCommand { get; private set; } = null!;
         public ICommand PrintQuestionnaireEnvCommand { get; private set; } = null!;
         public ICommand CloseCartoEnvCommand { get; private set; } = null!;
@@ -7840,9 +7600,7 @@ source: ""MedCompanion""
         public ICommand EnregistrerSyntheseCartoCommand { get; private set; } = null!;
         public ICommand DeleteEvaluationCardCommand { get; }  // param : EvaluationCardViewModel
         public ICommand OpenSyntheseGlobaleCardCommand { get; private set; } = null!;  // param : SyntheseGlobaleCardViewModel
-        public ICommand OpenProjetTherapeutiqueCardCommand { get; private set; } = null!;  // param : ProjetTherapeutiqueCardViewModel
         public ICommand DeleteSyntheseGlobaleCardCommand { get; } // param : SyntheseGlobaleCardViewModel
-        public ICommand DeleteProjetTherapeutiqueCardCommand { get; } // param : ProjetTherapeutiqueCardViewModel
 
         // V0b : Commande pour confirmer l'âge manuellement
         public ICommand ConfirmAgeCommand { get; }
@@ -8166,14 +7924,6 @@ source: ""MedCompanion""
                 IsEditingPastPremiere = false;
             });
 
-            // Hub : ouvrir une card évaluation (active → Resume, clôturée → ReadOnly + tab SYNTHESE)
-            // Implémentation complète à l'étape 2.
-            OpenEvaluationCardCommand = new RelayCommand(param =>
-            {
-                if (param is EvaluationCardViewModel ecard)
-                    OpenEvaluationCard(ecard);
-            });
-
             // Cartographie de l'enfant : générer et ouvrir le questionnaire parent à imprimer.
             PrintQuestionnaireCartographieCommand = new RelayCommand(
                 async _ => await PrintQuestionnaireCartographieAsync(),
@@ -8268,25 +8018,11 @@ source: ""MedCompanion""
                     OpenSyntheseGlobaleCard(sc);
             });
 
-            // Hub : ouvrir une carte de Projet Thérapeutique
-            OpenProjetTherapeutiqueCardCommand = new RelayCommand(param =>
-            {
-                if (param is ProjetTherapeutiqueCardViewModel pc)
-                    OpenProjetTherapeutiqueCard(pc);
-            });
-
             // Hub : supprimer une carte de Synthèse Globale
             DeleteSyntheseGlobaleCardCommand = new RelayCommand(param =>
             {
                 if (param is SyntheseGlobaleCardViewModel sc)
                     DeleteSyntheseGlobaleCard(sc);
-            });
-
-            // Hub : supprimer une carte de Projet Thérapeutique
-            DeleteProjetTherapeutiqueCardCommand = new RelayCommand(param =>
-            {
-                if (param is ProjetTherapeutiqueCardViewModel pc)
-                    DeleteProjetTherapeutiqueCard(pc);
             });
 
             // V0b : Commande confirmation âge
@@ -8574,30 +8310,6 @@ source: ""MedCompanion""
         // Frise chronologique (cards d'évaluation — active + clôturées, en parallèle des consultations)
         public ObservableCollection<EvaluationCardViewModel> EvaluationCards { get; } = new();
 
-        /// <summary>
-        /// Ce patient porte une évaluation V1. Sert à n'offrir le bloc archive qu'à ceux qui en
-        /// ont une : le proposer aux autres mènerait à un écran qui ne peut rien démarrer.
-        /// </summary>
-        public bool HasEvaluationV1 => EvaluationCards.Count > 0;
-
-        /// <summary>La fiche V1 de ce dossier porte des diagnostics ou une synthèse intégrative.</summary>
-        private bool _v1PorteUneConclusion;
-        public bool V1PorteUneConclusion
-        {
-            get => _v1PorteUneConclusion;
-            private set { if (SetProperty(ref _v1PorteUneConclusion, value)) OnPropertyChanged(nameof(ConclusionV1ARepriser)); }
-        }
-
-        /// <summary>
-        /// La conclusion V1 de ce dossier n'a pas encore été reprise en Synthèse Globale.
-        ///
-        /// Le critère de reprise est une synthèse VALIDÉE. Un brouillon ne compte pas : sur les
-        /// dossiers relevés, le seul brouillon existant était vide — le prendre pour une reprise
-        /// aurait fait disparaître le marqueur d'un dossier où rien n'avait été repris.
-        /// </summary>
-        public bool ConclusionV1ARepriser
-            => _v1PorteUneConclusion && !SyntheseGlobaleCards.Any(c => c.IsValidee);
-
         // Frise chronologique (cards de Synthèse Globale — brouillon courant + versions validées)
         public ObservableCollection<SyntheseGlobaleCardViewModel> SyntheseGlobaleCards { get; } = new();
 
@@ -8770,107 +8482,10 @@ source: ""MedCompanion""
                 ActivateCommand = new Commands.RelayCommand(_ => EnterCartoEnvMode())
             });
 
-            // ── Étape 4 : Évaluation (V1) — ARCHIVE, plus une étape du parcours ─────────
-            //
-            // Les deux blocs Cartographie de l'enfant et Environnement & évaluation ciblée
-            // couvrent désormais ce que ce bloc faisait. Le jalon n'est donc plus une étape à
-            // franchir : il ne s'affiche QUE pour les patients qui portent déjà une évaluation V1,
-            // et uniquement pour la relire.
-            //
-            // Aucune création : le chemin « Available → nouvelle évaluation » est retiré. C'est ce
-            // qui empêche la V1 de repartir, sans rien casser des 37 fiches existantes ni de ce
-            // que l'aval en lit.
-            bool evalCompleted  = EvaluationCards.Any(c => c.IsClosed);
-            bool evalInProgress = EvaluationCards.Any(c => c.IsActive);
-
-            if (EvaluationCards.Count > 0)
-            {
-                var evalDate = evalCompleted
-                    ? EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault()?.DateCloture
-                    : EvaluationCards.FirstOrDefault(c => c.IsActive)?.Date;
-
-                var closedEvalCard = EvaluationCards.Where(c => c.IsClosed).OrderByDescending(c => c.DateCloture).FirstOrDefault();
-                var activeEvalCard = EvaluationCards.FirstOrDefault(c => c.IsActive);
-                var carteAOuvrir   = closedEvalCard ?? activeEvalCard;
-
-                FriseStages.Add(new FriseStageViewModel
-                {
-                    Key    = "evaluation",
-                    Label  = "Évaluation (archive)",
-                    Icon   = "📋",
-                    Status = evalCompleted  ? FriseStageStatus.Completed :
-                             evalInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
-                    Date   = evalDate,
-                    // Le seul cas qui mérite qu'on dise autre chose que « Clôturée » : la
-                    // conclusion de cette fiche n'existe nulle part ailleurs, et le bloc V1 est
-                    // destiné à disparaître.
-                    Note   = ConclusionV1ARepriser ? "⚠ conclusion à reprendre en Synthèse" : null,
-                    ActivateCommand = new Commands.RelayCommand(
-                        _ => { if (carteAOuvrir != null) OpenEvaluationCard(carteAOuvrir); },
-                        _ => carteAOuvrir != null)
-                });
-            }
-
-            // ── Étape 5 : Synthèse ──────────────────────────────────────────────────────
-            //
-            // La phase d'évaluation est achevée par L'UN OU L'AUTRE des deux parcours : une
-            // évaluation V1 clôturée (dossiers anciens), ou une séance 3 clôturée / synthétisée
-            // (dossiers d'aujourd'hui). Ne garder que le premier verrouillerait la Synthèse pour
-            // tous les patients évalués par les nouveaux blocs.
-            bool evaluationAchevee = evalCompleted || SeanceEnvAchevee;
-
-            bool synthCompleted  = SyntheseGlobaleCards.Any(c => c.IsValidee);
-            bool synthInProgress = SyntheseGlobaleCards.Any(c => c.IsActive);
-            var  synthDate       = synthCompleted
-                ? SyntheseGlobaleCards.Where(c => c.IsValidee).OrderByDescending(c => c.Date).FirstOrDefault()?.Date
-                : SyntheseGlobaleCards.FirstOrDefault(c => c.IsActive)?.Date;
-
-            var validSynthCard  = SyntheseGlobaleCards.Where(c => c.IsValidee).OrderByDescending(c => c.Date).FirstOrDefault();
-            var activeSynthCard = SyntheseGlobaleCards.FirstOrDefault(c => c.IsActive);
-            System.Windows.Input.ICommand synthCmd =
-                synthCompleted  && validSynthCard  != null ? new Commands.RelayCommand(_ => OpenSyntheseGlobaleCard(validSynthCard))  :
-                synthInProgress && activeSynthCard != null ? new Commands.RelayCommand(_ => OpenSyntheseGlobaleCard(activeSynthCard)) :
-                new Commands.RelayCommand(_ => NewConsultationCommand.Execute("synthese_globale"), _ => evaluationAchevee);
-
-            FriseStages.Add(new FriseStageViewModel
-            {
-                Key    = "synthese",
-                Label  = "Synthèse",
-                Icon   = "🧭",
-                Status = !evaluationAchevee  ? FriseStageStatus.Locked :
-                         synthCompleted  ? FriseStageStatus.Completed :
-                         synthInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
-                Date   = synthDate,
-                ActivateCommand = synthCmd
-            });
-
-            // ── Étape 6 : Projet thérapeutique ──────────────────────────────────────────
-            bool projetCompleted  = ProjetTherapeutiqueCards.Any(c => c.IsValidee);
-            bool projetInProgress = ProjetTherapeutiqueCards.Any(c => c.IsActive);
-            var  projetDate       = projetCompleted
-                ? ProjetTherapeutiqueCards.Where(c => c.IsValidee).OrderByDescending(c => c.DateValidation).FirstOrDefault()?.DateValidation
-                : ProjetTherapeutiqueCards.FirstOrDefault(c => c.IsActive)?.Date;
-
-            var validProjetCard  = ProjetTherapeutiqueCards.Where(c => c.IsValidee).OrderByDescending(c => c.DateValidation).FirstOrDefault();
-            var activeProjetCard = ProjetTherapeutiqueCards.FirstOrDefault(c => c.IsActive);
-            System.Windows.Input.ICommand projetCmd =
-                projetCompleted  && validProjetCard  != null ? new Commands.RelayCommand(_ => OpenProjetTherapeutiqueCard(validProjetCard))  :
-                projetInProgress && activeProjetCard != null ? new Commands.RelayCommand(_ => OpenProjetTherapeutiqueCard(activeProjetCard)) :
-                new Commands.RelayCommand(_ => NewConsultationCommand.Execute("projet_therapeutique"), _ => synthCompleted);
-
-            FriseStages.Add(new FriseStageViewModel
-            {
-                Key    = "projet",
-                Label  = "Projet thérapeutique",
-                Icon   = "🎯",
-                Status = !synthCompleted  ? FriseStageStatus.Locked :
-                         projetCompleted  ? FriseStageStatus.Completed :
-                         projetInProgress ? FriseStageStatus.InProgress : FriseStageStatus.Available,
-                Date   = projetDate,
-                ActivateCommand = projetCmd
-            });
-
-            // ── Étape 7 : Restitution ────────────────────────────────────────────────────
+            // ── Étape 4 : Restitution ────────────────────────────────────────────────────
+            // Suit directement les deux cartographies : les anciennes étapes Évaluation,
+            // Synthèse et Projet thérapeutique ne font plus partie du parcours. Le clic ouvre
+            // le Dossier de Restitution — même chemin que l'ancien bouton du panneau Med.
             bool restitutionCompleted = false;
             if (CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
             {
@@ -8891,13 +8506,11 @@ source: ""MedCompanion""
                 Key    = "restitution",
                 Label  = "Restitution",
                 Icon   = "📝",
-                Status = !projetCompleted     ? FriseStageStatus.Locked :
-                         restitutionCompleted ? FriseStageStatus.Completed : FriseStageStatus.Available,
-                ActivateCommand = new Commands.RelayCommand(_ => SelectDossierTabCommand.Execute("Documents"),
-                                                            _ => projetCompleted)
+                Status = restitutionCompleted ? FriseStageStatus.Completed : FriseStageStatus.Available,
+                ActivateCommand = RestitutionsHub.CreateNewCommand
             });
 
-            // ── Étape 8 : Bilan semestriel ───────────────────────────────────────────────
+            // ── Étape 5 : Bilan semestriel ───────────────────────────────────────────────
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "bilan_s",
@@ -8907,7 +8520,7 @@ source: ""MedCompanion""
                 ActivateCommand = new Commands.RelayCommand(_ => { }, _ => false)
             });
 
-            // ── Étape 9 : Bilan annuel ────────────────────────────────────────────────────
+            // ── Étape 6 : Bilan annuel ────────────────────────────────────────────────────
             FriseStages.Add(new FriseStageViewModel
             {
                 Key       = "bilan_a",
@@ -8943,16 +8556,6 @@ source: ""MedCompanion""
             var phases = _evaluationPhaseService.LoadAll(CurrentPatient.DirectoryPath);
             foreach (var p in phases)
                 EvaluationCards.Add(new EvaluationCardViewModel(p));
-
-            // Ce dossier porte-t-il une conclusion diagnostique dans sa fiche V1 ?
-            //
-            // Sert au retrait du bloc V1 : tant qu'une conclusion n'a pas été reprise en Synthèse
-            // Globale, supprimer la V1 la perdrait. Le marquage se pose sur le jalon archive et
-            // disparaît de lui-même dès que la synthèse est validée — il n'y a donc pas de liste
-            // à tenir, ni à penser à effacer.
-            V1PorteUneConclusion = phases.Any(p => !p.IsActive
-                && (p.BilanFinal.DiagnosticsRetenus.Any(s => !string.IsNullOrWhiteSpace(s?.Value))
-                    || p.BilanFinal.HasSyntheseIntegrative));
 
             // Synthèses : uniquement les évaluations clôturées avec au moins un diagnostic
             // retenu OU une certitude renseignée OU un élément en faveur OU un écarté.
@@ -9270,10 +8873,8 @@ source: ""MedCompanion""
             LoadPatientDocumentsFromDisk();
 
             // Reset du mode évaluation au changement de patient (sinon l'UI précédente reste affichée)
-            IsEvaluationPhaseMode = false;
 
             // Recharger l'état de la phase d'évaluation pour ce patient
-            EvaluationPhase?.SetCurrentPatient(patient);
         }
 
         // ── Synthèse globale du patient (dossier bleu, onglet SYNTHESE) ───────

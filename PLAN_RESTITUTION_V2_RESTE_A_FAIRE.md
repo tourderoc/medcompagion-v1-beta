@@ -98,13 +98,23 @@ Le risque est réel et documenté : 15 des 17 synthèses globales sont validées
 
 À reprendre du côté `SyntheseGlobaleService` et des points de création / patch / relecture.
 
-### 3.3 Inverser le sens de la source de vérité du Projet Thérapeutique
+### 3.3 Le dossier de Restitution devient la source de vérité
 
-Le Projet Thérapeutique est encore alimenté depuis la Synthèse Globale : `ProjetTherapeutique.SyntheseGlobaleSourceFichier` pointe le fichier source, relu par `ProjetTherapeutiqueRelectureService`.
+**Décidé le 21/09/2026 :**
 
-Depuis la refonte, le projet du dossier de Restitution (7.1 → 7.5) est la version structurée et vivante — celle qui porte les actions avec leur porteur, leur échéance et leur degré. C'est elle qui devrait faire foi.
+- **La frise va maintenant droit de la Cartographie et de l'Environnement à la Restitution.** Les étapes Évaluation (archive), Synthèse et Projet thérapeutique sont retirées, et un clic sur l'icône Restitution ouvre le dossier.
+- **L'écran d'édition du Projet thérapeutique est supprimé**, avec ses services de suggestion, de pilotage et de relecture. On ne crée plus de projet par l'ancien chemin. `ProjetTherapeutiqueService` reste, uniquement pour la **lecture** : l'onglet PROJET du dossier bleu et le dossier de Restitution lisent les projets existants.
+- **La Synthèse Globale est gardée telle quelle** (menu « + », écran, services). Sa place dans le nouveau parcours n'est pas encore tranchée.
+- **L'écran d'évaluation V1 est supprimé.** Les 37 fiches restent lues par `EvaluationPhaseService`.
 
-Chantier à cadrer : qui devient la source, ce qui se propage dans quel sens, et ce qu'on fait des projets antérieurs qui existent déjà sous l'ancienne forme.
+**La direction, à cadrer plus tard :**
+
+Après le dossier de Restitution, une nouvelle étape produit **une synthèse tirée du dossier lui-même**, qui fait foi. Elle **réalimente l'onglet PROJET du dossier bleu** à partir du projet du dossier (7.1 → 7.5), la version structurée qui porte les actions avec leur porteur, leur échéance et leur degré. On inverse ainsi le sens actuel, où le projet découlait de la Synthèse Globale.
+
+Questions à trancher avant d'écrire une ligne :
+- le rapport entre cette nouvelle synthèse et la Synthèse Globale : remplacement, nouvelle version, ou coexistence (voir §3.2, 15 synthèses validées) ;
+- le format de l'onglet PROJET une fois alimenté par le dossier ;
+- le sort des projets déjà enregistrés sous l'ancienne forme.
 
 ### 3.4 Réconcilier les 8 sphères avec les 5 axes + 3 profils
 

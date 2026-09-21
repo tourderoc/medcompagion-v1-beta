@@ -5,9 +5,7 @@
              xmlns:vm="clr-namespace:MedCompanion.ViewModels"
              xmlns:local="clr-namespace:MedCompanion.Views.Consultation"
              xmlns:urgence="clr-namespace:MedCompanion.Views.Consultation.Urgence"
-             xmlns:eval="clr-namespace:MedCompanion.Views.Consultation.Evaluation"
              xmlns:synth="clr-namespace:MedCompanion.Views.Consultation.SyntheseGlobale"
-             xmlns:projet="clr-namespace:MedCompanion.Views.Consultation.ProjetTherapeutique"
              xmlns:helpers="clr-namespace:MedCompanion.Helpers"
              xmlns:conv="clr-namespace:MedCompanion.Converters"
              xmlns:vmrest="clr-namespace:MedCompanion.ViewModels.Restitutions"
@@ -953,29 +951,12 @@
                                 <RowDefinition Height="*"/>
                             </Grid.RowDefinitions>
 
-                            <!-- MODE PHASE D'ÉVALUATION : overlay au-dessus de tous les autres modes -->
-                            <ScrollViewer Grid.Row="0" Grid.RowSpan="2"
-                                          Panel.ZIndex="100"
-                                          VerticalScrollBarVisibility="Auto"
-                                          Background="#F5F7FA"
-                                          Visibility="{Binding IsEvaluationPhaseMode, Converter={StaticResource BoolToVis}}">
-                                <eval:EvaluationPhaseControl DataContext="{Binding EvaluationPhase}" Margin="4"/>
-                            </ScrollViewer>
-
                             <!-- MODE SYNTHÈSE GLOBALE : overlay au-dessus du mode normal -->
                             <Grid Grid.Row="0" Grid.RowSpan="2"
                                   Panel.ZIndex="101"
                                   Background="#F5F7FA"
                                   Visibility="{Binding IsSyntheseGlobaleMode, Converter={StaticResource BoolToVis}}">
                                 <synth:SyntheseGlobaleControl DataContext="{Binding SyntheseGlobaleVM}"/>
-                            </Grid>
-
-                            <!-- MODE PROJET THÉRAPEUTIQUE : overlay au-dessus du mode normal -->
-                            <Grid Grid.Row="0" Grid.RowSpan="2"
-                                  Panel.ZIndex="102"
-                                  Background="#F5F7FA"
-                                  Visibility="{Binding IsProjetTherapeutiqueMode, Converter={StaticResource BoolToVis}}">
-                                <projet:ProjetTherapeutiqueControl DataContext="{Binding ProjetTherapeutiqueVM}"/>
                             </Grid>
 
                             <!-- MODE CARTOGRAPHIE DE L'ENFANT (V2) : bloc de séance construit à côté
@@ -5566,13 +5547,7 @@
                                         <DataTrigger Binding="{Binding IsSynthesisMode}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsEvaluationPhaseMode}" Value="True">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                        </DataTrigger>
                                         <DataTrigger Binding="{Binding IsSyntheseGlobaleMode}" Value="True">
-                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                        </DataTrigger>
-                                        <DataTrigger Binding="{Binding IsProjetTherapeutiqueMode}" Value="True">
                                             <Setter Property="Visibility" Value="Collapsed"/>
                                         </DataTrigger>
                                         <DataTrigger Binding="{Binding IsSelectingRestitutionTypeMode}" Value="True">
@@ -5776,36 +5751,6 @@
                                             <TextBlock Text="{Binding MedDocumentStatus}" FontSize="10"
                                                        Foreground="#5D6D7E" Margin="0,6,0,0" TextWrapping="Wrap"
                                                        Visibility="{Binding MedDocumentStatus, Converter={StaticResource StringNotWS}}"/>
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- Bloc action globale : Restitutions générées -->
-                                    <Border Background="#E8F8F5" BorderBrush="#76D7C4" BorderThickness="1"
-                                            CornerRadius="6" Padding="10" Margin="0,0,0,12"
-                                            Visibility="{Binding IsMedSuggestions, Converter={StaticResource BoolToVis}}">
-                                        <StackPanel DataContext="{Binding RestitutionsHub}">
-                                            <TextBlock Text="📁 Dossiers de Restitution" FontWeight="SemiBold" FontSize="12"
-                                                       Foreground="#117A65" Margin="0,0,0,8"/>
-                                            <Button Command="{Binding CreateNewCommand}" Content="➕ Nouveau dossier"
-                                                    Padding="10,6" Background="#1ABC9C" Foreground="White"
-                                                    BorderThickness="0" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
-                                                    ToolTip="Créer un nouveau Dossier de Restitution pour le patient">
-                                                <Button.Template>
-                                                    <ControlTemplate TargetType="Button">
-                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                        </Border>
-                                                        <ControlTemplate.Triggers>
-                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#148F77"/></Trigger>
-                                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#BDC3C7"/></Trigger>
-                                                        </ControlTemplate.Triggers>
-                                                    </ControlTemplate>
-                                                </Button.Template>
-                                            </Button>
-
-                                            <!-- La liste des dossiers de restitution générés ne s'affiche plus ici :
-                                                 elle vit uniquement dans le dossier bleu (onglet DOCUMENTS), qui
-                                                 porte aussi le bouton de suppression. -->
                                         </StackPanel>
                                     </Border>
 

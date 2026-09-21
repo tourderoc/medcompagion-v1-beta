@@ -100,20 +100,11 @@ namespace MedCompanion.Views.Consultation
                                UrgenceDispatcher? urgenceDispatcher = null,
                                UrgenceLogService? urgenceLogService = null,
                                EvaluationPhaseService? evaluationPhaseService = null,
-                               PreparationSuggesterService? preparationSuggester = null,
-                               AxesSuggesterService? axesSuggester = null,
-                               AxisExtractorService? axisExtractor = null,
-                               BilanFinalSuggesterService? bilanFinalSuggester = null,
-                               FeuilleLectureService? feuilleLecture = null,
-                               BrancheEnvironnementLectureService? brancheLecture = null,
                                SyntheseGlobaleService? syntheseGlobaleService = null,
                                SyntheseGlobaleSuggesterService? syntheseGlobaleSuggester = null,
                                SynthesisWeightTracker? synthesisWeightTracker = null,
                                SyntheseGlobaleRelectureService? syntheseGlobaleRelecteur = null,
-                               ProjetTherapeutiqueService? projetTherapeutiqueService = null,
-                               ProjetTherapeutiqueSuggesterService? projetTherapeutiqueSuggester = null,
-                               ProjetTherapeutiquePilotageService? projetTherapeutiquePilotage = null,
-                               ProjetTherapeutiqueRelectureService? projetTherapeutiqueRelecteur = null)
+                               ProjetTherapeutiqueService? projetTherapeutiqueService = null)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;
             _viewModel?.InjectServices(llmService, storageService, whisperService);
@@ -124,11 +115,11 @@ namespace MedCompanion.Views.Consultation
             if (urgenceDispatcher != null && urgenceLogService != null)
                 _viewModel?.InjectUrgenceDispatcher(urgenceDispatcher, urgenceLogService);
             if (evaluationPhaseService != null)
-                _viewModel?.InjectEvaluationServices(evaluationPhaseService, preparationSuggester, axesSuggester, axisExtractor, bilanFinalSuggester, feuilleLecture, brancheLecture);
+                _viewModel?.InjectEvaluationServices(evaluationPhaseService);
             if (syntheseGlobaleService != null)
                 _viewModel?.InjectSyntheseGlobaleService(syntheseGlobaleService, syntheseGlobaleSuggester, synthesisWeightTracker, syntheseGlobaleRelecteur);
             if (projetTherapeutiqueService != null)
-                _viewModel?.InjectProjetTherapeutiqueService(projetTherapeutiqueService, projetTherapeutiqueSuggester, projetTherapeutiquePilotage, projetTherapeutiqueRelecteur);
+                _viewModel?.InjectProjetTherapeutiqueService(projetTherapeutiqueService);
             _documentService = documentService;
             _scannerService = scannerService;
         }
@@ -170,27 +161,10 @@ namespace MedCompanion.Views.Consultation
             suivi.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("suivi");
             menu.Items.Add(suivi);
 
-            // Phase d'évaluation V1 — ARCHIVE, offerte aux seuls dossiers qui en portent une.
-            // Ce bloc ne crée plus rien : le proposer à un patient sans évaluation V1 mènerait
-            // à un écran qui ne peut rien démarrer. L'évaluation se fait désormais dans les deux
-            // blocs Cartographie de l'enfant et Environnement & évaluation ciblée.
-            if (_viewModel.HasEvaluationV1)
-            {
-                menu.Items.Add(new Separator());
-                var evaluation = new MenuItem { Header = "📋  Phase d'évaluation (archive)" };
-                evaluation.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("evaluation");
-                menu.Items.Add(evaluation);
-            }
-
             // Synthèse Globale — document de référence du patient, versionné, source de vérité
             var synthese = new MenuItem { Header = "🧭  Synthèse Globale" };
             synthese.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("synthese_globale");
             menu.Items.Add(synthese);
-
-            // Projet Thérapeutique — plan d'action structuré avec statuts par action
-            var projet = new MenuItem { Header = "🎯  Projet Thérapeutique" };
-            projet.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("projet_therapeutique");
-            menu.Items.Add(projet);
 
             menu.PlacementTarget = sender as UIElement;
             menu.Placement       = System.Windows.Controls.Primitives.PlacementMode.Bottom;
