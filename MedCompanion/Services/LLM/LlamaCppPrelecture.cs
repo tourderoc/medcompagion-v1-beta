@@ -30,7 +30,7 @@ namespace MedCompanion.Services.LLM
     /// </summary>
     public static class LlamaCppPrelecture
     {
-        private const long MargeOctets = 4L * 1024 * 1024 * 1024;
+        private const long MargeOctets = 2L * 1024 * 1024 * 1024;
         private const int  TailleBloc  = 4 * 1024 * 1024;
 
         /// <summary>Rafraîchissement : relire un fichier déjà en cache ne coûte presque rien, et rattrape une
@@ -152,10 +152,12 @@ namespace MedCompanion.Services.LLM
                 var taille = new FileInfo(fichier!).Length;
 
                 var disponible = MemoireDisponibleOctets();
-                if (disponible < taille + MargeOctets)
+                // Si la mémoire disponible est trop basse (< 4 Go), on ne dispute pas la RAM au système.
+                // Au-delà, on lit pour peupler le cache Standby de Windows, la boucle interne se chargeant
+                // de s'interrompre proprement si la marge de sécurité (2 Go) est atteinte en cours de route.
+                if (disponible < MargeOctets * 2)
                 {
-                    Journal($"{raison} · {nom} ignoré : {disponible / 1048576:N0} Mo disponibles, " +
-                            $"il en faut {(taille + MargeOctets) / 1048576:N0}");
+                    Journal($"{raison} · {nom} ignoré : {disponible / 1048576:N0} Mo disponibles (seuil de sécurité {(MargeOctets * 2) / 1048576:N0} Mo)");
                     return;
                 }
 

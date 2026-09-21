@@ -58,15 +58,15 @@ namespace MedCompanion.Services.LLM
             }
         }
 
-        /// <summary>« mmap » ou « no-mmap » (défaut, et repli si le réglage est illisible ou inconnu).</summary>
+        /// <summary>« mmap » ou « none » (défaut, remplace l'ancien « no-mmap » déprécié).</summary>
         private static string LireModeChargement()
         {
             try
             {
                 var mode = AppSettings.Load().LlamaCppLoadMode?.Trim().ToLowerInvariant();
-                return mode == "mmap" ? "mmap" : "no-mmap";
+                return mode == "mmap" ? "mmap" : "none";
             }
-            catch { return "no-mmap"; }
+            catch { return "none"; }
         }
 
         private static string ResoudreExePath()
@@ -425,7 +425,7 @@ namespace MedCompanion.Services.LLM
                 var kvArgs = profile.KvQuantized ? "-ctk q8_0 -ctv q8_0 " : "";
 
                 // Mode de lecture du fichier, réglable pour comparer (voir AppSettings.LlamaCppLoadMode).
-                var loadArgs = LireModeChargement() == "mmap" ? "--load-mode mmap " : "--no-mmap ";
+                var loadArgs = $"--load-mode {LireModeChargement()} ";
 
                 var psi = new ProcessStartInfo
                 {
@@ -603,7 +603,13 @@ namespace MedCompanion.Services.LLM
                         StartIdleWatcher();
                         return (true, "llama-server démarré et prêt.");
                     }
-                    await Task.Delay(1000);
+
+                    // Polling adaptatif : 50 ms pendant les 4 premières secondes (pour attraper la mise en
+                    // ligne dès que les tenseurs sont en VRAM), puis 100 ms jusqu'à 20 s, puis 250 ms ensuite.
+                    // Élimine jusqu'à 950 ms de latence résiduelle par rapport à un délai fixe de 1000 ms.
+                    var ecoule = _chronoChargement.Elapsed;
+                    var delaiSondage = ecoule.TotalSeconds < 4 ? 50 : (ecoule.TotalSeconds < 20 ? 100 : 250);
+                    await Task.Delay(delaiSondage);
                 }
 
                 // Le tuer avant d'abandonner. Sans ça, un serveur trop lent à charger restait vivant
@@ -664,6 +670,12 @@ namespace MedCompanion.Services.LLM
         {
             try
             {
+                // Vérification ultra-rapide en mémoire : si le port 8899 n'est pas écouté, on quitte aussitôt (0 ms).
+                // Évite d'invoquer le binaire externe netstat.exe à chaque démarrage quand le port est déjà libre.
+                var tcpListeners = System.Net.NetworkInformation.IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners();
+                if (!Array.Exists(tcpListeners, ep => ep.Port == Port))
+                    return;
+
                 using var netstat = Process.Start(new ProcessStartInfo
                 {
                     FileName               = "netstat",

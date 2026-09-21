@@ -69,6 +69,10 @@ namespace MedCompanion.Models.Restitutions
         public int Ordre { get; set; }
         public string VoixCible { get; set; } = "clinique"; // "livre" | "clinique" | "mixte"
 
+        private string? _moteurCible;
+        /// <summary>Moteur LLM spécifique pour ce bloc. Null = hérite du moteur global du dossier.</summary>
+        public string? MoteurCible { get => _moteurCible; set => SetProperty(ref _moteurCible, value); }
+
         private string _contenuPreremplit = string.Empty;
         public string ContenuPreremplit { get => _contenuPreremplit; set => SetProperty(ref _contenuPreremplit, value); }
 

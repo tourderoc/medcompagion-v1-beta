@@ -24,9 +24,9 @@ namespace MedCompanion.ViewModels.Restitutions
     /// </summary>
     public partial class RestitutionEditorViewModel
     {
-        private const string MoteurQwen           = "Qwen 3.8-27B";
-        private const string MoteurGemmaQuantifie = "Gemma 4 QAT — contexte q8_0";
-        private const string MoteurGemmaPlein     = "Gemma 4 QAT — contexte non quantifié";
+        public const string MoteurQwen           = "Qwen 3.8-27B";
+        public const string MoteurGemmaQuantifie = "Gemma 4 QAT — contexte q8_0";
+        public const string MoteurGemmaPlein     = "Gemma 4 QAT — contexte non quantifié";
 
         public IReadOnlyList<string> MoteursGeneration { get; } = new[]
         {
@@ -99,6 +99,41 @@ namespace MedCompanion.ViewModels.Restitutions
             catch (Exception ex)
             {
                 MoteurGenerationNote = $"Changement de moteur impossible : {ex.Message}";
+            }
+        }
+
+        /// <summary>
+        /// Résout le moteur à utiliser pour un bloc : son moteur spécifique s'il en a un,
+        /// sinon le moteur global du dossier.
+        /// </summary>
+        public string ResoudreMoteurEffectif(RestitutionBlocViewModel bloc)
+        {
+            if (!string.IsNullOrWhiteSpace(bloc.Model.MoteurCible))
+                return bloc.Model.MoteurCible;
+            return MoteurGeneration;
+        }
+
+        /// <summary>
+        /// S'assure que le moteur voulu est bien celui qui tourne. Si le moteur ou la quantification
+        /// KV diffère, applique le réglage et relance le serveur immédiatement (~4.8s grâce à la
+        /// prélecture en RAM).
+        /// </summary>
+        public async System.Threading.Tasks.Task BasculerMoteurSiNecessaireAsync(string choix)
+        {
+            if (string.IsNullOrWhiteSpace(choix)) return;
+
+            var courant = LireMoteurCourant();
+            bool tourne = LlamaCppServerManager.IsRunning;
+
+            if (tourne && courant == choix)
+                return; // Le bon modèle tourne déjà, zéro latence
+
+            StatusMessage = $"🔄 Bascule du moteur vers {choix}...";
+            AppliquerMoteur(choix);
+            var (ok, msg) = await LlamaCppServerManager.EnsureRunningAsync();
+            if (!ok)
+            {
+                StatusMessage = $"⚠ Erreur démarrage {choix} : {msg}";
             }
         }
     }

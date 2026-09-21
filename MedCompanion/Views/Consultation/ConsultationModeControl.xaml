@@ -3612,12 +3612,12 @@
                                             HorizontalAlignment="Right" Margin="0,8,0,0">
 
                                     <!-- Sélecteur mode dictée (visible quand pas en cours) -->
-                                    <CheckBox Content="Mode Batch (30s)"
+                                    <CheckBox Content="Mode Batch (15s)"
                                               IsChecked="{Binding UseBatchMode}"
                                               VerticalAlignment="Center" Margin="0,0,12,0"
                                               FontSize="11"
                                               Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
-                                              ToolTip="Coché : transcription toutes les 30s, coupée sur une pause de la conversation (recommandé)&#x0a;Décoché : streaming temps réel (peut fragmenter sur débit lent)"/>
+                                              ToolTip="Coché : transcription toutes les 15s, coupée sur une pause de la conversation (recommandé)&#x0a;Décoché : streaming temps réel (peut fragmenter sur débit lent)"/>
 
                                     <!-- V0b : Bouton Vocabulaire Whisper -->
                                     <Button x:Name="VocabBtn" Content="📝 Vocab"
@@ -3653,10 +3653,10 @@
                                               Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
                                               DropDownOpened="MicrophoneComboBox_DropDownOpened"/>
 
-                                    <!-- Sélecteur du modèle Whisper : Français → Large-v3 → Medium -->
+                                    <!-- Sélecteur du modèle Whisper : Français → Turbo → Large-v3 → Medium -->
                                     <Button Content="{Binding WhisperModelLabel}"
                                             Command="{Binding SwitchWhisperModelCommand}"
-                                            ToolTip="Changer de modèle Whisper : Français (spécialisé, recommandé) → Large-v3 → Medium.&#x0a;Le nouveau modèle est chargé au prochain démarrage de dictée."
+                                            ToolTip="Changer de modèle Whisper : Français (spécialisé, recommandé) → Turbo (rapide &amp; précis) → Large-v3 → Medium.&#x0a;Le nouveau modèle est chargé au prochain démarrage de dictée."
                                             Padding="8,7" Cursor="Hand" FontSize="11"
                                             Background="#8E44AD" Foreground="White"
                                             BorderThickness="0" Margin="0,0,6,0"
@@ -5152,10 +5152,10 @@
                                                           Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}"
                                                           DropDownOpened="MicrophoneComboBox_DropDownOpened"/>
 
-                                                <!-- Sélecteur du modèle Whisper : Français → Large-v3 → Medium -->
+                                                <!-- Sélecteur du modèle Whisper : Français → Turbo → Large-v3 → Medium -->
                                                 <Button Content="{Binding WhisperModelLabel}"
                                                         Command="{Binding SwitchWhisperModelCommand}"
-                                                        ToolTip="Changer de modèle Whisper : Français (spécialisé, recommandé) → Large-v3 → Medium.&#x0a;Le nouveau modèle est chargé au prochain démarrage de dictée."
+                                                        ToolTip="Changer de modèle Whisper : Français (spécialisé, recommandé) → Turbo (rapide &amp; précis) → Large-v3 → Medium.&#x0a;Le nouveau modèle est chargé au prochain démarrage de dictée."
                                                         Padding="8,7" Cursor="Hand" FontSize="11" Margin="0,0,8,0"
                                                         Background="#8E44AD" Foreground="White" BorderThickness="0"
                                                         Visibility="{Binding IsNotRecording, Converter={StaticResource BoolToVis}}">

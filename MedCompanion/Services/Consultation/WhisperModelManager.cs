@@ -11,7 +11,8 @@ namespace MedCompanion.Services.Consultation
         Tiny,
         Small,
         Medium,
-        LargeV3
+        LargeV3,
+        LargeV3Turbo
     }
 
     public class WhisperModelManager
@@ -43,7 +44,8 @@ namespace MedCompanion.Services.Consultation
             75_000_000L,    // Tiny    ~75 MB
             242_000_000L,   // Small   ~242 MB
             1_528_000_000L, // Medium  ~1.5 GB
-            3_094_000_000L  // LargeV3 ~3.1 GB
+            3_094_000_000L, // LargeV3 ~3.1 GB
+            1_620_000_000L  // LargeV3Turbo ~1.6 GB
         };
 
         public WhisperModelSize ModelSize { get; set; } = WhisperModelSize.Medium;
@@ -81,20 +83,22 @@ namespace MedCompanion.Services.Consultation
 
         public static string GetModelFileName(WhisperModelSize size) => size switch
         {
-            WhisperModelSize.Tiny    => "ggml-tiny.bin",
-            WhisperModelSize.Small   => "ggml-small.bin",
-            WhisperModelSize.Medium  => "ggml-medium.bin",
-            WhisperModelSize.LargeV3 => "ggml-large-v3.bin",
-            _                        => "ggml-medium.bin"
+            WhisperModelSize.Tiny         => "ggml-tiny.bin",
+            WhisperModelSize.Small        => "ggml-small.bin",
+            WhisperModelSize.Medium       => "ggml-medium.bin",
+            WhisperModelSize.LargeV3      => "ggml-large-v3.bin",
+            WhisperModelSize.LargeV3Turbo => "ggml-large-v3-turbo.bin",
+            _                             => "ggml-medium.bin"
         };
 
         private static GgmlType ToGgmlType(WhisperModelSize size) => size switch
         {
-            WhisperModelSize.Tiny    => GgmlType.Tiny,
-            WhisperModelSize.Small   => GgmlType.Small,
-            WhisperModelSize.Medium  => GgmlType.Medium,
-            WhisperModelSize.LargeV3 => GgmlType.LargeV3,
-            _                        => GgmlType.Medium
+            WhisperModelSize.Tiny         => GgmlType.Tiny,
+            WhisperModelSize.Small        => GgmlType.Small,
+            WhisperModelSize.Medium       => GgmlType.Medium,
+            WhisperModelSize.LargeV3      => GgmlType.LargeV3,
+            WhisperModelSize.LargeV3Turbo => GgmlType.LargeV3Turbo,
+            _                             => GgmlType.Medium
         };
 
         /// <summary>

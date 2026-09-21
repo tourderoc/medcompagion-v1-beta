@@ -118,6 +118,34 @@ namespace MedCompanion.ViewModels.Restitutions
                                        && !IsSyntheseDiagS2 && !IsSyntheseDiagS3 && !IsSyntheseDiagS4
                                        && !IsPtBloc;
 
+        // ── Choix du moteur LLM pour ce bloc ──────────────────────────────────
+        public const string MoteurHerite = "Hériter (Global)";
+
+        public static IReadOnlyList<string> OptionsMoteur { get; } = new[]
+        {
+            MoteurHerite,
+            RestitutionEditorViewModel.MoteurQwen,
+            RestitutionEditorViewModel.MoteurGemmaQuantifie,
+            RestitutionEditorViewModel.MoteurGemmaPlein
+        };
+
+        public string SelectedMoteur
+        {
+            get => string.IsNullOrWhiteSpace(Model.MoteurCible) ? MoteurHerite : Model.MoteurCible;
+            set
+            {
+                var nouveau = value == MoteurHerite ? null : value;
+                if (Model.MoteurCible != nouveau)
+                {
+                    Model.MoteurCible = nouveau;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsMoteurPerso));
+                }
+            }
+        }
+
+        public bool IsMoteurPerso => !string.IsNullOrWhiteSpace(Model.MoteurCible);
+
         // ── Champs structurés du bloc restitution parents ─────────────────────
 
         public ObservableCollection<RpSectionViewModel> RpSections { get; } = new();
@@ -1665,6 +1693,9 @@ namespace MedCompanion.ViewModels.Restitutions
             blocVm.IsGenerating = true;
             try
             {
+                var moteur = ResoudreMoteurEffectif(blocVm);
+                await BasculerMoteurSiNecessaireAsync(moteur);
+
                 _currentReading ??= await _dossierReader.ReadAsync(_patientName);
                 var ct          = _generationCts?.Token ?? CancellationToken.None;
                 var instruction = blocVm.ReformuleInstruction.Trim();
@@ -1695,6 +1726,9 @@ namespace MedCompanion.ViewModels.Restitutions
             blocVm.IsGenerating  = true;
             try
             {
+                var moteur = ResoudreMoteurEffectif(blocVm);
+                await BasculerMoteurSiNecessaireAsync(moteur);
+
                 _currentReading ??= await _dossierReader.ReadAsync(_patientName);
                 var ct          = _generationCts?.Token ?? CancellationToken.None;
                 var instruction = section.UserInstruction.Trim();
@@ -1741,6 +1775,9 @@ namespace MedCompanion.ViewModels.Restitutions
             blocVm.IsGenerating = true;
             try
             {
+                var moteur = ResoudreMoteurEffectif(blocVm);
+                await BasculerMoteurSiNecessaireAsync(moteur);
+
                 _currentReading ??= await _dossierReader.ReadAsync(_patientName);
                 var ct = _generationCts?.Token ?? CancellationToken.None;
 
@@ -1973,6 +2010,8 @@ namespace MedCompanion.ViewModels.Restitutions
 
                     try
                     {
+                        var moteur = ResoudreMoteurEffectif(blocVm);
+                        await BasculerMoteurSiNecessaireAsync(moteur);
                         // Blocs composites : on délègue à la méthode progressive qui en interne
                         // fait N appels LLM séquentiels. Garantit que les sous-sections sont
                         // toutes présentes et fiables (chacune dans sa propre fenêtre de tokens).

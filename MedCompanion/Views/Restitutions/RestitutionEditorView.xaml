@@ -398,6 +398,30 @@
                                                     <TextBlock Text="📝 Compléter"/>
                                                 </Button.Content>
                                             </Button>
+                                            <!-- Sélecteur de moteur pour ce bloc -->
+                                            <ComboBox ItemsSource="{x:Static vm:RestitutionBlocViewModel.OptionsMoteur}"
+                                                      SelectedItem="{Binding SelectedMoteur, Mode=TwoWay}"
+                                                      Width="175" Margin="0,0,6,0" FontSize="10" Padding="4,2"
+                                                      VerticalAlignment="Center" Cursor="Hand"
+                                                      ToolTip="Moteur LLM spécifique pour ce bloc. « Hériter (Global) » utilise le moteur sélectionné en haut.">
+                                                <ComboBox.Style>
+                                                    <Style TargetType="ComboBox">
+                                                        <Setter Property="BorderBrush" Value="#D0D3D4"/>
+                                                        <Setter Property="Foreground" Value="#5D6D7E"/>
+                                                        <Setter Property="Background" Value="#F8F9F9"/>
+                                                        <Style.Triggers>
+                                                            <!-- Met en valeur visuellement quand un moteur spécifique est forcé -->
+                                                            <DataTrigger Binding="{Binding IsMoteurPerso}" Value="True">
+                                                                <Setter Property="BorderBrush" Value="#2980B9"/>
+                                                                <Setter Property="Foreground" Value="#1A5276"/>
+                                                                <Setter Property="FontWeight" Value="SemiBold"/>
+                                                                <Setter Property="Background" Value="#EBF5FB"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </ComboBox.Style>
+                                            </ComboBox>
+
                                             <Button Command="{Binding GenerateCommand}" Content="✨ Suggérer"
                                                     Padding="8,4" Background="#1ABC9C" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="11">
                                                 <Button.Template>

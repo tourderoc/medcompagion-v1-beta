@@ -69,7 +69,7 @@ namespace MedCompanion.Services.Consultation
         // Mode Batch : une fois la durée atteinte, on attend une pause de SilenceFlushMs pour couper
         // sur un blanc plutôt qu'au milieu d'un mot ; au-delà de RallongeMaxMs on coupe quand même.
         private const int   SilenceFlushMs        = 400;
-        private const int   RallongeMaxMs         = 10000;
+        private const int   RallongeMaxMs         = 5000;
 
         // Prompt neutre de base + vocabulaire custom injecté dynamiquement
         private const string BasePrompt =
@@ -244,7 +244,7 @@ namespace MedCompanion.Services.Consultation
 
         // ── Mode (configurable avant Start) ───────────────────────────────────
         public RecordingMode Mode                 { get; set; } = RecordingMode.Batch;
-        public int           BatchDurationSeconds { get; set; } = 90;
+        public int           BatchDurationSeconds { get; set; } = 15;
 
         /// <summary>Index du micro à utiliser (WaveIn device number). Null = périphérique par défaut (index 0).</summary>
         public int? DeviceNumber { get; set; }
@@ -919,7 +919,9 @@ namespace MedCompanion.Services.Consultation
                         // Sauvegarde la transcription juste après le .wav du même chunk
                         _audioRecorder?.SaveTranscription(text);
 
-                        Log($"  → {sw.ElapsedMilliseconds}ms, brut: \"{Truncate(rawText, 60)}\", filtré: \"{Truncate(text, 60)}\"");
+                        var elapsedMs = sw.ElapsedMilliseconds;
+                        var speedRatio = durationS > 0 && elapsedMs > 0 ? (durationS / (elapsedMs / 1000.0)) : 0;
+                        Log($"  → {elapsedMs}ms ({speedRatio:F1}x temps réel), brut: \"{Truncate(rawText, 60)}\", filtré: \"{Truncate(text, 60)}\"");
 
                         if (!string.IsNullOrWhiteSpace(text))
                         {
@@ -928,7 +930,14 @@ namespace MedCompanion.Services.Consultation
                             _segmentAccumulator += " " + text;
                             _newWordCount       += CountWords(text);
 
-                            if (_newWordCount >= MinWordsToTriggerLlm)
+                            // Déclenchement LLM : synchronisé sur fin de phrase pour préserver la cohérence clinique
+                            var trimmedText = text.TrimEnd();
+                            bool isEndOfSentence = trimmedText.EndsWith('.') ||
+                                                   trimmedText.EndsWith('!') ||
+                                                   trimmedText.EndsWith('?') ||
+                                                   trimmedText.EndsWith(':');
+
+                            if (_newWordCount >= MinWordsToTriggerLlm && (isEndOfSentence || _newWordCount >= 75))
                             {
                                 var segment = _segmentAccumulator.Trim();
                                 _segmentAccumulator = "";

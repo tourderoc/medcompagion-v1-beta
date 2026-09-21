@@ -111,30 +111,56 @@ namespace MedCompanion.Services.Consultation
         }
 
         /// <summary>
-        /// Génère la portion du prompt Whisper à partir du vocabulaire custom.
-        /// Format : "Termes spécialisés : terme1, terme2, terme3."
+        /// Génère un micro-prompt Whisper compact et sécurisé à partir du vocabulaire.
+        /// ATTENTION : whisper.cpp traite le prompt initial comme un historique audio contextuel.
+        /// Injecter un dictionnaire complet de plusieurs centaines de tokens ralentit l'inférence
+        /// et provoque des boucles de répétition (hallucinations sur silence).
+        /// Cette méthode extrait au maximum 15 à 20 termes prioritaires et produit une amorce
+        /// naturelle et concise (< 180 caractères).
         /// </summary>
         /// <returns>Fragment de prompt, ou vide si pas de vocabulaire</returns>
         public string BuildPromptFragment()
         {
             if (_entries.Count == 0) return "";
 
-            // Regrouper par sections pour un prompt structuré
+            // Prioriser les sections les plus sensibles : Médicaments, Sigles, Tests
             var sections = ParseSections(RawContent);
+            var selectedTerms = new List<string>();
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var parts = new List<string>();
-            foreach (var (section, entries) in sections)
+            var prioritySections = new[] { "médicament", "sigle", "test" };
+
+            foreach (var prio in prioritySections)
             {
-                if (entries.Count == 0) continue;
-
-                if (!string.IsNullOrWhiteSpace(section))
-                    parts.Add($"{section} : {string.Join(", ", entries)}");
-                else
-                    parts.Add(string.Join(", ", entries));
+                foreach (var (section, entries) in sections)
+                {
+                    if (section.IndexOf(prio, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        foreach (var entry in entries)
+                        {
+                            if (selectedTerms.Count >= 16) break;
+                            if (seen.Add(entry.Trim()))
+                                selectedTerms.Add(entry.Trim());
+                        }
+                    }
+                    if (selectedTerms.Count >= 16) break;
+                }
+                if (selectedTerms.Count >= 16) break;
             }
 
-            return parts.Count > 0
-                ? string.Join(". ", parts) + "."
+            // Si aucune section prioritaire trouvée ou peu de termes, compléter avec les premières entrées
+            if (selectedTerms.Count < 10)
+            {
+                foreach (var entry in _entries)
+                {
+                    if (selectedTerms.Count >= 16) break;
+                    if (seen.Add(entry.Trim()))
+                        selectedTerms.Add(entry.Trim());
+                }
+            }
+
+            return selectedTerms.Count > 0
+                ? $"Termes clés : {string.Join(", ", selectedTerms)}."
                 : "";
         }
 

@@ -1264,9 +1264,14 @@ namespace MedCompanion.ViewModels
             try
             {
                 _whisper.Mode = RecordingMode.Batch;
-                _whisper.BatchDurationSeconds = 90;
+                _whisper.BatchDurationSeconds = 15;
                 var savedModel = AppSettings.Load().WhisperModel;
-                var modelSize  = savedModel == "LargeV3" ? WhisperModelSize.LargeV3 : WhisperModelSize.Medium;
+                var modelSize  = savedModel switch
+                {
+                    "LargeV3Turbo" => WhisperModelSize.LargeV3Turbo,
+                    "LargeV3"      => WhisperModelSize.LargeV3,
+                    _              => WhisperModelSize.Medium
+                };
                 var modelManager = new WhisperModelManager { ModelSize = modelSize };
                 await _whisper.StartAsync(modelManager);
                 IsDicteActive = true;

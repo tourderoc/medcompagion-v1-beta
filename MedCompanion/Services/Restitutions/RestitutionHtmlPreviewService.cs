@@ -3638,7 +3638,7 @@ namespace MedCompanion.Services.Restitutions
             {
                 if (carto != null && carto.Temperament.IsRenseigne)
                 {
-                    sb.AppendLine("      <div style='display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0;'>");
+                    sb.AppendLine("      <div style='display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0;'>");
                     sb.AppendLine("        <div class='ce-chart ce-chart-pie' style='width: 140px; height: 140px; margin-left: -10px;'>");
                     sb.AppendLine(BuildCeTemperamentRadarSvg(carto.Temperament));
                     sb.AppendLine("        </div>");
@@ -3648,7 +3648,10 @@ namespace MedCompanion.Services.Restitutions
                     sb.AppendLine("          <div><strong>A</strong> : Adaptabilité</div>");
                     sb.AppendLine("          <div><strong>R</strong> : Rythme</div>");
                     sb.AppendLine("          <div><strong>É</strong> : Émotions</div>");
-                    sb.AppendLine("          <div><strong>A</strong> : Activité</div>");
+                    sb.AppendLine("          <div><strong>Ac</strong> : Activité</div>");
+                    sb.AppendLine("        </div>");
+                    sb.AppendLine("        <div style='font-size: 7.5px; color: #64748B; font-style: italic; line-height: 1.25; text-align: center; width: 140px; margin-left: -10px; margin-top: 2px; border-top: 1px dashed #CBD5E1; padding-top: 3px;'>");
+                    sb.AppendLine("          Ce n'est pas un score mais l'enfant tel qu'il est.");
                     sb.AppendLine("        </div>");
                     sb.AppendLine("      </div>");
                 }
@@ -3928,20 +3931,17 @@ namespace MedCompanion.Services.Restitutions
         }
 
         /// <summary>
-        /// Habillage graphique d'une roue de profil V2 — MÊME STYLE que les roues V1 (validé à
-        /// l'usage : secteurs pleins de couleurs vives, lettres blanches, badges de score sur
-        /// le pourtour, légende à deux colonnes). Les couleurs identifient l'AXE, pas la
-        /// valeur : elles ne jugent rien, ce qui les rend compatibles avec le principe du
-        /// portrait autant qu'avec les compétences. Seules les données sont V2 (axes du
-        /// nouveau modèle), l'ordre suit ProfilsObservesV2.Profils[..].Axes.
+        /// Habillage graphique d'une roue de profil V2 — lettres des axes et libellés.
+        /// Les couleurs des secteurs et badges sont désormais dynamiques et reflètent
+        /// strictement le score (1 à 5) selon l'ÉCHELLE DE NIVEAU clinique affichée en bas de page.
         /// </summary>
         private static (string[] Letters, string[] Labels, string[] Colors, string[] BadgeColors) ProfilV2Style(string profilKey) => profilKey switch
         {
             "temperament" => (
-                new[] { "A", "Ap", "S", "I", "Ad", "H" },
-                new[] { "Activité", "Approche/retrait", "Sensorialité", "Intensité émot.", "Adaptabilité", "Humeur de fond" },
-                new[] { "#2ECC71", "#9ACD32", "#F1C40F", "#00A8B5", "#9B59B6", "#E74C3C" },
-                new[] { "#27AE60", "#7CB342", "#D68910", "#008B9B", "#8E44AD", "#C0392B" }),
+                new[] { "Act", "App", "Sen", "Émo", "Ada", "Hum" },
+                new[] { "Activité", "Approche", "Sensorialité", "Émotions", "Adaptabilité", "Humeur" },
+                new[] { "#4F6D8A", "#3E5C7B", "#5A7B9B", "#446482", "#6485A5", "#37516D" },
+                new[] { "#37516D", "#2B435C", "#43627E", "#324C65", "#4B6C8C", "#263B51" }),
             "psychomotricite" => (
                 new[] { "A", "G", "T", "C", "R", "P" },
                 new[] { "Aisance globale", "Gestes fins", "Tonus", "Contrôle moteur", "Repérage", "Praxies" },
@@ -3954,12 +3954,83 @@ namespace MedCompanion.Services.Restitutions
                 new[] { "#3A6ED8", "#8544CC", "#D4843C", "#C25436", "#21867A", "#C9A43A" }),
         };
 
+        /// <summary>
+        /// Nuances ardoise harmonieuses pour le Tempérament (Portrait) :
+        /// Chaque secteur a sa nuance propre pour bien le distinguer, sans aucune couleur d'alerte.
+        /// </summary>
+        private static readonly string[] PortraitSlatePalette = new[]
+        {
+            "#4F6D8A", // 0: Activité (Ardoise classique)
+            "#3E5C7B", // 1: Approche (Ardoise profond)
+            "#5A7B9B", // 2: Sensorialité (Ardoise doux)
+            "#446482", // 3: Émotions (Ardoise moyen)
+            "#6485A5", // 4: Adaptabilité (Ardoise clair)
+            "#37516D", // 5: Humeur (Ardoise nuit)
+        };
+
+        /// <summary>
+        /// Couleur de remplissage d'un secteur de profil :
+        /// - Portrait (Tempérament) : camaïeu ardoise clinique (#4F6D8A..), sans aucune couleur de gravité (l'enfant tel qu'il est, axes bipolaires non jugés).
+        /// - Compétence (Psychomotricité, Attention) : aligné strictement sur l'ÉCHELLE DE NIVEAU (1 rouge, 2 orange, 3 jaune, 4 vert clair, 5 vert foncé).
+        /// - Non coté (0) : gris neutre (#E2E8F0).
+        /// </summary>
+        private static string GetCeScoreColor(int score, bool isPortrait = false, int axisIndex = 0)
+        {
+            if (score <= 0) return "#E2E8F0";
+            if (isPortrait) return PortraitSlatePalette[axisIndex % PortraitSlatePalette.Length];
+            return score switch
+            {
+                1 => "#E74C3C", // Très fragilisé (Besoin majeur)
+                2 => "#F39C12", // Fragilisé (Besoin d'étayage)
+                3 => "#F1C40F", // À surveiller (Équilibrage nécessaire)
+                4 => "#7DCEA0", // Satisfaisant (Niveau correct)
+                5 => "#27AE60", // Excellent (Ressource solide)
+                _ => "#E2E8F0"  // Non coté / neutre
+            };
+        }
+
+        /// <summary>
+        /// Couleur de contour et texte du badge de score sur le pourtour.
+        /// - Portrait : nuance ardoise assortie au secteur.
+        /// - Compétence : nuance de l'échelle clinique adaptée au fond blanc.
+        /// </summary>
+        private static string GetCeScoreBadgeColor(int score, bool isPortrait = false, int axisIndex = 0)
+        {
+            if (score <= 0) return "#94A3B8";
+            if (isPortrait) return PortraitSlatePalette[axisIndex % PortraitSlatePalette.Length];
+            return score switch
+            {
+                1 => "#C0392B", // Rouge foncé
+                2 => "#D35400", // Orange foncé
+                3 => "#B7950B", // Jaune ocre foncé (lisible sur fond blanc)
+                4 => "#229954", // Vert moyen/foncé (lisible sur fond blanc)
+                5 => "#1E8449", // Vert foncé
+                _ => "#94A3B8"  // Gris
+            };
+        }
+
+        /// <summary>
+        /// Couleur du texte de la lettre dans le secteur :
+        /// - Portrait : blanc sur fond ardoise.
+        /// - Compétence : sombre sur jaune #F1C40F, blanc sur les autres niveaux.
+        /// </summary>
+        private static string GetCeScoreTextColor(int score, bool isPortrait = false)
+        {
+            if (score <= 0) return "#64748B";
+            if (isPortrait) return "white";
+            return score switch
+            {
+                3 => "#1E293B", // Sur jaune #F1C40F : texte sombre contrasté
+                _ => "white"    // 1, 2, 4, 5 : blanc
+            };
+        }
+
         private static string BuildCeProfilV2Block(ProfilDef def, CartographieV2 cartoV2)
         {
             var (letters, labels, _, _) = ProfilV2Style(def.Key);
 
             var sb = new StringBuilder();
-            sb.AppendLine("      <div style='display: flex; flex-direction: column; align-items: center; gap: 6px; flex-shrink: 0;'>");
+            sb.AppendLine("      <div style='display: flex; flex-direction: column; align-items: center; gap: 5px; flex-shrink: 0;'>");
             sb.AppendLine("        <div class='ce-chart ce-chart-pie' style='width: 140px; height: 140px; margin-left: -10px;'>");
             sb.AppendLine(BuildCeProfilV2WheelSvg(def, cartoV2));
             sb.AppendLine("        </div>");
@@ -3967,13 +4038,45 @@ namespace MedCompanion.Services.Restitutions
             for (int i = 0; i < def.Axes.Length; i++)
                 sb.AppendLine($"          <div><strong>{letters[i]}</strong> : {WebUtility.HtmlEncode(labels[i])}</div>");
             sb.AppendLine("        </div>");
+            if (def.Key == "temperament" || def.Nature == ProfilNature.Portrait)
+            {
+                sb.AppendLine("        <div style='font-size: 7.5px; color: #64748B; font-style: italic; line-height: 1.25; text-align: center; width: 140px; margin-left: -10px; margin-top: 2px; border-top: 1px dashed #CBD5E1; padding-top: 3px;'>");
+                sb.AppendLine("          Ce n'est pas un score mais l'enfant tel qu'il est.");
+                sb.AppendLine("        </div>");
+            }
             sb.AppendLine("      </div>");
             return sb.ToString();
         }
 
+        /// <summary>
+        /// Rendu SVG d'une étiquette d'axe dans un secteur de roue :
+        /// - 1 lettre (ex: "S", "G") : grande lettre centrée (11px).
+        /// - 2 ou 3 lettres (ex: "Act", "App", "Ada", "Sen", "Émo", "Hum", "Ac", "Se") :
+        ///   majuscule principale en grand (10.5px bold) et suffixe en plus petit (7px bold)
+        ///   pour distinguer clairement les axes (ex: Act vs App vs Ada) comme demandé par l'utilisateur.
+        /// </summary>
+        private static string FormatWedgeLabelSvg(string label, double tx, double ty, string textColor)
+        {
+            var inv = System.Globalization.CultureInfo.InvariantCulture;
+            string sx = tx.ToString("F1", inv);
+            string sy = ty.ToString("F1", inv);
+
+            if (string.IsNullOrEmpty(label)) return string.Empty;
+
+            if (label.Length == 1)
+            {
+                return $"<text x='{sx}' y='{sy}' dy='3.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='11' font-weight='bold' fill='{textColor}'>{label}</text>";
+            }
+
+            string first = label.Substring(0, 1);
+            string rest = label.Substring(1);
+            return $"<text x='{sx}' y='{sy}' dy='3.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' fill='{textColor}'><tspan font-size='10.5' font-weight='bold'>{first}</tspan><tspan font-size='7' font-weight='bold' dy='-0.5'>{rest}</tspan></text>";
+        }
+
         private static string BuildCeProfilV2WheelSvg(ProfilDef def, CartographieV2 cartoV2)
         {
-            var (letters, _, colors, badgeColors) = ProfilV2Style(def.Key);
+            bool isPortrait = def.Nature == ProfilNature.Portrait || def.Key == "temperament";
+            var (letters, _, _, _) = ProfilV2Style(def.Key);
 
             const double cx = 70, cy = 70, r = 48, rText = 28, rBadge = 50;
             const double tau = 2 * Math.PI;
@@ -3984,6 +4087,9 @@ namespace MedCompanion.Services.Restitutions
 
             for (int i = 0; i < n; i++)
             {
+                cartoV2.Axes.TryGetValue($"{def.Key}.{def.Axes[i].Key}", out var v);
+                string fillColor = GetCeScoreColor(v, isPortrait, i);
+
                 double a0 = -Math.PI / 2 + i * tau / n;
                 double a1 = a0 + tau / n;
                 double p0x = cx + r * Math.Cos(a0); double p0y = cy + r * Math.Sin(a0);
@@ -3991,14 +4097,17 @@ namespace MedCompanion.Services.Restitutions
                 var path = string.Format(System.Globalization.CultureInfo.InvariantCulture,
                     "M {0:F2} {1:F2} L {2:F2} {3:F2} A {4:F2} {4:F2} 0 0 1 {5:F2} {6:F2} Z",
                     cx, cy, p0x, p0y, r, p1x, p1y);
-                sb.Append($"<path d='{path}' fill='{colors[i]}' stroke='white' stroke-width='1.5'/>");
+                sb.Append($"<path d='{path}' fill='{fillColor}' stroke='white' stroke-width='1.5'/>");
             }
 
             for (int i = 0; i < n; i++)
             {
+                cartoV2.Axes.TryGetValue($"{def.Key}.{def.Axes[i].Key}", out var v);
+                string textColor = GetCeScoreTextColor(v, isPortrait);
+
                 double mid = -Math.PI / 2 + i * tau / n + tau / (2 * n);
                 double tx = cx + rText * Math.Cos(mid); double ty = cy + rText * Math.Sin(mid);
-                sb.Append($"<text x='{tx:F1}' y='{ty:F1}' dy='4' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='10' font-weight='bold' fill='white'>{letters[i]}</text>");
+                sb.Append(FormatWedgeLabelSvg(letters[i], tx, ty, textColor));
             }
 
             for (int i = 0; i < n; i++)
@@ -4006,10 +4115,13 @@ namespace MedCompanion.Services.Restitutions
                 cartoV2.Axes.TryGetValue($"{def.Key}.{def.Axes[i].Key}", out var v);
                 if (v > 0)
                 {
+                    string badgeColor = GetCeScoreBadgeColor(v, isPortrait, i);
                     double mid = -Math.PI / 2 + i * tau / n + tau / (2 * n);
                     double bx = cx + rBadge * Math.Cos(mid); double by = cy + rBadge * Math.Sin(mid);
-                    sb.Append($"<circle cx='{bx:F1}' cy='{by:F1}' r='7.5' fill='white' stroke='{badgeColors[i]}' stroke-width='1.5'/>");
-                    sb.Append($"<text x='{bx:F1}' y='{by:F1}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColors[i]}'>{v}</text>");
+                    string sbx = bx.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                    string sby = by.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                    sb.Append($"<circle cx='{sbx}' cy='{sby}' r='7.5' fill='white' stroke='{badgeColor}' stroke-width='1.5'/>");
+                    sb.Append($"<text x='{sbx}' y='{sby}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColor}'>{v}</text>");
                 }
             }
 
@@ -4025,16 +4137,14 @@ namespace MedCompanion.Services.Restitutions
         /// de référentiel visuel à l'échelle.
         /// </summary>
         /// <summary>
-        /// <summary>
         /// SVG roue du tempérament (cercle segmenté en 6 dimensions) — scores 1-5 par axe.
-        /// Chaque segment a une couleur fixe, avec des badges de scores sur le périmètre.
+        /// Traité comme un Portrait (sans couleur d'alerte, bleu ardoise noble et neutre).
         /// </summary>
         private static string BuildCeTemperamentRadarSvg(Models.Evaluations.TemperamentProfile t)
         {
             int[] scores = { t.TempsDeReaction, t.Adaptabilite, t.IntensiteEmotionnelle, t.ReactiviteSensorielle, t.Regularite, t.NiveauActivite };
-            string[] letters = { "T", "A", "É", "S", "R", "A" };
-            string[] colors = { "#2ECC71", "#9ACD32", "#F1C40F", "#00A8B5", "#9B59B6", "#E74C3C" };
-            string[] badgeColors = { "#27AE60", "#7CB342", "#D68910", "#008B9B", "#8E44AD", "#C0392B" };
+            string[] letters = { "T", "A", "É", "S", "R", "Ac" };
+            const bool isPortrait = true;
 
             const double cx = 70, cy = 70, r = 48, rText = 28, rBadge = 50;
             const double tau = 2 * Math.PI;
@@ -4045,6 +4155,9 @@ namespace MedCompanion.Services.Restitutions
             // Draw the wedges
             for (int i = 0; i < 6; i++)
             {
+                int sc = scores[i];
+                string fillColor = GetCeScoreColor(sc, isPortrait, i);
+
                 double a0 = -Math.PI / 2 + i * tau / 6;
                 double a1 = a0 + tau / 6;
 
@@ -4057,12 +4170,15 @@ namespace MedCompanion.Services.Restitutions
                     "M {0:F2} {1:F2} L {2:F2} {3:F2} A {4:F2} {4:F2} 0 0 1 {5:F2} {6:F2} Z",
                     cx, cy, p0x, p0y, r, p1x, p1y);
 
-                sb.Append($"<path d='{path}' fill='{colors[i]}' stroke='white' stroke-width='1.5'/>");
+                sb.Append($"<path d='{path}' fill='{fillColor}' stroke='white' stroke-width='1.5'/>");
             }
 
             // Draw the single-letter labels inside the wedges
             for (int i = 0; i < 6; i++)
             {
+                int sc = scores[i];
+                string textColor = GetCeScoreTextColor(sc, isPortrait);
+
                 double a0 = -Math.PI / 2 + i * tau / 6;
                 double a1 = a0 + tau / 6;
                 double midAngle = (a0 + a1) / 2;
@@ -4070,7 +4186,7 @@ namespace MedCompanion.Services.Restitutions
                 double tx = cx + rText * Math.Cos(midAngle);
                 double ty = cy + rText * Math.Sin(midAngle);
 
-                sb.Append($"<text x='{tx:F1}' y='{ty:F1}' dy='4' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='12' font-weight='bold' fill='white'>{letters[i]}</text>");
+                sb.Append(FormatWedgeLabelSvg(letters[i], tx, ty, textColor));
             }
 
             // Draw the score badges
@@ -4079,17 +4195,19 @@ namespace MedCompanion.Services.Restitutions
                 int sc = scores[i];
                 if (sc > 0)
                 {
+                    string badgeColor = GetCeScoreBadgeColor(sc, isPortrait, i);
+
                     double a0 = -Math.PI / 2 + i * tau / 6;
                     double a1 = a0 + tau / 6;
                     double midAngle = (a0 + a1) / 2;
 
                     double bx = cx + rBadge * Math.Cos(midAngle);
                     double by = cy + rBadge * Math.Sin(midAngle);
+                    string sbx = bx.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                    string sby = by.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
 
-                    string badgeColor = badgeColors[i];
-
-                    sb.Append($"<circle cx='{bx:F1}' cy='{by:F1}' r='7.5' fill='white' stroke='{badgeColor}' stroke-width='1.5'/>");
-                    sb.Append($"<text x='{bx:F1}' y='{by:F1}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColor}'>{sc}</text>");
+                    sb.Append($"<circle cx='{sbx}' cy='{sby}' r='7.5' fill='white' stroke='{badgeColor}' stroke-width='1.5'/>");
+                    sb.Append($"<text x='{sbx}' y='{sby}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColor}'>{sc}</text>");
                 }
             }
 
@@ -4101,8 +4219,6 @@ namespace MedCompanion.Services.Restitutions
         {
             int[] scores  = { a.AttentionSoutenue, a.AttentionSelective, a.AttentionDivisee, a.Inhibition, a.Planification, a.FlexibiliteAttentionnelle };
             string[] letters = { "S", "Se", "D", "I", "P", "F" };
-            string[] colors  = { "#5B8DEF", "#A259E6", "#F4A261", "#E76F51", "#2A9D8F", "#E9C46A" };
-            string[] badgeColors = { "#3A6ED8", "#8544CC", "#D4843C", "#C25436", "#21867A", "#C9A43A" };
 
             const double cx = 70, cy = 70, r = 48, rText = 28, rBadge = 50;
             const double tau = 2 * Math.PI;
@@ -4112,6 +4228,9 @@ namespace MedCompanion.Services.Restitutions
 
             for (int i = 0; i < 6; i++)
             {
+                int sc = scores[i];
+                string fillColor = GetCeScoreColor(sc);
+
                 double a0 = -Math.PI / 2 + i * tau / 6;
                 double a1 = a0 + tau / 6;
                 double p0x = cx + r * Math.Cos(a0); double p0y = cy + r * Math.Sin(a0);
@@ -4119,14 +4238,17 @@ namespace MedCompanion.Services.Restitutions
                 var path = string.Format(System.Globalization.CultureInfo.InvariantCulture,
                     "M {0:F2} {1:F2} L {2:F2} {3:F2} A {4:F2} {4:F2} 0 0 1 {5:F2} {6:F2} Z",
                     cx, cy, p0x, p0y, r, p1x, p1y);
-                sb.Append($"<path d='{path}' fill='{colors[i]}' stroke='white' stroke-width='1.5'/>");
+                sb.Append($"<path d='{path}' fill='{fillColor}' stroke='white' stroke-width='1.5'/>");
             }
 
             for (int i = 0; i < 6; i++)
             {
+                int sc = scores[i];
+                string textColor = GetCeScoreTextColor(sc);
+
                 double mid = -Math.PI / 2 + i * tau / 6 + tau / 12;
                 double tx = cx + rText * Math.Cos(mid); double ty = cy + rText * Math.Sin(mid);
-                sb.Append($"<text x='{tx:F1}' y='{ty:F1}' dy='4' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='10' font-weight='bold' fill='white'>{letters[i]}</text>");
+                sb.Append(FormatWedgeLabelSvg(letters[i], tx, ty, textColor));
             }
 
             for (int i = 0; i < 6; i++)
@@ -4134,10 +4256,14 @@ namespace MedCompanion.Services.Restitutions
                 int sc = scores[i];
                 if (sc > 0)
                 {
+                    string badgeColor = GetCeScoreBadgeColor(sc);
+
                     double mid = -Math.PI / 2 + i * tau / 6 + tau / 12;
                     double bx = cx + rBadge * Math.Cos(mid); double by = cy + rBadge * Math.Sin(mid);
-                    sb.Append($"<circle cx='{bx:F1}' cy='{by:F1}' r='7.5' fill='white' stroke='{badgeColors[i]}' stroke-width='1.5'/>");
-                    sb.Append($"<text x='{bx:F1}' y='{by:F1}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColors[i]}'>{sc}</text>");
+                    string sbx = bx.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                    string sby = by.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                    sb.Append($"<circle cx='{sbx}' cy='{sby}' r='7.5' fill='white' stroke='{badgeColor}' stroke-width='1.5'/>");
+                    sb.Append($"<text x='{sbx}' y='{sby}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColor}'>{sc}</text>");
                 }
             }
 
@@ -4149,8 +4275,6 @@ namespace MedCompanion.Services.Restitutions
         {
             int[] scores  = { p.MotriciteGlobale, p.MotriciteFine, p.Tonus, p.Dexterite, p.Coordination, p.ImpulsiviteMotrice };
             string[] letters = { "G", "F", "T", "D", "C", "I" };
-            string[] colors  = { "#3498DB", "#1ABC9C", "#E67E22", "#9B59B6", "#27AE60", "#E74C3C" };
-            string[] badgeColors = { "#2980B9", "#16A085", "#D35400", "#8E44AD", "#229954", "#C0392B" };
 
             const double cx = 70, cy = 70, r = 48, rText = 28, rBadge = 50;
             const double tau = 2 * Math.PI;
@@ -4160,6 +4284,9 @@ namespace MedCompanion.Services.Restitutions
 
             for (int i = 0; i < 6; i++)
             {
+                int sc = scores[i];
+                string fillColor = GetCeScoreColor(sc);
+
                 double a0 = -Math.PI / 2 + i * tau / 6;
                 double a1 = a0 + tau / 6;
                 double p0x = cx + r * Math.Cos(a0); double p0y = cy + r * Math.Sin(a0);
@@ -4167,14 +4294,17 @@ namespace MedCompanion.Services.Restitutions
                 var path = string.Format(System.Globalization.CultureInfo.InvariantCulture,
                     "M {0:F2} {1:F2} L {2:F2} {3:F2} A {4:F2} {4:F2} 0 0 1 {5:F2} {6:F2} Z",
                     cx, cy, p0x, p0y, r, p1x, p1y);
-                sb.Append($"<path d='{path}' fill='{colors[i]}' stroke='white' stroke-width='1.5'/>");
+                sb.Append($"<path d='{path}' fill='{fillColor}' stroke='white' stroke-width='1.5'/>");
             }
 
             for (int i = 0; i < 6; i++)
             {
+                int sc = scores[i];
+                string textColor = GetCeScoreTextColor(sc);
+
                 double mid = -Math.PI / 2 + i * tau / 6 + tau / 12;
                 double tx = cx + rText * Math.Cos(mid); double ty = cy + rText * Math.Sin(mid);
-                sb.Append($"<text x='{tx:F1}' y='{ty:F1}' dy='4' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='12' font-weight='bold' fill='white'>{letters[i]}</text>");
+                sb.Append(FormatWedgeLabelSvg(letters[i], tx, ty, textColor));
             }
 
             for (int i = 0; i < 6; i++)
@@ -4182,10 +4312,14 @@ namespace MedCompanion.Services.Restitutions
                 int sc = scores[i];
                 if (sc > 0)
                 {
+                    string badgeColor = GetCeScoreBadgeColor(sc);
+
                     double mid = -Math.PI / 2 + i * tau / 6 + tau / 12;
                     double bx = cx + rBadge * Math.Cos(mid); double by = cy + rBadge * Math.Sin(mid);
-                    sb.Append($"<circle cx='{bx:F1}' cy='{by:F1}' r='7.5' fill='white' stroke='{badgeColors[i]}' stroke-width='1.5'/>");
-                    sb.Append($"<text x='{bx:F1}' y='{by:F1}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColors[i]}'>{sc}</text>");
+                    string sbx = bx.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                    string sby = by.ToString("F1", System.Globalization.CultureInfo.InvariantCulture);
+                    sb.Append($"<circle cx='{sbx}' cy='{sby}' r='7.5' fill='white' stroke='{badgeColor}' stroke-width='1.5'/>");
+                    sb.Append($"<text x='{sbx}' y='{sby}' dy='2.5' text-anchor='middle' font-family='Segoe UI, Arial, sans-serif' font-size='8' font-weight='bold' fill='{badgeColor}'>{sc}</text>");
                 }
             }
 
