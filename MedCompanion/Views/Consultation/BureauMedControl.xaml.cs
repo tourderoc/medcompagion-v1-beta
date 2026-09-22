@@ -125,6 +125,10 @@ namespace MedCompanion.Views.Consultation
             => toolName.Contains("Écriture", StringComparison.OrdinalIgnoreCase)
             || toolName.Contains("Ecriture", StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>Vrai si l'outil demandé est la bibliothèque d'infographies (natif).</summary>
+        private static bool IsInfographiesTool(string toolName)
+            => toolName.Contains("Infographies", StringComparison.OrdinalIgnoreCase);
+
         // Methodes publiques appelees depuis le header principal
         public void EmbedTool(string toolName)
         {
@@ -135,12 +139,45 @@ namespace MedCompanion.Views.Consultation
 
             if (IsAtelierTool(toolName))
             {
+                HideInfographies();
                 ShowAtelier();
                 return;
             }
 
+            if (IsInfographiesTool(toolName))
+            {
+                HideAtelier();
+                ShowInfographies();
+                return;
+            }
+
             HideAtelier();
+            HideInfographies();
             EmbedToolInternal(toolName);
+        }
+
+        private void ShowInfographies()
+        {
+            // Même raison que pour l'atelier : une app Win32 embarquée masquerait le WPF
+            if (_embeddedWindowHandle != IntPtr.Zero)
+            {
+                var oldHandle = _embeddedWindowHandle;
+                ReleaseEmbeddedWindow();
+                ShowWindow(oldHandle, SW_MINIMIZE);
+            }
+
+            PlaceholderText.Visibility = Visibility.Collapsed;
+            InfographiesContent.Recharger();
+            InfographiesContent.Visibility = Visibility.Visible;
+            if (_viewModel != null)
+                _viewModel.AnalysisResult = "Bibliothèque d'infographies ouverte.";
+        }
+
+        private void HideInfographies()
+        {
+            if (InfographiesContent.Visibility != Visibility.Visible) return;
+            InfographiesContent.Visibility = Visibility.Collapsed;
+            PlaceholderText.Visibility = Visibility.Visible;
         }
 
         private void ShowAtelier()
@@ -171,6 +208,7 @@ namespace MedCompanion.Views.Consultation
         public void ReleaseTool()
         {
             HideAtelier();
+            HideInfographies();
             ReleaseEmbeddedWindow();
             if (_viewModel != null)
             {
@@ -181,6 +219,7 @@ namespace MedCompanion.Views.Consultation
         public void ReleaseToolAndMinimize()
         {
             HideAtelier();
+            HideInfographies();
             if (_embeddedWindowHandle != IntPtr.Zero)
             {
                 var handleToMinimize = _embeddedWindowHandle;

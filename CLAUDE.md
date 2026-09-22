@@ -104,7 +104,8 @@ if (!success) { MessageBox.Show(error); return; }
 
 ## Documents Liés
 
-- [REPRISE_19_09.md](REPRISE_19_09.md) — **À LIRE EN PREMIER pour reprendre le fil.** La bibliothèque d'infographies (jamais discutée) et les mesures moteur à ne pas refaire. Son §2 est périmé : le travail du 18/09 est committé (`b535f1b`).
+- [REPRISE_19_09.md](REPRISE_19_09.md) — Les mesures moteur à ne pas refaire. Son §1.1 (infographies) est remplacé par le plan ci-dessous, son §2 est périmé : le travail du 18/09 est committé (`b535f1b`).
+- [PLAN_BIBLIOTHEQUE_INFOGRAPHIES.md](PLAN_BIBLIOTHEQUE_INFOGRAPHIES.md) — **Bibliothèque d'infographies.** Étape 1 codée le 22/09/2026 (Bureau → Infographies pour importer/classer/valider ; carte « Infographies » en consultation pour imprimer, remise notée dans le dossier patient), à essayer. Étape 2 (création par Qwen-Image 2.1 via ComfyUI) à cadrer après essai et lecture de la licence.
 - **Depuis le 21/09/2026, le projet vit sur le NVMe : `N:\PosteTravail\Desktop\MedCompagion V1 béta`** (Corsair MP510 sur adaptateur PCIe x1). `Desktop` et `Documents` ont été déplacés de `D:\PosteTravail\` ; les originaux restent sur D: jusqu'à validation par le médecin. Prochaine étape : alléger le SSD SATA C:, qui sature.
 
 - [VISION_V3.md](VISION_V3.md) — Vision écosystème Parent'aile + MedCompanion (V0 en cours)

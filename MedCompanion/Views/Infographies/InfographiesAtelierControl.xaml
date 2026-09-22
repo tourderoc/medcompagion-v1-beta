@@ -1,0 +1,241 @@
+﻿<UserControl x:Class="MedCompanion.Views.Infographies.InfographiesAtelierControl"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             mc:Ignorable="d"
+             d:DesignHeight="800" d:DesignWidth="1400"
+             Language="fr-FR"
+             Background="#F8F9FA">
+
+    <UserControl.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <Style x:Key="ToolBtn" TargetType="Button">
+            <Setter Property="Background" Value="#3498DB"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="Margin" Value="0,0,6,0"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}"
+                                CornerRadius="5" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.85"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="Etiquette" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Foreground" Value="#7F8C8D"/>
+            <Setter Property="Margin" Value="0,10,0,3"/>
+        </Style>
+        <Style x:Key="FiltreCombo" TargetType="ComboBox">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Padding" Value="6,3"/>
+            <Setter Property="Margin" Value="0,0,4,0"/>
+        </Style>
+    </UserControl.Resources>
+
+    <Grid Margin="8" AllowDrop="True" Drop="Zone_Drop" DragOver="Zone_DragOver">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="340" MinWidth="280"/>
+            <ColumnDefinition Width="8"/>
+            <ColumnDefinition Width="*" MinWidth="360"/>
+            <ColumnDefinition Width="8"/>
+            <ColumnDefinition Width="300"/>
+        </Grid.ColumnDefinitions>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- ══ Colonne gauche : import, filtres, liste ══ -->
+        <Border Grid.Column="0" Background="White" CornerRadius="6" BorderBrush="#E0E0E0" BorderThickness="1" Padding="10">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <DockPanel Grid.Row="0" LastChildFill="False">
+                    <TextBlock DockPanel.Dock="Left" Text="🖼 Infographies" FontSize="14" FontWeight="SemiBold"
+                               Foreground="#2C3E50" VerticalAlignment="Center"/>
+                    <Button DockPanel.Dock="Right" Content="📂 Importer" Click="Importer_Click"
+                            Style="{StaticResource ToolBtn}" Margin="0"
+                            ToolTip="Importer une ou plusieurs infographies (PDF, PNG, JPG). Vous pouvez aussi les glisser ici."/>
+                </DockPanel>
+
+                <Grid Grid.Row="1" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <ComboBox Grid.Column="0" Style="{StaticResource FiltreCombo}" ToolTip="Type"
+                              ItemsSource="{Binding TypesFiltre}" SelectedItem="{Binding FiltreType}"/>
+                    <ComboBox Grid.Column="1" Style="{StaticResource FiltreCombo}" ToolTip="Sujet"
+                              ItemsSource="{Binding SujetsFiltre}" SelectedItem="{Binding FiltreSujet}"/>
+                    <ComboBox Grid.Column="2" Style="{StaticResource FiltreCombo}" ToolTip="Public" Margin="0"
+                              ItemsSource="{Binding PublicsFiltre}" SelectedItem="{Binding FiltrePublic}"/>
+                </Grid>
+
+                <TextBox Grid.Row="2" Margin="0,6,0,8" Padding="6,4" FontSize="12"
+                         Text="{Binding Recherche, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Rechercher dans les titres, sujets et notes"/>
+
+                <Grid Grid.Row="3">
+                    <ListBox ItemsSource="{Binding Cartes}" SelectedItem="{Binding Selection}"
+                             BorderThickness="0" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                        <ListBox.ItemContainerStyle>
+                            <Style TargetType="ListBoxItem">
+                                <Setter Property="Padding" Value="0"/>
+                                <Setter Property="Margin" Value="0,0,0,6"/>
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            </Style>
+                        </ListBox.ItemContainerStyle>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#E5E8E8" BorderThickness="1" CornerRadius="5" Padding="6">
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="96"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+                                        <Border Grid.Column="0" Background="#F4F6F7" Height="60" CornerRadius="3">
+                                            <Image Source="{Binding Miniature}" Stretch="Uniform"/>
+                                        </Border>
+                                        <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Titre}" FontWeight="SemiBold" FontSize="12"
+                                                       Foreground="#2C3E50" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding Resume}" FontSize="10" Foreground="#7F8C8D"
+                                                       TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{Binding StatutTexte}" FontSize="10" Margin="0,3,0,0">
+                                                <TextBlock.Style>
+                                                    <Style TargetType="TextBlock">
+                                                        <Setter Property="Foreground" Value="#D35400"/>
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding EstValidee}" Value="True">
+                                                                <Setter Property="Foreground" Value="#1E8449"/>
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </TextBlock.Style>
+                                            </TextBlock>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock Text="{Binding MessageVide}" TextAlignment="Center" TextWrapping="Wrap"
+                               Foreground="#95A5A6" FontSize="12" VerticalAlignment="Center" Margin="10"
+                               Visibility="{Binding EstVide, Converter={StaticResource BoolToVis}}"/>
+                    <TextBlock Text="Aucune fiche ne correspond aux filtres." TextAlignment="Center"
+                               Foreground="#95A5A6" FontSize="12" VerticalAlignment="Center"
+                               Visibility="{Binding AucunResultat, Converter={StaticResource BoolToVis}}"/>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- ══ Centre : aperçu ══ -->
+        <Border Grid.Column="2" Background="#E5E8E8" CornerRadius="6" Padding="12">
+            <Grid>
+                <Image Source="{Binding ImageSelection}" Stretch="Uniform"
+                       RenderOptions.BitmapScalingMode="HighQuality"/>
+                <TextBlock Text="Sélectionnez une fiche pour l'afficher" Foreground="#95A5A6" FontSize="13"
+                           HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="Visibility" Value="Collapsed"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding ASelection}" Value="False">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+            </Grid>
+        </Border>
+
+        <!-- ══ Droite : la fiche ══ -->
+        <Border Grid.Column="4" Background="White" CornerRadius="6" BorderBrush="#E0E0E0" BorderThickness="1" Padding="12"
+                IsEnabled="{Binding ASelection}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel DataContext="{Binding Selection}">
+                    <TextBlock Text="Fiche" FontSize="14" FontWeight="SemiBold" Foreground="#2C3E50"/>
+
+                    <TextBlock Text="Titre" Style="{StaticResource Etiquette}"/>
+                    <TextBox Text="{Binding Titre}" Padding="6,4" FontSize="12" TextWrapping="Wrap"/>
+
+                    <TextBlock Text="Type" Style="{StaticResource Etiquette}"/>
+                    <ComboBox IsEditable="True" FontSize="12" Padding="6,4"
+                              ItemsSource="{Binding DataContext.TypesChoix, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              Text="{Binding Type, UpdateSourceTrigger=LostFocus}"/>
+
+                    <TextBlock Text="Sujets (séparés par des virgules)" Style="{StaticResource Etiquette}"/>
+                    <TextBox Text="{Binding SujetsTexte}" Padding="6,4" FontSize="12" TextWrapping="Wrap"
+                             ToolTip="Ex. : TDAH, Méthylphénidate"/>
+
+                    <TextBlock Text="Public" Style="{StaticResource Etiquette}"/>
+                    <ComboBox IsEditable="True" FontSize="12" Padding="6,4"
+                              ItemsSource="{Binding DataContext.PublicsChoix, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                              Text="{Binding Public, UpdateSourceTrigger=LostFocus}"/>
+
+                    <TextBlock Text="Notes (points à corriger, sources…)" Style="{StaticResource Etiquette}"/>
+                    <TextBox Text="{Binding Notes}" Padding="6,4" FontSize="12" TextWrapping="Wrap"
+                             AcceptsReturn="True" MinHeight="70" VerticalScrollBarVisibility="Auto"/>
+
+                    <Border Margin="0,14,0,0" Padding="8" CornerRadius="5">
+                        <Border.Style>
+                            <Style TargetType="Border">
+                                <Setter Property="Background" Value="#FDEBD0"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding EstValidee}" Value="True">
+                                        <Setter Property="Background" Value="#D5F5E3"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Border.Style>
+                        <StackPanel>
+                            <TextBlock Text="{Binding StatutTexte}" FontWeight="SemiBold" FontSize="12" Foreground="#2C3E50"/>
+                            <TextBlock FontSize="10" Foreground="#5D6D7E" TextWrapping="Wrap" Margin="0,3,0,0"
+                                       Text="Seules les fiches validées sont proposées en consultation."/>
+                        </StackPanel>
+                    </Border>
+
+                    <Button Content="✨ Pré-remplir avec Med" Click="Proposer_Click"
+                            Style="{StaticResource ToolBtn}" Background="#8E44AD" Margin="0,10,0,0"
+                            IsEnabled="{Binding DataContext.PeutProposer, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                            ToolTip="Med lit l'infographie et propose titre, type, sujets et public. Les chiffres et règles à vérifier sont recopiés dans les notes."/>
+                    <Button Content="{Binding BoutonValidation}" Click="Valider_Click"
+                            Style="{StaticResource ToolBtn}" Background="#27AE60" Margin="0,6,0,0"/>
+                    <Button Content="🔁 Remplacer l'image" Click="Remplacer_Click"
+                            Style="{StaticResource ToolBtn}" Margin="0,6,0,0"
+                            ToolTip="Importer la version corrigée : le classement est gardé, la fiche repasse « à relire »."/>
+                    <Button Content="🗑 Supprimer" Click="Supprimer_Click"
+                            Style="{StaticResource ToolBtn}" Background="#E74C3C" Margin="0,6,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <TextBlock Grid.Row="1" Grid.ColumnSpan="5" Text="{Binding Statut}" FontSize="11" Foreground="#5D6D7E"
+                   Margin="4,6,0,0" TextWrapping="Wrap"/>
+    </Grid>
+</UserControl>

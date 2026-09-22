@@ -5754,6 +5754,32 @@
                                         </StackPanel>
                                     </Border>
 
+                                    <!-- Bloc action globale : bibliothèque d'infographies -->
+                                    <Border Background="#F4ECF7" BorderBrush="#C39BD3" BorderThickness="1"
+                                            CornerRadius="6" Padding="10" Margin="0,0,0,12"
+                                            Visibility="{Binding IsMedSuggestions, Converter={StaticResource BoolToVis}}">
+                                        <StackPanel>
+                                            <TextBlock Text="🖼 Infographies" FontWeight="SemiBold" FontSize="12"
+                                                       Foreground="#6C3483" Margin="0,0,0,8"/>
+                                            <Button x:Name="MedInfographiesBtn" Content="📚 Bibliothèque"
+                                                    Click="MedInfographiesBtn_Click" HorizontalAlignment="Left"
+                                                    Padding="10,6" Background="#8E44AD" Foreground="White"
+                                                    BorderThickness="0" Cursor="Hand" FontSize="11"
+                                                    ToolTip="Choisir une infographie validée et l'imprimer pour la famille">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#7D3C98"/></Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+                                        </StackPanel>
+                                    </Border>
+
                                     <!-- Mode Suggestions -->
                                     <ItemsControl ItemsSource="{Binding Suggestions}"
                                                   Visibility="{Binding IsMedSuggestions, Converter={StaticResource BoolToVis}}">

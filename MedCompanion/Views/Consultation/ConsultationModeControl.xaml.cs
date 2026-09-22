@@ -459,6 +459,18 @@ categorie: {document.Category ?? "Documents"}
             }
         }
 
+        private void MedInfographiesBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+            var patient = _viewModel?.CurrentPatient;
+            var fenetre = new Views.Infographies.InfographiesBibliothequeWindow(
+                patient?.DirectoryPath, patient?.NomComplet)
+            {
+                Owner = Window.GetWindow(this)
+            };
+            fenetre.ShowDialog();
+        }
+
         private async void MedImportDocBtn_Click(object sender, RoutedEventArgs e)
         {
             _viewModel ??= DataContext as ConsultationModeViewModel;

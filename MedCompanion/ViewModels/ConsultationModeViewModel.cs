@@ -9439,16 +9439,9 @@ source: ""MedCompanion""
         /// </summary>
         private void LoadSuggestionsForPatient(PatientIndexEntry patient)
         {
+            // Aucune suggestion tant que le service Med n'est pas branché : la carte
+            // « Points à évoquer » affichait un texte fictif, retirée le 22/09/2026.
             Suggestions.Clear();
-
-            // Placeholder - sera connecté au service Med plus tard
-            Suggestions.Add(new MedSuggestion
-            {
-                Icon = "📝",
-                Title = "Points à évoquer",
-                Content = "Suivi scolaire, RDV bilan prévu",
-                Category = "PointAEvoquer"
-            });
         }
 
         /// <summary>
@@ -9469,31 +9462,6 @@ source: ""MedCompanion""
         /// </summary>
         private void LoadPlaceholderData()
         {
-            // Suggestions de test
-            Suggestions.Add(new MedSuggestion
-            {
-                Icon = "💊",
-                Title = "Interactions détectées",
-                Content = "Aucune interaction connue",
-                Category = "Interaction"
-            });
-
-            Suggestions.Add(new MedSuggestion
-            {
-                Icon = "📝",
-                Title = "Points à évoquer",
-                Content = "Suivi scolaire, sommeil",
-                Category = "PointAEvoquer"
-            });
-
-            Suggestions.Add(new MedSuggestion
-            {
-                Icon = "🎯",
-                Title = "Rappel",
-                Content = "Dernier RDV: fatigue mentionnée",
-                Category = "Rappel"
-            });
-
             // Checklist de test
             ChecklistItems.Add(new ChecklistItem { Text = "Évolution depuis dernier RDV", Source = "auto" });
             ChecklistItems.Add(new ChecklistItem { Text = "Tolérance traitement", Source = "auto" });
