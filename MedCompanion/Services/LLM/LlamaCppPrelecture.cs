@@ -30,7 +30,16 @@ namespace MedCompanion.Services.LLM
     /// </summary>
     public static class LlamaCppPrelecture
     {
-        private const long MargeOctets = 2L * 1024 * 1024 * 1024;
+        /// <summary>
+        /// Marge de RAM disponible sous laquelle on renonce. ESSAI DU 26/09/2026, à la demande du
+        /// médecin : abaissée de 2 Go à 512 Mo pour voir si la machine tient. Le cache est de la
+        /// mémoire en veille, que Windows reprend à la demande — en théorie il ne peut pas faire
+        /// saturer la machine, et c'est cette théorie qu'on met à l'épreuve.
+        ///
+        /// POUR REVENIR EN ARRIÈRE : remettre 2L * 1024 * 1024 * 1024.
+        /// </summary>
+        private const long MargeOctets = 512L * 1024 * 1024;
+
         private const int  TailleBloc  = 4 * 1024 * 1024;
 
         /// <summary>Rafraîchissement : relire un fichier déjà en cache ne coûte presque rien, et rattrape une
@@ -152,9 +161,9 @@ namespace MedCompanion.Services.LLM
                 var taille = new FileInfo(fichier!).Length;
 
                 var disponible = MemoireDisponibleOctets();
-                // Si la mémoire disponible est trop basse (< 4 Go), on ne dispute pas la RAM au système.
+                // Si la mémoire disponible est trop basse, on ne dispute pas la RAM au système.
                 // Au-delà, on lit pour peupler le cache Standby de Windows, la boucle interne se chargeant
-                // de s'interrompre proprement si la marge de sécurité (2 Go) est atteinte en cours de route.
+                // de s'interrompre proprement si la marge de sécurité est atteinte en cours de route.
                 if (disponible < MargeOctets * 2)
                 {
                     Journal($"{raison} · {nom} ignoré : {disponible / 1048576:N0} Mo disponibles (seuil de sécurité {(MargeOctets * 2) / 1048576:N0} Mo)");
@@ -193,8 +202,11 @@ namespace MedCompanion.Services.LLM
                 chrono.Stop();
                 var secondes = Math.Max(0.001, chrono.Elapsed.TotalSeconds);
                 var debit    = lu / 1048576.0 / secondes;
+                // La RAM disponible avant/après dit si le cache a tenu ou si Windows a évincé
+                // aussitôt. C'est la mesure qui tranche l'essai du 26/09 sur la marge abaissée.
                 Journal($"{raison} · {profil.ShortName} · {nom} · {lu / 1048576:N0} Mo en {secondes:0.0} s " +
-                        $"({debit:N0} Mo/s){(debit > 1000 ? " — déjà en cache" : "")}");
+                        $"({debit:N0} Mo/s){(debit > 1000 ? " — déjà en cache" : "")} · " +
+                        $"RAM dispo {disponible / 1048576:N0} → {MemoireDisponibleOctets() / 1048576:N0} Mo");
             }
 
             lock (_sync)
