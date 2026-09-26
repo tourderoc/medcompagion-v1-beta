@@ -318,6 +318,9 @@ public partial class MainWindow : Window
                 case "Bureau":
                     BureauMedContent.Visibility = Visibility.Visible;
                     if (BureauControlsZone != null) BureauControlsZone.Visibility = Visibility.Visible;
+                    // L'agenda est l'écran d'accueil du Bureau : c'est ce qu'on vient consulter
+                    // le plus souvent, et la zone ne doit jamais s'ouvrir vide.
+                    BureauMedContent.AfficherAccueil();
                     InitializeMedService();
                     InitializeBureauService();
                     if (StatusTextBlock != null)
@@ -418,6 +421,60 @@ public partial class MainWindow : Window
             BureauMedContent.Initialize(_medAgentService);
         }
         BureauMedContent.InitializeAtelier(_llmFactory);
+
+        if (!_cadreBureauSuivi)
+        {
+            BureauMedContent.ContenuCadreChange += AjusterBoutonsCadreBureau;
+            BureauMedContent.DossierDemande += OuvrirDossierDepuisAgenda;
+            _cadreBureauSuivi = true;
+        }
+    }
+
+    private bool _cadreBureauSuivi;
+
+    /// <summary>
+    /// Un clic sur un rendez-vous de l'agenda ouvre le dossier en mode Consultation. Rien de
+    /// plus : pas de consultation démarrée, pas de note créée, et jamais rien écrit dans
+    /// Doctolib. C'est le geste du matin — l'agenda devient la porte d'entrée de la journée.
+    /// </summary>
+    private void OuvrirDossierDepuisAgenda(string dossier)
+    {
+        if (string.IsNullOrWhiteSpace(dossier)) return;
+
+        var patient = _patientIndex.GetAllPatients()
+            .FirstOrDefault(p => string.Equals(p.Id, dossier, StringComparison.OrdinalIgnoreCase));
+
+        if (patient == null)
+        {
+            // Le dossier a été renommé ou supprimé depuis le rapprochement. On le dit plutôt que
+            // de basculer sur un écran vide.
+            MessageBox.Show(
+                $"Le dossier « {dossier} » n'existe plus dans Med.\n\n" +
+                "Il a pu être renommé ou supprimé depuis la dernière mise à jour de l'agenda. " +
+                "Relancez « Mettre à jour » pour refaire le rapprochement.",
+                "Dossier introuvable", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
+        LoadPatientAsync(patient);
+        SwitchMode("Consultation");
+    }
+
+    /// <summary>
+    /// Les boutons de capture n'ont de sens que devant Doctolib intégré dans le cadre. Masqués
+    /// le reste du temps, pour que l'écran de l'agenda reste net (demandé le 25/09/2026).
+    /// </summary>
+    private void AjusterBoutonsCadreBureau(bool applicationEmbarquee, bool estDoctolib)
+    {
+        var surDoctolib = estDoctolib ? Visibility.Visible : Visibility.Collapsed;
+        if (BureauCaptureSemaineBtn != null) BureauCaptureSemaineBtn.Visibility = surDoctolib;
+        if (BureauCaptureJourBtn != null) BureauCaptureJourBtn.Visibility = surDoctolib;
+
+        // L'import des infos patient exige un patient sélectionné dans Med : sans lui, le bouton
+        // ne peut rien faire d'autre qu'afficher un avertissement.
+        if (BureauImporterBtn != null)
+            BureauImporterBtn.Visibility = estDoctolib && _selectedPatient != null
+                ? Visibility.Visible : Visibility.Collapsed;
     }
 
     // Gestionnaires des boutons Bureau (header)
@@ -439,6 +496,12 @@ public partial class MainWindow : Window
     {
         BureauMedContent.AnalyzeTool();
     }
+
+    private void BureauCaptureSemaineBtn_Click(object sender, RoutedEventArgs e)
+        => BureauMedContent.CapturerPourAgenda(Services.Agenda.AgendaCaptureService.VueSemaine);
+
+    private void BureauCaptureJourBtn_Click(object sender, RoutedEventArgs e)
+        => BureauMedContent.CapturerPourAgenda(Services.Agenda.AgendaCaptureService.VueJour);
 
     private void BureauImporterBtn_Click(object sender, RoutedEventArgs e)
     {

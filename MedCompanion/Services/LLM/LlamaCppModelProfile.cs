@@ -244,6 +244,7 @@ namespace MedCompanion.Services.LLM
             SupportsReasoning  = true,
         };
 
+
         /// <summary>
         /// Gemma 4 12B en QAT, avec son brouillon MTP séparé — la variante d'Unsloth. Seul Gemma servi
         /// depuis le 14/09/2026 : le Gemma 4 12B standard a été retiré, fichier et profil.
@@ -276,7 +277,31 @@ namespace MedCompanion.Services.LLM
             SupportsReasoning  = false,
         };
 
-        public static readonly IReadOnlyList<LlamaCppModelProfile> All = new[] { Qwen, Gemma4Qat };
+        /// <summary>
+        /// Qwen3-VL 8B — modèle de LECTURE D'IMAGE, ajouté le 26/09/2026 pour l'agenda.
+        ///
+        /// Gemma 4 QAT s'est montré incapable de transcrire des noms propres sur une capture de
+        /// l'agenda Doctolib : horaires justes, mais « ALCOCK » pour ALOCCIO, « ORIANAT » pour
+        /// OSENAT MAUREL, et onze lignes inventées sur une journée. Qwen3-VL est un modèle
+        /// spécialisé dans la lecture de documents (96,1 sur DocVQA), en Q8 pour ne pas perdre
+        /// en précision là où justement elle manque. 8,3 Go + 1,08 Go de projecteur.
+        /// </summary>
+        public static readonly LlamaCppModelProfile Qwen3Vl = new()
+        {
+            Id                 = "Qwen3-VL-8B",
+            ShortName          = "Qwen3-VL 8B (vision)",
+            DisplayName        = "Qwen3-VL-8B-Instruct Q8_0 (llama.cpp)",
+            ModelPath          = Chemin("Qwen3VL-8B-Instruct-Q8_0.gguf"),
+            MmprojPath         = Chemin("mmproj-Qwen3VL-8B-Instruct-F16.gguf"),
+            MaxContextSize     = 131072,
+            DefaultContextSize = 32768,
+            DefaultDraftTokens = 0,
+            DefaultReasoningBudget = 0,
+            HasMtpTensors      = false,
+            SupportsReasoning  = false,
+        };
+
+        public static readonly IReadOnlyList<LlamaCppModelProfile> All = new[] { Qwen, Gemma4Qat, Qwen3Vl };
 
         static LlamaCppProfiles()
         {

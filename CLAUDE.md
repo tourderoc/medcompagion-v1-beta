@@ -105,9 +105,10 @@ if (!success) { MessageBox.Show(error); return; }
 ## Documents Liés
 
 - [REPRISE_19_09.md](REPRISE_19_09.md) — Les mesures moteur à ne pas refaire. Son §1.1 (infographies) est remplacé par le plan ci-dessous, son §2 est périmé : le travail du 18/09 est committé (`b535f1b`).
-- [PLAN_BIBLIOTHEQUE_INFOGRAPHIES.md](PLAN_BIBLIOTHEQUE_INFOGRAPHIES.md) — **Bibliothèque d'infographies.** Étape 1 codée le 22/09/2026 (Bureau → Infographies pour importer/classer/valider ; carte « Infographies » en consultation pour imprimer, remise notée dans le dossier patient), à essayer. Étape 2 (création par Qwen-Image 2.1 via ComfyUI) à cadrer après essai et lecture de la licence.
-- **Depuis le 21/09/2026, le projet vit sur le NVMe : `N:\PosteTravail\Desktop\MedCompagion V1 béta`** (Corsair MP510 sur adaptateur PCIe x1). `Desktop` et `Documents` ont été déplacés de `D:\PosteTravail\` ; les originaux restent sur D: jusqu'à validation par le médecin. Prochaine étape : alléger le SSD SATA C:, qui sature.
+- [PLAN_BIBLIOTHEQUE_INFOGRAPHIES.md](PLAN_BIBLIOTHEQUE_INFOGRAPHIES.md) — **Bibliothèque d'infographies.** Étape 1 faite et en service depuis le 22/09/2026 (`15ccfd3`) : Bureau → Infographies pour importer (PDF/PNG), classer, faire pré-remplir par Med et valider ; carte « Infographies » en consultation pour imprimer, remise notée dans le dossier patient. **Étape 2 (génération par Qwen-Image) écartée le 24/09 : on garde NotebookLM** — raisons dans le plan.
+- **Depuis le 21/09/2026, le projet vit sur le NVMe : `N:\PosteTravail\Desktop\MedCompagion V1 béta`** (Corsair MP510 sur adaptateur PCIe x1). `Desktop` et `Documents` ont été déplacés de `D:\PosteTravail\` ; les originaux restent sur D: jusqu'à validation par le médecin. Le SSD C: a été allégé les 21-22/09 (fichier d'échange réduit, cache NuGet sur N:) : ~36 Go libres.
 
+- [PLAN_AGENDA_ET_PASSERELLE_DOCTOLIB.md](PLAN_AGENDA_ET_PASSERELLE_DOCTOLIB.md) — **Agenda de secours dans Med + passerelle GDT vers Doctolib.** Ouvert le 24/09/2026, rien de codé. Ce qui a été vérifié (export CSV, colonnes patients, champs GDT, voies écartées) et l'ordre des trois chantiers.
 - [VISION_V3.md](VISION_V3.md) — Vision écosystème Parent'aile + MedCompanion (V0 en cours)
 - [VISION_V2.md](VISION_V2.md) — Vision MedCompanion V2 (Focus Med, Mémoire, Mode Consultation)
 - [PLAN_MODE_CONSULTATION_V0A.md](PLAN_MODE_CONSULTATION_V0A.md) — Plan détaillé Mode Consultation V0a

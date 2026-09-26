@@ -1,4 +1,4 @@
-<Window x:Class="MedCompanion.MainWindow"
+﻿<Window x:Class="MedCompanion.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:notes="clr-namespace:MedCompanion.Views.Notes"
@@ -558,7 +558,8 @@
                               VerticalContentAlignment="Center"
                               Margin="0,0,15,0"
                               SelectionChanged="BureauToolsCombo_SelectionChanged">
-                        <ComboBoxItem Content="Firefox" IsSelected="True"/>
+                        <ComboBoxItem Content="📅 Agenda" IsSelected="True"/>
+                        <ComboBoxItem Content="Firefox"/>
                         <ComboBoxItem Content="Google Chrome"/>
                         <ComboBoxItem Content="Microsoft Edge"/>
                         <ComboBoxItem Content="LibreOffice"/>
@@ -593,20 +594,45 @@
                             </ControlTemplate>
                         </Button.Template>
                     </Button>
-                    <Button x:Name="BureauAnalyserBtn" Content="Analyser"
-                            Click="BureauAnalyserBtn_Click"
-                            Width="80" Height="36" FontSize="12"
-                            Background="#27AE60" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0">
+                    <!-- Captures de l''agenda Doctolib. Deux boutons plutôt qu''un : Med sait
+                         alors à l''avance s''il lit une grille hebdomadaire ou une liste, et
+                         utilise la consigne adaptée. Voir PLAN_AGENDA_ET_PASSERELLE_DOCTOLIB.md.
+                         Visibles seulement quand Doctolib est intégré dans le cadre. -->
+                    <Button x:Name="BureauCaptureSemaineBtn" Content="📸 Semaine"
+                            Click="BureauCaptureSemaineBtn_Click" Visibility="Collapsed"
+                            Height="36" FontSize="12" Padding="10,0"
+                            Background="#5D6D7E" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
+                            ToolTip="Enregistre une capture de la vue Semaine de Doctolib, pour la mise à jour de l''agenda.">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
-                                <Border Background="{TemplateBinding Background}" CornerRadius="6">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
                                     <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#4A5A68"/></Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+
+                    <Button x:Name="BureauCaptureJourBtn" Content="📸 Jour"
+                            Click="BureauCaptureJourBtn_Click" Visibility="Collapsed"
+                            Height="36" FontSize="12" Padding="10,0"
+                            Background="#5D6D7E" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
+                            ToolTip="Enregistre une capture de la vue Liste du jour, pour la mise à jour de l''agenda.">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#4A5A68"/></Trigger>
+                                </ControlTemplate.Triggers>
                             </ControlTemplate>
                         </Button.Template>
                     </Button>
                     <Button x:Name="BureauImporterBtn" Content="📋 Importer"
-                            Click="BureauImporterBtn_Click"
+                            Click="BureauImporterBtn_Click" Visibility="Collapsed"
                             Height="36" FontSize="12" Padding="10,0"
                             Background="#8E44AD" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,15,0"
                             ToolTip="Importer les infos patient depuis Doctolib (OCR local)">

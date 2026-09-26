@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
@@ -85,6 +85,8 @@ namespace MedCompanion.Views.Consultation
             // Transferer le focus clavier vers la fenetre embarquee au clic
             CentralHostZone.PreviewMouseDown += CentralHostZone_PreviewMouseDown;
 
+            AgendaContent.DossierDemande += dossier => DossierDemande?.Invoke(dossier);
+
             Unloaded += BureauMedControl_Unloaded;
             Loaded += BureauMedControl_Loaded;
         }
@@ -129,6 +131,55 @@ namespace MedCompanion.Views.Consultation
         private static bool IsInfographiesTool(string toolName)
             => toolName.Contains("Infographies", StringComparison.OrdinalIgnoreCase);
 
+        /// <summary>Vrai si l'outil demandé est l'agenda (natif).</summary>
+        private static bool IsAgendaTool(string toolName)
+            => toolName.Contains("Agenda", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Prévient le header de ce qu'il y a dans le cadre : « Analyser » et « Lire l'agenda »
+        /// n'ont de sens que sur une application embarquée, pas devant l'agenda de Med.
+        /// Paramètres : une application est-elle intégrée, et est-ce Doctolib.
+        /// </summary>
+        public event Action<bool, bool>? ContenuCadreChange;
+
+        /// <summary>Relais du clic sur un rendez-vous de l'agenda : le dossier à ouvrir.</summary>
+        public event Action<string>? DossierDemande;
+
+        private void NotifierContenuCadre()
+        {
+            bool embarquee = _embeddedWindowHandle != IntPtr.Zero;
+            bool doctolib = embarquee
+                && (_viewModel?.SelectedTool?.Contains("Doctolib", StringComparison.OrdinalIgnoreCase) ?? false);
+            ContenuCadreChange?.Invoke(embarquee, doctolib);
+        }
+
+        /// <summary>
+        /// Écran d'accueil du Bureau : l'agenda. Appelé à l'entrée dans le mode, et repris
+        /// chaque fois qu'un autre outil est quitté — la zone ne revient plus vide.
+        /// </summary>
+        public void AfficherAccueil() => ShowAgenda();
+
+        private void ShowAgenda()
+        {
+            if (_embeddedWindowHandle != IntPtr.Zero)
+            {
+                var oldHandle = _embeddedWindowHandle;
+                ReleaseEmbeddedWindow();
+                ShowWindow(oldHandle, SW_MINIMIZE);
+            }
+
+            PlaceholderText.Visibility = Visibility.Collapsed;
+            AgendaContent.Recharger();
+            AgendaContent.Visibility = Visibility.Visible;
+            NotifierContenuCadre();
+        }
+
+        private void HideAgenda()
+        {
+            if (AgendaContent.Visibility != Visibility.Visible) return;
+            AgendaContent.Visibility = Visibility.Collapsed;
+        }
+
         // Methodes publiques appelees depuis le header principal
         public void EmbedTool(string toolName)
         {
@@ -137,9 +188,18 @@ namespace MedCompanion.Views.Consultation
                 _viewModel.SelectedTool = toolName;
             }
 
+            if (IsAgendaTool(toolName))
+            {
+                HideAtelier();
+                HideInfographies();
+                ShowAgenda();
+                return;
+            }
+
             if (IsAtelierTool(toolName))
             {
                 HideInfographies();
+                HideAgenda();
                 ShowAtelier();
                 return;
             }
@@ -147,12 +207,14 @@ namespace MedCompanion.Views.Consultation
             if (IsInfographiesTool(toolName))
             {
                 HideAtelier();
+                HideAgenda();
                 ShowInfographies();
                 return;
             }
 
             HideAtelier();
             HideInfographies();
+            HideAgenda();
             EmbedToolInternal(toolName);
         }
 
@@ -169,6 +231,7 @@ namespace MedCompanion.Views.Consultation
             PlaceholderText.Visibility = Visibility.Collapsed;
             InfographiesContent.Recharger();
             InfographiesContent.Visibility = Visibility.Visible;
+            NotifierContenuCadre();
             if (_viewModel != null)
                 _viewModel.AnalysisResult = "Bibliothèque d'infographies ouverte.";
         }
@@ -193,6 +256,7 @@ namespace MedCompanion.Views.Consultation
 
             PlaceholderText.Visibility = Visibility.Collapsed;
             AtelierContent.Visibility = Visibility.Visible;
+            NotifierContenuCadre();
             if (_viewModel != null)
                 _viewModel.AnalysisResult = "Atelier d'écriture ouvert.";
         }
@@ -210,6 +274,7 @@ namespace MedCompanion.Views.Consultation
             HideAtelier();
             HideInfographies();
             ReleaseEmbeddedWindow();
+            ShowAgenda();   // la zone ne revient pas vide : on retombe sur l'agenda
             if (_viewModel != null)
             {
                 _viewModel.AnalysisResult = "Application liberee.";
@@ -232,6 +297,29 @@ namespace MedCompanion.Views.Consultation
                 _viewModel.AnalysisResult = "";
             }
         }
+
+        /// <summary>
+        /// Photographie l'agenda Doctolib affiché dans le cadre et range l'image dans le dossier
+        /// des captures. On ne quitte pas Doctolib : le médecin enchaîne la semaine puis le jour,
+        /// et la mise à jour de l'agenda se fait ensuite, depuis l'agenda lui-même.
+        /// </summary>
+        public void CapturerPourAgenda(string vue)
+        {
+            if (_embeddedWindowHandle == IntPtr.Zero)
+            {
+                if (_viewModel != null)
+                    _viewModel.AnalysisResult = "Intégrez d'abord Doctolib dans le cadre.";
+                return;
+            }
+
+            var (ok, _, err) = _capturesAgenda.Enregistrer(CaptureZone(), vue);
+            if (_viewModel != null)
+                _viewModel.AnalysisResult = ok
+                    ? $"Capture « {vue} » enregistrée à {DateTime.Now:HH'h'mm}. Ouvrez l'agenda et cliquez sur « Mettre à jour »."
+                    : err ?? "Capture impossible.";
+        }
+
+        private readonly Services.Agenda.AgendaCaptureService _capturesAgenda = new();
 
         public void AnalyzeTool()
         {
@@ -323,6 +411,7 @@ namespace MedCompanion.Views.Consultation
             SetFocus(hwnd);
 
             PlaceholderText.Visibility = Visibility.Collapsed;
+            NotifierContenuCadre();
             if (_viewModel != null)
                 _viewModel.AnalysisResult = $"{toolName} integre avec succes.";
         }
@@ -400,6 +489,7 @@ namespace MedCompanion.Views.Consultation
                 _originalStyle = 0;
 
                 PlaceholderText.Visibility = Visibility.Visible;
+                NotifierContenuCadre();
             }
         }
 
