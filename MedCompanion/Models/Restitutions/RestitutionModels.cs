@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -159,5 +160,12 @@ namespace MedCompanion.Models.Restitutions
             Blocs.Add(new RestitutionBloc("pt_s5", "🏫 Projet — École & développement",             31, "clinique"));
             Blocs.Add(new RestitutionBloc("conclusion", "Conclusion et perspectives",                32, "mixte"));
         }
+
+        /// <summary>
+        /// Fiches de la bibliothèque d'infographies jointes en annexe, dans l'ordre choisi.
+        /// Identifiants de dossier (Infographie.Id). Toujours choisies à la main : Med peut en
+        /// proposer, il n'en ajoute jamais.
+        /// </summary>
+        public List<string> InfographiesIds { get; } = new();
     }
 }

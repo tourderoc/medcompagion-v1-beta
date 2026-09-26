@@ -93,6 +93,9 @@ namespace MedCompanion.Services.Restitutions
                 r.DateValidation = ParseDate(yaml, "date_validation");
                 r.GeneratedPdfPath = ParseString(yaml, "pdf_path");
 
+                if (r is DossierRestitutionInitial dossierInfos)
+                    dossierInfos.InfographiesIds.AddRange(ParseInfographies(yaml));
+
                 // Parse blocs from YAML section
                 var blocsSection = ParseBlocsMetadata(yaml);
                 foreach (var b in r.Blocs)
@@ -187,6 +190,13 @@ namespace MedCompanion.Services.Restitutions
             if (!string.IsNullOrWhiteSpace(r.GeneratedPdfPath))
                 sb.AppendLine($"pdf_path: {r.GeneratedPdfPath.Replace("\\", "/")}");
             
+            if (r is DossierRestitutionInitial dossier && dossier.InfographiesIds.Count > 0)
+            {
+                sb.AppendLine("infographies:");
+                foreach (var id in dossier.InfographiesIds)
+                    sb.AppendLine($"  - {id}");
+            }
+
             sb.AppendLine("blocs:");
             foreach (var b in r.Blocs)
             {
@@ -285,6 +295,21 @@ namespace MedCompanion.Services.Restitutions
         {
             var s = ParseString(yaml, key);
             return DateTime.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var d) ? d : null;
+        }
+
+        /// <summary>Liste « infographies: » du frontmatter — les annexes choisies par le médecin.</summary>
+        private static List<string> ParseInfographies(string yaml)
+        {
+            var ids = new List<string>();
+            var section = Regex.Match(yaml, @"infographies:\s*\n(.*?)(?=\n[A-Za-z_-]+:|\z)", RegexOptions.Singleline);
+            if (!section.Success) return ids;
+
+            foreach (var ligne in section.Groups[1].Value.Split('\n'))
+            {
+                var m = Regex.Match(ligne, @"^\s*-\s*(\S.*?)\s*$");
+                if (m.Success) ids.Add(m.Groups[1].Value);
+            }
+            return ids;
         }
 
         private static Dictionary<string, (bool isIncluded, bool isValidated, string? source)> ParseBlocsMetadata(string yaml)

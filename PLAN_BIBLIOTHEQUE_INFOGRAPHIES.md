@@ -31,7 +31,19 @@ Les listes sont modifiables : une nouvelle valeur saisie sur une fiche devient u
 - **Imprimer** : la page est orientée selon la forme de l'image (paysage pour NotebookLM), marge de 8 mm. « Microsoft Print to PDF » donne un PDF ;
 - chaque impression est **notée dans le dossier du patient** (`info_patient/infographies_remises.json`), et la miniature affiche « Déjà remise le… ».
 
-## Étape 2 — création par Med (à cadrer)
+## Étape 2 — création par Med : écartée le 24/09/2026
+
+**Décision : on garde NotebookLM.** Les raisons, pour ne pas rouvrir le sujet sans motif :
+
+- le résultat de NotebookLM est bon, et une consigne de correction suffit à le rendre remettable ;
+- une infographie générique ne contient **aucune donnée patient** : le « 100 % local » n'a pas de raison de s'appliquer ici ;
+- le coût serait réel (ComfyUI + Python, ~13 Go sur M:, carte graphique partagée avec le LLM, licence peut-être incompatible) pour quelques fiches par mois, et le texte français en sortirait probablement moins bon.
+
+**Ce qui rouvrirait le sujet : une fiche personnalisée pour un enfant**, tirée de son dossier de Restitution. Là, les données sont confidentielles et NotebookLM est exclu. Même dans ce cas, pas besoin d'un modèle d'image : Med poserait le texte dans un gabarit HTML avec des icônes fixes, comme le dossier de Restitution.
+
+Ce qui suit reste l'état des connaissances au 22/09, si le sujet revient un jour.
+
+## Étape 2 (archive) — création par Med
 
 La chaîne visée, reprise du travail sur NotebookLM : recherche des sources → tri par le médecin → rédaction par le LLM local → mise en page.
 
@@ -42,8 +54,16 @@ La chaîne visée, reprise du travail sur NotebookLM : recherche des sources →
 
 **Contraintes connues** : llama.cpp ne fait pas d'images, il faut ComfyUI (Python) ou stable-diffusion.cpp à côté. La 5060 Ti porte le LLM, donc il faudra décharger l'un pour charger l'autre. Aucune donnée patient n'est en jeu : la recherche peut passer par internet.
 
+## Annexes du dossier de Restitution — fait le 24/09/2026
+
+Dans l'éditeur du dossier, sous les blocs : **« 🖼 Annexes — Fiches d'information »**, la liste des fiches validées avec une case à cocher.
+
+- **Med propose, il ne joint rien.** Une fiche est signalée « Proposée : « TDAH » est cité dans le dossier » quand l'un de ses sujets apparaît dans le texte rédigé (comparaison sans accents, sujets de moins de 4 lettres ignorés pour éviter les faux positifs). Rien n'est coché tout seul.
+- Chaque fiche cochée devient **une page d'annexe**, après l'annexe contacts et avant l'annexe méthodologique. L'image est incluse en `data:` URI, inscrite entière dans la page (`object-fit: contain`), avec un bandeau « Annexe — Fiche d'information », son titre, son classement et le pied de page du cabinet.
+- Le choix est gardé dans le frontmatter du dossier (`infographies:`), donc à l'enregistrement du brouillon.
+- **Une fiche repassée « à relire » ou retirée de la bibliothèque n'est plus rendue**, et la ligne affiche « ⚠ n'est plus validée » : un dossier ne sort jamais avec une page non relue.
+
 ## Plus tard
 
-- Joindre des fiches en **annexe du dossier de Restitution**, proposées selon le diagnostic ou le traitement retenu, jamais ajoutées sans le choix du médecin.
 - Signaler les fiches validées depuis plus de deux ans (les recommandations évoluent).
 - Critère « Langue » si des versions traduites arrivent.

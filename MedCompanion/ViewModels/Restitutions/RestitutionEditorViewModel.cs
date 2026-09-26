@@ -1652,6 +1652,8 @@ namespace MedCompanion.ViewModels.Restitutions
                 Blocs.Add(vm);
             }
 
+            ChargerAnnexesInfographies();
+
             SaveCommand           = new RelayCommand(async _ => await SaveAsync());
             GenerateAllCommand    = new RelayCommand(async _ => await GenerateAllAsync(), _ => !IsGeneratingAll);
             StopGenerationCommand = new RelayCommand(_ => StopGeneration(),               _ =>  IsGeneratingAll);

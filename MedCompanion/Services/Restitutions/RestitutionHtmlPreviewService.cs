@@ -117,6 +117,10 @@ namespace MedCompanion.Services.Restitutions
             // générique destiné aux professionnels — elle ferme le dossier.
             sb.Append(BuildAnnexeContactsPage(patientNomComplet, dossier, coverFields));
 
+            // Les fiches d'information viennent après les contacts : ce sont des documents
+            // génériques, que les parents reliront à la maison.
+            sb.Append(BuildAnnexesInfographiesPages(dossier));
+
             if (!string.IsNullOrWhiteSpace(_annexeMethodologiqueRaw))
                 sb.Append(_annexeMethodologiqueRaw);
 

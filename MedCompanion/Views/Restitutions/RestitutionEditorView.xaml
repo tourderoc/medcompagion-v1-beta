@@ -166,6 +166,7 @@
         <!-- Editor List -->
         <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"
                       Visibility="{Binding ModeQualite, Converter={StaticResource BoolToVisInverse}}">
+            <StackPanel>
             <ItemsControl ItemsSource="{Binding Blocs}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -2145,6 +2146,64 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- ANNEXES — fiches de la bibliothèque d'infographies.
+                 Med propose celles dont un sujet est cité dans le dossier ; il n'en joint aucune. -->
+            <Border Background="White" CornerRadius="8" Padding="15" Margin="0,4,0,20"
+                    BorderBrush="#D0D7DE" BorderThickness="1">
+                <StackPanel>
+                    <TextBlock Text="🖼 Annexes — Fiches d'information" FontSize="15" FontWeight="Bold" Foreground="#2C3E50"/>
+                    <TextBlock Text="{Binding AnnexesInfographiesResume}" FontSize="11" Foreground="#7F8C8D"
+                               TextWrapping="Wrap" Margin="0,3,0,10"/>
+
+                    <ItemsControl ItemsSource="{Binding AnnexesInfographies}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border BorderBrush="#E5E8E8" BorderThickness="1" CornerRadius="5"
+                                        Padding="8" Margin="0,0,0,6">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#FFFFFF"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding EstJointe}" Value="True">
+                                                    <Setter Property="Background" Value="#EAF7F0"/>
+                                                    <Setter Property="BorderBrush" Value="#A9DFBF"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition Width="90"/>
+                                            <ColumnDefinition Width="*"/>
+                                        </Grid.ColumnDefinitions>
+
+                                        <CheckBox Grid.Column="0" IsChecked="{Binding EstJointe, Mode=TwoWay}"
+                                                  VerticalAlignment="Center" Margin="0,0,8,0"
+                                                  ToolTip="Joindre cette fiche en annexe du dossier"/>
+
+                                        <Border Grid.Column="1" Background="#F4F6F7" Height="56" CornerRadius="3">
+                                            <Image Source="{Binding Miniature}" Stretch="Uniform"/>
+                                        </Border>
+
+                                        <StackPanel Grid.Column="2" Margin="9,0,0,0" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Titre}" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="#2C3E50" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding Resume}" FontSize="10" Foreground="#7F8C8D"
+                                                       TextWrapping="Wrap" Margin="0,2,0,0"/>
+                                            <TextBlock Text="{Binding RaisonSuggestion}" FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#1F618D" TextWrapping="Wrap" Margin="0,2,0,0"
+                                                       Visibility="{Binding Suggeree, Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+            </StackPanel>
         </ScrollViewer>
 
         <!-- PANNEAU QUALITÉ — prend la place de l'éditeur, l'aperçu reste à droite.
