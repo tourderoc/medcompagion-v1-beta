@@ -4296,9 +4296,14 @@
                                     <RowDefinition Height="Auto"/>     <!-- Boutons action -->
                                 </Grid.RowDefinitions>
 
-                                <!-- SECTION 1: Poids de Fiabilité -->
+                                <!-- SECTION 1: Poids de Fiabilité.
+                                     Hauteur bornée : au-delà de trois ou quatre bilans importés, cette
+                                     section poussait l'aperçu et les boutons « Générer » hors de l'écran,
+                                     sans aucun moyen d'y accéder (constaté le 24/09/2026). Elle défile
+                                     maintenant sur elle-même, et les boutons restent toujours visibles. -->
                                 <Border Grid.Row="0" Background="#F8F9FA" Padding="12" Margin="0,0,0,12"
                                         BorderThickness="0,0,0,1" BorderBrush="#E0E0E0">
+                                    <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="340">
                                     <StackPanel>
                                         <!-- Import à portée de main : les documents que les parents
                                              remettent PENDANT l'entretien nourrissent cette synthèse.
@@ -4353,9 +4358,10 @@
                                                        TextWrapping="Wrap" MaxWidth="320"/>
                                         </StackPanel>
 
-                                        <!-- Liste des documents importés -->
-                                        <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="220" Margin="0,0,0,12">
-                                        <ItemsControl ItemsSource="{Binding ImportedDocuments}">
+                                        <!-- Liste des documents importés. Pas de défilement propre ici :
+                                             toute la section défile d'un bloc (voir le ScrollViewer qui
+                                             l'enveloppe), sinon deux zones de défilement s'emboîtent. -->
+                                        <ItemsControl ItemsSource="{Binding ImportedDocuments}" Margin="0,0,0,12">
                                             <ItemsControl.ItemTemplate>
                                                 <DataTemplate>
                                                     <Border Background="#F5F5F5" BorderThickness="1" BorderBrush="#E0E0E0" CornerRadius="4" Padding="10" Margin="0,0,0,6">
@@ -4397,7 +4403,6 @@
                                                 </DataTemplate>
                                             </ItemsControl.ItemTemplate>
                                         </ItemsControl>
-                                        </ScrollViewer>
 
                                         <TextBlock Text="📊 Poids de Fiabilité des Composants" FontWeight="Bold" FontSize="14" Margin="0,8,0,12"/>
 
@@ -4458,10 +4463,11 @@
                                         <!-- Status Message -->
                                         <TextBlock Text="{Binding SynthesisStatusMessage}" Foreground="#27AE60" Margin="0,8,0,0" FontSize="11"/>
                                     </StackPanel>
+                                    </ScrollViewer>
                                 </Border>
 
                                 <!-- SECTION 2: Synthèse Preview -->
-                                <Border Grid.Row="1" Background="White" Padding="12" BorderThickness="1" BorderBrush="#DDD" CornerRadius="6" Margin="0,0,0,12">
+                                <Border Grid.Row="1" MinHeight="140" Background="White" Padding="12" BorderThickness="1" BorderBrush="#DDD" CornerRadius="6" Margin="0,0,0,12">
                                     <Grid>
                                         <Grid.RowDefinitions>
                                             <RowDefinition Height="Auto"/>
