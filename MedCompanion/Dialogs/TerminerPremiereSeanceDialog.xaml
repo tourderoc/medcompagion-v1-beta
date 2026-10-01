@@ -1,0 +1,139 @@
+<Window x:Class="MedCompanion.Dialogs.TerminerPremiereSeanceDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Fin de séance — 1ère consultation"
+        Width="520" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Background="#F8FAFC"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False">
+    <Grid Margin="22">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- En-tête -->
+        <Border Grid.Row="0" Background="#1E293B" CornerRadius="10" Padding="16,14" Margin="0,0,0,16">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
+                <TextBlock Grid.Column="0" Text="🩺" FontSize="26" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock Text="1ère consultation" Foreground="White"
+                               FontSize="16" FontWeight="Bold"/>
+                    <TextBlock x:Name="PatientTextBlock" Text="Patient : -"
+                               Foreground="#94A3B8" FontSize="12" Margin="0,2,0,0"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Zone d'état / étapes manquantes -->
+        <Border Grid.Row="1" x:Name="StatusCardBorder" CornerRadius="8" Padding="14" Margin="0,0,0,16"
+                Background="#FEF3C7" BorderBrush="#F59E0B" BorderThickness="1">
+            <StackPanel>
+                <TextBlock x:Name="StatusTitleTextBlock" Text="⚠️ Des étapes restent à finaliser :"
+                           FontWeight="Bold" FontSize="13" Foreground="#92400E" Margin="0,0,0,8"/>
+
+                <ItemsControl x:Name="ManquantsItemsControl" Margin="4,0,0,8">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate>
+                            <DockPanel Margin="0,2,0,2">
+                                <TextBlock Text="• " FontWeight="Bold" Foreground="#B45309" DockPanel.Dock="Left"/>
+                                <TextBlock Text="{Binding}" FontSize="12" Foreground="#78350F" TextWrapping="Wrap"/>
+                            </DockPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <TextBlock x:Name="StatusSubtextBlock"
+                           Text="Vous pouvez suspendre la séance pour la reprendre plus tard (le dossier reste « En cours » sur la frise), ou la clôturer définitivement."
+                           FontSize="11.5" Foreground="#78350F" TextWrapping="Wrap" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Actions principales -->
+        <StackPanel Grid.Row="2" Orientation="Vertical" Margin="0,0,0,12">
+            <!-- Bouton Suspendre (Garder en cours) -->
+            <Button x:Name="BtnSuspendre" Click="BtnSuspendre_Click"
+                    Margin="0,0,0,10" Padding="14,12" Cursor="Hand"
+                    Background="#E0F2FE" BorderBrush="#0284C7" BorderThickness="1.5"
+                    HorizontalContentAlignment="Stretch">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#BAE6FD"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="⏸️" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Text="Suspendre la séance (Garder en cours)"
+                                   FontWeight="Bold" FontSize="13" Foreground="#0369A1"/>
+                        <TextBlock Text="Sauvegarde tout votre travail. La consultation reste « En cours » pour la reprendre à tout moment."
+                                   FontSize="11" Foreground="#0284C7" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+            </Button>
+
+            <!-- Bouton Clôturer définitivement -->
+            <Button x:Name="BtnCloturer" Click="BtnCloturer_Click"
+                    Margin="0,0,0,4" Padding="14,12" Cursor="Hand"
+                    Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1.5"
+                    HorizontalContentAlignment="Stretch">
+                <Button.Template>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="bd" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8" Padding="{TemplateBinding Padding}">
+                            <ContentPresenter/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="bd" Property="Background" Value="#E2E8F0"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Button.Template>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock x:Name="IconCloture" Grid.Column="0" Text="🔒" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="TitleCloture" Text="Clôturer définitivement"
+                                   FontWeight="Bold" FontSize="13" Foreground="#334155"/>
+                        <TextBlock Text="Marque la 1ère consultation comme achevée et débloque l'étape Cartographie sur la frise."
+                                   FontSize="11" Foreground="#64748B" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+            </Button>
+        </StackPanel>
+
+        <!-- Bouton Annuler (en bas à droite) -->
+        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,4,0,0">
+            <Button Content="Annuler (rester sur l'écran)" Click="BtnAnnuler_Click"
+                    Padding="14,8" Cursor="Hand" FontSize="11.5"
+                    Background="Transparent" Foreground="#64748B" BorderThickness="0"/>
+        </StackPanel>
+    </Grid>
+</Window>

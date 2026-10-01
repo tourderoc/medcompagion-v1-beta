@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -29,6 +29,14 @@ namespace MedCompanion.ViewModels.Agenda
 
         /// <summary>En dessous, les blocs deviennent illisibles : on rend la main au défilement.</summary>
         private const double EchelleMinimale = 0.40;
+
+        /// <summary>
+        /// Au-dessus, les blocs deviennent absurdement hauts — un rendez-vous de 30 minutes
+        /// occuperait la moitié de l'écran, comme constaté en vue Semaine le 28/09/2026. Garde-fou
+        /// contre une hauteur disponible aberrante : mieux vaut du blanc en bas de grille qu'une
+        /// journée illisible.
+        /// </summary>
+        private const double EchelleMaximale = 1.5;
 
         /// <summary>Un jour est découpé en 12 colonnes : 1, 2, 3, 4 ou 6 rendez-vous simultanés
         /// se partagent la largeur sans reste.</summary>
@@ -66,6 +74,15 @@ namespace MedCompanion.ViewModels.Agenda
 
         public double HauteurGrille => (HeureFin - HeureDebut) * 60 * PixelsParMinute;
         public double HauteurHeure  => 60 * PixelsParMinute;
+
+        /// <summary>
+        /// Ce que Med croit de la place dont il dispose. Affiché en petit sous la grille : c'est
+        /// la seule façon de savoir, sans débogueur, pourquoi une journée déborde. Si « zone »
+        /// dépasse nettement la hauteur réellement visible, c'est la mesure qui ment.
+        /// </summary>
+        public string Diagnostic =>
+            $"{HeureDebut}h–{HeureFin}h · {PixelsParMinute:0.00} px/min · grille {HauteurGrille:0} px · " +
+            $"zone mesurée {_hauteurDisponible:0} px";
 
         private DateTime _jour = DateTime.Today;
         public DateTime Jour { get => _jour; private set { if (Set(ref _jour, value)) Rafraichir(); } }
@@ -134,15 +151,36 @@ namespace MedCompanion.ViewModels.Agenda
             Rafraichir();
         }
 
-        public void Importer(string cheminCsv)
+        /// <summary>
+        /// Supprime un rendez-vous précis de la copie locale et rafraîchit l'affichage.
+        /// </summary>
+        public bool SupprimerRendezVous(RendezVous rdv)
+        {
+            var ok = _service.SupprimerRendezVous(rdv);
+            if (ok)
+            {
+                Statut = $"Rendez-vous de {rdv.Debut:HH'h'mm} ({rdv.NomComplet}) supprimé de l'agenda Med.";
+                Rafraichir();
+            }
+            return ok;
+        }
+
+        /// <summary>Importe un export et rend le message à montrer au médecin, pas seulement à
+        /// glisser dans la ligne de statut.</summary>
+        public (bool ok, string message) Importer(string cheminCsv)
         {
             var (ok, importes, misAJour, err) = _service.ImporterCsv(cheminCsv);
-            if (!ok) { Statut = err ?? "Import impossible."; return; }
+            if (!ok)
+            {
+                Statut = err ?? "Import impossible.";
+                return (false, Statut);
+            }
 
             Statut = misAJour > 0
                 ? $"{importes} rendez-vous ajoutés, {misAJour} mis à jour."
                 : $"{importes} rendez-vous importés.";
             Rafraichir();
+            return (true, Statut);
         }
 
         public void Rafraichir()
@@ -165,7 +203,8 @@ namespace MedCompanion.ViewModels.Agenda
 
             foreach (var nom in new[] { nameof(Titre), nameof(Fraicheur), nameof(EstPerime), nameof(RappelImport),
                                         nameof(HeureCouranteVisible), nameof(MargeHeureCourante),
-                                        nameof(HauteurGrille), nameof(HauteurHeure), nameof(LibelleVider) })
+                                        nameof(HauteurGrille), nameof(HauteurHeure), nameof(LibelleVider),
+                                        nameof(Diagnostic) })
                 OnPropertyChanged(nom);
         }
 
@@ -243,29 +282,58 @@ namespace MedCompanion.ViewModels.Agenda
                     }
                     else
                     {
-                        var (ok, lignes, err) = await _lecture.LireJourAsync(image);
-                        if (!ok) { erreurs.Add($"jour : {err}"); continue; }
-                        lues += lignes.Count;
+                        var jour = capture.Prise.Date;
+                        var lignesDecoupees = AgendaImageService.DecouperLignesJour(image);
 
-                        var jour = lignes.FirstOrDefault(l => l.Date.HasValue)?.Date ?? DateTime.Today;
-                        journal.AddRange(_service.FusionnerLectureEcran(jour.Date, Convertir(lignes), journeeComplete: true));
-                        joursTouches.Add(jour.Date);
-
-                        // Les annulations : le modèle ne voit pas le trait de rature sur la
-                        // capture entière. On le repère par l'image, puis on ne lui fait relire
-                        // que ces lignes-là, agrandies (mesuré le 26/09/2026).
-                        var bandes = AgendaImageService.BandesRayees(image);
-                        if (bandes.Count > 0)
+                        if (lignesDecoupees.Count > 0)
                         {
-                            var rayees = new List<(TimeSpan, string)>();
-                            for (int i = 0; i < bandes.Count; i++)
+                            var lignesJour = new List<AgendaLectureEcranService.LigneLue>();
+                            for (int i = 0; i < lignesDecoupees.Count; i++)
                             {
-                                ResumeLecture = $"Med relit une ligne barrée, {i + 1} sur {bandes.Count}…";
-                                var (okBarre, heure, nom, errBarre) = await _lecture.LireLigneRayeeAsync(bandes[i]);
-                                if (okBarre) rayees.Add((heure, nom));
-                                else erreurs.Add($"ligne barrée : {errBarre}");
+                                ResumeLecture = $"Med lit la journée, ligne {i + 1} sur {lignesDecoupees.Count}…";
+                                var (okLigne, ligneLue, errLigne) = await _lecture.LireLigneJourAsync(lignesDecoupees[i], jour);
+                                if (okLigne && ligneLue != null)
+                                {
+                                    lignesJour.Add(ligneLue);
+                                    lues++;
+                                }
+                                else if (!string.IsNullOrWhiteSpace(errLigne) && !errLigne.Contains("ignorée"))
+                                {
+                                    erreurs.Add($"ligne {i + 1} : {errLigne}");
+                                }
                             }
-                            journal.AddRange(_service.MarquerAnnules(jour.Date, rayees));
+
+                            if (lignesJour.Count > 0)
+                            {
+                                journal.AddRange(_service.FusionnerLectureEcran(jour, Convertir(lignesJour), journeeComplete: true));
+                                joursTouches.Add(jour);
+                            }
+                        }
+                        else
+                        {
+                            // Repli sur la lecture globale si aucun découpage de lignes n'a été possible
+                            var (ok, lignes, err) = await _lecture.LireJourAsync(image);
+                            if (!ok) { erreurs.Add($"jour : {err}"); continue; }
+                            lues += lignes.Count;
+
+                            var dateJour = lignes.FirstOrDefault(l => l.Date.HasValue)?.Date ?? jour;
+                            journal.AddRange(_service.FusionnerLectureEcran(dateJour, Convertir(lignes), journeeComplete: true));
+                            joursTouches.Add(dateJour);
+
+                            // Les annulations : le modèle ne voit pas le trait de rature sur la capture entière
+                            var bandes = AgendaImageService.BandesRayees(image);
+                            if (bandes.Count > 0)
+                            {
+                                var rayees = new List<(TimeSpan, string)>();
+                                for (int i = 0; i < bandes.Count; i++)
+                                {
+                                    ResumeLecture = $"Med relit une ligne barrée, {i + 1} sur {bandes.Count}…";
+                                    var (okBarre, heure, nom, errBarre) = await _lecture.LireLigneRayeeAsync(bandes[i]);
+                                    if (okBarre) rayees.Add((heure, nom));
+                                    else erreurs.Add($"ligne barrée : {errBarre}");
+                                }
+                                journal.AddRange(_service.MarquerAnnules(dateJour, rayees));
+                            }
                         }
                     }
                 }
@@ -319,9 +387,13 @@ namespace MedCompanion.ViewModels.Agenda
         {
             if (rdvs.Count > 0)
             {
-                HeureDebut = Math.Max(HeureMin, rdvs.Min(r => r.Debut).Hour);
-                var derniereFin = rdvs.Max(r => r.Fin);
-                HeureFin = Math.Min(HeureMax, derniereFin.Hour + (derniereFin.Minute > 0 ? 1 : 0));
+                // Sur les HEURES de la journée, jamais sur les dates. En vue Semaine, le maximum
+                // des dates est la fin du DERNIER JOUR qui a des rendez-vous — vendredi finissant
+                // à 12h30, toute la semaine était rabotée à 13h, lundi soir compris (constaté le
+                // 28/09/2026). En vue Jour il n'y a qu'une journée : le défaut y était invisible.
+                HeureDebut = Math.Max(HeureMin, (int)rdvs.Min(r => r.Debut.TimeOfDay).TotalHours);
+                var derniereFin = rdvs.Max(r => r.Fin.TimeOfDay);
+                HeureFin = Math.Min(HeureMax, derniereFin.Hours + (derniereFin.Minutes > 0 ? 1 : 0));
                 if (HeureFin <= HeureDebut) HeureFin = HeureDebut + 1;
             }
             else
@@ -332,7 +404,7 @@ namespace MedCompanion.ViewModels.Agenda
 
             var minutes = (HeureFin - HeureDebut) * 60.0;
             PixelsParMinute = _hauteurDisponible > 0
-                ? Math.Max(EchelleMinimale, _hauteurDisponible / minutes)
+                ? Math.Clamp(_hauteurDisponible / minutes, EchelleMinimale, EchelleMaximale)
                 : 1.0;
         }
 

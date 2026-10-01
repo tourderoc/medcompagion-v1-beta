@@ -1,7 +1,9 @@
 using System;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Threading;
 using Microsoft.Win32;
+using MedCompanion.Dialogs;
 using MedCompanion.ViewModels.Agenda;
 
 namespace MedCompanion.Views.Agenda
@@ -31,11 +33,34 @@ namespace MedCompanion.Views.Agenda
         /// </summary>
         public event Action<string>? DossierDemande;
 
+        /// <summary>
+        /// Le médecin veut créer le dossier d'un patient vu à l'agenda. Med passe le nom, le
+        /// prénom et la date de naissance lus à l'écran — la fenêtre de création et sa garde
+        /// contre les doublons font le reste.
+        /// </summary>
+        public event Action<Models.Agenda.RendezVous>? CreationDossierDemandee;
+
         public AgendaControl()
         {
             InitializeComponent();
             DataContext = _viewModel;
+
+            // À chaque rafraîchissement, on remesure la zone disponible APRÈS la mise en page.
+            // Sans ça, l'échelle restait calculée sur une hauteur périmée — prise avant que la
+            // grille ait sa taille définitive — et la journée se retrouvait coupée en plein
+            // après-midi (constaté le 28/09/2026 : grille arrêtée à 12h30). Converge tout seul :
+            // remesurer avec la même valeur ne déclenche pas de nouveau rafraîchissement.
+            _viewModel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName != nameof(AgendaViewModel.Titre)) return;
+                Dispatcher.BeginInvoke(new Action(Mesurer), DispatcherPriority.Loaded);
+            };
         }
+
+        private void Mesurer()
+            => _viewModel.DefinirHauteurDisponible(CorpsScroll.ViewportHeight > 0
+                ? CorpsScroll.ViewportHeight
+                : CorpsScroll.ActualHeight);
 
         private void Bloc_Click(object sender, System.Windows.Input.MouseButtonEventArgs e)
         {
@@ -47,18 +72,81 @@ namespace MedCompanion.Views.Agenda
                 return;
             }
 
-            // Pas de dossier : on explique plutôt que de ne rien faire. La création viendra
-            // ensuite ; ici, un rendez-vous sans dossier n'est pas forcément une anomalie —
-            // une consultation parents n'a pas de dossier enfant.
-            var quoi = bloc.Rdv.Certitude == "ambigu"
-                ? $"Plusieurs dossiers peuvent correspondre à {bloc.NomComplet}.\n\n" +
-                  "Med ne choisit pas à votre place — c'est le cas des frères et sœurs nés le même jour. " +
-                  "Ouvrez le dossier par la recherche cette fois-ci."
-                : $"Aucun dossier Med ne correspond à {bloc.NomComplet}.\n\n" +
-                  "C'est normal pour une consultation parents, ou pour un patient dont le dossier " +
-                  "n'existe pas encore. La création du dossier depuis l'agenda viendra plus tard.";
+            // Plusieurs dossiers possibles : Med ne tranche pas
+            if (bloc.Rdv.Certitude == "ambigu")
+            {
+                var dlgAmbigu = new CustomChoiceDialog(
+                    "Plusieurs dossiers possibles",
+                    $"Plusieurs dossiers peuvent correspondre à {bloc.NomComplet}.\n\n" +
+                    "Med ne choisit pas à votre place — ouvrez le bon dossier par la recherche.",
+                    "Ouvrir la recherche",
+                    "🗑 Supprimer ce rdv",
+                    "Fermer");
+                dlgAmbigu.Owner = Window.GetWindow(this);
+                if (dlgAmbigu.ShowDialog() == true && dlgAmbigu.UserChoice == CustomChoiceDialog.Choice.Option2)
+                {
+                    ConfirmerEtSupprimer(bloc);
+                }
+                return;
+            }
 
-            MessageBox.Show(quoi, "Pas de dossier à ouvrir", MessageBoxButton.OK, MessageBoxImage.Information);
+            // Aucun dossier Med associé (consultation parents, dossier à créer, ou rdv erroné/halluciné)
+            var naissance = bloc.Rdv.DateNaissance.HasValue
+                ? $"\nNé(e) le {bloc.Rdv.DateNaissance:dd/MM/yyyy} ({bloc.Age} ans)."
+                : "\nAucune date de naissance n'a été lue.";
+
+            var dlg = new CustomChoiceDialog(
+                "Rendez-vous sans dossier",
+                $"Rendez-vous de {bloc.Heure} : {bloc.NomComplet}{naissance}\n\n" +
+                "Aucun dossier Med n'est associé à ce rendez-vous.\n\n" +
+                "Que souhaitez-vous faire ?",
+                "Créer son dossier",
+                "🗑 Supprimer ce rdv",
+                "Annuler");
+            dlg.Owner = Window.GetWindow(this);
+
+            if (dlg.ShowDialog() == true)
+            {
+                if (dlg.UserChoice == CustomChoiceDialog.Choice.Option1)
+                {
+                    CreationDossierDemandee?.Invoke(bloc.Rdv);
+                }
+                else if (dlg.UserChoice == CustomChoiceDialog.Choice.Option2)
+                {
+                    ConfirmerEtSupprimer(bloc);
+                }
+            }
+        }
+
+        private void SupprimerRdvMenu_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is not MenuItem item) return;
+            var bloc = (item.DataContext as BlocRendezVous)
+                    ?? ((item.Parent as ContextMenu)?.PlacementTarget as FrameworkElement)?.DataContext as BlocRendezVous;
+            if (bloc != null)
+            {
+                ConfirmerEtSupprimer(bloc);
+            }
+        }
+
+        private void ConfirmerEtSupprimer(BlocRendezVous bloc)
+        {
+            var detail = $"{bloc.Heure} — {bloc.NomComplet}";
+            if (!string.IsNullOrWhiteSpace(bloc.Motif))
+                detail += $"\n{bloc.Motif}";
+
+            var r = MessageBox.Show(
+                $"Supprimer ce rendez-vous de l'agenda Med ?\n\n" +
+                $"{detail}\n\n" +
+                "Doctolib n'est pas modifié : seule la copie locale de Med est mise à jour.",
+                "Supprimer ce rendez-vous",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (r == MessageBoxResult.Yes)
+            {
+                _viewModel.SupprimerRendezVous(bloc.Rdv);
+            }
         }
 
         /// <summary>Appelé à chaque ouverture : revient au jour même et relit le disque.</summary>
@@ -73,10 +161,7 @@ namespace MedCompanion.Views.Agenda
         /// La grille se cale sur la hauteur disponible : une journée tient à l'écran sans
         /// défilement, quelle que soit la taille de la fenêtre.
         /// </summary>
-        private void CorpsScroll_SizeChanged(object sender, SizeChangedEventArgs e)
-            => _viewModel.DefinirHauteurDisponible(CorpsScroll.ViewportHeight > 0
-                ? CorpsScroll.ViewportHeight
-                : CorpsScroll.ActualHeight);
+        private void CorpsScroll_SizeChanged(object sender, SizeChangedEventArgs e) => Mesurer();
 
         private void Precedent_Click(object sender, RoutedEventArgs e)  => _viewModel.Precedent();
         private void Suivant_Click(object sender, RoutedEventArgs e)    => _viewModel.Suivant();
@@ -105,8 +190,14 @@ namespace MedCompanion.Views.Agenda
                 Title  = "Importer un export d'agenda Doctolib",
                 Filter = "Export Doctolib (CSV)|*.csv"
             };
-            if (dlg.ShowDialog() == true)
-                _viewModel.Importer(dlg.FileName);
+            if (dlg.ShowDialog() != true) return;
+
+            var (ok, message) = _viewModel.Importer(dlg.FileName);
+
+            // Le résultat se disait dans la ligne de statut, en petit et en bas de l'écran :
+            // un import raté passait pour « il ne se passe rien » (constaté le 28/09/2026).
+            MessageBox.Show(message, ok ? "Import terminé" : "Import impossible",
+                MessageBoxButton.OK, ok ? MessageBoxImage.Information : MessageBoxImage.Warning);
         }
     }
 }

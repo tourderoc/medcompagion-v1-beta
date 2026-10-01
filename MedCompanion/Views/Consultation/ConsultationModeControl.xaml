@@ -657,6 +657,31 @@
                                     </Border>
                                 </Grid>
 
+                                <!-- « Terminer » : à toute étape de la 1ère consultation, dans la frise,
+                                     pour finir la séance même si tout n'est pas rempli. Rien n'est
+                                     perdu : une note pas encore enregistrée reste EN COURS (brouillon). -->
+                                <Button DockPanel.Dock="Right" Content="✅ Terminer la séance"
+                                        Command="{Binding TerminerSeancePremiereCommand}"
+                                        Visibility="{Binding PeutTerminerPremiere, Converter={StaticResource BoolToVis}}"
+                                        Height="32" Margin="8,0,0,0" Padding="14,0" Cursor="Hand"
+                                        FontSize="12" FontWeight="SemiBold" Foreground="White"
+                                        Background="#2C3E50" BorderThickness="0" VerticalAlignment="Center"
+                                        ToolTip="Finir la séance — ce qui n'est pas enregistré reste en cours, rien n'est perdu">
+                                    <Button.Template>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border x:Name="Tb" Background="{TemplateBinding Background}"
+                                                    CornerRadius="16" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                            <ControlTemplate.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter TargetName="Tb" Property="Background" Value="#1B2631"/>
+                                                </Trigger>
+                                            </ControlTemplate.Triggers>
+                                        </ControlTemplate>
+                                    </Button.Template>
+                                </Button>
+
                                 <!-- Frise à deux lignes : LIGNE FIXE (parcours) + LIGNE LIBRE (notes de suivi) -->
                                 <ScrollViewer HorizontalScrollBarVisibility="Auto"
                                               VerticalScrollBarVisibility="Disabled">
@@ -2642,11 +2667,11 @@
 
                                             <Grid Grid.Row="0">
                                                 <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
                                                     <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
                                                 </Grid.ColumnDefinitions>
 
-                                                <StackPanel Grid.Column="0">
+                                                <StackPanel Grid.Column="0" Margin="0,0,15,0">
                                                     <TextBlock Text="{Binding SelectedPastConsultation.Title}" FontSize="18" FontWeight="Bold" Foreground="#2C3E50"/>
                                                     <TextBlock FontSize="11" Foreground="#95A5A6" Margin="0,2,0,0">
                                                         <TextBlock.Style>
@@ -2663,129 +2688,159 @@
                                                     </TextBlock>
                                                 </StackPanel>
 
-                                            <!-- Actions header -->
-                                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                                                <!-- Actions header (WrapPanel pour éviter tout débordement) -->
+                                                <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Top">
 
-                                                <!-- Bouton Modifier (visible en lecture seule) -->
-                                                <Button Content="✏️ Modifier"
-                                                        Command="{Binding EditPastPremiereCommand}"
-                                                        Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0">
-                                                    <Button.Style>
-                                                        <Style TargetType="Button">
-                                                            <Setter Property="Background" Value="#2980B9"/>
-                                                            <Setter Property="Foreground" Value="White"/>
-                                                            <Setter Property="Visibility" Value="Visible"/>
-                                                            <Setter Property="Template">
-                                                                <Setter.Value>
-                                                                    <ControlTemplate TargetType="Button">
-                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                        </Border>
-                                                                        <ControlTemplate.Triggers>
-                                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                                <Setter Property="Background" Value="#2471A3"/>
-                                                                            </Trigger>
-                                                                        </ControlTemplate.Triggers>
-                                                                    </ControlTemplate>
-                                                                </Setter.Value>
-                                                            </Setter>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
-                                                                    <Setter Property="Visibility" Value="Collapsed"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Button.Style>
-                                                </Button>
+                                                    <!-- Bouton Modifier (visible en lecture seule) -->
+                                                    <Button Content="✏️ Modifier"
+                                                            Command="{Binding EditPastPremiereCommand}"
+                                                            Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,4">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Background" Value="#2980B9"/>
+                                                                <Setter Property="Foreground" Value="White"/>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter Property="Background" Value="#2471A3"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
 
-                                                <!-- Bouton Enregistrer (visible en mode édition) -->
-                                                <Button Content="💾 Enregistrer"
-                                                        Command="{Binding SavePastPremiereCommand}"
-                                                        Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0">
-                                                    <Button.Style>
-                                                        <Style TargetType="Button">
-                                                            <Setter Property="Background" Value="#27AE60"/>
-                                                            <Setter Property="Foreground" Value="White"/>
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                            <Setter Property="Template">
-                                                                <Setter.Value>
-                                                                    <ControlTemplate TargetType="Button">
-                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                        </Border>
-                                                                        <ControlTemplate.Triggers>
-                                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                                <Setter Property="Background" Value="#219A52"/>
-                                                                            </Trigger>
-                                                                        </ControlTemplate.Triggers>
-                                                                    </ControlTemplate>
-                                                                </Setter.Value>
-                                                            </Setter>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
-                                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Button.Style>
-                                                </Button>
+                                                    <!-- Bouton Enregistrer (visible en mode édition) -->
+                                                    <Button Content="💾 Enregistrer"
+                                                            Command="{Binding SavePastPremiereCommand}"
+                                                            Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,4">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Background" Value="#27AE60"/>
+                                                                <Setter Property="Foreground" Value="White"/>
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter Property="Background" Value="#219A52"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
 
-                                                <!-- Bouton Annuler (visible en mode édition) -->
-                                                <Button Content="Annuler"
-                                                        Command="{Binding CancelPastPremiereEditCommand}"
-                                                        Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0">
-                                                    <Button.Style>
-                                                        <Style TargetType="Button">
-                                                            <Setter Property="Background" Value="#95A5A6"/>
-                                                            <Setter Property="Foreground" Value="White"/>
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                            <Setter Property="Template">
-                                                                <Setter.Value>
-                                                                    <ControlTemplate TargetType="Button">
-                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                        </Border>
-                                                                        <ControlTemplate.Triggers>
-                                                                            <Trigger Property="IsMouseOver" Value="True">
-                                                                                <Setter Property="Background" Value="#7F8C8D"/>
-                                                                            </Trigger>
-                                                                        </ControlTemplate.Triggers>
-                                                                    </ControlTemplate>
-                                                                </Setter.Value>
-                                                            </Setter>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
-                                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Button.Style>
-                                                </Button>
+                                                    <!-- Bouton Annuler (visible en mode édition) -->
+                                                    <Button Content="Annuler"
+                                                            Command="{Binding CancelPastPremiereEditCommand}"
+                                                            Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,4">
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Background" Value="#95A5A6"/>
+                                                                <Setter Property="Foreground" Value="White"/>
+                                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                                                <Setter Property="Template">
+                                                                    <Setter.Value>
+                                                                        <ControlTemplate TargetType="Button">
+                                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                            </Border>
+                                                                            <ControlTemplate.Triggers>
+                                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                                    <Setter Property="Background" Value="#7F8C8D"/>
+                                                                                </Trigger>
+                                                                            </ControlTemplate.Triggers>
+                                                                        </ControlTemplate>
+                                                                    </Setter.Value>
+                                                                </Setter>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Visible"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
 
-                                                <!-- Bouton Supprimer -->
-                                                <Button Content="🗑 Supprimer"
-                                                        Command="{Binding DeleteSelectedPastConsultationCommand}"
-                                                        Padding="12,6" Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="11" FontWeight="SemiBold">
-                                                    <Button.Template>
-                                                        <ControlTemplate TargetType="Button">
-                                                            <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                            </Border>
-                                                            <ControlTemplate.Triggers>
-                                                                <Trigger Property="IsMouseOver" Value="True">
-                                                                    <Setter Property="Background" Value="#C0392B"/>
-                                                                </Trigger>
-                                                            </ControlTemplate.Triggers>
-                                                        </ControlTemplate>
-                                                    </Button.Template>
-                                                </Button>
-                                            </StackPanel>
+                                                    <!-- Bouton Rouvrir la consultation en séance active -->
+                                                    <Button Content="🔓 Rouvrir la consultation"
+                                                            Command="{Binding ReopenPastPremiereConsultationCommand}"
+                                                            Padding="10,6" FontSize="11" FontWeight="SemiBold" BorderThickness="0" Cursor="Hand" Margin="0,0,8,4"
+                                                            ToolTip="Rouvre cette consultation en séance active avec tous les modules temps réel">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border x:Name="BdRo" Background="#8E44AD" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="BdRo" Property="Background" Value="#7D3C98"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                        <Button.Style>
+                                                            <Style TargetType="Button">
+                                                                <Setter Property="Foreground" Value="White"/>
+                                                                <Setter Property="Visibility" Value="Visible"/>
+                                                                <Style.Triggers>
+                                                                    <DataTrigger Binding="{Binding IsEditingPastPremiere}" Value="True">
+                                                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    </DataTrigger>
+                                                                </Style.Triggers>
+                                                            </Style>
+                                                        </Button.Style>
+                                                    </Button>
+
+                                                    <!-- Bouton Supprimer -->
+                                                    <Button Content="🗑 Supprimer"
+                                                            Command="{Binding DeleteSelectedPastConsultationCommand}"
+                                                            Padding="10,6" Background="#E74C3C" Foreground="White" BorderThickness="0" Cursor="Hand" FontSize="11" FontWeight="SemiBold" Margin="0,0,0,4">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter Property="Background" Value="#C0392B"/>
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </WrapPanel>
                                             </Grid>
 
-                                            <!-- Steps bar (pleine largeur, sa propre ligne — ne rivalise plus avec les boutons d'action) -->
-                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                                            <!-- Steps bar (WrapPanel réactif : boutons visibles sur une ligne ou répartis sans coupure) -->
+                                            <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,4">
                                                 <!-- Button Step 1 -->
-                                                <Button Content="Étape 1 — Interrogatoire" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                <Button Content="1. Interrogatoire" ToolTip="Étape 1 — Interrogatoire clinique" FontSize="11" Padding="10,5" Cursor="Hand" Margin="0,0,6,6"
                                                         Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="1">
                                                     <Button.Style>
                                                         <Style TargetType="Button">
@@ -2826,7 +2881,7 @@
                                                 </Button>
 
                                                 <!-- Button Step 2 -->
-                                                <Button Content="Étape 2 — Observations Cliniques" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                <Button Content="2. Observations" ToolTip="Étape 2 — Observations cliniques" FontSize="11" Padding="10,5" Cursor="Hand" Margin="0,0,6,6"
                                                         Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="2">
                                                     <Button.Style>
                                                         <Style TargetType="Button">
@@ -2867,7 +2922,7 @@
                                                 </Button>
 
                                                 <!-- Button Step 3 -->
-                                                <Button Content="Étape 3 — Synthèse Initiale" FontSize="11" Padding="12,6" Cursor="Hand" Margin="0,0,8,0"
+                                                <Button Content="3. Synthèse" ToolTip="Étape 3 — Synthèse initiale" FontSize="11" Padding="10,5" Cursor="Hand" Margin="0,0,6,6"
                                                         Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="3">
                                                     <Button.Style>
                                                         <Style TargetType="Button">
@@ -2906,7 +2961,89 @@
                                                         </Style>
                                                     </Button.Style>
                                                 </Button>
-                                            </StackPanel>
+
+                                                <!-- Button Step 4 -->
+                                                <Button Content="4. Restitution" ToolTip="Étape 4 — Restitution 1er entretien (lettre / PDF)" FontSize="11" Padding="10,5" Cursor="Hand" Margin="0,0,6,6"
+                                                        Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="4">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="White"/>
+                                                            <Setter Property="BorderBrush" Value="#16A085"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                            <Setter Property="Foreground" Value="#16A085"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}"
+                                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsPastPremiereStep4}" Value="True">
+                                                                    <Setter Property="Background" Value="#16A085"/>
+                                                                    <Setter Property="Foreground" Value="White"/>
+                                                                </DataTrigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#E8F8F5"/>
+                                                                </Trigger>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsPastPremiereStep4}" Value="True"/>
+                                                                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Background" Value="#117A65"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+
+                                                <!-- Button Step 5 -->
+                                                <Button Content="5. Formulaire parents" ToolTip="Étape 5 — Questionnaire et formulaire parents" FontSize="11" Padding="10,5" Cursor="Hand" Margin="0,0,6,6"
+                                                        Command="{Binding ViewPastPremiereStepCommand}" CommandParameter="5">
+                                                    <Button.Style>
+                                                        <Style TargetType="Button">
+                                                            <Setter Property="Background" Value="White"/>
+                                                            <Setter Property="BorderBrush" Value="#E67E22"/>
+                                                            <Setter Property="BorderThickness" Value="1"/>
+                                                            <Setter Property="Foreground" Value="#E67E22"/>
+                                                            <Setter Property="Template">
+                                                                <Setter.Value>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}"
+                                                                                BorderBrush="{TemplateBinding BorderBrush}"
+                                                                                BorderThickness="{TemplateBinding BorderThickness}"
+                                                                                CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Setter.Value>
+                                                            </Setter>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsPastPremiereStep5}" Value="True">
+                                                                    <Setter Property="Background" Value="#E67E22"/>
+                                                                    <Setter Property="Foreground" Value="White"/>
+                                                                </DataTrigger>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter Property="Background" Value="#FEF5E7"/>
+                                                                </Trigger>
+                                                                <MultiDataTrigger>
+                                                                    <MultiDataTrigger.Conditions>
+                                                                        <Condition Binding="{Binding IsPastPremiereStep5}" Value="True"/>
+                                                                        <Condition Binding="{Binding IsMouseOver, RelativeSource={RelativeSource Self}}" Value="True"/>
+                                                                    </MultiDataTrigger.Conditions>
+                                                                    <Setter Property="Background" Value="#D35400"/>
+                                                                </MultiDataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Button.Style>
+                                                </Button>
+                                            </WrapPanel>
                                         </Grid>
 
                                         <!-- Content area -->
@@ -3271,6 +3408,338 @@
                                                     </Grid>
                                                 </Border>
                                             </Grid>
+
+                                            <!-- STEP 4: Restitution 1er entretien -->
+                                            <Grid Visibility="{Binding IsPastPremiereStep4, Converter={StaticResource BoolToVis}}">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+
+                                                <!-- Top Bar Restitution : Indicateur et actions -->
+                                                <Border Grid.Row="0" Background="#E8F8F5" BorderBrush="#A3E4D7" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
+
+                                                        <!-- Ligne 1 : Titre et état -->
+                                                        <Grid Grid.Row="0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="🤝" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                <StackPanel>
+                                                                    <TextBlock Text="Restitution 1er entretien (adressée aux parents)" FontSize="12" FontWeight="Bold" Foreground="#117A65"/>
+                                                                    <TextBlock Text="{Binding PastRestitutionDateText}" FontSize="10" Foreground="#16A085" Margin="0,2,0,0"/>
+                                                                </StackPanel>
+                                                            </StackPanel>
+
+                                                            <TextBlock Grid.Column="1" Text="{Binding PastRestitutionStatus}" Margin="15,0,0,0"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="11" Foreground="#2C3E50" FontStyle="Italic"
+                                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding PastRestitutionStatus}"/>
+                                                        </Grid>
+
+                                                        <!-- Ligne 2 : Boutons d'action (WrapPanel garantissant qu'aucun bouton n'est tronqué) -->
+                                                        <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                                                            <!-- Bouton Ouvrir le PDF existant -->
+                                                            <Button Content="📄 Ouvrir le PDF"
+                                                                    Command="{Binding OpenPastRestitutionPdfCommand}"
+                                                                    Padding="10,5" Margin="0,0,8,4" Cursor="Hand" FontSize="11" FontWeight="SemiBold"
+                                                                    Background="#2980B9" Foreground="White" BorderThickness="0"
+                                                                    Visibility="{Binding HasPastRestitution, Converter={StaticResource BoolToVis}}">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+
+                                                            <!-- Bouton Régénérer avec l'IA -->
+                                                            <Button Content="✨ Régénérer la restitution"
+                                                                    Command="{Binding RegeneratePastRestitutionCommand}"
+                                                                    Padding="10,5" Margin="0,0,8,4" Cursor="Hand" FontSize="11" FontWeight="SemiBold"
+                                                                    Background="#16A085" Foreground="White" BorderThickness="0"
+                                                                    ToolTip="Demande à l'IA de régénérer la proposition de texte pour les parents">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+
+                                                            <!-- Bouton Enregistrer et produire le PDF -->
+                                                            <Button Content="💾 Enregistrer &amp; Produire PDF"
+                                                                    Command="{Binding ConfirmPastRestitutionCommand}"
+                                                                    Padding="10,5" Margin="0,0,8,4" Cursor="Hand" FontSize="11" FontWeight="SemiBold"
+                                                                    Background="#27AE60" Foreground="White" BorderThickness="0"
+                                                                    ToolTip="Génère le PDF avec vos modifications actuelles et l'enregistre dans le dossier patient">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+                                                        </WrapPanel>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- Champs éditables de la restitution -->
+                                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                                    <StackPanel Margin="0,0,10,0">
+                                                        <TextBlock Text="✏️ Vous pouvez relire et retoucher directement chaque section avant de générer le document PDF :"
+                                                                   FontSize="11" Foreground="#7F8C8D" Margin="0,0,0,10"/>
+
+                                                        <!-- Intro -->
+                                                        <Border Background="#FAFAFA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Introduction &amp; Accueil :" FontWeight="SemiBold" FontSize="12" Foreground="#2C3E50" Margin="0,0,0,6"/>
+                                                                <TextBox Text="{Binding ReviewIntro, UpdateSourceTrigger=PropertyChanged}"
+                                                                         AcceptsReturn="True" MinHeight="50" Padding="6" TextWrapping="Wrap"
+                                                                         FontSize="11.5" Background="White" BorderBrush="#BDC3C7" BorderThickness="1"
+                                                                         VerticalScrollBarVisibility="Auto"/>
+                                                            </StackPanel>
+                                                        </Border>
+
+                                                        <!-- Motif -->
+                                                        <Border Background="#FAFAFA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Motif de consultation :" FontWeight="SemiBold" FontSize="12" Foreground="#2C3E50" Margin="0,0,0,6"/>
+                                                                <TextBox Text="{Binding ReviewMotif, UpdateSourceTrigger=PropertyChanged}"
+                                                                         AcceptsReturn="True" MinHeight="50" Padding="6" TextWrapping="Wrap"
+                                                                         FontSize="11.5" Background="White" BorderBrush="#BDC3C7" BorderThickness="1"
+                                                                         VerticalScrollBarVisibility="Auto"/>
+                                                            </StackPanel>
+                                                        </Border>
+
+                                                        <!-- Grille Forces & Défis -->
+                                                        <Grid Margin="0,0,0,10">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="10"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <!-- Forces -->
+                                                            <Border Grid.Column="0" Background="#F0FBF8" BorderBrush="#2DC5A2" BorderThickness="1" CornerRadius="6" Padding="12">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="Ce qui fait sa force (un point par ligne) :" FontWeight="Bold" FontSize="12" Foreground="#1A9E82" Margin="0,0,0,6"/>
+                                                                    <TextBox Text="{Binding ReviewForces, UpdateSourceTrigger=PropertyChanged}"
+                                                                             AcceptsReturn="True" MinHeight="90" Padding="6" TextWrapping="Wrap"
+                                                                             FontSize="11.5" Background="White" BorderBrush="#B2DFD8" BorderThickness="1"
+                                                                             VerticalScrollBarVisibility="Auto"/>
+                                                                </StackPanel>
+                                                            </Border>
+
+                                                            <!-- Défis -->
+                                                            <Border Grid.Column="2" Background="#FEF6F0" BorderBrush="#E8834A" BorderThickness="1" CornerRadius="6" Padding="12">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="Difficultés constatées (un point par ligne) :" FontWeight="Bold" FontSize="12" Foreground="#C4622A" Margin="0,0,0,6"/>
+                                                                    <TextBox Text="{Binding ReviewDefis, UpdateSourceTrigger=PropertyChanged}"
+                                                                             AcceptsReturn="True" MinHeight="90" Padding="6" TextWrapping="Wrap"
+                                                                             FontSize="11.5" Background="White" BorderBrush="#F0C0A0" BorderThickness="1"
+                                                                             VerticalScrollBarVisibility="Auto"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </Grid>
+
+                                                        <!-- Bilans / Conclusion -->
+                                                        <Border Background="#F4F6FF" BorderBrush="#7B8CDE" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                                                            <StackPanel>
+                                                                <TextBlock Text="Vos bilans en résumé &amp; Conclusion partagée :" FontWeight="SemiBold" FontSize="12" Foreground="#4A5899" Margin="0,0,0,6"/>
+                                                                <TextBox Text="{Binding ReviewBilansSynthese, UpdateSourceTrigger=PropertyChanged}"
+                                                                         AcceptsReturn="True" MinHeight="50" Padding="6" TextWrapping="Wrap"
+                                                                         FontSize="11.5" Background="White" BorderBrush="#CBD2F0" BorderThickness="1"
+                                                                         VerticalScrollBarVisibility="Auto"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </ScrollViewer>
+                                            </Grid>
+
+                                            <!-- STEP 5: Formulaire Parents -->
+                                            <Grid Visibility="{Binding IsPastPremiereStep5, Converter={StaticResource BoolToVis}}">
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="*"/>
+                                                </Grid.RowDefinitions>
+
+                                                <!-- Top Bar Formulaire -->
+                                                <Border Grid.Row="0" Background="#FEF5E7" BorderBrush="#FAD7A0" BorderThickness="1" CornerRadius="6" Padding="12" Margin="0,0,0,10">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
+
+                                                        <!-- Ligne 1 : Titre et état -->
+                                                        <Grid Grid.Row="0">
+                                                            <Grid.ColumnDefinitions>
+                                                                <ColumnDefinition Width="Auto"/>
+                                                                <ColumnDefinition Width="*"/>
+                                                            </Grid.ColumnDefinitions>
+
+                                                            <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="📋" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="Questionnaire / Formulaire Parents" FontSize="12" FontWeight="Bold" Foreground="#B9770E" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+
+                                                            <TextBlock Grid.Column="1" Text="{Binding PastFormulaireStatus}" Margin="15,0,0,0"
+                                                                       HorizontalAlignment="Right" VerticalAlignment="Center" FontSize="10.5" Foreground="#D68910"
+                                                                       TextTrimming="CharacterEllipsis" ToolTip="{Binding PastFormulaireStatus}"/>
+                                                        </Grid>
+
+                                                        <!-- Ligne 2 : Actions (WrapPanel garantissant qu'aucun bouton n'est tronqué) -->
+                                                        <WrapPanel Grid.Row="1" Orientation="Horizontal" Margin="0,10,0,0">
+                                                            <!-- Bouton Ouvrir le formulaire existant -->
+                                                            <Button Content="📄 Voir le document"
+                                                                    Command="{Binding OpenPastFormulaireCommand}"
+                                                                    Padding="10,5" Margin="0,0,8,4" Cursor="Hand" FontSize="11" FontWeight="SemiBold"
+                                                                    Background="#2980B9" Foreground="White" BorderThickness="0"
+                                                                    Visibility="{Binding HasPastFormulaire, Converter={StaticResource BoolToVis}}">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+
+                                                            <!-- Bouton Scanner -->
+                                                            <Button Content="🖨 Scanner le formulaire"
+                                                                    Click="ScannerFormulaireBtn_Click"
+                                                                    Padding="10,5" Margin="0,0,8,4" Cursor="Hand" FontSize="11" FontWeight="SemiBold"
+                                                                    Background="#16A085" Foreground="White" BorderThickness="0">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+
+                                                            <!-- Bouton Importer -->
+                                                            <Button Content="📁 Importer un document"
+                                                                    Command="{Binding ImportFormulaireImageCommand}"
+                                                                    Padding="10,5" Margin="0,0,8,4" Cursor="Hand" FontSize="11" FontWeight="SemiBold"
+                                                                    Background="#E67E22" Foreground="White" BorderThickness="0">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+
+                                                            <!-- Bouton Générer vierge -->
+                                                            <Button Content="📄 Générer formulaire vierge"
+                                                                    Command="{Binding GenererFormulaireCommand}"
+                                                                    Padding="10,5" Margin="0,0,8,4" Cursor="Hand" FontSize="11" FontWeight="SemiBold"
+                                                                    Background="#7F8C8D" Foreground="White" BorderThickness="0">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+                                                        </WrapPanel>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- Contenu explicatif / état -->
+                                                <Border Grid.Row="1" Background="#FAFAFA" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="6" Padding="20">
+                                                    <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" MaxWidth="640">
+                                                        <TextBlock Text="📋 Gestion du questionnaire parents" FontSize="15" FontWeight="Bold" Foreground="#2C3E50" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                                                        <TextBlock Text="Ce module vous permet de rattacher, scanner ou dépouiller la feuille de renseignements remplie par les parents pour cette 1ère consultation."
+                                                                   FontSize="12" Foreground="#5D6D7E" TextWrapping="Wrap" TextAlignment="Center" Margin="0,0,0,20"/>
+
+                                                        <Border Background="White" BorderBrush="#EAECEF" BorderThickness="1" CornerRadius="8" Padding="15" Margin="0,0,0,18">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <TextBlock Grid.Column="0" Text="ℹ️" FontSize="20" Margin="0,0,12,0" VerticalAlignment="Center"/>
+                                                                <TextBlock Grid.Column="1" Text="{Binding PastFormulaireStatus}" FontSize="12" Foreground="#34495E" VerticalAlignment="Center" TextWrapping="Wrap"/>
+                                                            </Grid>
+                                                        </Border>
+
+                                                        <WrapPanel Orientation="Horizontal" HorizontalAlignment="Center">
+                                                            <!-- Bouton Voir existant -->
+                                                            <Button Content="📄 Voir le document"
+                                                                    Command="{Binding OpenPastFormulaireCommand}"
+                                                                    Padding="14,8" Margin="0,0,10,6" Cursor="Hand" FontSize="12" FontWeight="SemiBold"
+                                                                    Background="#2980B9" Foreground="White" BorderThickness="0"
+                                                                    Visibility="{Binding HasPastFormulaire, Converter={StaticResource BoolToVis}}">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+
+                                                            <!-- Bouton Scanner -->
+                                                            <Button Content="🖨 Scanner le formulaire"
+                                                                    Click="ScannerFormulaireBtn_Click"
+                                                                    Padding="14,8" Margin="0,0,10,6" Cursor="Hand" FontSize="12" FontWeight="SemiBold"
+                                                                    Background="#16A085" Foreground="White" BorderThickness="0">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+
+                                                            <!-- Bouton Importer -->
+                                                            <Button Content="📁 Importer un fichier"
+                                                                    Command="{Binding ImportFormulaireImageCommand}"
+                                                                    Padding="14,8" Margin="0,0,10,6" Cursor="Hand" FontSize="12" FontWeight="SemiBold"
+                                                                    Background="#E67E22" Foreground="White" BorderThickness="0">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+
+                                                            <!-- Bouton Générer vierge -->
+                                                            <Button Content="📄 Générer vierge"
+                                                                    Command="{Binding GenererFormulaireCommand}"
+                                                                    Padding="14,8" Margin="0,0,10,6" Cursor="Hand" FontSize="12" FontWeight="SemiBold"
+                                                                    Background="#7F8C8D" Foreground="White" BorderThickness="0">
+                                                                <Button.Template>
+                                                                    <ControlTemplate TargetType="Button">
+                                                                        <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        </Border>
+                                                                    </ControlTemplate>
+                                                                </Button.Template>
+                                                            </Button>
+                                                        </WrapPanel>
+                                                    </StackPanel>
+                                                </Border>
+                                            </Grid>
                                         </Grid>
 
                                         <!-- Footer -->
@@ -3331,15 +3800,20 @@
                                             <DataTrigger Binding="{Binding IsRestitutionMode}" Value="True">
                                                 <Setter Property="Visibility" Value="Collapsed"/>
                                             </DataTrigger>
+                                            <!-- L'écran de choix de la 1ère consultation passe aussi par
+                                                 le type Normal : même exclusion, même raison. -->
+                                            <DataTrigger Binding="{Binding IsChoixPremiereMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
 
                             <!-- V0c : Boutons simples (Interrogatoire vs Observations) -->
-                            <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,12" Height="40" VerticalAlignment="Top">
-                                <StackPanel.Style>
-                                    <Style TargetType="StackPanel">
+                            <WrapPanel Grid.Row="0" Margin="0,0,0,12" VerticalAlignment="Top">
+                                <WrapPanel.Style>
+                                    <Style TargetType="WrapPanel">
                                         <Setter Property="Visibility" Value="Collapsed"/>
                                         <Style.Triggers>
                                             <DataTrigger Binding="{Binding IsInterrogatoireMode}" Value="True">
@@ -3347,12 +3821,12 @@
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
-                                </StackPanel.Style>
+                                </WrapPanel.Style>
 
                                 <Button Content="Interrogatoire"
                                         Command="{Binding SwitchToInterrogatoireCommand}"
-                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
-                                        Margin="0,0,10,0" Height="40"
+                                        Padding="10,5" Cursor="Hand" FontSize="11.5" FontWeight="SemiBold"
+                                        Margin="0,0,6,8" Height="40"
                                         Background="#3498DB" Foreground="White"
                                         BorderThickness="0"
                                         VerticalAlignment="Top">
@@ -3383,8 +3857,8 @@
 
                                 <Button Content="📋 Formulaire parents"
                                         Command="{Binding OpenFormulaireParentsCommand}"
-                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
-                                        Margin="0,0,10,0" Height="40"
+                                        Padding="10,5" Cursor="Hand" FontSize="11.5" FontWeight="SemiBold"
+                                        Margin="0,0,6,8" Height="40"
                                         Background="#E67E22" Foreground="White"
                                         BorderThickness="0"
                                         VerticalAlignment="Top"
@@ -3416,8 +3890,8 @@
 
                                 <Button Content="Observations Cliniques"
                                         Command="{Binding SwitchToClinicalCommand}"
-                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
-                                        Height="40"
+                                        Padding="10,5" Cursor="Hand" FontSize="11.5" FontWeight="SemiBold"
+                                        Margin="0,0,6,8" Height="40"
                                         Background="#27AE60" Foreground="White"
                                         BorderThickness="0"
                                         VerticalAlignment="Top">
@@ -3448,8 +3922,8 @@
 
                                 <Button Content="📄 Synthèse Initiale"
                                         Command="{Binding SwitchToSynthesisCommand}"
-                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
-                                        Margin="10,0,0,0" Height="40"
+                                        Padding="10,5" Cursor="Hand" FontSize="11.5" FontWeight="SemiBold"
+                                        Margin="0,0,6,8" Height="40"
                                         Background="#9B59B6" Foreground="White"
                                         BorderThickness="0"
                                         VerticalAlignment="Top">
@@ -3480,8 +3954,8 @@
 
                                 <Button Content="🤝 Restitution 1er entretien"
                                         Command="{Binding SwitchToRestitutionPremiereConsultationCommand}"
-                                        Padding="15,5" Cursor="Hand" FontSize="13" FontWeight="SemiBold"
-                                        Margin="10,0,0,0" Height="40"
+                                        Padding="10,5" Cursor="Hand" FontSize="11.5" FontWeight="SemiBold"
+                                        Margin="0,0,6,8" Height="40"
                                         Background="#16A085" Foreground="White"
                                         BorderThickness="0"
                                         VerticalAlignment="Top"
@@ -3511,7 +3985,42 @@
                                     </Button.Style>
                                 </Button>
 
-                            </StackPanel>
+                                <!-- Dernière étape : la feuille des parents est récupérée et scannée,
+                                     et Med enchaîne directement sur le dépouillement. La famille est
+                                     partie, il n'y a plus de raison de séparer les deux gestes. -->
+                                <Button x:Name="ScannerFormulaireBtn" Content="🖨 Scanner le formulaire"
+                                        Click="ScannerFormulaireBtn_Click"
+                                        Padding="10,5" Cursor="Hand" FontSize="11.5" FontWeight="SemiBold"
+                                        Margin="0,0,6,8" Height="40"
+                                        Background="#16A085" Foreground="White"
+                                        BorderThickness="0" VerticalAlignment="Top"
+                                        ToolTip="Scanne la feuille remplie par les parents, puis ouvre le dépouillement">
+                                    <Button.Style>
+                                        <Style TargetType="Button">
+                                            <Setter Property="Template">
+                                                <Setter.Value>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border Background="{TemplateBinding Background}"
+                                                                CornerRadius="8"
+                                                                Padding="{TemplateBinding Padding}">
+                                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </ControlTemplate>
+                                                </Setter.Value>
+                                            </Setter>
+                                            <Style.Triggers>
+                                                <Trigger Property="IsMouseOver" Value="True">
+                                                    <Setter Property="Background" Value="#12876F"/>
+                                                </Trigger>
+                                                <Trigger Property="IsEnabled" Value="False">
+                                                    <Setter Property="Background" Value="#BDC3C7"/>
+                                                </Trigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Button.Style>
+                                </Button>
+
+                            </WrapPanel>
 
                             <!-- MODE INTERROGATOIRE — Saisie transcription -->
                             <Grid Grid.Row="1">
@@ -4266,7 +4775,6 @@
                                             </Button>
                                         </StackPanel>
                                     </Border>
-
                                 </Grid>
 
                                 <!-- Barre de statut -->
@@ -4619,6 +5127,79 @@
                                 </StackPanel>
                             </Grid>
 
+                            <!-- ÉCRAN DE CHOIX DE LA 1ÈRE CONSULTATION : Commencer, ou Poursuivre /
+                                 Recommencer quand une consultation est commencée et pas terminée. -->
+                            <Border Grid.Row="0" Grid.RowSpan="2" VerticalAlignment="Top" Margin="0,4,0,0"
+                                    Background="#F7FAFC" BorderBrush="#D6E2EC" BorderThickness="1"
+                                    CornerRadius="8" Padding="28,24">
+                                <Border.Style>
+                                    <Style TargetType="Border">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsChoixPremiereMode}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Border.Style>
+                                <Border.Resources>
+                                    <Style x:Key="ChoixBtn" TargetType="Button">
+                                        <Setter Property="Cursor" Value="Hand"/>
+                                        <Setter Property="Foreground" Value="White"/>
+                                        <Setter Property="FontSize" Value="13"/>
+                                        <Setter Property="FontWeight" Value="SemiBold"/>
+                                        <Setter Property="Height" Value="42"/>
+                                        <Setter Property="MinWidth" Value="220"/>
+                                        <Setter Property="Margin" Value="0,0,12,0"/>
+                                        <Setter Property="Template">
+                                            <Setter.Value>
+                                                <ControlTemplate TargetType="Button">
+                                                    <Border x:Name="B" Background="{TemplateBinding Background}"
+                                                            CornerRadius="8" Padding="18,0">
+                                                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                    <ControlTemplate.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter TargetName="B" Property="Opacity" Value="0.88"/>
+                                                        </Trigger>
+                                                    </ControlTemplate.Triggers>
+                                                </ControlTemplate>
+                                            </Setter.Value>
+                                        </Setter>
+                                    </Style>
+                                </Border.Resources>
+                                <StackPanel>
+                                    <TextBlock Text="🩺 1ère consultation" FontSize="17" FontWeight="Bold" Foreground="#1A3A6A"/>
+
+                                    <!-- Rien en cours -->
+                                    <StackPanel Margin="0,12,0,0"
+                                                Visibility="{Binding PremiereAucune, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="Aucune 1ère consultation n'est en cours pour ce patient."
+                                                   FontSize="12.5" Foreground="#4F6D8A"/>
+                                        <Button Content="▶  Commencer la consultation" Command="{Binding CommencerPremiereCommand}"
+                                                Style="{StaticResource ChoixBtn}" Background="#3498DB"
+                                                HorizontalAlignment="Left" Margin="0,18,0,0"/>
+                                    </StackPanel>
+
+                                    <!-- Une consultation commencée, pas terminée -->
+                                    <StackPanel Margin="0,12,0,0"
+                                                Visibility="{Binding PremiereEnCours, Converter={StaticResource BoolToVis}}">
+                                        <TextBlock Text="Une 1ère consultation est commencée et n'est pas terminée."
+                                                   FontSize="12.5" Foreground="#4F6D8A"/>
+                                        <TextBlock Text="{Binding PremiereEnCoursResume}" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="#1A3A6A" Margin="0,4,0,0"/>
+                                        <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                                            <Button Content="▶  Poursuivre là où vous en étiez"
+                                                    Command="{Binding PoursuivrePremiereCommand}"
+                                                    Style="{StaticResource ChoixBtn}" Background="#27AE60"/>
+                                            <Button Content="↺  Recommencer" Command="{Binding RecommencerPremiereCommand}"
+                                                    Style="{StaticResource ChoixBtn}" Background="#95A5A6"
+                                                    ToolTip="Efface la consultation en cours — une confirmation vous sera demandée"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
                             <!-- V0e : RESTITUTION AUX PARENTS (1er entretien) -->
                             <Grid Grid.Row="1">
                                 <Grid.Style>
@@ -4953,29 +5534,6 @@
                                                                 <ControlTemplate.Triggers>
                                                                     <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#219653"/></Trigger>
                                                                     <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#95A5A6"/></Trigger>
-                                                                </ControlTemplate.Triggers>
-                                                            </ControlTemplate>
-                                                        </Setter.Value>
-                                                    </Setter>
-                                                </Style>
-                                            </Button.Style>
-                                        </Button>
-                                        <!-- N'apparaît qu'une fois le PDF sauvegardé : referme explicitement le fil
-                                             de la 1ère consultation et revient à la frise. -->
-                                        <Button Content="✅ Terminer la 1ère consultation" Command="{Binding FinishPremiereConsultationCommand}"
-                                                Padding="12,7" Cursor="Hand" FontSize="11" Margin="8,0,0,0"
-                                                Background="#2C3E50" Foreground="White" BorderThickness="0"
-                                                Visibility="{Binding Restitution.GeneratedPdfPath, Converter={StaticResource StringNotWS}}">
-                                            <Button.Style>
-                                                <Style TargetType="Button">
-                                                    <Setter Property="Template">
-                                                        <Setter.Value>
-                                                            <ControlTemplate TargetType="Button">
-                                                                <Border Background="{TemplateBinding Background}" CornerRadius="4" Padding="{TemplateBinding Padding}">
-                                                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                </Border>
-                                                                <ControlTemplate.Triggers>
-                                                                    <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#1B2631"/></Trigger>
                                                                 </ControlTemplate.Triggers>
                                                             </ControlTemplate>
                                                         </Setter.Value>

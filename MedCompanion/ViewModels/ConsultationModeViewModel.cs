@@ -2178,6 +2178,8 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(IsPastPremiereStep1));
                     OnPropertyChanged(nameof(IsPastPremiereStep2));
                     OnPropertyChanged(nameof(IsPastPremiereStep3));
+                    OnPropertyChanged(nameof(IsPastPremiereStep4));
+                    OnPropertyChanged(nameof(IsPastPremiereStep5));
                 }
             }
         }
@@ -2185,6 +2187,70 @@ namespace MedCompanion.ViewModels
         public bool IsPastPremiereStep1 => PastPremiereStep == 1;
         public bool IsPastPremiereStep2 => PastPremiereStep == 2;
         public bool IsPastPremiereStep3 => PastPremiereStep == 3;
+        public bool IsPastPremiereStep4 => PastPremiereStep == 4;
+        public bool IsPastPremiereStep5 => PastPremiereStep == 5;
+
+        private string _pastRestitutionPdfPath = "";
+        public string PastRestitutionPdfPath
+        {
+            get => _pastRestitutionPdfPath;
+            set
+            {
+                if (SetProperty(ref _pastRestitutionPdfPath, value))
+                {
+                    OnPropertyChanged(nameof(HasPastRestitution));
+                    OnPropertyChanged(nameof(HasNoPastRestitution));
+                }
+            }
+        }
+
+        private string _pastRestitutionHtmlPath = "";
+        public string PastRestitutionHtmlPath
+        {
+            get => _pastRestitutionHtmlPath;
+            set => SetProperty(ref _pastRestitutionHtmlPath, value);
+        }
+
+        public bool HasPastRestitution => !string.IsNullOrEmpty(PastRestitutionPdfPath) && File.Exists(PastRestitutionPdfPath);
+        public bool HasNoPastRestitution => !HasPastRestitution;
+
+        private string _pastRestitutionDateText = "";
+        public string PastRestitutionDateText
+        {
+            get => _pastRestitutionDateText;
+            set => SetProperty(ref _pastRestitutionDateText, value);
+        }
+
+        private string _pastRestitutionStatus = "";
+        public string PastRestitutionStatus
+        {
+            get => _pastRestitutionStatus;
+            set => SetProperty(ref _pastRestitutionStatus, value);
+        }
+
+        private string _pastFormulaireFilePath = "";
+        public string PastFormulaireFilePath
+        {
+            get => _pastFormulaireFilePath;
+            set
+            {
+                if (SetProperty(ref _pastFormulaireFilePath, value))
+                {
+                    OnPropertyChanged(nameof(HasPastFormulaire));
+                    OnPropertyChanged(nameof(HasNoPastFormulaire));
+                }
+            }
+        }
+
+        public bool HasPastFormulaire => !string.IsNullOrEmpty(PastFormulaireFilePath) && File.Exists(PastFormulaireFilePath);
+        public bool HasNoPastFormulaire => !HasPastFormulaire;
+
+        private string _pastFormulaireStatus = "";
+        public string PastFormulaireStatus
+        {
+            get => _pastFormulaireStatus;
+            set => SetProperty(ref _pastFormulaireStatus, value);
+        }
 
         private string _pastInterrogatoireText = "";
         public string PastInterrogatoireText
@@ -2728,6 +2794,7 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(IsInterrogatoireMode));
                     OnPropertyChanged(nameof(IsSuiviMode));
                     OnPropertyChanged(nameof(IsNormalMode));
+                    OnPropertyChanged(nameof(PeutTerminerPremiere));
                     if (value == ConsultationType.PremiereConsultation)
                         InitInterrogatoireBlocks();
                     // Forcer la notification même si InterrogatoireState n'a pas changé de valeur
@@ -2752,10 +2819,22 @@ namespace MedCompanion.ViewModels
             set
             {
                 if (SetProperty(ref _isEditingConsultation, value))
+                {
                     OnPropertyChanged(nameof(IsNotEditingConsultation));
+                    OnPropertyChanged(nameof(PeutTerminerPremiere));
+                }
             }
         }
         public bool IsNotEditingConsultation => !_isEditingConsultation;
+
+        /// <summary>
+        /// Une 1ère consultation est ouverte : le bouton « Terminer » de la frise est proposé, à
+        /// toute étape — la même condition que la rangée des étapes, et pas l'édition de la note.
+        /// Enregistrer la note de l'interrogatoire fait sortir de l'édition alors que la séance
+        /// continue (observations, synthèse, restitution) : le bouton disparaissait en plein
+        /// milieu (signalé le 28/09/2026).
+        /// </summary>
+        public bool PeutTerminerPremiere => IsInterrogatoireMode;
 
         // État interne de l'interrogatoire
         private InterrogatoireState _interrogatoireState = InterrogatoireState.Saisie;
@@ -3093,6 +3172,7 @@ namespace MedCompanion.ViewModels
             IsSyntheseGlobaleMode = false;
             IsSelectingRestitutionTypeMode = false;
             IsDossierRestitutionCliniqueMode = false;
+            IsChoixPremiereMode = false;
             IsReadingPastConsultationMode = false;
             IsReadingPastPremiereConsultationMode = false;
             SelectedPastConsultation = null;
@@ -3124,7 +3204,7 @@ namespace MedCompanion.ViewModels
             AgeConfirme       = _confirmedAge,
             IsStructureFrozen = IsStructureFrozen,
             InterrogatoireState = _interrogatoireState.ToString(),
-            EtapeActive       = IsInClinicalMode ? "clinical" : IsSynthesisMode ? "synthesis" : "saisie",
+            EtapeActive       = IsInClinicalMode ? "clinical" : IsSynthesisMode ? "synthesis" : IsRestitutionMode ? "restitution" : IsFormulaireMode ? "formulaire" : "saisie",
             TranscriptionInput    = TranscriptionInput,
             ManualNotes           = ManualNotes,
             NoteContent           = NoteContent,
@@ -3147,8 +3227,17 @@ namespace MedCompanion.ViewModels
         {
             ConsultationDate             = draft.DateConsultation;
             _premiereConsultationFilePath = null;
-            _noteSaved                   = false;
-            _observationsNoteSaved       = false;
+            if (_currentPatient != null && !string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+            {
+                var notesDir = Path.Combine(_currentPatient.DirectoryPath, ConsultationDate.Year.ToString(), "notes");
+                var stamp = ConsultationDate.ToString("yyyy-MM-dd_HHmm");
+                var potentialPath = Path.Combine(notesDir, $"{stamp}_consultation.md");
+                if (File.Exists(potentialPath))
+                    _premiereConsultationFilePath = potentialPath;
+            }
+
+            _noteSaved                   = !string.IsNullOrWhiteSpace(draft.NoteContent);
+            _observationsNoteSaved       = !string.IsNullOrWhiteSpace(draft.ObservationsNarrative);
             IsEditingConsultation        = true;
             ExtractionStatus             = "";
 
@@ -3184,6 +3273,25 @@ namespace MedCompanion.ViewModels
             ObservationsNarrative = draft.ObservationsNarrative ?? "";
             SynthesisContent      = draft.SynthesisContent      ?? "";
 
+            if (string.IsNullOrWhiteSpace(SynthesisContent) && _currentPatient != null && !string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+            {
+                var synPath = Path.Combine(_currentPatient.DirectoryPath, "synthese", "synthese.md");
+                if (File.Exists(synPath))
+                {
+                    try
+                    {
+                        var synRaw = File.ReadAllText(synPath, System.Text.Encoding.UTF8);
+                        if (synRaw.StartsWith("---"))
+                        {
+                            int end = synRaw.IndexOf("---", 3);
+                            if (end > 0) synRaw = synRaw.Substring(end + 3).TrimStart();
+                        }
+                        SynthesisContent = synRaw;
+                    }
+                    catch { }
+                }
+            }
+
             // Restaurer l'état de l'étape interrogatoire
             if (System.Enum.TryParse<InterrogatoireState>(draft.InterrogatoireState, out var iState))
             {
@@ -3196,7 +3304,7 @@ namespace MedCompanion.ViewModels
                 OnPropertyChanged(nameof(CanExtract));
             }
 
-            // Restaurer l'étape active (clinical / synthesis / saisie)
+            // Restaurer l'étape active (clinical / synthesis / restitution / formulaire / saisie)
             switch (draft.EtapeActive)
             {
                 case "clinical":
@@ -3209,10 +3317,285 @@ namespace MedCompanion.ViewModels
                     ResetWorkspaceModes();
                     IsSynthesisMode = true;
                     break;
-                // "saisie" → état par défaut après InitInterrogatoireBlocks
+                case "restitution":
+                    ResetWorkspaceModes();
+                    IsRestitutionMode = true;
+                    break;
+                case "formulaire":
+                    ResetWorkspaceModes();
+                    IsFormulaireMode = true;
+                    break;
+                default:
+                    ResetWorkspaceModes();
+                    break;
             }
 
             UpdateBlockCollections();
+        }
+
+        // ── Écran de choix de la 1ère consultation ─────────────────────────────
+        //
+        // Demandé le 28/09/2026 : cliquer « 1ère consultation » ne doit pas jeter directement
+        // dans les étapes. On passe d'abord par un écran, dans la zone de travail, qui propose
+        // ce qui a du sens : Commencer s'il n'y a rien en cours ; Poursuivre ou Recommencer
+        // s'il y a une consultation commencée et pas terminée. Remplace une fenêtre Oui/Non
+        // (« OUI reprendre, NON nouvelle ») où une erreur de bouton effaçait le brouillon.
+
+        private bool _isChoixPremiereMode;
+        public bool IsChoixPremiereMode
+        {
+            get => _isChoixPremiereMode;
+            set => SetProperty(ref _isChoixPremiereMode, value);
+        }
+
+        private bool _premiereEnCours;
+        /// <summary>Une 1ère consultation commencée et non terminée existe (brouillon).</summary>
+        public bool PremiereEnCours
+        {
+            get => _premiereEnCours;
+            private set { if (SetProperty(ref _premiereEnCours, value)) OnPropertyChanged(nameof(PremiereAucune)); }
+        }
+        public bool PremiereAucune => !PremiereEnCours;
+
+        private string _premiereEnCoursResume = "";
+        /// <summary>« Commencée le 28/09/2026 — dernière étape : Observations cliniques ».</summary>
+        public string PremiereEnCoursResume
+        {
+            get => _premiereEnCoursResume;
+            private set => SetProperty(ref _premiereEnCoursResume, value);
+        }
+
+        private void OuvrirChoixPremiereConsultation()
+        {
+            var dir = _currentPatient?.DirectoryPath;
+
+            // Une consultation ouverte à l'écran est d'abord mise à l'abri : sans ça, un clic sur
+            // la frise en pleine séance perdait jusqu'aux 2 dernières secondes de saisie (la
+            // sauvegarde du brouillon est différée) — et « Poursuivre » repartirait de plus loin.
+            if (IsInterrogatoireMode && IsEditingConsultation && dir != null)
+            {
+                _draftSaveCts?.Cancel();
+                _draftSvc.Save(dir, BuildDraft());
+            }
+
+            var draft = _draftSvc.HasDraft(dir) ? _draftSvc.Load(dir) : null;
+            PremiereEnCours = draft != null;
+            PremiereEnCoursResume = draft == null ? "" :
+                $"Commencée le {draft.DateConsultation:dd/MM/yyyy} — dernière étape : {LibelleEtape(draft.EtapeActive)}";
+
+            // Le type « Normal » masque la rangée des étapes et la saisie : on choisit AVANT.
+            ResetWorkspaceModes();
+            ConsultationType = ConsultationType.Normal;
+            IsEditingConsultation = true;
+            IsChoixPremiereMode = true;
+        }
+
+        private static string LibelleEtape(string? etape) => etape switch
+        {
+            "clinical"  => "Observations cliniques",
+            "synthesis" => "Synthèse initiale",
+            _           => "Interrogatoire"
+        };
+
+        private void CommencerPremiereConsultation()
+        {
+            IsChoixPremiereMode = false;
+            DemarrerNouvellePremiereConsultation();
+        }
+
+        private void PoursuivrePremiereConsultation()
+        {
+            IsChoixPremiereMode = false;
+            var draft = _draftSvc.Load(_currentPatient?.DirectoryPath);
+            if (draft != null)
+            {
+                RestoreFromDraft(draft);
+            }
+            else
+            {
+                var premiereCard = ConsultationCards.FirstOrDefault(c => c.Type == "1ère consultation");
+                if (premiereCard != null && File.Exists(premiereCard.FilePath))
+                {
+                    RestoreFromPremiereNoteFile(premiereCard.FilePath);
+                }
+                else
+                {
+                    DemarrerNouvellePremiereConsultation();
+                }
+            }
+        }
+
+        private void RestoreFromPremiereNoteFile(string filePath)
+        {
+            if (string.IsNullOrEmpty(filePath) || !File.Exists(filePath))
+            {
+                DemarrerNouvellePremiereConsultation();
+                return;
+            }
+
+            try
+            {
+                var content = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
+                ConsultationDate = ConsultationCardViewModel.ParseDate(Path.GetFileName(filePath));
+                if (ConsultationDate == DateTime.MinValue)
+                    ConsultationDate = File.GetLastWriteTime(filePath);
+
+                _premiereConsultationFilePath = filePath;
+                IsEditingConsultation = true;
+                ConsultationType = ConsultationType.PremiereConsultation;
+
+                string yaml = "";
+                string body = content;
+                if (content.StartsWith("---"))
+                {
+                    int end = content.IndexOf("---", 3);
+                    if (end > 0)
+                    {
+                        yaml = content.Substring(3, end - 3);
+                        body = content.Substring(end + 3).TrimStart();
+                    }
+                }
+
+                var lines = body.Split('\n');
+                var sbInt = new System.Text.StringBuilder();
+                var sbObs = new System.Text.StringBuilder();
+                string currentSection = "";
+
+                foreach (var rawLine in lines)
+                {
+                    var line = rawLine.TrimEnd('\r');
+                    if (line.Trim().Equals("## Interrogatoire", StringComparison.OrdinalIgnoreCase))
+                    {
+                        currentSection = "int";
+                        continue;
+                    }
+                    if (line.Trim().Equals("## Observations cliniques", StringComparison.OrdinalIgnoreCase))
+                    {
+                        currentSection = "obs";
+                        continue;
+                    }
+                    if (line.Trim().StartsWith("## "))
+                    {
+                        currentSection = "";
+                    }
+
+                    if (currentSection == "int") sbInt.AppendLine(line);
+                    else if (currentSection == "obs") sbObs.AppendLine(line);
+                }
+
+                NoteContent = sbInt.ToString().Trim();
+                ObservationsNarrative = sbObs.ToString().Trim();
+                _noteSaved = !string.IsNullOrWhiteSpace(NoteContent);
+                _observationsNoteSaved = !string.IsNullOrWhiteSpace(ObservationsNarrative);
+
+                var blocksBlock = ExtractSubBlock(yaml, "interrogatoire_blocks_json: |");
+                if (!string.IsNullOrEmpty(blocksBlock))
+                {
+                    try
+                    {
+                        var cleanJson = UnindentYamlBlock(blocksBlock);
+                        var blocksData = System.Text.Json.JsonSerializer.Deserialize<List<PastBlockData>>(cleanJson);
+                        if (blocksData != null)
+                        {
+                            foreach (var b in blocksData)
+                            {
+                                var block = InterrogatoireBlocks.FirstOrDefault(x => x.Key == b.Key || x.Title == b.Title);
+                                if (block != null && !string.IsNullOrWhiteSpace(b.FreeText))
+                                    block.FreeText = b.FreeText;
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                var obsBlock = ExtractSubBlock(yaml, "clinical_observations_json: |");
+                if (!string.IsNullOrEmpty(obsBlock))
+                {
+                    try
+                    {
+                        if (_clinicalObservations.Cards.Count == 0)
+                            InitializeClinicalObservations();
+
+                        var cleanJson = UnindentYamlBlock(obsBlock);
+                        var obsData = System.Text.Json.JsonSerializer.Deserialize<List<PastObsCardData>>(cleanJson);
+                        if (obsData != null)
+                        {
+                            foreach (var od in obsData)
+                            {
+                                var card = _clinicalObservations.Cards.FirstOrDefault(c => c.Title == od.Title);
+                                if (card != null)
+                                {
+                                    if (!string.IsNullOrWhiteSpace(od.FreeText))
+                                        card.FreeText = od.FreeText;
+                                    if (od.SelectedOptions != null)
+                                    {
+                                        foreach (var opt in card.OptionItems)
+                                            opt.IsSelected = od.SelectedOptions.Contains(opt.Label);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
+
+                if (_currentPatient != null && !string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+                {
+                    var synPath = Path.Combine(_currentPatient.DirectoryPath, "synthese", "synthese.md");
+                    if (File.Exists(synPath))
+                    {
+                        try
+                        {
+                            var synRaw = File.ReadAllText(synPath, System.Text.Encoding.UTF8);
+                            if (synRaw.StartsWith("---"))
+                            {
+                                int end = synRaw.IndexOf("---", 3);
+                                if (end > 0) synRaw = synRaw.Substring(end + 3).TrimStart();
+                            }
+                            SynthesisContent = synRaw;
+                        }
+                        catch { }
+                    }
+                }
+
+                UpdateBlockCollections();
+            }
+            catch
+            {
+                DemarrerNouvellePremiereConsultation();
+            }
+        }
+
+        private void RecommencerPremiereConsultation()
+        {
+            // Recommencer efface ce qui a été saisi : c'est le seul choix irréversible de
+            // l'écran, il est donc le seul à demander confirmation.
+            var r = System.Windows.MessageBox.Show(
+                "Recommencer efface la consultation en cours : interrogatoire, observations et " +
+                "synthèse saisis jusqu'ici.\n\nRecommencer quand même ?",
+                "Recommencer la 1ère consultation",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Warning);
+            if (r != System.Windows.MessageBoxResult.Yes) return;
+
+            _draftSvc.Delete(_currentPatient?.DirectoryPath);
+            IsChoixPremiereMode = false;
+            DemarrerNouvellePremiereConsultation();
+        }
+
+        private void DemarrerNouvellePremiereConsultation()
+        {
+            _premiereConsultationFilePath = null;
+            NoteContent = "";
+            ObservationsNarrative = "";
+            _noteSaved = false;
+            _observationsNoteSaved = false;
+            ConsultationType = ConsultationType.PremiereConsultation; // déclenche InitInterrogatoireBlocks
+            ConsultationDate = DateTime.Now;
+            IsEditingConsultation = true;
+            // Nouvelle consultation : la restitution repart à blanc, même patient compris.
+            ReinitialiserRestitution();
+            ExtractionStatus = "";
         }
 
         /// <summary>
@@ -3223,35 +3606,9 @@ namespace MedCompanion.ViewModels
             switch (type)
             {
                 case "premiere":
-                    // Si un brouillon existe, proposer de reprendre
-                    if (_draftSvc.HasDraft(_currentPatient?.DirectoryPath))
-                    {
-                        var r = System.Windows.MessageBox.Show(
-                            "Une 1ère consultation est en cours pour ce patient.\n\n" +
-                            "OUI — Reprendre là où vous en étiez\n" +
-                            "NON — Démarrer une NOUVELLE consultation (brouillon supprimé)",
-                            "Brouillon en cours",
-                            System.Windows.MessageBoxButton.YesNo,
-                            System.Windows.MessageBoxImage.Question);
-                        if (r == System.Windows.MessageBoxResult.Yes)
-                        {
-                            var draft = _draftSvc.Load(_currentPatient?.DirectoryPath);
-                            if (draft != null) { RestoreFromDraft(draft); break; }
-                        }
-                        else
-                        {
-                            _draftSvc.Delete(_currentPatient?.DirectoryPath);
-                        }
-                    }
-                    _premiereConsultationFilePath = null;
-                    NoteContent = "";
-                    ObservationsNarrative = "";
-                    _noteSaved = false;
-                    _observationsNoteSaved = false;
-                    ConsultationType = ConsultationType.PremiereConsultation; // déclenche InitInterrogatoireBlocks
-                    ConsultationDate = DateTime.Now;
-                    IsEditingConsultation = true;
-                    ExtractionStatus = "";
+                    // Plus de question Oui/Non en fenêtre : un écran de choix dans la zone de
+                    // travail — Commencer, Poursuivre ou Recommencer (voir OuvrirChoixPremiere).
+                    OuvrirChoixPremiereConsultation();
                     break;
 
                 case "synthese_globale":
@@ -3636,6 +3993,200 @@ namespace MedCompanion.ViewModels
             if (CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
             {
                 LoadPastSynthesisData(CurrentPatient.DirectoryPath);
+                LoadPastRestitutionData(CurrentPatient.DirectoryPath);
+                LoadPastFormulaireData(CurrentPatient.DirectoryPath);
+            }
+        }
+
+        private void LoadPastRestitutionData(string patientDir)
+        {
+            PastRestitutionPdfPath = "";
+            PastRestitutionHtmlPath = "";
+            PastRestitutionDateText = "";
+            PastRestitutionStatus = "";
+
+            try
+            {
+                var baseDir = new DirectoryInfo(patientDir);
+                var pdfFiles = baseDir.GetFiles("restitution_PremierEntretien*.pdf", SearchOption.AllDirectories)
+                    .OrderByDescending(f => f.LastWriteTime)
+                    .ToList();
+
+                if (pdfFiles.Count > 0)
+                {
+                    var pdf = pdfFiles.First();
+                    PastRestitutionPdfPath = pdf.FullName;
+                    PastRestitutionDateText = $"Document généré le {pdf.LastWriteTime:dd/MM/yyyy à HH:mm}";
+                    var html = Path.ChangeExtension(pdf.FullName, ".html");
+                    if (File.Exists(html))
+                    {
+                        PastRestitutionHtmlPath = html;
+                        TryExtractReviewFieldsFromHtml(html);
+                    }
+                    PastRestitutionStatus = "✅ Document de restitution prêt dans le dossier";
+                }
+                else
+                {
+                    PastRestitutionStatus = "Aucune restitution aux parents n'a encore été générée pour ce 1er entretien.";
+                }
+            }
+            catch (Exception ex)
+            {
+                PastRestitutionStatus = $"Erreur : {ex.Message}";
+            }
+        }
+
+        private void TryExtractReviewFieldsFromHtml(string htmlPath)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(ReviewIntro) && string.IsNullOrWhiteSpace(ReviewMotif))
+                {
+                    var raw = File.ReadAllText(htmlPath, System.Text.Encoding.UTF8);
+
+                    var introMatch = System.Text.RegularExpressions.Regex.Match(raw, @"<div class=""intro-block"">\s*<p>(.*?)</p>", System.Text.RegularExpressions.RegexOptions.Singleline);
+                    if (introMatch.Success)
+                        ReviewIntro = System.Net.WebUtility.HtmlDecode(introMatch.Groups[1].Value.Trim());
+
+                    var motifMatch = System.Text.RegularExpressions.Regex.Match(raw, @"<div class=""card-title"">Motif de consultation</div>\s*<div class=""card-body"">(.*?)</div>", System.Text.RegularExpressions.RegexOptions.Singleline);
+                    if (motifMatch.Success)
+                        ReviewMotif = System.Net.WebUtility.HtmlDecode(motifMatch.Groups[1].Value.Replace("<br/>", "\n").Replace("<p>", "").Replace("</p>", "\n").Trim());
+
+                    var forcesMatch = System.Text.RegularExpressions.Regex.Match(raw, @"<div class=""card-title"">Ce qui fait sa force</div>\s*<div class=""card-body"">(.*?)</div>", System.Text.RegularExpressions.RegexOptions.Singleline);
+                    if (forcesMatch.Success)
+                    {
+                        var lis = System.Text.RegularExpressions.Regex.Matches(forcesMatch.Groups[1].Value, @"<li>(.*?)</li>");
+                        if (lis.Count > 0)
+                            ReviewForces = string.Join("\n", lis.Cast<System.Text.RegularExpressions.Match>().Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value.Trim())));
+                    }
+
+                    var defisMatch = System.Text.RegularExpressions.Regex.Match(raw, @"<div class=""card-title"">Ce que nous allons travailler</div>\s*<div class=""card-body"">(.*?)</div>", System.Text.RegularExpressions.RegexOptions.Singleline);
+                    if (defisMatch.Success)
+                    {
+                        var lis = System.Text.RegularExpressions.Regex.Matches(defisMatch.Groups[1].Value, @"<li>(.*?)</li>");
+                        if (lis.Count > 0)
+                            ReviewDefis = string.Join("\n", lis.Cast<System.Text.RegularExpressions.Match>().Select(m => System.Net.WebUtility.HtmlDecode(m.Groups[1].Value.Trim())));
+                    }
+                }
+            }
+            catch { }
+        }
+
+        private void LoadPastFormulaireData(string patientDir)
+        {
+            PastFormulaireFilePath = "";
+            PastFormulaireStatus = "";
+
+            try
+            {
+                var baseDir = new DirectoryInfo(patientDir);
+                var formFiles = baseDir.GetFiles("*formulaire*", SearchOption.AllDirectories)
+                    .Where(f => f.Extension.ToLower() is ".pdf" or ".jpg" or ".jpeg" or ".png")
+                    .OrderByDescending(f => f.LastWriteTime)
+                    .ToList();
+
+                if (formFiles.Count > 0)
+                {
+                    var form = formFiles.First();
+                    PastFormulaireFilePath = form.FullName;
+                    PastFormulaireStatus = $"Document : {form.Name} (archivé le {form.LastWriteTime:dd/MM/yyyy})";
+                }
+                else
+                {
+                    PastFormulaireStatus = "Aucun formulaire parents archivé dans ce dossier.";
+                }
+            }
+            catch (Exception ex)
+            {
+                PastFormulaireStatus = $"Erreur : {ex.Message}";
+            }
+        }
+
+        private void ReopenPastPremiereConsultation()
+        {
+            if (SelectedPastConsultation == null) return;
+
+            var result = System.Windows.MessageBox.Show(
+                "Voulez-vous rouvrir cette 1ère consultation en séance active ?\n\n" +
+                "Vous retrouverez tous les outils de travail en direct (dictée vocale, extraction IA, questionnaire parents, restitution directe).\n\n" +
+                "Lorsque vos modifications seront terminées, cliquez simplement sur « Terminer la séance » pour sauvegarder ou clôturer à nouveau.",
+                "Rouvrir la 1ère consultation",
+                System.Windows.MessageBoxButton.YesNo,
+                System.Windows.MessageBoxImage.Question);
+
+            if (result != System.Windows.MessageBoxResult.Yes) return;
+
+            var filePath = SelectedPastConsultation.FilePath;
+
+            // Passer le statut du fichier à en_cours
+            if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+            {
+                try
+                {
+                    var raw = File.ReadAllText(filePath, System.Text.Encoding.UTF8);
+                    if (raw.Contains("statut: \"cloturee\""))
+                    {
+                        raw = raw.Replace("statut: \"cloturee\"", "statut: \"en_cours\"");
+                        File.WriteAllText(filePath, raw, System.Text.Encoding.UTF8);
+                    }
+                }
+                catch { }
+            }
+
+            var card = ConsultationCards.FirstOrDefault(c => string.Equals(c.FilePath, filePath, StringComparison.OrdinalIgnoreCase));
+            if (card != null) card.IsCloturee = false;
+
+            // Fermer le mode lecture passée
+            IsReadingPastPremiereConsultationMode = false;
+            IsReadingPastConsultationMode = false;
+            IsEditingPastPremiere = false;
+            SelectedPastConsultation = null;
+
+            // Restaurer dans le plan de travail actif
+            RestoreFromPremiereNoteFile(filePath);
+
+            IsEditingConsultation = true;
+            ConsultationType = ConsultationType.PremiereConsultation;
+            InterrogatoireState = InterrogatoireState.Saisie;
+
+            // Mettre à jour la frise
+            RefreshFriseStages();
+        }
+
+        private async Task RegeneratePastRestitutionAsync()
+        {
+            try
+            {
+                IsRegeneratingPast = true;
+                PastRestitutionStatus = "⏳ Régénération IA de la restitution en cours...";
+                await GenerateRestitutionAsync();
+                PastRestitutionStatus = "✏️ Restitution régénérée. Vous pouvez vérifier ou modifier les champs ci-dessous puis enregistrer le PDF.";
+            }
+            catch (Exception ex)
+            {
+                PastRestitutionStatus = $"❌ Erreur : {ex.Message}";
+            }
+            finally
+            {
+                IsRegeneratingPast = false;
+            }
+        }
+
+        private async Task ConfirmPastRestitutionAsync()
+        {
+            try
+            {
+                PastRestitutionStatus = "⏳ Enregistrement et génération du PDF...";
+                await ConfirmRestitutionAsync();
+                if (_currentPatient != null && !string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+                {
+                    LoadPastRestitutionData(_currentPatient.DirectoryPath);
+                }
+                PastRestitutionStatus = "✅ Nouveau PDF de restitution généré et enregistré dans le dossier patient.";
+            }
+            catch (Exception ex)
+            {
+                PastRestitutionStatus = $"❌ Erreur : {ex.Message}";
             }
         }
 
@@ -4093,7 +4644,7 @@ namespace MedCompanion.ViewModels
         /// Le contenu écrit est renvoyé pour que l'appelant décide, au bon moment, avec le dossier
         /// complet.
         /// </summary>
-        private async Task<(bool ok, string? err, string? content)> WritePremiereConsultationFileAsync()
+        private async Task<(bool ok, string? err, string? content)> WritePremiereConsultationFileAsync(bool isCloturee = false)
         {
             if (CurrentPatient == null || string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
                 return (false, "Patient non disponible", null);
@@ -4145,12 +4696,15 @@ namespace MedCompanion.ViewModels
                 var jsonBlocksIndented = string.Join("\n  ", jsonBlocks.Split('\n'));
                 var jsonObsIndented = string.Join("\n  ", jsonObs.Split('\n'));
 
+                var statutStr = isCloturee ? "cloturee" : "en_cours";
                 var content = $@"---
 patient: ""{CurrentPatient.NomComplet}""
 date: ""{ConsultationDate:yyyy-MM-ddTHH:mm}""
 type: ""consultation-premiere""
 source: ""MedCompanion""
 title: ""1ère consultation""
+statut: ""{statutStr}""
+cloturee: {isCloturee.ToString().ToLowerInvariant()}
 interrogatoire_blocks_json: |
   {jsonBlocksIndented}
 clinical_observations_json: |
@@ -4856,7 +5410,7 @@ Texte :
 
             try
             {
-                var imageBytes = await File.ReadAllBytesAsync(imagePath);
+                var imageBytes = await Task.Run(() => ChargerPageImage(imagePath));
 
                 const string prompt =
                     "Tu es assistant médical. Voici une photo du formulaire de complétion de première consultation " +
@@ -4926,13 +5480,12 @@ Texte :
             if (string.IsNullOrWhiteSpace(NoteContent))
                 return;
 
-            var (ok, err, _) = await WritePremiereConsultationFileAsync();
+            var (ok, err, _) = await WritePremiereConsultationFileAsync(isCloturee: false);
             if (ok)
             {
                 _noteSaved = true;
                 ExtractionStatus = "Note sauvegardée dans le dossier patient.";
-                // Sortie du mode édition → retour à la frise (la nouvelle carte y apparaît)
-                IsEditingConsultation = false;
+                IsEditingConsultation = true;
                 System.Windows.Application.Current?.Dispatcher.InvokeAsync(
                     System.Windows.Input.CommandManager.InvalidateRequerySuggested);
 
@@ -4949,6 +5502,44 @@ Texte :
 
         /// <summary>Bascule vers l'étape « Formulaire parents » — appelé au clic sur le bouton
         /// dédié ET automatiquement après la sauvegarde de l'Interrogatoire (Étape 1).</summary>
+        /// <summary>
+        /// Fin de consultation : la feuille remplie par les parents est scannée, et Med enchaîne
+        /// DIRECTEMENT sur le dépouillement.
+        ///
+        /// Ailleurs dans Med, le scan et la lecture sont volontairement séparés — on ne montre
+        /// rien devant la famille. Ici la consultation est finie, la famille est partie : séparer
+        /// les deux gestes ne protège plus personne et coûte trois clics.
+        /// </summary>
+        public async Task DepouillerFormulaireScanneAsync(string chemin)
+        {
+            EnterFormulaireMode();
+            await Task.Yield();
+            var saisie = new MedCompanion.Dialogs.FormulaireSaisieDialog(
+                chemin,
+                _currentPatient?.DirectoryPath,
+                formulaireId: "COMPLETION",
+                version: 2,
+                autoFill: true);
+            saisie.ShowDialog();
+            RefreshAdminInfoPublic();
+            LoadPatientDocumentsFromDisk();
+        }
+
+        /// <summary>
+        /// Le scanner rend un PDF, l'appareil photo une image ; le modèle de vision ne lit que des
+        /// images. On convertit la première page quand il le faut.
+        /// </summary>
+        private static byte[] ChargerPageImage(string chemin)
+        {
+            if (!chemin.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                return File.ReadAllBytes(chemin);
+
+            var pdf = File.ReadAllBytes(chemin);
+            using var bitmap = PDFtoImage.Conversion.ToImage(pdf, 0);
+            using var data   = bitmap.Encode(SkiaSharp.SKEncodedImageFormat.Png, 100);
+            return data.ToArray();
+        }
+
         private void EnterFormulaireMode()
         {
             ScheduleDraftSave();
@@ -5224,7 +5815,7 @@ Texte :
             }
 
             // Réécrit le fichier UNIQUE de la 1ère consultation (avec Interrogatoire + Observations).
-            var (ok, err, content) = await WritePremiereConsultationFileAsync();
+            var (ok, err, content) = await WritePremiereConsultationFileAsync(isCloturee: false);
 
             if (ok)
             {
@@ -5718,10 +6309,9 @@ Texte :
 
         private void SwitchToSynthesis()
         {
-            // Peut être appelé depuis la Restitution (« ← Retour Synthèse »), où ConsultationType
-            // a été mis à Normal en entrant dans ce mode — sans cette ligne, IsInterrogatoireMode
-            // reste faux et toute la barre Interrogatoire/Observations/Synthèse/Restitution
-            // resterait masquée au retour.
+            // Filet de sécurité : la Restitution 1er entretien ne quitte plus le type 1ère
+            // consultation (depuis le 28/09/2026), mais d'autres chemins peuvent y arriver en
+            // « Normal » — sans cette ligne, toute la barre des étapes resterait masquée.
             ConsultationType = ConsultationType.PremiereConsultation;
             ResetWorkspaceModes();
             IsSynthesisMode = true;
@@ -6092,6 +6682,22 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
             set => SetProperty(ref _restitution, value);
         }
 
+        /// <summary>
+        /// Remet le formulaire de restitution à blanc — accompagnant, suite recommandée, séances,
+        /// notes. Les deux listes déroulantes lisent leur valeur par un INDEX : recréer l'objet ne
+        /// suffit pas, il faut aussi prévenir ces index, sinon l'écran garde le choix de la
+        /// consultation précédente (signalé le 28/09/2026 : « Mère » restait coché d'un patient
+        /// à l'autre).
+        /// </summary>
+        private void ReinitialiserRestitution()
+        {
+            _restitution = new RestitutionAuxParents();
+            OnPropertyChanged(nameof(Restitution));
+            OnPropertyChanged(nameof(RestitutionAccompagnantIndex));
+            OnPropertyChanged(nameof(RestitutionTypeSuiviIndex));
+            RestitutionStatusMessage = "";
+        }
+
         // Index ComboBox (0=LesDeux,1=Mere,2=Pere,3=GrandParents,4=Educateur,5=Autre)
         public int RestitutionAccompagnantIndex
         {
@@ -6218,8 +6824,11 @@ Rédige uniquement le document. Pas de préambule, pas de conclusion, pas de com
         /// vérification d'abandon ici : on vient de sauvegarder, rien n'est perdu.</summary>
         private void EnterRestitutionMode()
         {
-            ConsultationType = ConsultationType.Normal;
-            IsEditingConsultation = false;
+            // La Restitution 1er entretien est une ÉTAPE de la 1ère consultation, comme les
+            // Observations ou la Synthèse : on reste dans son fil. Ce code avait été repris de la
+            // restitution du dossier clinique, qui, elle, quitte la 1ère consultation — d'où un
+            // passage en type « Normal » qui faisait disparaître la rangée des étapes, seule de
+            // toutes les étapes (signalé le 28/09/2026). C'est « Terminer » qui referme le fil.
             ResetWorkspaceModes();
             StartRestitution("PremiereConsultation");
         }
@@ -6961,8 +7570,104 @@ pdf_path: ""{savedPdf.Replace("\\", "\\\\")}""
         /// n'y renvoient plus automatiquement (l'utilisateur enchaîne librement entre les étapes ;
         /// c'est lui qui décide quand c'est fini).
         /// </summary>
-        private void FinishPremiereConsultation()
+        /// <summary>
+        /// « Terminer » de la frise, disponible à toute étape (demandé le 28/09/2026) : le médecin
+        /// peut finir la séance même si tout n'est pas rempli. Règle : terminer ne perd JAMAIS
+        /// rien.
+        ///  • Note d'interrogatoire pas encore enregistrée → la consultation ne peut pas être
+        ///    close ; elle reste EN COURS dans son brouillon, et « 1ère consultation » sur la frise
+        ///    propose ensuite de la poursuivre.
+        ///  • Option A : Boîte de dialogue permettant de choisir entre Suspendre (Garder en cours)
+        ///    et Clôturer définitivement la séance.
+        /// </summary>
+        private async Task TerminerSeancePremiereAsync()
         {
+            var dir = _currentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir)) return;
+
+            // 1. Mise à l'abri immédiate dans le brouillon avant tout
+            _draftSaveCts?.Cancel();
+            _draftSvc.Save(dir, BuildDraft());
+
+            // 2. Déterminer les étapes manquantes
+            var manquants = GetEtapesManquantesPremiere();
+
+            // 3. Ouvrir le dialogue de décision (Option A)
+            var dlg = new MedCompanion.Dialogs.TerminerPremiereSeanceDialog(
+                _currentPatient?.NomComplet ?? "",
+                manquants)
+            {
+                Owner = System.Windows.Application.Current?.MainWindow
+            };
+
+            var res = dlg.ShowDialog();
+            if (res != true || dlg.ActionChoisie == MedCompanion.Dialogs.TerminerPremiereAction.Annuler)
+            {
+                return; // Rester sur l'écran
+            }
+
+            if (dlg.ActionChoisie == MedCompanion.Dialogs.TerminerPremiereAction.Suspendre)
+            {
+                // Suspendre la séance : sauvegarder la note en mode non clôturé (en cours)
+                if (!string.IsNullOrWhiteSpace(NoteContent) || !string.IsNullOrWhiteSpace(ObservationsNarrative) || InterrogatoireBlocks.Any(b => !string.IsNullOrWhiteSpace(b.FreeText)))
+                {
+                    await WritePremiereConsultationFileAsync(isCloturee: false);
+                }
+                // Quitter sans supprimer le brouillon -> statut reste En cours sur la frise
+                QuitterSeancePremiere(supprimerBrouillon: false);
+            }
+            else if (dlg.ActionChoisie == MedCompanion.Dialogs.TerminerPremiereAction.Cloturer)
+            {
+                // Clôturer définitivement la 1ère consultation
+                await WritePremiereConsultationFileAsync(isCloturee: true);
+                // Quitter en supprimant le brouillon temporaire -> statut devient Clôturée sur la frise
+                QuitterSeancePremiere(supprimerBrouillon: true);
+            }
+        }
+
+        private List<string> GetEtapesManquantesPremiere()
+        {
+            var manquants = new List<string>();
+            var dir = _currentPatient?.DirectoryPath;
+
+            // 1. Interrogatoire
+            bool interrogatoireFait = _noteSaved || !string.IsNullOrWhiteSpace(NoteContent) || InterrogatoireBlocks.Any(b => !string.IsNullOrWhiteSpace(b.FreeText));
+            if (!interrogatoireFait)
+                manquants.Add("Interrogatoire (note clinique non rédigée)");
+
+            // 2. Observations cliniques
+            bool observationsFaites = _observationsNoteSaved || !string.IsNullOrWhiteSpace(ObservationsNarrative) || (_clinicalObservations?.Cards.Any(c => c.OptionItems.Any(o => o.IsSelected) || !string.IsNullOrWhiteSpace(c.FreeText)) ?? false);
+            if (!observationsFaites)
+                manquants.Add("Observations cliniques (non renseignées)");
+
+            // 3. Synthèse initiale
+            bool syntheseFaite = !string.IsNullOrWhiteSpace(SynthesisContent) || (!string.IsNullOrEmpty(dir) && File.Exists(Path.Combine(dir, "synthese", "synthese.md")));
+            if (!syntheseFaite)
+                manquants.Add("Synthèse Initiale (non rédigée / non sauvegardée)");
+
+            // 4. Restitution aux parents
+            bool restitutionFaite = !string.IsNullOrEmpty(_restitution.GeneratedPdfPath);
+            if (!restitutionFaite && !string.IsNullOrEmpty(dir))
+            {
+                try
+                {
+                    var restDir = Path.Combine(dir, DateTime.Now.Year.ToString(), "restitutions");
+                    if (Directory.Exists(restDir) && Directory.GetFiles(restDir, "*.pdf").Length > 0)
+                        restitutionFaite = true;
+                }
+                catch { }
+            }
+            if (!restitutionFaite)
+                manquants.Add("Restitution aux parents (PDF non généré)");
+
+            return manquants;
+        }
+
+        private void FinishPremiereConsultation() => QuitterSeancePremiere(supprimerBrouillon: true);
+
+        private void QuitterSeancePremiere(bool supprimerBrouillon)
+        {
+            _draftSaveCts?.Cancel();
             ConsultationType = ConsultationType.Normal;
             IsEditingConsultation = false;
             ResetWorkspaceModes();
@@ -6975,8 +7680,7 @@ pdf_path: ""{savedPdf.Replace("\\", "\\\\")}""
             _premiereConsultationFilePath = null;
             _noteSaved = false;
             _observationsNoteSaved = false;
-            _draftSaveCts?.Cancel();
-            _draftSvc.Delete(_currentPatient?.DirectoryPath);
+            if (supprimerBrouillon) _draftSvc.Delete(_currentPatient?.DirectoryPath);
 
             RefreshFriseStages();
         }
@@ -7548,6 +8252,10 @@ source: ""MedCompanion""
 
         // Hub de consultations (frise + bouton +)
         public ICommand NewConsultationCommand { get; }       // param : "premiere" | "suivi"
+        public ICommand TerminerSeancePremiereCommand { get; }
+        public ICommand CommencerPremiereCommand { get; }
+        public ICommand PoursuivrePremiereCommand { get; }
+        public ICommand RecommencerPremiereCommand { get; }
         public ICommand OpenCardCommand { get; }              // param : ConsultationCardViewModel
         public ICommand DeleteConsultationCardCommand { get; } // param : ConsultationCardViewModel
         public ICommand ClosePastConsultationCommand { get; }
@@ -7569,6 +8277,11 @@ source: ""MedCompanion""
         public ICommand EditPastPremiereCommand { get; private set; } = null!;
         public ICommand SavePastPremiereCommand { get; private set; } = null!;
         public ICommand CancelPastPremiereEditCommand { get; private set; } = null!;
+        public ICommand ReopenPastPremiereConsultationCommand { get; private set; } = null!;
+        public ICommand OpenPastRestitutionPdfCommand { get; private set; } = null!;
+        public ICommand RegeneratePastRestitutionCommand { get; private set; } = null!;
+        public ICommand ConfirmPastRestitutionCommand { get; private set; } = null!;
+        public ICommand OpenPastFormulaireCommand { get; private set; } = null!;
         public ICommand PrintQuestionnaireCartographieCommand { get; private set; } = null!;
         public ICommand PrintQuestionnaireEnvCommand { get; private set; } = null!;
         public ICommand CloseCartoEnvCommand { get; private set; } = null!;
@@ -7824,8 +8537,11 @@ source: ""MedCompanion""
             {
                 var type = param?.ToString() ?? "premiere";
 
-                // Confirmation si une consultation est en cours non sauvegardée
-                if (IsEditingConsultation && HasUnsavedConsultation())
+                // Confirmation si une consultation est en cours non sauvegardée. Pas pour une 1ère
+                // consultation qu'on rouvre : l'écran de choix met la séance en cours à l'abri
+                // dans son brouillon, rien n'est perdu — « Abandonner ? » serait faux.
+                bool rouvrePremiere = type == "premiere" && IsInterrogatoireMode;
+                if (!rouvrePremiere && IsEditingConsultation && HasUnsavedConsultation())
                 {
                     var r = System.Windows.MessageBox.Show(
                         "Une consultation est en cours et n'a pas été sauvegardée.\n\nAbandonner la consultation en cours ?",
@@ -7837,6 +8553,11 @@ source: ""MedCompanion""
 
                 StartNewConsultation(type);
             });
+
+            TerminerSeancePremiereCommand = new RelayCommand(async _ => await TerminerSeancePremiereAsync(), _ => PeutTerminerPremiere);
+            CommencerPremiereCommand   = new RelayCommand(_ => CommencerPremiereConsultation(),   _ => CurrentPatient != null);
+            PoursuivrePremiereCommand  = new RelayCommand(_ => PoursuivrePremiereConsultation(),  _ => CurrentPatient != null);
+            RecommencerPremiereCommand = new RelayCommand(_ => RecommencerPremiereConsultation(), _ => CurrentPatient != null);
 
             // Hub : ouvrir une carte passée (lecture)
             OpenCardCommand = new RelayCommand(param =>
@@ -7923,6 +8644,42 @@ source: ""MedCompanion""
                 }
                 IsEditingPastPremiere = false;
             });
+
+            ReopenPastPremiereConsultationCommand = new RelayCommand(_ => ReopenPastPremiereConsultation());
+
+            OpenPastRestitutionPdfCommand = new RelayCommand(_ =>
+            {
+                if (!string.IsNullOrEmpty(PastRestitutionPdfPath) && File.Exists(PastRestitutionPdfPath))
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PastRestitutionPdfPath) { UseShellExecute = true });
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Windows.MessageBox.Show($"Impossible d'ouvrir le fichier PDF : {ex.Message}", "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    }
+                }
+            }, _ => HasPastRestitution);
+
+            RegeneratePastRestitutionCommand = new RelayCommand(async _ => await RegeneratePastRestitutionAsync());
+
+            ConfirmPastRestitutionCommand = new RelayCommand(async _ => await ConfirmPastRestitutionAsync());
+
+            OpenPastFormulaireCommand = new RelayCommand(_ =>
+            {
+                if (!string.IsNullOrEmpty(PastFormulaireFilePath) && File.Exists(PastFormulaireFilePath))
+                {
+                    try
+                    {
+                        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(PastFormulaireFilePath) { UseShellExecute = true });
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Windows.MessageBox.Show($"Impossible d'ouvrir le document : {ex.Message}", "Erreur", System.Windows.MessageBoxButton.OK, System.Windows.MessageBoxImage.Error);
+                    }
+                }
+            }, _ => HasPastFormulaire);
 
             // Cartographie de l'enfant : générer et ouvrir le questionnaire parent à imprimer.
             PrintQuestionnaireCartographieCommand = new RelayCommand(
@@ -8430,20 +9187,44 @@ source: ""MedCompanion""
 
             // ── Étape 1 : 1ère consultation ────────────────────────────────────────────
             var premiereCard = ConsultationCards.FirstOrDefault(c => c.Type == "1ère consultation");
-            bool premiereCompleted = premiereCard != null;
+            bool hasDraft = _draftSvc.HasDraft(_currentPatient?.DirectoryPath);
+            bool isEnCours = hasDraft || (premiereCard != null && !premiereCard.IsCloturee) || (IsInterrogatoireMode && IsEditingConsultation);
+            bool premiereCompleted = !isEnCours && premiereCard != null && premiereCard.IsCloturee;
 
-            // Clôturée → lecture seule  |  disponible → nouvelle consultation
-            var premiereCmd = premiereCompleted && premiereCard != null
-                ? new Commands.RelayCommand(_ => OpenPastConsultation(premiereCard))
-                : (System.Windows.Input.ICommand)NewConsultationCommand;
+            FriseStageStatus premiereStatus;
+            System.Windows.Input.ICommand premiereCmd;
+
+            if (premiereCompleted && premiereCard != null)
+            {
+                premiereStatus = FriseStageStatus.Completed;
+                premiereCmd = new Commands.RelayCommand(_ => OpenPastConsultation(premiereCard));
+            }
+            else if (isEnCours)
+            {
+                premiereStatus = FriseStageStatus.InProgress;
+                premiereCmd = new Commands.RelayCommand(_ => PoursuivrePremiereConsultation());
+            }
+            else
+            {
+                premiereStatus = FriseStageStatus.Available;
+                premiereCmd = (System.Windows.Input.ICommand)NewConsultationCommand;
+            }
+
+            DateTime? premiereDate = premiereCard?.Date;
+            if (!premiereDate.HasValue && hasDraft)
+            {
+                var d = _draftSvc.Load(_currentPatient?.DirectoryPath);
+                if (d != null && d.DateConsultation != default)
+                    premiereDate = d.DateConsultation;
+            }
 
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "premiere",
                 Label  = "1ère consultation",
                 Icon   = "🩺",
-                Status = premiereCompleted ? FriseStageStatus.Completed : FriseStageStatus.Available,
-                Date   = premiereCard?.Date,
+                Status = premiereStatus,
+                Date   = premiereDate,
                 ActivateCommand = premiereCmd
             });
 
@@ -8848,9 +9629,7 @@ source: ""MedCompanion""
             }
 
             // V0e : réinitialiser la restitution (flag de mode déjà remis par ResetWorkspaceModes())
-            _restitution = new RestitutionAuxParents();
-            OnPropertyChanged(nameof(Restitution));
-            RestitutionStatusMessage = "";
+            ReinitialiserRestitution();
 
             // V0c : réinitialiser les observations cliniques (flags de mode déjà remis ci-dessus)
             ObservationsNarrative = "";

@@ -602,7 +602,8 @@ FORMAT JSON OBLIGATOIRE :
 
 RÈGLES CRITIQUES :
 - Format JSON strict et valide
-- Respecter EXACTEMENT les noms de propriétés ci-dessus
+- Respecter EXACTEMENT les noms de propriétés ci-dessus au pluriel (""retentissements"", ""traitements"", etc.)
+- ATTENTION AUX ACCOLADES : ""retentissements"" et ""traitements"" sont des OBJETS fermés par une accolade '}', JAMAIS par un crochet ']' !
 - Tableaux vides [] si pas d'information
 - Pas de texte avant ou après le JSON
 - Les remarques doivent être un texte fluide (pas de tirets), justifiant les demandes";

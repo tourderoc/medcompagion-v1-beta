@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -90,6 +90,20 @@ public partial class MainWindow : Window
  
             // Afficher carte
             PatientCardPanel.Visibility = Visibility.Visible;
+
+            // Mettre à jour le bouton retour dossier si en mode Bureau
+            if (BureauRetourDossierBtn != null)
+            {
+                BureauRetourDossierBtn.Content = $"↩ Dossier ({patient.Prenom} {patient.Nom})";
+                BureauRetourDossierBtn.Visibility = BureauMedContent?.Visibility == Visibility.Visible
+                    ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (BureauSuiviRasBtn != null)
+            {
+                BureauSuiviRasBtn.Visibility = BureauMedContent?.Visibility == Visibility.Visible
+                    ? Visibility.Visible : Visibility.Collapsed;
+            }
  
             var metadata = _patientIndex.GetMetadata(patient.Id);
             if (metadata != null)
@@ -259,7 +273,7 @@ public partial class MainWindow : Window
         NavBtnPilotage.Style     = activeMode == "Pilotage"     ? active : inactive;
     }
 
-    private void SwitchMode(string mode)
+    private void SwitchMode(string mode, string? initialBureauTool = null)
     {
         try
         {
@@ -318,11 +332,56 @@ public partial class MainWindow : Window
                 case "Bureau":
                     BureauMedContent.Visibility = Visibility.Visible;
                     if (BureauControlsZone != null) BureauControlsZone.Visibility = Visibility.Visible;
-                    // L'agenda est l'écran d'accueil du Bureau : c'est ce qu'on vient consulter
-                    // le plus souvent, et la zone ne doit jamais s'ouvrir vide.
-                    BureauMedContent.AfficherAccueil();
                     InitializeMedService();
                     InitializeBureauService();
+
+                    if (!string.IsNullOrEmpty(initialBureauTool))
+                    {
+                        bool selectionChangedWillFire = false;
+                        if (BureauToolsCombo != null)
+                        {
+                            foreach (ComboBoxItem item in BureauToolsCombo.Items)
+                            {
+                                if (string.Equals(item.Content?.ToString(), initialBureauTool, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    if (BureauToolsCombo.SelectedItem != item)
+                                    {
+                                        selectionChangedWillFire = true;
+                                        BureauToolsCombo.SelectedItem = item;
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!selectionChangedWillFire)
+                        {
+                            BureauMedContent?.EmbedTool(initialBureauTool);
+                        }
+                    }
+                    else
+                    {
+                        // L'agenda est l'écran d'accueil du Bureau : c'est ce qu'on vient consulter
+                        // le plus souvent, et la zone ne doit jamais s'ouvrir vide.
+                        BureauMedContent.AfficherAccueil();
+                    }
+                    if (BureauRetourDossierBtn != null)
+                    {
+                        if (_selectedPatient != null)
+                        {
+                            BureauRetourDossierBtn.Content = $"↩ Dossier ({_selectedPatient.Prenom} {_selectedPatient.Nom})";
+                            BureauRetourDossierBtn.Visibility = Visibility.Visible;
+                        }
+                        else
+                        {
+                            BureauRetourDossierBtn.Visibility = Visibility.Collapsed;
+                        }
+                    }
+                    if (BureauSuiviRasBtn != null)
+                    {
+                        BureauSuiviRasBtn.Visibility = _selectedPatient != null
+                            ? Visibility.Visible : Visibility.Collapsed;
+                    }
                     if (StatusTextBlock != null)
                     {
                         StatusTextBlock.Text = "Mode Med – Bureau activé";
@@ -426,11 +485,95 @@ public partial class MainWindow : Window
         {
             BureauMedContent.ContenuCadreChange += AjusterBoutonsCadreBureau;
             BureauMedContent.DossierDemande += OuvrirDossierDepuisAgenda;
+            BureauMedContent.CreationDossierDemandee += CreerDossierDepuisAgenda;
             _cadreBureauSuivi = true;
         }
     }
 
     private bool _cadreBureauSuivi;
+
+    /// <summary>
+    /// Ouvre la création d'un dossier patient, champs déjà remplis. UN SEUL chemin de création
+    /// dans Med, quelle que soit la porte d'entrée — la barre de recherche ou l'agenda — pour que
+    /// la protection contre les doublons s'applique partout de la même façon.
+    /// </summary>
+    /// <returns>Vrai si un dossier est désormais ouvert — le nouveau, ou l'ancien retrouvé.</returns>
+    private bool CreerDossierPatient(string prenom, string nom, string? naissance, string? sexe)
+    {
+        var dialog = new CreatePatientDialog(prenom, nom, naissance, sexe) { Owner = this };
+        return dialog.ShowDialog() == true && dialog.Result != null
+            && EnregistrerNouveauPatient(dialog.Result);
+    }
+
+    /// <summary>
+    /// Enregistre un nouveau dossier, avec la garde contre les doublons : si un dossier porte
+    /// déjà ce nom, Med ne tranche pas — il demande s'il s'agit de l'ancien ou d'un nouveau.
+    /// </summary>
+    private bool EnregistrerNouveauPatient(PatientMetadata resultat)
+    {
+        resultat.NumeroDossier = _patientIdService.GenerateNewNumeroDossier();
+
+        var (success, message, id, path) = _patientIndex.Upsert(resultat);
+
+        if (!success && message.StartsWith("DUPLICATE_DETECTED"))
+        {
+            // Message de la forme DUPLICATE_DETECTED|Id|NomComplet|Date
+            var parts = message.Split('|');
+            var existingId   = parts.Length > 1 ? parts[1] : "";
+            var existingName = parts.Length > 2 ? parts[2] : "";
+            var existingDob  = parts.Length > 3 ? parts[3] : "";
+
+            var newId   = $"{resultat.Nom}_{resultat.Prenom.Replace(" ", "_")}";
+            var newName = $"{resultat.Prenom} {resultat.Nom}";
+            var newDob  = !string.IsNullOrEmpty(resultat.Dob) && DateTime.TryParse(resultat.Dob, out var d)
+                        ? d.ToString("dd/MM/yyyy") : "";
+
+            var duplicateDialog = new Dialogs.DuplicatePatientDialog(
+                existingId, existingName, existingDob, newName, newDob, newId) { Owner = this };
+
+            if (duplicateDialog.ShowDialog() == true)
+            {
+                if (duplicateDialog.Result == Dialogs.DuplicateDialogResult.UseExisting)
+                {
+                    var existingPatient = _patientIndex.GetAllPatients().FirstOrDefault(p => p.Id == existingId);
+                    if (existingPatient != null)
+                    {
+                        LoadPatientAsync(existingPatient);
+                        StatusTextBlock.Text = $"✓ Patient existant chargé: {existingName}";
+                        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+                        return true;
+                    }
+                }
+                else if (duplicateDialog.Result == Dialogs.DuplicateDialogResult.CreateAnyway)
+                {
+                    StatusTextBlock.Text = "⚠️ Création annulée - Doublon détecté. Modifiez le nom pour créer un nouveau dossier.";
+                    StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+                }
+                // Sinon Cancel → ne rien faire
+            }
+            return false;
+        }
+
+        if (success && id != null && path != null)
+        {
+            LoadPatientAsync(new PatientIndexEntry
+            {
+                Id            = id,
+                NumeroDossier = resultat.NumeroDossier,
+                Prenom        = resultat.Prenom,
+                Nom           = resultat.Nom,
+                Dob           = resultat.Dob,
+                Sexe          = resultat.Sexe,
+                DirectoryPath = path
+            });
+            LoadPatientsInPanel();
+            return true;
+        }
+
+        StatusTextBlock.Text = $"❌ {message}";
+        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+        return false;
+    }
 
     /// <summary>
     /// Un clic sur un rendez-vous de l'agenda ouvre le dossier en mode Consultation. Rien de
@@ -461,6 +604,32 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// Création d'un dossier depuis l'agenda, pour un patient vu à l'écran Doctolib et que Med
+    /// n'a pas retrouvé chez lui — le plus souvent une première consultation. Les champs sont
+    /// pré-remplis avec ce qui a été lu ; la garde contre les doublons s'applique comme partout,
+    /// c'est le même chemin que la création depuis la barre de recherche.
+    /// </summary>
+    private void CreerDossierDepuisAgenda(Models.Agenda.RendezVous rdv)
+    {
+        var prenom = rdv.Prenom.Trim();
+        var nom    = rdv.Nom.Trim();
+
+        // Les noms lus à l'écran arrivent parfois en un seul bloc. Plutôt que de deviner, on
+        // laisse le médecin corriger dans la fenêtre : elle s'ouvre avec ce qu'on a.
+        if (prenom.Length == 0 && nom.Contains(' '))
+        {
+            var mots = nom.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            nom    = string.Join(" ", mots.Take(mots.Length - 1));
+            prenom = mots[^1];
+        }
+
+        // Le dossier créé s'ouvre en Consultation, comme un clic sur un rendez-vous déjà rattaché :
+        // le geste doit mener au même endroit, qu'il ait fallu créer le dossier ou non.
+        if (CreerDossierPatient(prenom, nom, rdv.DateNaissance?.ToString("yyyy-MM-dd"), null))
+            SwitchMode("Consultation");
+    }
+
+    /// <summary>
     /// Les boutons de capture n'ont de sens que devant Doctolib intégré dans le cadre. Masqués
     /// le reste du temps, pour que l'écran de l'agenda reste net (demandé le 25/09/2026).
     /// </summary>
@@ -475,6 +644,30 @@ public partial class MainWindow : Window
         if (BureauImporterBtn != null)
             BureauImporterBtn.Visibility = estDoctolib && _selectedPatient != null
                 ? Visibility.Visible : Visibility.Collapsed;
+
+        // Capture d'ordonnance sécurisée : visible sur Doctolib quand un patient est actif
+        if (BureauCaptureOrdonnanceBtn != null)
+            BureauCaptureOrdonnanceBtn.Visibility = estDoctolib && _selectedPatient != null
+                ? Visibility.Visible : Visibility.Collapsed;
+
+        // Suivi RAS rapide : visible quand un patient est actif dans le cadre Bureau
+        if (BureauSuiviRasBtn != null)
+            BureauSuiviRasBtn.Visibility = _selectedPatient != null
+                ? Visibility.Visible : Visibility.Collapsed;
+
+        // Bouton de retour direct vers le dossier de consultation du patient
+        if (BureauRetourDossierBtn != null)
+        {
+            if (_selectedPatient != null)
+            {
+                BureauRetourDossierBtn.Content = $"↩ Dossier ({_selectedPatient.Prenom} {_selectedPatient.Nom})";
+                BureauRetourDossierBtn.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                BureauRetourDossierBtn.Visibility = Visibility.Collapsed;
+            }
+        }
     }
 
     // Gestionnaires des boutons Bureau (header)
@@ -528,6 +721,252 @@ public partial class MainWindow : Window
         {
             // Recharger le patient pour mettre à jour l'UI
             LoadPatientAsync(_selectedPatient);
+        }
+    }
+
+    private async void BureauCaptureOrdonnanceBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null)
+        {
+            MessageBox.Show(
+                "Sélectionnez un patient avant de capturer une ordonnance.",
+                "Capture Ordonnance",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        try
+        {
+            StatusTextBlock.Text = "📸 Capture de l'ordonnance Doctolib en cours...";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
+
+            // 1. Capture de la zone écran du Bureau (Doctolib)
+            byte[]? captureBytes = BureauMedContent.CaptureZone();
+            if (captureBytes == null || captureBytes.Length == 0)
+            {
+                MessageBox.Show(
+                    "Capture impossible : assurez-vous que la fenêtre Doctolib avec l'ordonnance est affichée dans le cadre Bureau.",
+                    "Capture Ordonnance",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                StatusTextBlock.Text = "⚠️ Échec de la capture d'écran";
+                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+                return;
+            }
+
+            // 2. Conversion de l'image capturée en PDF haute fidélité via PdfSharp
+            var patientName = _selectedPatient.NomComplet;
+            var documentsDir = _pathService.GetDocumentsDirectory(patientName);
+            var ordonnancesDir = Path.Combine(documentsDir, DocumentCategories.Ordonnances);
+            if (!Directory.Exists(ordonnancesDir))
+            {
+                Directory.CreateDirectory(ordonnancesDir);
+            }
+
+            var now = DateTime.Now;
+            var baseFileName = $"{now:yyyy-MM-dd_HHmm}_Ordonnance_Securisee";
+            var pdfPath = Path.Combine(ordonnancesDir, $"{baseFileName}.pdf");
+
+            int version = 2;
+            while (File.Exists(pdfPath))
+            {
+                pdfPath = Path.Combine(ordonnancesDir, $"{baseFileName}-v{version}.pdf");
+                version++;
+            }
+
+            using (var pdfDoc = new PdfSharp.Pdf.PdfDocument())
+            {
+                var page = pdfDoc.AddPage();
+                using var ms = new MemoryStream(captureBytes);
+                using var xImage = PdfSharp.Drawing.XImage.FromStream(ms);
+                page.Width = PdfSharp.Drawing.XUnit.FromPoint(xImage.PointWidth);
+                page.Height = PdfSharp.Drawing.XUnit.FromPoint(xImage.PointHeight);
+                using var xGraphics = PdfSharp.Drawing.XGraphics.FromPdfPage(page);
+                xGraphics.DrawImage(xImage, 0, 0);
+                pdfDoc.Save(pdfPath);
+            }
+
+            var pdfFileName = Path.GetFileName(pdfPath);
+
+            // 3. OCR rapide optionnel pour détecter les molécules prescrites (TDAH / psychotropes)
+            string moleculesDetectees = "";
+            try
+            {
+                var tempImgPath = Path.Combine(Path.GetTempPath(), $"ord_capture_{Guid.NewGuid():N}.png");
+                File.WriteAllBytes(tempImgPath, captureBytes);
+                try
+                {
+                    var ocrService = new TesseractOCRService();
+                    var (ocrOk, ocrText, _, _) = ocrService.ExtractTextFromImage(tempImgPath);
+                    if (ocrOk && !string.IsNullOrWhiteSpace(ocrText))
+                    {
+                        var lower = ocrText.ToLowerInvariant();
+                        var detected = new List<string>();
+                        string[] knownMeds = { "quasym", "concerta", "ritaline", "medikinet", "strattera", "atomoxetine", "methylphenidate", "terian", "abilify", "aripiprazole", "risperdal", "risperidone", "zoloft", "sertraline", "prozac", "fluoxetine" };
+                        foreach (var med in knownMeds)
+                        {
+                            if (lower.Contains(med))
+                            {
+                                detected.Add(char.ToUpper(med[0]) + med.Substring(1));
+                            }
+                        }
+                        if (detected.Count > 0)
+                        {
+                            moleculesDetectees = string.Join(", ", detected.Distinct());
+                        }
+                    }
+                }
+                finally
+                {
+                    if (File.Exists(tempImgPath)) File.Delete(tempImgPath);
+                }
+            }
+            catch
+            {
+                // OCR silencieux si tesseract absent ou indisponible
+            }
+
+            // 4. Indexer le document dans le dossier patient
+            string docSummary = string.IsNullOrEmpty(moleculesDetectees)
+                ? $"Ordonnance sécurisée émise via Doctolib le {now:dd/MM/yyyy à HH:mm}"
+                : $"Ordonnance sécurisée ({moleculesDetectees}) émise via Doctolib le {now:dd/MM/yyyy à HH:mm}";
+
+            await _documentService.RegisterOrdonnanceSecuriseeAsync(pdfPath, patientName, docSummary);
+
+            // 5. Créer une note de consultation horodatée pour traçabilité clinique complète
+            var noteContent = new StringBuilder();
+            noteContent.AppendLine("# Ordonnance sécurisée (Doctolib)");
+            noteContent.AppendLine();
+            noteContent.AppendLine($"- **Date et heure :** {now:dd/MM/yyyy à HH:mm}");
+            noteContent.AppendLine($"- **Patient :** {_selectedPatient.Prenom} {_selectedPatient.Nom}");
+            noteContent.AppendLine($"- **Type d'acte :** Prescription sécurisée émise sur Doctolib");
+            noteContent.AppendLine($"- **Document archivé :** `{pdfFileName}` (Dossier : Documents ➔ Ordonnances)");
+            if (!string.IsNullOrEmpty(moleculesDetectees))
+            {
+                noteContent.AppendLine($"- **Traitement identifié :** **{moleculesDetectees}**");
+            }
+            noteContent.AppendLine();
+            noteContent.AppendLine("> ℹ️ *Cette note et l'ordonnance PDF ont été enregistrées automatiquement au dossier via la passerelle Doctolib.*");
+
+            _storageService.SaveStructuredNote(
+                patientName,
+                noteContent.ToString(),
+                $"Ordonnance sécurisée ({now:dd/MM/yyyy})");
+
+            // 6. Rafraîchir les contrôles
+            DocumentsControlPanel.SetCurrentPatient(_selectedPatient);
+
+            StatusTextBlock.Text = $"✅ Ordonnance sécurisée archivée ({pdfFileName})";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+
+            // 7. Dialogue de confirmation et retour rapide au dossier
+            var message = $"L'ordonnance sécurisée a été convertie en PDF et archivée au dossier de {_selectedPatient.Prenom} {_selectedPatient.Nom} :\n\n" +
+                          $"• Fichier : {pdfFileName}\n" +
+                          $"• Emplacement : Documents ➔ Ordonnances\n" +
+                          (!string.IsNullOrEmpty(moleculesDetectees) ? $"• Traitement détecté : {moleculesDetectees}\n" : "") +
+                          $"• Traçabilité : Note horodatée ajoutée à l'historique des consultations\n\n" +
+                          $"Souhaitez-vous retourner au dossier de consultation du patient ?";
+
+            var res = MessageBox.Show(message, "Ordonnance sécurisée archivée", MessageBoxButton.YesNo, MessageBoxImage.Information);
+            if (res == MessageBoxResult.Yes)
+            {
+                SwitchMode("Consultation");
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(
+                $"Erreur lors de l'archivage de l'ordonnance :\n\n{ex.Message}",
+                "Erreur Ordonnance",
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+            StatusTextBlock.Text = $"❌ Erreur ordonnance: {ex.Message}";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+        }
+    }
+
+    private void BureauRetourDossierBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient != null)
+        {
+            SwitchMode("Consultation");
+            StatusTextBlock.Text = $"📁 Retour au dossier de consultation de {_selectedPatient.Prenom} {_selectedPatient.Nom}";
+            StatusTextBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4A90A4"));
+        }
+        else
+        {
+            SwitchMode("Consultation");
+        }
+    }
+
+    private void BureauSuiviRasBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null)
+        {
+            MessageBox.Show(
+                "Sélectionnez un patient avant d'enregistrer une consultation de suivi.",
+                "Suivi RAS",
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            return;
+        }
+
+        var confirm = MessageBox.Show(
+            $"Confirmez-vous l'enregistrement d'une consultation de suivi 'RAS' pour {_selectedPatient.Prenom} {_selectedPatient.Nom} ?\n\n" +
+            $"• Date : {DateTime.Now:dd/MM/yyyy à HH:mm}\n" +
+            $"• Contenu : Patient stable, va bien, pas d'effets secondaires, traitement inchangé.",
+            "Enregistrer Suivi RAS",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        try
+        {
+            var now = DateTime.Now;
+            var noteContent = new StringBuilder();
+            noteContent.AppendLine($"# Consultation de suivi — {now:dd/MM/yyyy}");
+            noteContent.AppendLine();
+            noteContent.AppendLine($"- **Date et heure :** {now:dd/MM/yyyy à HH:mm}");
+            noteContent.AppendLine($"- **Patient :** {_selectedPatient.Prenom} {_selectedPatient.Nom}");
+            noteContent.AppendLine($"- **Évaluation clinique :** RAS — Va bien. Situation stable.");
+            noteContent.AppendLine($"- **Tolérance / Effets secondaires :** Pas d'effets indésirables rapportés.");
+            noteContent.AppendLine($"- **Observance :** Adhésion thérapeutique satisfaisante.");
+            noteContent.AppendLine($"- **Conduite à tenir :** Poursuite de la prise en charge selon calendrier habituel.");
+            noteContent.AppendLine();
+            noteContent.AppendLine("> ℹ️ *Consultation enregistrée en 1 clic depuis la passerelle Bureau/Doctolib.*");
+
+            var (success, msg, filePath) = _storageService.SaveStructuredNote(
+                _selectedPatient.NomComplet,
+                noteContent.ToString(),
+                $"Suivi RAS ({now:dd/MM/yyyy})");
+
+            if (success)
+            {
+                StatusTextBlock.Text = $"✅ Suivi RAS enregistré pour {_selectedPatient.Prenom} {_selectedPatient.Nom}";
+                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
+
+                var res = MessageBox.Show(
+                    $"La consultation de suivi 'RAS' a été enregistrée avec succès dans le dossier de {_selectedPatient.Prenom} {_selectedPatient.Nom}.\n\n" +
+                    $"Souhaitez-vous retourner au dossier de consultation du patient ?",
+                    "Suivi RAS enregistré",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information);
+
+                if (res == MessageBoxResult.Yes)
+                {
+                    SwitchMode("Consultation");
+                }
+            }
+            else
+            {
+                MessageBox.Show($"Erreur lors de l'enregistrement : {msg}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show($"Erreur inattendue : {ex.Message}", "Erreur", MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 
@@ -609,6 +1048,45 @@ public partial class MainWindow : Window
                 StatusTextBlock.Text = $"❌ {ex.Message}";
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
             }
+        }
+    }
+
+    private void OpenDoctolibBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (_selectedPatient == null)
+        {
+            StatusTextBlock.Text = "⚠️ Veuillez sélectionner un patient avant de basculer vers Doctolib.";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+            return;
+        }
+
+        try
+        {
+            // 1. Mémoriser et copier le nom du patient dans le presse-papier pour recherche rapide
+            string patientNomComplet = $"{_selectedPatient.Prenom} {_selectedPatient.Nom}";
+            try
+            {
+                Clipboard.SetText(patientNomComplet);
+            }
+            catch { /* Protection contre accès concurrentiel presse-papier */ }
+
+            // 2. Basculer vers le mode Bureau avec Doctolib comme outil cible
+            SwitchMode("Bureau", initialBureauTool: "Doctolib");
+
+            // 3. Mettre à jour le bouton retour vers le dossier du patient
+            if (BureauRetourDossierBtn != null)
+            {
+                BureauRetourDossierBtn.Content = $"↩ Dossier ({_selectedPatient.Prenom} {_selectedPatient.Nom})";
+                BureauRetourDossierBtn.Visibility = Visibility.Visible;
+            }
+
+            StatusTextBlock.Text = $"🔗 Doctolib ouvert — '{patientNomComplet}' copié dans le presse-papier (Ctrl+V pour rechercher)";
+            StatusTextBlock.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0596DE"));
+        }
+        catch (Exception ex)
+        {
+            StatusTextBlock.Text = $"❌ Erreur Doctolib: {ex.Message}";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
         }
     }
     private async void StructurerButton_Click(object sender, RoutedEventArgs e)

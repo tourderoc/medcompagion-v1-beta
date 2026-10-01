@@ -1,4 +1,4 @@
-﻿<Window x:Class="MedCompanion.MainWindow"
+<Window x:Class="MedCompanion.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:notes="clr-namespace:MedCompanion.Views.Notes"
@@ -634,7 +634,7 @@
                     <Button x:Name="BureauImporterBtn" Content="📋 Importer"
                             Click="BureauImporterBtn_Click" Visibility="Collapsed"
                             Height="36" FontSize="12" Padding="10,0"
-                            Background="#8E44AD" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,15,0"
+                            Background="#8E44AD" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
                             ToolTip="Importer les infos patient depuis Doctolib (OCR local)">
                         <Button.Template>
                             <ControlTemplate TargetType="Button">
@@ -644,6 +644,60 @@
                                 <ControlTemplate.Triggers>
                                     <Trigger Property="IsMouseOver" Value="True">
                                         <Setter Property="Background" Value="#7D3C98"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <Button x:Name="BureauCaptureOrdonnanceBtn" Content="📋 Ordonnance sécurisée"
+                            Click="BureauCaptureOrdonnanceBtn_Click" Visibility="Collapsed"
+                            Height="36" FontSize="12" Padding="10,0"
+                            Background="#27AE60" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
+                            ToolTip="Capturer l'ordonnance sécurisée affichée dans Doctolib et l'archiver au dossier patient">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#229954"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <Button x:Name="BureauSuiviRasBtn" Content="✅ Suivi RAS"
+                            Click="BureauSuiviRasBtn_Click" Visibility="Collapsed"
+                            Height="36" FontSize="12" Padding="10,0"
+                            Background="#16A085" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,8,0"
+                            ToolTip="Enregistrer en 1 clic une consultation de suivi 'RAS / Va bien' pour ce patient">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#117A65"/>
+                                    </Trigger>
+                                </ControlTemplate.Triggers>
+                            </ControlTemplate>
+                        </Button.Template>
+                    </Button>
+                    <Button x:Name="BureauRetourDossierBtn" Content="↩ Dossier"
+                            Click="BureauRetourDossierBtn_Click" Visibility="Collapsed"
+                            Height="36" FontSize="12" Padding="10,0"
+                            Background="#2C3E50" Foreground="White" BorderThickness="0" Cursor="Hand" Margin="0,0,15,0"
+                            ToolTip="Retourner au dossier de consultation du patient">
+                        <Button.Template>
+                            <ControlTemplate TargetType="Button">
+                                <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                    <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                </Border>
+                                <ControlTemplate.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#1A252F"/>
                                     </Trigger>
                                 </ControlTemplate.Triggers>
                             </ControlTemplate>
@@ -781,6 +835,38 @@
                 </StackPanel>
                 
                 <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <Button x:Name="OpenDoctolibBtn"
+                            Content="🔗 Doctolib"
+                            Height="40"
+                            Padding="14,0"
+                            Margin="0,0,10,0"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Background="#0596DE"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Click="OpenDoctolibBtn_Click"
+                            ToolTip="Basculer vers Doctolib pour ce patient (recherche rapide)">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#0480BE"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     <Button x:Name="OpenPatientFolderBtn"
                             Content="📁 Ouvrir dossier"
                             Height="40"
@@ -1035,7 +1121,7 @@
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- CONTENU V3 (Mode Med - Bureau) - Masqué par défaut -->
             <!-- ═══════════════════════════════════════════════════════════ -->
-            <consultation:BureauMedControl x:Name="BureauMedContent" Grid.Row="2" VerticalAlignment="Stretch" Visibility="Collapsed"/>
+            <consultation:BureauMedControl x:Name="BureauMedContent" Grid.Row="2" VerticalAlignment="Stretch" Margin="-18,-15,-18,-18" Visibility="Collapsed"/>
 
             <!-- ═══════════════════════════════════════════════════════════ -->
             <!-- CONTENU V4 (Mode Consultation) - Masqué par défaut -->

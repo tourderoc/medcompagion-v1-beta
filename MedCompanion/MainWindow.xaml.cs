@@ -127,6 +127,27 @@ public partial class MainWindow : Window
 
 
 
+    // ── Prêt à l'usage : ce qu'attend l'écran de démarrage ────────────────────
+    //
+    // Deux initialisations courent en parallèle après le constructeur — l'index patients et le
+    // moteur de langage. La fenêtre ne s'affiche qu'une fois les deux finies, pour que le médecin
+    // ne clique pas dans une application à moitié prête.
+
+    private readonly System.Threading.Tasks.TaskCompletionSource _pret = new();
+    private int _etapesDemarrageRestantes = 2;
+
+    /// <summary>Se termine quand Med est réellement utilisable.</summary>
+    public System.Threading.Tasks.Task Pret => _pret.Task;
+
+    /// <summary>Une initialisation de démarrage vient de finir — réussie ou non : dans les deux
+    /// cas la fenêtre doit finir par s'ouvrir.</summary>
+    private void SignalerEtapeDemarrage(string message)
+    {
+        Dialogs.EcranChargementWindow.Message(message);
+        if (System.Threading.Interlocked.Decrement(ref _etapesDemarrageRestantes) <= 0)
+            _pret.TrySetResult();
+    }
+
     public MainWindow()
     {
         InitializeComponent();
@@ -625,93 +646,7 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
             
             dialog.Owner = this;
             if (dialog.ShowDialog() == true && dialog.Result != null)
-            {
-                // ✅ NOUVEAU : Générer un numéro de dossier
-                dialog.Result.NumeroDossier = _patientIdService.GenerateNewNumeroDossier();
-
-                var (success, message, id, path) = _patientIndex.Upsert(dialog.Result);
-
-                // ✅ NOUVEAU: Gérer les doublons détectés
-                if (!success && message.StartsWith("DUPLICATE_DETECTED"))
-                {
-                    // Parser le message: DUPLICATE_DETECTED|ID|NomComplet|Date
-                    var parts = message.Split('|');
-                    var existingId = parts.Length > 1 ? parts[1] : "";
-                    var existingName = parts.Length > 2 ? parts[2] : "";
-                    var existingDob = parts.Length > 3 ? parts[3] : "";
-
-                    // Créer l'ID du nouveau patient pour comparaison
-                    var newId = $"{dialog.Result.Nom}_{dialog.Result.Prenom.Replace(" ", "_")}";
-                    var newName = $"{dialog.Result.Prenom} {dialog.Result.Nom}";
-                    var newDob = "";
-                    if (!string.IsNullOrEmpty(dialog.Result.Dob) && DateTime.TryParse(dialog.Result.Dob, out var dob))
-                    {
-                        newDob = dob.ToString("dd/MM/yyyy");
-                    }
-
-                    // Afficher le dialogue de confirmation
-                    var duplicateDialog = new Dialogs.DuplicatePatientDialog(
-                        existingId,
-                        existingName,
-                        existingDob,
-                        newName,
-                        newDob,
-                        newId
-                    );
-                    duplicateDialog.Owner = this;
-
-                    if (duplicateDialog.ShowDialog() == true)
-                    {
-                        if (duplicateDialog.Result == Dialogs.DuplicateDialogResult.UseExisting)
-                        {
-                            // Utiliser le patient existant → Charger le patient
-                            var existingPatient = _patientIndex.GetAllPatients()
-                                .FirstOrDefault(p => p.Id == existingId);
-
-                            if (existingPatient != null)
-                            {
-                                LoadPatientAsync(existingPatient);
-                                StatusTextBlock.Text = $"✓ Patient existant chargé: {existingName}";
-                                StatusTextBlock.Foreground = new SolidColorBrush(Colors.Green);
-                            }
-                        }
-                        else if (duplicateDialog.Result == Dialogs.DuplicateDialogResult.CreateAnyway)
-                        {
-                            // Créer quand même → Message à l'utilisateur
-                            StatusTextBlock.Text = "⚠️ Création annulée - Doublon détecté. Modifiez le nom pour créer un nouveau dossier.";
-                            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
-                        }
-                        // Sinon Cancel → Ne rien faire
-                    }
-
-                    return;
-                }
-
-                if (success && id != null && path != null)
-                {
-                    // Créer PatientIndexEntry et charger immédiatement
-                    var newPatient = new PatientIndexEntry
-                    {
-                        Id = id,
-                        NumeroDossier = dialog.Result.NumeroDossier,
-                        Prenom = dialog.Result.Prenom,
-                        Nom = dialog.Result.Nom,
-                        Dob = dialog.Result.Dob,
-                        Sexe = dialog.Result.Sexe,
-                        DirectoryPath = path
-                    };
-
-                    LoadPatientAsync(newPatient);
-
-                    // Rafraîchir la liste des patients pour afficher le nouveau patient
-                    LoadPatientsInPanel();
-                }
-                else
-                {
-                    StatusTextBlock.Text = $"❌ {message}";
-                    StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
-                }
-            }
+                EnregistrerNouveauPatient(dialog.Result);
         };
         
         // Vérifier la clé API
@@ -743,15 +678,28 @@ AttestationViewModel.AttestationListRefreshRequested += (s, e) => {
     {
         StatusTextBlock.Text = "⏳ Chargement de l'index patients...";
         StatusTextBlock.Foreground = new SolidColorBrush(Colors.Blue);
-        
-        await _patientIndex.ScanAsync();
-        _patientIndex.StartWatching();
-        
-        // Charger automatiquement tous les patients dans le panneau fixe
-        LoadPatientsInPanel();
-        
-        StatusTextBlock.Text = "✓ Prêt";
-        StatusTextBlock.Foreground = new SolidColorBrush(Colors.Gray);
+        Dialogs.EcranChargementWindow.Message("Lecture des dossiers patients…");
+
+        // Le try n'est pas décoratif : sans lui, une lecture d'index en échec laisserait l'écran
+        // de démarrage affiché jusqu'à son garde-fou de 45 s.
+        try
+        {
+            await _patientIndex.ScanAsync();
+            _patientIndex.StartWatching();
+
+            // Charger automatiquement tous les patients dans le panneau fixe
+            LoadPatientsInPanel();
+
+            StatusTextBlock.Text = "✓ Prêt";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Gray);
+            SignalerEtapeDemarrage($"{_patientIndex.GetAllPatients().Count} dossiers patients lus.");
+        }
+        catch (Exception ex)
+        {
+            StatusTextBlock.Text = $"❌ Index patients : {ex.Message}";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
+            SignalerEtapeDemarrage("Index patients indisponible — Med s'ouvre quand même.");
+        }
 
         // ✅ NOUVEAU : Lancer la migration des numéros de dossier en arrière-plan
         _ = Task.Run(async () =>

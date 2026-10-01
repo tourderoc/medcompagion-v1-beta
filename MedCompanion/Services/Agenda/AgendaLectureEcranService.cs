@@ -36,6 +36,60 @@ namespace MedCompanion.Services.Agenda
             => LireAsync(capture, PromptJour(), "jour");
 
         /// <summary>
+        /// Lit une seule ligne du tableau de rendez-vous de la vue Liste Doctolib.
+        /// L'image contient une ligne entière : horaire, nom du patient, motif, date de naissance.
+        /// Le modèle ne traite qu'une ligne à la fois : aucune hallucination de créneau manquant possible.
+        /// </summary>
+        public async Task<(bool success, LigneLue? ligne, string? error)> LireLigneJourAsync(byte[] bande, DateTime? dateDefaut = null)
+        {
+            var prompt = new StringBuilder();
+            prompt.AppendLine("Cette image est UNE SEULE ligne du tableau de rendez-vous Doctolib.");
+            prompt.AppendLine("Colonnes de gauche à droite : Horaire (HH:MM), Patient (nom et prénom),");
+            prompt.AppendLine("Motif de consultation, et Date de naissance (JJ/MM/AAAA).");
+            prompt.AppendLine();
+            prompt.AppendLine("Relève :");
+            prompt.AppendLine("- \"heure\"     : l'heure au format HH:MM (ex. \"09:30\") ;");
+            prompt.AppendLine("- \"nom\"       : nom et prénom du patient sans la civilité (retire M., Mme, Mlle) ;");
+            prompt.AppendLine("- \"motif\"     : motif de consultation ;");
+            prompt.AppendLine("- \"naissance\" : date de naissance au format JJ/MM/AAAA si visible, sinon \"\" ;");
+            prompt.AppendLine("- \"barre\"     : true UNIQUEMENT si le nom est barré d'un trait horizontal de rature (annulé) ; sinon false.");
+            prompt.AppendLine();
+            prompt.AppendLine("Si l'image ne contient aucun rendez-vous (ligne vide ou bandeau), réponds {\"lisible\": false}.");
+            prompt.AppendLine("Sinon réponds UNIQUEMENT avec cet objet JSON :");
+            prompt.AppendLine("""{"lisible": true, "heure": "09:30", "nom": "ELLAFI Wassim", "motif": "Enfant - Consultation de suivi de psychiatrie", "naissance": "24/02/2012", "barre": false}""");
+
+            var (ok, brut, erreur) = await _vision.AnalyzeImageAsync(prompt.ToString(), bande, maxTokens: 200);
+            if (!ok) return (false, null, erreur ?? "échec du modèle");
+
+            var texte = brut ?? "";
+            int debut = texte.IndexOf('{'), fin = texte.LastIndexOf('}');
+            if (debut < 0 || fin <= debut) return (false, null, "le modèle n'a pas rendu de JSON");
+
+            try
+            {
+                using var doc = JsonDocument.Parse(texte[debut..(fin + 1)]);
+                var racine = doc.RootElement;
+                if (racine.TryGetProperty("lisible", out var l) && l.ValueKind == JsonValueKind.False)
+                    return (false, null, "ligne ignorée (vide)");
+
+                var heure = LireHeure(Texte(racine, "heure"));
+                var nom = NettoyerNom(Texte(racine, "nom"));
+                if (heure == null || nom.Length == 0) return (false, null, "heure ou nom manquant");
+
+                var motif = Texte(racine, "motif");
+                var naissance = LireDate(Texte(racine, "naissance"));
+                var barre = racine.TryGetProperty("barre", out var b) && b.ValueKind == JsonValueKind.True;
+
+                var ligneLue = new LigneLue(dateDefaut, heure.Value, nom, motif, naissance, "", barre);
+                return (true, ligneLue, null);
+            }
+            catch (Exception ex)
+            {
+                return (false, null, $"JSON illisible : {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Lit une seule ligne, déjà repérée comme barrée par l'analyse des pixels et découpée
         /// autour du trait. Le modèle ne voit pas la rature sur une capture entière ; ici, il n'a
         /// qu'à lire l'heure et le nom, sur une image agrandie trois fois.

@@ -374,16 +374,29 @@ namespace MedCompanion.Services.Consultation
                 }
 
                 _modelPath = modelManager.ModelPath;
-                _factory   = CreerFactory(modelManager.ModelPath);
-                _processor = _factory.CreateBuilder()
-                                     .WithLanguage("fr")
-                                     // PAS de .WithSingleSegment() : avec des chunks Batch de 90s,
-                                     // Whisper doit pouvoir émettre plusieurs segments (un par fenêtre native de 30s).
-                                     // Sinon seul le dernier segment est conservé → on perd le début du chunk.
-                                     .WithNoContext()           // ← clé : pas de propagation entre chunks
-                                     .WithPrompt(_dynamicPrompt)
-                                     .WithTemperature(0f)
-                                     .Build();
+
+                // Task.Run : WhisperFactory.FromPath et Build() sont des appels NATIFS BLOQUANTS —
+                // ils posent le modèle sur la carte, ce qui prend ~2 s. Partant du clic sur
+                // « Dictée », ils s'exécutaient sur le fil de l'interface et figeaient Med le temps
+                // du chargement (signalé par le médecin le 26/09/2026). Rien ici ne touche à l'UI.
+                var chemin = modelManager.ModelPath;
+                var prompt = _dynamicPrompt;
+                var (factory, processor) = await Task.Run(() =>
+                {
+                    var f = CreerFactory(chemin);
+                    var p = f.CreateBuilder()
+                             .WithLanguage("fr")
+                             // PAS de .WithSingleSegment() : avec des chunks Batch de 90s,
+                             // Whisper doit pouvoir émettre plusieurs segments (un par fenêtre native de 30s).
+                             // Sinon seul le dernier segment est conservé → on perd le début du chunk.
+                             .WithNoContext()           // ← clé : pas de propagation entre chunks
+                             .WithPrompt(prompt)
+                             .WithTemperature(0f)
+                             .Build();
+                    return (f, p);
+                });
+                _factory   = factory;
+                _processor = processor;
 
                 _whisperInitialized = true;
 
@@ -414,7 +427,9 @@ namespace MedCompanion.Services.Consultation
         /// Passe un court silence dans le processor pour forcer l'initialisation du chemin GPU et
         /// confirmer qu'il répond. Les segments éventuels sont jetés (jamais émis vers l'UI).
         /// </summary>
-        private async Task<bool> WarmupProcessorAsync()
+        /// <summary>Sur un fil d'arrière-plan : la première inférence initialise les kernels CUDA,
+        /// c'est du calcul natif qui figerait l'interface s'il partait du fil UI.</summary>
+        private Task<bool> WarmupProcessorAsync() => Task.Run(async () =>
         {
             if (_processor == null) return false;
             try
@@ -429,6 +444,34 @@ namespace MedCompanion.Services.Consultation
             {
                 Log($"Warmup Whisper échoué : {ex.Message}");
                 return false;
+            }
+        });
+
+        // ── Préchargement ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Pose le modèle sur la carte SANS démarrer de dictée, pour que le premier clic sur
+        /// « Dictée » n'attende plus rien. Appelé au démarrage de Med, une fois le modèle de
+        /// langage chargé — la 3050 est dédiée à Whisper, ce préchargement ne prend sa place à
+        /// personne, et le déchargement d'inactivité (2 h) reprend la main si la journée
+        /// commence sans dictée.
+        ///
+        /// N'échoue jamais bruyamment : un préchargement raté ne doit pas gêner l'ouverture.
+        /// La dictée rechargera le modèle à la demande, comme avant.
+        /// </summary>
+        public async Task PrechargerAsync(WhisperModelManager modelManager)
+        {
+            if (_whisperInitialized || IsActive) return;
+
+            try
+            {
+                await EnsureWhisperInitializedAsync(modelManager);
+                ScheduleIdleUnload();
+                Log("Préchargement Whisper terminé — la dictée démarrera sans attente.");
+            }
+            catch (Exception ex)
+            {
+                Log($"Préchargement Whisper échoué (sans conséquence) : {ex.Message}");
             }
         }
 
@@ -1199,44 +1242,57 @@ namespace MedCompanion.Services.Consultation
                 Log($"ResetEngineAsync (full={full}) : disposal {(full ? "factory + processor" : "processor")} + recréation");
                 StatusChanged?.Invoke(full ? "🔄 Réinitialisation complète Whisper..." : "🔄 Réinitialisation Whisper...");
 
-                try { _processor?.Dispose(); } catch { /* ignoré */ }
-                _processor = null;
-
-                if (full)
+                if (full && (string.IsNullOrEmpty(_modelPath) || !File.Exists(_modelPath)))
                 {
-                    // Détruire le factory libère le modèle ggml + le contexte CUDA natif → défragmente la VRAM.
-                    try { _factory?.Dispose(); } catch { /* ignoré */ }
-                    _factory = null;
+                    _whisperInitialized = false;
+                    return (false, "Chemin du modèle introuvable — réinitialisation impossible (relancez l'app).");
                 }
 
-                // Force la libération de la mémoire native (KV cache décodeur, VRAM, etc.)
-                GC.Collect();
-                GC.WaitForPendingFinalizers();
-                GC.Collect();
+                // Tout ce bloc est natif et bloquant — disposal, ramasse-miettes forcé, rechargement
+                // du modèle sur la carte. Sur le fil de l'interface, il figeait Med à chaque
+                // changement de patient (ResetWhisperEngineSilently) autant qu'au démarrage de la
+                // dictée. Déporté le 26/09/2026 ; aucun accès à l'UI ici.
+                var ancienFactory = _factory;
+                var chemin = _modelPath;
+                var prompt = _dynamicPrompt;
 
-                if (full)
+                var (nouveauFactory, nouveauProcessor) = await Task.Run(() =>
                 {
-                    // Recharger le modèle depuis le disque (le factory venait d'être détruit).
-                    if (string.IsNullOrEmpty(_modelPath) || !File.Exists(_modelPath))
+                    try { _processor?.Dispose(); } catch { /* ignoré */ }
+
+                    var f = ancienFactory;
+                    if (full)
                     {
-                        _whisperInitialized = false;
-                        return (false, "Chemin du modèle introuvable — réinitialisation impossible (relancez l'app).");
+                        // Détruire le factory libère le modèle ggml + le contexte CUDA natif → défragmente la VRAM.
+                        try { f?.Dispose(); } catch { /* ignoré */ }
+                        f = null;
                     }
-                    _factory = CreerFactory(_modelPath);
-                }
+
+                    // Force la libération de la mémoire native (KV cache décodeur, VRAM, etc.)
+                    GC.Collect();
+                    GC.WaitForPendingFinalizers();
+                    GC.Collect();
+
+                    if (full) f = CreerFactory(chemin!);
+                    if (f == null) return ((WhisperFactory?)null, (WhisperProcessor?)null);
+
+                    var p = f.CreateBuilder()
+                             .WithLanguage("fr")
+                             .WithNoContext()
+                             .WithPrompt(prompt)
+                             .WithTemperature(0f)
+                             .Build();
+                    return (f, (WhisperProcessor?)p);
+                });
+
+                _factory   = nouveauFactory;
+                _processor = nouveauProcessor;
 
                 if (_factory == null)
                 {
                     _whisperInitialized = false;
                     return (false, "Factory Whisper nulle — réinitialisation impossible (relancez l'app).");
                 }
-
-                _processor = _factory.CreateBuilder()
-                                     .WithLanguage("fr")
-                                     .WithNoContext()
-                                     .WithPrompt(_dynamicPrompt)
-                                     .WithTemperature(0f)
-                                     .Build();
                 StatusChanged?.Invoke(full ? "✓ Whisper réinitialisé (complet)." : "✓ Whisper réinitialisé.");
                 return (true, full ? "Whisper réinitialisé (rechargement complet)." : "Whisper réinitialisé.");
             }

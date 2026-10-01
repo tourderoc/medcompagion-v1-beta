@@ -118,15 +118,39 @@ public partial class App : Application
         }
     }
 
-    private void ShowMainWindow()
+    /// <summary>
+    /// Ouvre Med derrière un écran de démarrage. La fenêtre n'apparaît qu'une fois l'index
+    /// patients lu et le moteur local chargé : sans ça, le médecin cliquait dans une application
+    /// encore à moitié prête et croyait qu'elle ne répondait pas.
+    /// </summary>
+    private async void ShowMainWindow()
     {
-        var mainWindow = new MainWindow();
+        EcranChargementWindow.Ouvrir();
+
+        MainWindow mainWindow;
+        try
+        {
+            mainWindow = new MainWindow();
+        }
+        catch
+        {
+            EcranChargementWindow.Fermer();
+            throw;
+        }
+
         // Définir MainWindow comme fenêtre principale de l'application
         MainWindow = mainWindow;
 
         // Fermer l'application quand MainWindow est fermée
         mainWindow.Closed += (s, e) => Shutdown();
 
+        // Garde-fou : si une initialisation reste bloquée, on ouvre quand même au bout de 45 s.
+        // Un écran de démarrage qui ne part jamais serait pire que le défaut qu'il corrige.
+        await System.Threading.Tasks.Task.WhenAny(
+            mainWindow.Pret, System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(45)));
+
+        EcranChargementWindow.Fermer();
         mainWindow.Show();
+        mainWindow.Activate();
     }
 }

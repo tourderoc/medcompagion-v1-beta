@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using MedCompanion.Models;
 
@@ -166,30 +167,41 @@ namespace MedCompanion.Services
 
                 var jsonResult = results.result;
 
-                // 4. NETTOYER le JSON (le LLM peut retourner du texte avant/après ou wrapper le JSON)
+                // 4. NETTOYER et RÉPARER le JSON (corrige accolades/crochets inversés, clés au singulier, virgules, etc.)
                 var cleanedJson = CleanJsonResponse(jsonResult);
+                var repairedJson = RepairJson(cleanedJson);
 
-                // 5. NORMALISER le JSON (convertir strings en arrays si nécessaire)
-                var normalizedJson = NormalizeJsonArrayFields(cleanedJson);
+                // 5. NORMALISER le JSON (harmonise arrays/strings et unwraps si nécessaire)
+                var normalizedJson = NormalizeJsonArrayFields(repairedJson);
 
                 System.Diagnostics.Debug.WriteLine($"[FormulaireAssistantService] JSON normalisé (premiers 500 chars): {normalizedJson.Substring(0, Math.Min(500, normalizedJson.Length))}");
 
-                // 6. Parser JSON
-                MDPHFormData? formData;
+                // 6. Parser JSON avec options tolérantes
+                var jsonOptions = new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true,
+                    AllowTrailingCommas = true,
+                    ReadCommentHandling = JsonCommentHandling.Skip
+                };
+
+                MDPHFormData? formData = null;
                 try
                 {
-                    formData = System.Text.Json.JsonSerializer.Deserialize<MDPHFormData>(normalizedJson);
+                    formData = System.Text.Json.JsonSerializer.Deserialize<MDPHFormData>(normalizedJson, jsonOptions);
                 }
                 catch (System.Text.Json.JsonException jsonEx)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[FormulaireAssistantService] Erreur parsing JSON: {jsonEx.Message}");
-                    throw new Exception($"Erreur de parsing JSON: {jsonEx.Message}");
+                    System.Diagnostics.Debug.WriteLine($"[FormulaireAssistantService] Erreur parsing JSON: {jsonEx.Message}. Utilisation du fallback...");
                 }
 
-                if (formData == null)
+                // 7. Si le parsing a échoué ou que les données sont vides, extraction de secours par Regex
+                if (formData == null || formData.IsEmpty())
                 {
-                    throw new Exception("Le JSON parsé est null");
+                    System.Diagnostics.Debug.WriteLine("[FormulaireAssistantService] Extraction de secours (Fallback Regex) activée");
+                    formData = FallbackExtractFormData(cleanedJson);
                 }
+
+                formData.EnsureNotNull();
 
                 // 8. 🔧 POST-PROCESSING : Réécrire les remarques avec le LLM local
                 // Problème : Le LLM cloud génère aléatoirement différentes formes (L'enfant, prénom réel, [PRENOM_PATIENT], pseudonyme)
@@ -265,20 +277,187 @@ namespace MedCompanion.Services
         }
 
         /// <summary>
-        /// Normalise le JSON pour s'assurer que les champs array sont bien des arrays
-        /// (le LLM peut parfois retourner des strings au lieu de listes)
+        /// Répare les erreurs de syntaxe JSON couramment produites par les LLM locaux :
+        /// - Délimiteurs croisés ({ ... ] au lieu de { ... })
+        /// - Clés au singulier (retentissement -> retentissements, traitement -> traitements)
+        /// - Tableaux ouverts contenant des paires clé:valeur ({ au lieu de [)
+        /// - Virgules trainantes avant } ou ]
+        /// - Retours à la ligne littéraux dans les chaînes
+        /// - Conteneurs non fermés en cas de troncature
+        /// </summary>
+        private static string RepairJson(string rawJson)
+        {
+            if (string.IsNullOrWhiteSpace(rawJson)) return "{}";
+
+            var json = rawJson.Trim();
+
+            // 1. Normaliser les noms de propriétés courants (singulier -> pluriel)
+            json = Regex.Replace(json, @"\""retentissement\""\s*:", "\"retentissements\":", RegexOptions.IgnoreCase);
+            json = Regex.Replace(json, @"\""traitement\""\s*:", "\"traitements\":", RegexOptions.IgnoreCase);
+            json = Regex.Replace(json, @"\""element_essentiel\""\s*:", "\"elements_essentiels\":", RegexOptions.IgnoreCase);
+            json = Regex.Replace(json, @"\""(antecedent_medical|antecedents)\""\s*:", "\"antecedents_medicaux\":", RegexOptions.IgnoreCase);
+            json = Regex.Replace(json, @"\""(retard_developpemental|retards_developpement)\""\s*:", "\"retards_developpementaux\":", RegexOptions.IgnoreCase);
+            json = Regex.Replace(json, @"\""(remarques|remarque_complementaire)\""\s*:", "\"remarques_complementaires\":", RegexOptions.IgnoreCase);
+            json = Regex.Replace(json, @"\""autre_pathologie\""\s*:", "\"autres_pathologies\":", RegexOptions.IgnoreCase);
+
+            // 2. Si retentissements ou traitements a été ouvert avec [ mais contient des propriétés "clé":
+            // Remplacer [ par {
+            json = Regex.Replace(json, @"(\""retentissements\""\s*:\s*)\[(\s*\""[a-zA-Z0-9_]+\""\s*:)", "$1{$2", RegexOptions.IgnoreCase);
+            json = Regex.Replace(json, @"(\""traitements\""\s*:\s*)\[(\s*\""[a-zA-Z0-9_]+\""\s*:)", "$1{$2", RegexOptions.IgnoreCase);
+
+            // 3. Supprimer les virgules traînantes avant } ou ]
+            json = Regex.Replace(json, @",\s*([\]}])", "$1");
+
+            // 4. Équilibrer les accolades et crochets, échapper les sauts de ligne littéraux
+            json = RepairJsonBracesAndBrackets(json);
+
+            // 5. Supprimer à nouveau les éventuelles virgules traînantes résiduelles
+            json = Regex.Replace(json, @",\s*([\]}])", "$1");
+
+            return json;
+        }
+
+        private static string RepairJsonBracesAndBrackets(string json)
+        {
+            if (string.IsNullOrWhiteSpace(json)) return "{}";
+
+            var sb = new StringBuilder(json.Length + 64);
+            var stack = new Stack<char>();
+            bool inString = false;
+            bool isEscaped = false;
+
+            for (int i = 0; i < json.Length; i++)
+            {
+                char c = json[i];
+
+                if (inString)
+                {
+                    if (isEscaped)
+                    {
+                        isEscaped = false;
+                        sb.Append(c);
+                    }
+                    else if (c == '\\')
+                    {
+                        isEscaped = true;
+                        sb.Append(c);
+                    }
+                    else if (c == '"')
+                    {
+                        inString = false;
+                        sb.Append(c);
+                    }
+                    else if (c == '\r')
+                    {
+                        // Ignorer \r littéral dans une string JSON
+                    }
+                    else if (c == '\n')
+                    {
+                        // Remplacer saut de ligne littéral par \n échappé
+                        sb.Append("\\n");
+                    }
+                    else
+                    {
+                        sb.Append(c);
+                    }
+                }
+                else
+                {
+                    if (c == '"')
+                    {
+                        inString = true;
+                        sb.Append(c);
+                    }
+                    else if (c == '{')
+                    {
+                        stack.Push('{');
+                        sb.Append(c);
+                    }
+                    else if (c == '[')
+                    {
+                        stack.Push('[');
+                        sb.Append(c);
+                    }
+                    else if (c == '}')
+                    {
+                        if (stack.Count > 0)
+                        {
+                            char open = stack.Peek();
+                            if (open == '{')
+                            {
+                                stack.Pop();
+                                sb.Append('}');
+                            }
+                            else if (open == '[')
+                            {
+                                // Ouvert avec [ mais fermé avec } -> corriger en ]
+                                stack.Pop();
+                                sb.Append(']');
+                            }
+                        }
+                    }
+                    else if (c == ']')
+                    {
+                        if (stack.Count > 0)
+                        {
+                            char open = stack.Peek();
+                            if (open == '[')
+                            {
+                                stack.Pop();
+                                sb.Append(']');
+                            }
+                            else if (open == '{')
+                            {
+                                // Ouvert avec { mais fermé avec ] (ex: Path: $.retentissement) -> corriger en }
+                                stack.Pop();
+                                sb.Append('}');
+                            }
+                        }
+                    }
+                    else
+                    {
+                        sb.Append(c);
+                    }
+                }
+            }
+
+            // Si la chaîne était restée ouverte
+            if (inString)
+            {
+                sb.Append('"');
+            }
+
+            // Fermer les conteneurs restés ouverts (ex: troncature LLM)
+            while (stack.Count > 0)
+            {
+                char open = stack.Pop();
+                sb.Append(open == '{' ? '}' : ']');
+            }
+
+            return sb.ToString();
+        }
+
+        /// <summary>
+        /// Normalise le JSON pour s'assurer que les types correspondent à MDPHFormData :
+        /// - Tableaux racines : convertit strings en tableaux de lignes si nécessaire
+        /// - Strings racines : convertit tableaux en texte multiligne
+        /// - Retentissements & Traitements : unwraps si dans un tableau et normalise sous-champs
         /// </summary>
         private string NormalizeJsonArrayFields(string jsonString)
         {
             try
             {
-                // Parser le JSON en JsonDocument pour le manipuler
-                using var doc = System.Text.Json.JsonDocument.Parse(jsonString);
+                var docOptions = new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = true,
+                    CommentHandling = JsonCommentHandling.Skip
+                };
+
+                using var doc = System.Text.Json.JsonDocument.Parse(jsonString, docOptions);
                 using var stream = new MemoryStream();
                 using var writer = new System.Text.Json.Utf8JsonWriter(stream, new System.Text.Json.JsonWriterOptions { Indented = false });
 
-                // Champs qui doivent être des arrays
-                var arrayFields = new HashSet<string>
+                var arrayFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
                     "elements_essentiels",
                     "antecedents_medicaux",
@@ -286,25 +465,44 @@ namespace MedCompanion.Services
                     "description_clinique"
                 };
 
-                var nestedArrayFields = new Dictionary<string, HashSet<string>>
+                var stringFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
                 {
-                    { "retentissements", new HashSet<string> { "cognition", "conduite_emotionnelle" } }
+                    "pathologie_principale",
+                    "autres_pathologies",
+                    "remarques_complementaires"
                 };
 
                 writer.WriteStartObject();
 
                 foreach (var prop in doc.RootElement.EnumerateObject())
                 {
-                    writer.WritePropertyName(prop.Name);
+                    var propName = prop.Name;
+                    if (string.Equals(propName, "retentissement", StringComparison.OrdinalIgnoreCase))
+                        propName = "retentissements";
+                    else if (string.Equals(propName, "traitement", StringComparison.OrdinalIgnoreCase))
+                        propName = "traitements";
 
-                    // Vérifier si c'est un champ qui doit être un array
-                    if (arrayFields.Contains(prop.Name))
+                    writer.WritePropertyName(propName);
+
+                    // 1. Champs racines qui doivent être des tableaux
+                    if (arrayFields.Contains(propName))
                     {
-                        if (prop.Value.ValueKind == System.Text.Json.JsonValueKind.String)
+                        if (prop.Value.ValueKind == JsonValueKind.String)
                         {
-                            // Convertir string en array avec un seul élément
+                            var s = prop.Value.GetString() ?? string.Empty;
+                            var lines = s.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                                         .Select(l => l.Trim().TrimStart('-', '•', '*').Trim())
+                                         .Where(l => !string.IsNullOrWhiteSpace(l))
+                                         .ToList();
                             writer.WriteStartArray();
-                            writer.WriteStringValue(prop.Value.GetString());
+                            if (lines.Count > 0)
+                            {
+                                foreach (var line in lines) writer.WriteStringValue(line);
+                            }
+                            else if (!string.IsNullOrWhiteSpace(s))
+                            {
+                                writer.WriteStringValue(s);
+                            }
                             writer.WriteEndArray();
                         }
                         else
@@ -312,33 +510,30 @@ namespace MedCompanion.Services
                             prop.Value.WriteTo(writer);
                         }
                     }
-                    // Vérifier si c'est un objet avec des nested arrays
-                    else if (nestedArrayFields.ContainsKey(prop.Name) && prop.Value.ValueKind == System.Text.Json.JsonValueKind.Object)
+                    // 2. Champs racines qui doivent être des strings
+                    else if (stringFields.Contains(propName))
                     {
-                        writer.WriteStartObject();
-                        foreach (var nestedProp in prop.Value.EnumerateObject())
+                        if (prop.Value.ValueKind == JsonValueKind.Array)
                         {
-                            writer.WritePropertyName(nestedProp.Name);
-
-                            if (nestedArrayFields[prop.Name].Contains(nestedProp.Name))
-                            {
-                                if (nestedProp.Value.ValueKind == System.Text.Json.JsonValueKind.String)
-                                {
-                                    writer.WriteStartArray();
-                                    writer.WriteStringValue(nestedProp.Value.GetString());
-                                    writer.WriteEndArray();
-                                }
-                                else
-                                {
-                                    nestedProp.Value.WriteTo(writer);
-                                }
-                            }
-                            else
-                            {
-                                nestedProp.Value.WriteTo(writer);
-                            }
+                            var list = prop.Value.EnumerateArray()
+                                .Select(x => x.ToString())
+                                .Where(s => !string.IsNullOrWhiteSpace(s));
+                            writer.WriteStringValue(string.Join("\n", list));
                         }
-                        writer.WriteEndObject();
+                        else
+                        {
+                            prop.Value.WriteTo(writer);
+                        }
+                    }
+                    // 3. Retentissements (doit être un objet)
+                    else if (string.Equals(propName, "retentissements", StringComparison.OrdinalIgnoreCase))
+                    {
+                        WriteNormalizedRetentissements(writer, prop.Value);
+                    }
+                    // 4. Traitements (doit être un objet)
+                    else if (string.Equals(propName, "traitements", StringComparison.OrdinalIgnoreCase))
+                    {
+                        WriteNormalizedTraitements(writer, prop.Value);
                     }
                     else
                     {
@@ -354,8 +549,225 @@ namespace MedCompanion.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[FormulaireAssistantService] Erreur normalisation JSON: {ex.Message}");
-                return jsonString; // Retourner le JSON original en cas d'erreur
+                return jsonString;
             }
+        }
+
+        private static void WriteNormalizedRetentissements(Utf8JsonWriter writer, JsonElement value)
+        {
+            JsonElement targetObj = value;
+            if (value.ValueKind == JsonValueKind.Array)
+            {
+                var firstObj = value.EnumerateArray().FirstOrDefault(x => x.ValueKind == JsonValueKind.Object);
+                if (firstObj.ValueKind == JsonValueKind.Object)
+                    targetObj = firstObj;
+                else
+                {
+                    writer.WriteStartObject();
+                    writer.WriteEndObject();
+                    return;
+                }
+            }
+
+            if (targetObj.ValueKind != JsonValueKind.Object)
+            {
+                writer.WriteStartObject();
+                writer.WriteEndObject();
+                return;
+            }
+
+            var arrayProps = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { "cognition", "conduite_emotionnelle" };
+
+            writer.WriteStartObject();
+            foreach (var prop in targetObj.EnumerateObject())
+            {
+                writer.WritePropertyName(prop.Name);
+                if (arrayProps.Contains(prop.Name))
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.String)
+                    {
+                        var s = prop.Value.GetString() ?? string.Empty;
+                        var lines = s.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                                     .Select(l => l.Trim().TrimStart('-', '•', '*').Trim())
+                                     .Where(l => !string.IsNullOrWhiteSpace(l))
+                                     .ToList();
+                        writer.WriteStartArray();
+                        if (lines.Count > 0)
+                        {
+                            foreach (var line in lines) writer.WriteStringValue(line);
+                        }
+                        else if (!string.IsNullOrWhiteSpace(s))
+                        {
+                            writer.WriteStringValue(s);
+                        }
+                        writer.WriteEndArray();
+                    }
+                    else
+                    {
+                        prop.Value.WriteTo(writer);
+                    }
+                }
+                else
+                {
+                    if (prop.Value.ValueKind == JsonValueKind.Array)
+                    {
+                        var list = prop.Value.EnumerateArray().Select(x => x.ToString()).Where(s => !string.IsNullOrWhiteSpace(s));
+                        writer.WriteStringValue(string.Join("\n", list));
+                    }
+                    else
+                    {
+                        prop.Value.WriteTo(writer);
+                    }
+                }
+            }
+            writer.WriteEndObject();
+        }
+
+        private static void WriteNormalizedTraitements(Utf8JsonWriter writer, JsonElement value)
+        {
+            JsonElement targetObj = value;
+            if (value.ValueKind == JsonValueKind.Array)
+            {
+                var firstObj = value.EnumerateArray().FirstOrDefault(x => x.ValueKind == JsonValueKind.Object);
+                if (firstObj.ValueKind == JsonValueKind.Object)
+                    targetObj = firstObj;
+                else
+                {
+                    writer.WriteStartObject();
+                    writer.WriteEndObject();
+                    return;
+                }
+            }
+
+            if (targetObj.ValueKind != JsonValueKind.Object)
+            {
+                writer.WriteStartObject();
+                writer.WriteEndObject();
+                return;
+            }
+
+            writer.WriteStartObject();
+            foreach (var prop in targetObj.EnumerateObject())
+            {
+                writer.WritePropertyName(prop.Name);
+                if (prop.Value.ValueKind == JsonValueKind.Array)
+                {
+                    var list = prop.Value.EnumerateArray().Select(x => x.ToString()).Where(s => !string.IsNullOrWhiteSpace(s));
+                    writer.WriteStringValue(string.Join("\n", list));
+                }
+                else
+                {
+                    prop.Value.WriteTo(writer);
+                }
+            }
+            writer.WriteEndObject();
+        }
+
+        /// <summary>
+        /// Extraction de secours basée sur Regex si le parsing JSON échoue complètement.
+        /// Permet de ne jamais bloquer l'utilisateur avec une erreur rouge.
+        /// </summary>
+        private static MDPHFormData FallbackExtractFormData(string text)
+        {
+            var data = new MDPHFormData();
+            if (string.IsNullOrWhiteSpace(text)) return data;
+
+            data.PathologiePrincipale = ExtractJsonString(text, "pathologie_principale", "pathologie");
+            data.AutresPathologies = ExtractJsonString(text, "autres_pathologies", "autre_pathologie");
+            data.RemarquesComplementaires = ExtractJsonString(text, "remarques_complementaires", "remarques", "remarque_complementaire");
+
+            data.ElementsEssentiels = ExtractJsonArrayOrList(text, "elements_essentiels", "element_essentiel");
+            data.AntecedentsMedicaux = ExtractJsonArrayOrList(text, "antecedents_medicaux", "antecedents", "antecedent_medical");
+            data.RetardsDeveloppementaux = ExtractJsonArrayOrList(text, "retards_developpementaux", "retards_developpement", "retard_developpemental");
+            data.DescriptionClinique = ExtractJsonArrayOrList(text, "description_clinique");
+
+            data.Traitements = new TraitementsData
+            {
+                Medicaments = ExtractJsonString(text, "medicaments", "medicament"),
+                EffetsIndesirables = ExtractJsonString(text, "effets_indesirables", "effets", "effet_indesirable"),
+                AutresPrisesEnCharge = ExtractJsonString(text, "autres_prises_en_charge", "prises_en_charge")
+            };
+
+            data.Retentissements = new RetentissementsData
+            {
+                Mobilite = ExtractJsonString(text, "mobilite", "mobilité"),
+                Communication = ExtractJsonString(text, "communication"),
+                Cognition = ExtractJsonArrayOrList(text, "cognition", "cognitif"),
+                ConduiteEmotionnelle = ExtractJsonArrayOrList(text, "conduite_emotionnelle", "conduite", "emotion", "emotions"),
+                Autonomie = ExtractJsonString(text, "autonomie"),
+                VieQuotidienne = ExtractJsonString(text, "vie_quotidienne", "quotidien"),
+                SocialScolaire = ExtractJsonString(text, "social_scolaire", "scolaire", "social")
+            };
+
+            data.EnsureNotNull();
+            return data;
+        }
+
+        private static string ExtractJsonString(string text, params string[] propertyNames)
+        {
+            foreach (var name in propertyNames)
+            {
+                var match = Regex.Match(text, $@"""{name}""\s*:\s*""((?:\\.|[^""\\])*)""", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    return UnescapeJsonString(match.Groups[1].Value);
+                }
+
+                var arrayMatch = Regex.Match(text, $@"""{name}""\s*:\s*\[([^\]]*)\]", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                if (arrayMatch.Success)
+                {
+                    var items = Regex.Matches(arrayMatch.Groups[1].Value, @"""((?:\\.|[^""\\])*)""")
+                                     .Cast<Match>()
+                                     .Select(m => UnescapeJsonString(m.Groups[1].Value))
+                                     .Where(s => !string.IsNullOrWhiteSpace(s));
+                    var joined = string.Join("\n", items);
+                    if (!string.IsNullOrWhiteSpace(joined)) return joined;
+                }
+            }
+            return string.Empty;
+        }
+
+        private static List<string> ExtractJsonArrayOrList(string text, params string[] propertyNames)
+        {
+            var result = new List<string>();
+            foreach (var name in propertyNames)
+            {
+                var match = Regex.Match(text, $@"""{name}""\s*:\s*\[([^\]]*)\]", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                if (match.Success)
+                {
+                    var items = Regex.Matches(match.Groups[1].Value, @"""((?:\\.|[^""\\])*)""")
+                                     .Cast<Match>()
+                                     .Select(m => UnescapeJsonString(m.Groups[1].Value))
+                                     .Where(s => !string.IsNullOrWhiteSpace(s))
+                                     .ToList();
+                    if (items.Count > 0) return items;
+                }
+
+                var stringMatch = Regex.Match(text, $@"""{name}""\s*:\s*""((?:\\.|[^""\\])*)""", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+                if (stringMatch.Success)
+                {
+                    var val = UnescapeJsonString(stringMatch.Groups[1].Value);
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        var lines = val.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                                       .Select(l => l.Trim().TrimStart('-', '•', '*').Trim())
+                                       .Where(l => !string.IsNullOrWhiteSpace(l))
+                                       .ToList();
+                        return lines.Count > 0 ? lines : new List<string> { val };
+                    }
+                }
+            }
+            return result;
+        }
+
+        private static string UnescapeJsonString(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return string.Empty;
+            return s.Replace("\\\"", "\"")
+                    .Replace("\\\\", "\\")
+                    .Replace("\\n", "\n")
+                    .Replace("\\r", "\r")
+                    .Replace("\\t", "\t");
         }
 
         /// <summary>

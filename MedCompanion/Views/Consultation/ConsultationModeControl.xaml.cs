@@ -552,7 +552,7 @@ categorie: {document.Category ?? "Documents"}
         /// 0,7 faisait entrer une pièce purement administrative — téléphones, courriels,
         /// autorisations — dans le calcul de la Synthèse Initiale.
         /// </summary>
-        private void TraiterFormulaireCompletion(PatientDocument document)
+        private void TraiterFormulaireCompletion(PatientDocument document, bool autoFill = false)
         {
             if (_viewModel?.CurrentPatient == null) return;
 
@@ -575,7 +575,8 @@ categorie: {document.Category ?? "Documents"}
             // pas celle du gabarit courant, qui désigne la géométrie de lecture.
             var saisie = new MedCompanion.Dialogs.FormulaireSaisieDialog(
                 document.FilePath, _viewModel.CurrentPatient.DirectoryPath,
-                document.FormulaireId, document.FormulaireVersion, document.ExtractedText)
+                document.FormulaireId, document.FormulaireVersion, document.ExtractedText,
+                autoFill: autoFill)
             {
                 Owner = Window.GetWindow(this)
             };
@@ -608,7 +609,7 @@ categorie: {document.Category ?? "Documents"}
 
                 if (success && document != null && document.IsFormulaireCompletion)
                 {
-                    TraiterFormulaireCompletion(document);
+                    TraiterFormulaireCompletion(document, autoFill: true);
                 }
                 else if (success && document != null)
                 {
@@ -762,6 +763,75 @@ categorie: {document.Category ?? "Documents"}
             if (ok) _viewModel.LoadPatientDocumentsFromDisk();
             else    _viewModel.FeuilleEnvStatus =
                         $"⚠ Feuille archivée, mais non ajoutée aux Documents : {message}";
+        }
+
+        /// <summary>
+        /// Étape de numérisation du formulaire parents : le scanner démarre,
+        /// la feuille est archivée dans les documents du patient, et la fenêtre de saisie
+        /// s'ouvre avec l'auto-remplissage par vision lancé automatiquement.
+        /// </summary>
+        private async void ScannerFormulaireBtn_Click(object sender, RoutedEventArgs e)
+        {
+            _viewModel ??= DataContext as ConsultationModeViewModel;
+
+            if (_viewModel?.CurrentPatient == null)
+            {
+                MessageBox.Show("Aucun patient sélectionné.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            if (_scannerService == null)
+            {
+                MessageBox.Show("Scanner non disponible.", "Information",
+                    MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var dlg = new ScanDocumentDialog(_scannerService) { Owner = Window.GetWindow(this) };
+            if (dlg.ShowDialog() != true || string.IsNullOrEmpty(dlg.ScannedFilePath)) return;
+
+            await ScannerEtDepouillerFormulaireAsync(dlg.ScannedFilePath);
+        }
+
+        private async Task ScannerEtDepouillerFormulaireAsync(string scannedPath)
+        {
+            if (_viewModel?.CurrentPatient == null) return;
+
+            _viewModel.MedDocumentStatus = "⏳ Enregistrement du formulaire scanné…";
+            string filePath = scannedPath;
+
+            if (_documentService != null)
+            {
+                var def = MedCompanion.Models.FormulairesConnus.Par("COMPLETION");
+                if (def != null)
+                {
+                    var (ok, doc, message) = await _documentService.ImportFormulaireConnuAsync(
+                        scannedPath, _viewModel.CurrentPatient.NomComplet, def, def.VersionCourante);
+                    if (ok && doc != null && !string.IsNullOrEmpty(doc.FilePath))
+                    {
+                        filePath = doc.FilePath;
+                        _viewModel.LoadPatientDocumentsFromDisk();
+                    }
+                }
+            }
+
+            var saisie = new MedCompanion.Dialogs.FormulaireSaisieDialog(
+                filePath,
+                _viewModel.CurrentPatient.DirectoryPath,
+                formulaireId: "COMPLETION",
+                version: 2,
+                texteExtrait: null,
+                autoFill: true)
+            {
+                Owner = Window.GetWindow(this)
+            };
+
+            saisie.ShowDialog();
+
+            _viewModel.LoadPatientDocumentsFromDisk();
+            _viewModel.RefreshAdminInfoPublic();
+            _viewModel.MedDocumentStatus = "✅ Formulaire parents numérisé et traité.";
         }
 
         private void EnvDepouillerBtn_Click(object sender, RoutedEventArgs e)

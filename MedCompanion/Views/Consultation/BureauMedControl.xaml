@@ -4,7 +4,8 @@
              xmlns:livres="clr-namespace:MedCompanion.Views.Livres"
              xmlns:infographies="clr-namespace:MedCompanion.Views.Infographies"
              xmlns:agenda="clr-namespace:MedCompanion.Views.Agenda"
-             Background="Transparent">
+             Background="Transparent"
+             Focusable="False">
     <UserControl.Resources>
         <!-- Style bouton moderne -->
         <Style x:Key="ModernButtonStyle" TargetType="Button">
@@ -40,12 +41,13 @@
             <RowDefinition Height="Auto"/>  <!-- Zone chat Med -->
         </Grid.RowDefinitions>
 
-        <!-- Zone Centrale: Host pour l'embedding -->
+        <!-- Zone Centrale: Host pour l'embedding (plein écran disponible) -->
         <Border x:Name="CentralHostZone" Grid.Row="0"
                 Background="#F8F9FA"
-                BorderBrush="#3498DB"
-                BorderThickness="2"
-                Margin="5">
+                BorderBrush="#D1D5DB"
+                BorderThickness="1"
+                Margin="0"
+                Focusable="False">
             <Grid>
                 <!-- Placeholder quand rien n'est integre -->
                 <TextBlock x:Name="PlaceholderText"
@@ -68,8 +70,8 @@
             </Grid>
         </Border>
 
-        <!-- Zone Chat Med -->
-        <Border Grid.Row="1" Background="White" BorderBrush="#E0E0E0" BorderThickness="0,1,0,0">
+        <!-- Zone Chat Med (masquée pour maximiser l'espace de Doctolib et des outils du bureau) -->
+        <Border x:Name="BottomChatPanel" Grid.Row="1" Visibility="Collapsed" Background="White" BorderBrush="#E0E0E0" BorderThickness="0,1,0,0">
             <Grid Margin="10,8">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto"/>

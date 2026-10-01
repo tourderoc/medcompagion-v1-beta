@@ -32,7 +32,15 @@ public partial class MainWindow : Window
             // le modèle commence à charger sans l'attendre.
             _ = ChargerModeleOuvertureAsync();
 
+            Dialogs.EcranChargementWindow.Message("Chargement du modèle de langage…");
+
             await PopulateLLMComboBoxAsync();
+            SignalerEtapeDemarrage("Moteur local prêt.");
+
+            // Whisper est préchargé APRÈS le modèle de langage : les deux lisent plusieurs Go sur
+            // le même disque, et c'est le modèle de langage qu'on attend en premier. Ensuite la
+            // dictée démarre sans attente (demandé par le médecin le 26/09/2026).
+            PrechargerWhisper();
         }
         catch (Exception ex)
         {
@@ -41,7 +49,29 @@ public partial class MainWindow : Window
                 StatusTextBlock.Text = $"❌ Erreur initialisation LLM: {ex.Message}";
                 StatusTextBlock.Foreground = new SolidColorBrush(Colors.Red);
             });
+            // Même en échec, la fenêtre doit s'ouvrir : Med reste utilisable sans le moteur local.
+            SignalerEtapeDemarrage("Moteur local indisponible — Med s'ouvre quand même.");
         }
+    }
+
+    /// <summary>
+    /// Met le modèle de dictée en place en arrière-plan. La taille vient du réglage, et un
+    /// chemin imposé (le large-v3 français) prime dessus — c'est <see cref="WhisperModelManager"/>
+    /// qui tranche, exactement comme au démarrage d'une dictée.
+    /// </summary>
+    private void PrechargerWhisper()
+    {
+        if (_whisperStreamingService == null) return;
+
+        var taille = _settings.WhisperModel switch
+        {
+            "LargeV3Turbo" => Services.Consultation.WhisperModelSize.LargeV3Turbo,
+            "LargeV3"      => Services.Consultation.WhisperModelSize.LargeV3,
+            _              => Services.Consultation.WhisperModelSize.Medium
+        };
+
+        _ = _whisperStreamingService.PrechargerAsync(
+                new Services.Consultation.WhisperModelManager { ModelSize = taille });
     }
 
     /// <summary>

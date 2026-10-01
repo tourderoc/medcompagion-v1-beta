@@ -679,6 +679,30 @@ INTERVENANT_EMAIL: [email, ou vide]";
         }
 
         /// <summary>
+        /// Enregistre une ordonnance sécurisée capturée depuis Doctolib dans l'index documents
+        /// du patient (catégorie ordonnances).
+        /// </summary>
+        public async Task<PatientDocument?> RegisterOrdonnanceSecuriseeAsync(string existingPdfPath, string nomComplet, string summary = "Ordonnance sécurisée (Doctolib)")
+        {
+            if (!File.Exists(existingPdfPath)) return null;
+            var documentsPath = _pathService.GetDocumentsDirectory(nomComplet);
+            Directory.CreateDirectory(documentsPath);
+            var fi = new FileInfo(existingPdfPath);
+            var doc = new PatientDocument
+            {
+                FileName      = fi.Name,
+                FilePath      = existingPdfPath,
+                Category      = DocumentCategories.Ordonnances,
+                DateAdded     = fi.CreationTime,
+                FileExtension = ".pdf",
+                FileSizeBytes = fi.Length,
+                Summary       = summary
+            };
+            await SaveDocumentToIndexAsync(nomComplet, doc);
+            return doc;
+        }
+
+        /// <summary>
         /// Récupère tous les documents d'un patient
         /// </summary>
         public async Task<List<PatientDocument>> GetAllDocumentsAsync(string nomComplet)

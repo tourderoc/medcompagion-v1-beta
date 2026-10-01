@@ -98,6 +98,28 @@ Med suit l'état de chaque rendez-vous (à venir, en cours, terminé, non honor�
 
 **Deux règles posées dès maintenant :** rien ne s'écrit sans le médecin, et **Med se tait pendant la consultation**, comme le mode silencieux actuel.
 
+### La vision du médecin, énoncée le 26/09/2026
+
+Med n'est pas un outil qu'on ouvre, c'est **un compagnon présent toute la journée de travail — qui change de rôle selon le moment**. Trois rôles, et ce n'est pas l'intelligence qui varie entre eux :
+
+| Moment | Rôle | Ce qu'il a le droit de faire |
+|---|---|---|
+| À l'arrivée, avant le premier rendez-vous | **Le collègue** | Parler le premier. Conversation ouverte : bonjour, ce qui attend aujourd'hui. |
+| Entre les consultations | **La secrétaire** | Montrer, pas parler. Ce qui reste à faire, ce qui a changé dans l'agenda, l'attestation de la précédente. Muet s'il n'y a rien. |
+| Pendant la consultation | **L'interne** | Ni l'un ni l'autre. Il prépare et ne montre qu'à la fin, sous la forme la plus économe : « attestation de présence ? oui / non ». |
+
+**La règle à retenir, si on n'en garde qu'une : le droit d'interrompre dépend du MOMENT, jamais de l'importance de ce que Med a trouvé.** C'est elle qui empêchera l'assistant de devenir bavard — et un assistant bavard est éteint en une semaine (voir la règle « ne rapporter que l'actionnable »).
+
+**Le mode se déduit de l'agenda, pas d'un micro.** Avant le premier rendez-vous = le matin ; entre deux = l'inter-consultation ; le dossier de la personne attendue est ouvert = la consultation. Rien à écouter pour savoir quel rôle jouer.
+
+**Sur l'écoute permanente** (souhaitée par le médecin) : techniquement possible — Whisper est chargé en permanence depuis le 26/09 — mais un micro ouvert toute la journée capte aussi les appels, les couloirs, les familles qui attendent, et l'enregistrement d'une consultation avec un mineur suppose l'information des parents. Or le besoin réel n'est pas « Med écoute tout le temps », c'est **« je ne dois plus y penser »**. Le déclenchement par l'agenda le donne : le dossier de la personne attendue s'ouvre, la dictée démarre ; il se ferme, elle s'arrête. Même fluidité, micro actif seulement pendant la consultation. **À ne rouvrir que si ce déclenchement ne suffit pas à l'usage.**
+
+**L'écran d'accueil de Med est l'ébauche de tout ça**, gelée volontairement : Zone active, Assistant IA avec voix, et la Mémoire de Med — « Mon cadre de travail », « Personnalité de Med », « Mes notes ». Ces trois blocs sont vides et **ne se rempliront pas par un formulaire : ils se rempliront par les conversations du matin.** C'est là que Med apprend comment le médecin travaille.
+
+**Un écueil du mode collègue :** « comment était ta journée ? » sonnera faux, Med n'en a pas eu. Le registre juste est de raconter **la journée du médecin** — dix-neuf rendez-vous, deux annulations depuis hier soir, trois attestations en attente. La chaleur vient du ton, pas de faire semblant d'avoir une vie.
+
+**Pas d'apprentissage automatique pour décider** (examiné le 26/09 à propos des modèles contrastifs type CLM) : Med aura déjà en main le motif, l'âge, le dossier et son contenu. Ce sont des **règles**, instantanées, gratuites, et surtout explicables — ce qui compte quand un outil conseille un médecin. Le seul endroit où un modèle d'embedding se justifierait est la barre de commande (« prépare une attestation pour l'école de Théa » : choisir parmi une trentaine d'actions sans passer 14 s dans Qwen), et un petit modèle du commerce avec quelques phrases d'exemple par action suffirait — rien à entraîner.
+
 ## Ordre proposé
 
 A1 à A4 d'abord (utile tout de suite), puis B, puis C. B peut passer avant A si l'export Agenda déçoit.

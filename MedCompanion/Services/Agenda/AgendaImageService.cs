@@ -48,6 +48,100 @@ namespace MedCompanion.Services.Agenda
             return colonnes;
         }
 
+        /// <summary>
+        /// Découpe une capture de la vue Liste d'une journée en bandes horizontales, une par rendez-vous.
+        /// Chaque ligne est isolée entre deux séparateurs horizontaux du tableau Doctolib,
+        /// puis agrandie pour faciliter la lecture des petits caractères par le modèle vision.
+        /// Élimine tout risque d'hallucination de créneaux inexistants par le modèle.
+        /// </summary>
+        public static List<byte[]> DecouperLignesJour(byte[] capture)
+        {
+            var bandes = new List<byte[]>();
+            var source = Charger(capture);
+            if (source == null) return bandes;
+
+            int w = source.PixelWidth, h = source.PixelHeight;
+            if (w < 400 || h < 300) return bandes;
+
+            var converti = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+            int stride = w * 4;
+            var pixels = new byte[stride * h];
+            converti.CopyPixels(pixels, stride, 0);
+
+            int yMin = (int)(h * 0.15);
+            int yMax = (int)(h * 0.90);
+            int xStart = Math.Max(120, (int)(w * 0.065));
+            int xEnd = Math.Min(w - 70, (int)(w * 0.70));
+
+            var separateurs = new List<int>();
+
+            for (int y = yMin; y < yMax; y++)
+            {
+                int grisCount = 0;
+                int total = 0;
+                for (int x = xStart; x < xEnd; x += 6)
+                {
+                    int idx = y * stride + x * 4;
+                    byte b = pixels[idx], g = pixels[idx + 1], r = pixels[idx + 2];
+                    total++;
+                    if (r >= 215 && r <= 248 && Math.Abs(r - g) <= 6 && Math.Abs(g - b) <= 6)
+                        grisCount++;
+                }
+
+                if (total > 0 && (double)grisCount / total >= 0.65)
+                    separateurs.Add(y);
+            }
+
+            if (separateurs.Count == 0) return bandes;
+
+            // Regrouper les séparateurs consécutifs (distance <= 6 px)
+            var groupes = new List<int>();
+            int prev = -100;
+            foreach (var y in separateurs)
+            {
+                if (y - prev > 6)
+                {
+                    groupes.Add(y);
+                    prev = y;
+                }
+            }
+
+            int largeurLigne = Math.Min(w - xStart - 20, Math.Max((int)(w * 0.72), 1350));
+
+            for (int i = 0; i < groupes.Count; i++)
+            {
+                int yTop = groupes[i];
+                int yBottom = (i + 1 < groupes.Count) ? groupes[i + 1] : yTop + (groupes.Count > 1 ? groupes[1] - groupes[0] : 26);
+                int rowH = yBottom - yTop;
+
+                if (rowH >= 18 && rowH <= 48)
+                {
+                    // Vérifier la présence d'encre (texte)
+                    int ink = 0;
+                    for (int x = xStart; x < xStart + largeurLigne; x += 4)
+                    {
+                        for (int yy = yTop + 2; yy < yBottom - 2; yy += 2)
+                        {
+                            int idx = yy * stride + x * 4;
+                            byte b = pixels[idx], g = pixels[idx + 1], r = pixels[idx + 2];
+                            double lum = 0.114 * b + 0.587 * g + 0.299 * r;
+                            if (lum < 170) ink++;
+                        }
+                    }
+
+                    if (ink >= 12)
+                    {
+                        var rect = new Int32Rect(xStart, yTop, largeurLigne, rowH);
+                        var crop = new CroppedBitmap(source, rect);
+                        var agrandie = new TransformedBitmap(crop, new ScaleTransform(Agrandissement, Agrandissement));
+                        bandes.Add(EnPng(agrandie));
+                    }
+                }
+            }
+
+            return bandes;
+        }
+
         // ── Rendez-vous annulés : le trait de rature ────────────────────────
         //
         // Mesuré le 26/09/2026 sur la vue Liste : le modèle vision lit les 19 lignes sans faute
@@ -76,9 +170,9 @@ namespace MedCompanion.Services.Agenda
             int largeur = source.PixelWidth, hauteur = source.PixelHeight;
             var lum = Luminances(source);
 
-            int xMin  = (int)(largeur * 0.06);   // écarte le bandeau latéral sombre de Doctolib
-            int lgMin = (int)(largeur * 0.025);
-            int lgMax = (int)(largeur * 0.20);
+            int xMin  = (int)(largeur * 0.05);   // écarte le bandeau latéral de Doctolib
+            int lgMin = (int)(largeur * 0.015);  // tolère les noms courts (3-4 lettres)
+            int lgMax = (int)(largeur * 0.25);   // tolère les noms composés longs
             int hauteurLigne = Math.Max(20, hauteur / 28);
 
             double Ratio(int x0, int lg, int y)
@@ -92,6 +186,10 @@ namespace MedCompanion.Services.Agenda
             // -1 et non int.MinValue : « y - dernierY » déborderait alors et la comparaison serait
             // toujours fausse — aucune rature n'était retenue (constaté le 26/09/2026).
             int dernierY = -1;
+
+            // Épaisseur et étendue verticales adaptées à la hauteur de ligne (basse ou haute résolution)
+            int deltaProche = Math.Max(2, (int)(hauteurLigne * 0.08));
+            int kMax = Math.Max(6, (int)(hauteurLigne * 0.35));
 
             for (int y = 0; y < hauteur; y++)
             {
@@ -107,16 +205,16 @@ namespace MedCompanion.Services.Agenda
 
                     if (suite >= lgMin && suite <= lgMax && (dernierY < 0 || y - dernierY > hauteurLigne))
                     {
-                        double epais = Math.Max(Ratio(debut, suite, y - 2), Ratio(debut, suite, y + 2));
+                        double epais = Math.Max(Ratio(debut, suite, y - deltaProche), Ratio(debut, suite, y + deltaProche));
                         double dessus = 0, dessous = 0;
-                        for (int k = 2; k <= 6; k++)
+                        for (int k = deltaProche; k <= kMax; k++)
                         {
                             dessus  = Math.Max(dessus,  Ratio(debut, suite, y - k));
                             dessous = Math.Max(dessous, Ratio(debut, suite, y + k));
                         }
 
-                        if (epais <= 0.45 && dessus >= 0.10 && dessous >= 0.10
-                                         && dessus <= 0.60 && dessous <= 0.60)
+                        if (epais <= 0.45 && dessus >= 0.08 && dessous >= 0.08
+                                         && dessus <= 0.65 && dessous <= 0.65)
                         {
                             bandes.Add(Bande(source, xMin, debut + suite, y, hauteurLigne));
                             dernierY = y;

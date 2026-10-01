@@ -107,13 +107,17 @@ namespace MedCompanion.Dialogs
         /// mauvaise version, et rien ne la corrigerait jamais sans réimporter. Recalculer coûte
         /// une comparaison de chaînes et rend la géométrie indépendante de l'historique.
         /// </param>
+        private readonly bool _autoFill;
+
         public FormulaireSaisieDialog(string? pdfPath, string? patientDir,
                                       string? formulaireId = null, int version = 0,
-                                      string? texteExtrait = null)
+                                      string? texteExtrait = null,
+                                      bool autoFill = false)
         {
             InitializeComponent();
             _pdfPath = pdfPath;
             _patientDir = patientDir;
+            _autoFill = autoFill;
 
             var definition = FormulairesConnus.Par(formulaireId ?? "COMPLETION")
                           ?? FormulairesConnus.Tous[0];
@@ -227,6 +231,16 @@ namespace MedCompanion.Dialogs
             {
                 PdfFallback.Text = "Aucun PDF associé à ce document.";
             }
+
+            if (_autoFill && !string.IsNullOrEmpty(_pdfPath) && File.Exists(_pdfPath))
+            {
+                _ = Dispatcher.InvokeAsync(async () =>
+                {
+                    // Délai court pour laisser le WebView2 et l'interface s'afficher
+                    await Task.Delay(350);
+                    await ExecuterAutoFillAsync();
+                });
+            }
         }
 
         // ── Nom du parent = nom de l'enfant / adresse unique si parents ensemble ──
@@ -328,6 +342,11 @@ namespace MedCompanion.Dialogs
         }
 
         private async void BtnAutoFill_Click(object sender, RoutedEventArgs e)
+        {
+            await ExecuterAutoFillAsync();
+        }
+
+        public async Task ExecuterAutoFillAsync()
         {
             if (string.IsNullOrEmpty(_pdfPath) || !File.Exists(_pdfPath))
             {
@@ -610,6 +629,9 @@ namespace MedCompanion.Dialogs
 
         private static byte[] RenderFirstPageToPng(string pdfPath)
         {
+            if (!pdfPath.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+                return File.ReadAllBytes(pdfPath);
+
             var pdfBytes = File.ReadAllBytes(pdfPath);
             using var bitmap = PDFtoImage.Conversion.ToImage(pdfBytes, 0);
             using var data = bitmap.Encode(SKEncodedImageFormat.Png, 100);

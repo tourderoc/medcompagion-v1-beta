@@ -95,7 +95,14 @@ namespace MedCompanion.Services.Agenda
             try
             {
                 var lignes = LireCsv(cheminCsv);
-                if (lignes.Count == 0) return (false, 0, 0, "Le fichier ne contient aucune ligne exploitable.");
+                // Cas le plus fréquent, et pas une erreur de Med : une période dont la date de fin
+                // précède la date de début fait produire à Doctolib un fichier réduit à son
+                // en-tête (relevé le 28/09/2026 : export « du 28/09/2026 au 30/08/2026 »).
+                if (lignes.Count == 0)
+                    return (false, 0, 0,
+                        "Cet export ne contient aucun rendez-vous — seulement la ligne d'en-tête.\n\n" +
+                        "Vérifiez la période demandée à Doctolib : une date de fin antérieure à la " +
+                        "date de début produit un fichier vide.");
 
                 var attendues = new[] { "Id", "Doctolib Patient ID", "Date de début", "Début", "Durée du RDV" };
                 var manquantes = attendues.Where(c => !lignes[0].ContainsKey(c)).ToList();
@@ -154,6 +161,25 @@ namespace MedCompanion.Services.Agenda
             return supprimes;
         }
 
+        /// <summary>
+        /// Supprime un rendez-vous précis de la copie locale (par identifiant, ou par début et nom).
+        /// Doctolib n'est jamais modifié : seule la copie locale de Med est mise à jour.
+        /// </summary>
+        public bool SupprimerRendezVous(RendezVous rdv)
+        {
+            if (rdv == null) return false;
+            var mois = new DateTime(rdv.Debut.Year, rdv.Debut.Month, 1);
+            var rdvs = ChargerMois(mois);
+            var cible = rdvs.FirstOrDefault(r => r.Id == rdv.Id)
+                     ?? rdvs.FirstOrDefault(r => r.Debut == rdv.Debut && Cle(r.NomComplet) == Cle(rdv.NomComplet));
+            if (cible == null) return false;
+
+            rdvs.Remove(cible);
+            EnregistrerMois(mois, rdvs);
+            MettreAJourEtat();
+            return true;
+        }
+
         // ── Fusion d'une lecture d'écran ────────────────────────────────────
 
         /// <summary>Ce qu'une lecture d'écran a changé, pour le journal affiché au médecin.</summary>
@@ -180,14 +206,31 @@ namespace MedCompanion.Services.Agenda
             // Doublons déjà en place, venus de deux lectures qui n'ont pas écrit le nom pareil.
             changements.AddRange(FusionnerDoublons(duJour, existants));
 
-            foreach (var l in lignes)
+            // Créneau par créneau, et non ligne par ligne : deux lectures d'un même créneau
+            // rendent les lignes dans le même ordre, et c'est cet ordre qui permet de les
+            // apparier quand les noms sont mal lus.
+            foreach (var creneau in lignes.GroupBy(l => l.heure).OrderBy(g => g.Key))
             {
-                var debut = jour.Date.Add(l.heure);
+                var debut = jour.Date.Add(creneau.Key);
+                var lues = creneau.ToList();
+                var dejaLa = duJour.Where(r => r.Debut == debut).ToList();
 
-                // Même personne, même heure : c'est le même rendez-vous. Sinon, même personne à
-                // une autre heure : il a été déplacé, on ne crée pas de doublon.
-                var rdv = duJour.FirstOrDefault(r => r.Debut == debut && MemePersonne(r, l.nom, memeCreneau: true))
-                       ?? duJour.FirstOrDefault(r => MemePersonne(r, l.nom, memeCreneau: false) && !vus.Contains(r.Id));
+            foreach (var l in lues)
+            {
+                // 1. Même personne, même heure : c'est le même rendez-vous.
+                var rdv = dejaLa.FirstOrDefault(r => !vus.Contains(r.Id) && MemePersonne(r, l.nom, memeCreneau: true));
+
+                // 2. À défaut, appariement PAR POSITION : la n-ième ligne lue d'un créneau est le
+                //    n-ième rendez-vous déjà connu de ce créneau. C'est ce qui manquait le
+                //    28/09/2026 — trois lectures du même rendez-vous écrites PICON Albert, IPON
+                //    puis IPCHON avaient créé trois rendez-vous, 60 au lieu de 21 sur la journée.
+                //    Des noms mal lus ne se ressemblent pas assez pour être rapprochés ; leur
+                //    RANG, si. On ne crée donc que lorsque le créneau est réellement plus rempli
+                //    qu'avant, jamais parce qu'un nom a été lu autrement.
+                rdv ??= dejaLa.FirstOrDefault(r => !vus.Contains(r.Id));
+
+                // 3. Même personne à une autre heure : elle a été déplacée, on ne duplique pas.
+                rdv ??= duJour.FirstOrDefault(r => !vus.Contains(r.Id) && MemePersonne(r, l.nom, memeCreneau: false));
 
                 if (rdv == null)
                 {
@@ -201,6 +244,7 @@ namespace MedCompanion.Services.Agenda
                     AppliquerLigne(rdv, l, journeeComplete);
                     existants.Add(rdv);
                     duJour.Add(rdv);
+                    dejaLa.Add(rdv);
                     changements.Add(new Changement(l.barre ? "annule" : "ajout",
                         $"{debut:HH'h'mm} {rdv.NomComplet}{(l.barre ? " — annulé" : "")}"));
                 }
@@ -220,6 +264,7 @@ namespace MedCompanion.Services.Agenda
 
                 rdv.DerniereLecture = DateTime.Now;
                 vus.Add(rdv.Id);
+            }
             }
 
             // Les rendez-vous que Med connaît et que la capture ne montre pas. Signalés seulement,
@@ -590,7 +635,10 @@ namespace MedCompanion.Services.Agenda
                 var champs = lignes[i];
                 if (champs.Count == 1 && string.IsNullOrWhiteSpace(champs[0])) continue;
 
-                var ligne = new Dictionary<string, string>(StringComparer.Ordinal);
+                // Casse ignorée : Doctolib écrivait « Id » et écrit maintenant « id » (relevé le
+                // 28/09/2026). Une colonne renommée par sa seule casse ne doit pas faire échouer
+                // tout un import.
+                var ligne = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
                 for (int c = 0; c < entetes.Count; c++)
                     ligne[entetes[c].Trim()] = c < champs.Count ? champs[c] : "";
                 resultat.Add(ligne);
