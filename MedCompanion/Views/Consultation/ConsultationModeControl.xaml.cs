@@ -72,6 +72,19 @@ namespace MedCompanion.Views.Consultation
             vm.RestitutionPdfSavedToPatient += OnRestitutionPdfSaved;
             vm.PatientSwitchRequested -= OnPatientSwitchRequested;
             vm.PatientSwitchRequested += OnPatientSwitchRequested;
+            if (vm.CockpitMessages != null)
+            {
+                vm.CockpitMessages.CollectionChanged -= OnCockpitMessagesChanged;
+                vm.CockpitMessages.CollectionChanged += OnCockpitMessagesChanged;
+            }
+        }
+
+        private void OnCockpitMessagesChanged(object? sender, System.Collections.Specialized.NotifyCollectionChangedEventArgs e)
+        {
+            if (e.Action == System.Collections.Specialized.NotifyCollectionChangedAction.Add)
+            {
+                Dispatcher.BeginInvoke(() => CockpitScrollViewer?.ScrollToBottom());
+            }
         }
 
         private void OnViewModelNoteSaved(object? sender, EventArgs e)
@@ -148,18 +161,43 @@ namespace MedCompanion.Views.Consultation
 
             var menu = new ContextMenu();
 
-            // "1ère consultation" n'apparaît que si le patient n'a AUCUNE note/consultation
-            // (par définition la 1ère est unique : si le patient a déjà été vu, plus de 1ère possible)
-            if (!_viewModel.HasConsultationNotes)
+            // Débuter consultation : 1ère consultation si aucune consult clinique, sinon consultation de suivi
+            if (_viewModel.TotalConsultationsCount == 0)
             {
-                var premiere = new MenuItem { Header = "🩺  1ère consultation" };
+                var premiere = new MenuItem { Header = "🩺  Débuter 1ère consultation" };
                 premiere.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("premiere");
                 menu.Items.Add(premiere);
             }
+            else
+            {
+                var suivi = new MenuItem { Header = "🔄  Débuter consultation de suivi" };
+                suivi.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("suivi");
+                menu.Items.Add(suivi);
+            }
 
-            var suivi = new MenuItem { Header = "🔄  Consultation de suivi" };
-            suivi.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("suivi");
-            menu.Items.Add(suivi);
+            menu.Items.Add(new Separator());
+
+            // Rendez-vous non honorés & Absences
+            var absent = new MenuItem { Header = "❌  Patient absent (non excusé)" };
+            absent.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("absent");
+            menu.Items.Add(absent);
+
+            var absentExcuse = new MenuItem { Header = "⚠️  Patient absent excusé" };
+            absentExcuse.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("absent_excuse");
+            menu.Items.Add(absentExcuse);
+
+            var deplace = new MenuItem { Header = "📅  Rendez-vous déplacé / reporté" };
+            deplace.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("deplace");
+            menu.Items.Add(deplace);
+
+            menu.Items.Add(new Separator());
+
+            // Échanges & Notes sans consultation médicale
+            var liaison = new MenuItem { Header = "📞  Note de liaison / coordination (école, confrère)" };
+            liaison.Click += (_, _) => _viewModel.NewConsultationCommand.Execute("liaison");
+            menu.Items.Add(liaison);
+
+            menu.Items.Add(new Separator());
 
             // Synthèse Globale — document de référence du patient, versionné, source de vérité
             var synthese = new MenuItem { Header = "🧭  Synthèse Globale" };
@@ -690,6 +728,9 @@ categorie: {document.Category ?? "Documents"}
             // 2. …et versée aux Documents du dossier bleu, comme le formulaire de complétion.
             //    Elle y devient consultable, et son crayon rouvre le dépouillement.
             _ = ImporterQuestionnaireDansDocumentsAsync(dlg.ScannedFilePath);
+
+            // 3. Ouvre immédiatement la boîte de lecture IA et dépouillement des réponses
+            _viewModel.OuvrirDepouillementCartographie(dlg.ScannedFilePath);
         }
 
         /// <summary>

@@ -186,6 +186,7 @@ namespace MedCompanion.Services
 
                     var yamlTitle = ExtractYamlField(content, "title");
                     var yamlType = ExtractYamlField(content, "type");
+                    var yamlStatut = ExtractYamlField(content, "statut");
                     
                     var title = yamlTitle;
                     if (string.IsNullOrEmpty(title))
@@ -208,7 +209,8 @@ namespace MedCompanion.Services
                         Content = RemoveYamlHeader(content),
                         PreviewText = GetPreview(RemoveYamlHeader(content)),
                         Section = DossierTab.Consultations,
-                        DocumentType = "Note de consultation",
+                        DocumentType = !string.IsNullOrWhiteSpace(yamlType) ? yamlType : "Note de consultation",
+                        Statut = yamlStatut,
                         IsLoaded = true
                     });
                 }

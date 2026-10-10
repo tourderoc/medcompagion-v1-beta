@@ -244,6 +244,24 @@ namespace MedCompanion.Services.LLM
             SupportsReasoning  = true,
         };
 
+        /// <summary>
+        /// Swift 1.5 Qwen3.8-27B — variante optimisée en vitesse de Qwen3.8 par UkisAI (GSQ-RCO IQ3_S + MTP).
+        /// Réduit de ~58% les tokens de réflexion superflus tout en conservant les tenseurs MTP intégrés.
+        /// </summary>
+        public static readonly LlamaCppModelProfile SwiftQwen = new()
+        {
+            Id                 = "Swift-1.5-Qwen3.8-27B",
+            ShortName          = "Swift 1.5 Qwen 27B",
+            DisplayName        = "ukisai/Swift-1.5-Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp (llama.cpp)",
+            ModelPath          = Chemin("Swift-1.5-Qwen3.8-27B-GSQ-RCO-IQ3_S-mtp.gguf"),
+            ExpectedSizeBytes  = 12_120_016_896,
+            MaxContextSize     = 131072,
+            DefaultContextSize = 32768,
+            DefaultDraftTokens = 3,
+            DefaultReasoningBudget = 800,
+            HasMtpTensors      = true,
+            SupportsReasoning  = true,
+        };
 
         /// <summary>
         /// Gemma 4 12B en QAT, avec son brouillon MTP séparé — la variante d'Unsloth. Seul Gemma servi
@@ -301,7 +319,7 @@ namespace MedCompanion.Services.LLM
             SupportsReasoning  = false,
         };
 
-        public static readonly IReadOnlyList<LlamaCppModelProfile> All = new[] { Qwen, Gemma4Qat, Qwen3Vl };
+        public static readonly IReadOnlyList<LlamaCppModelProfile> All = new[] { SwiftQwen, Qwen, Gemma4Qat, Qwen3Vl };
 
         static LlamaCppProfiles()
         {
@@ -317,8 +335,8 @@ namespace MedCompanion.Services.LLM
         {
             if (!Enabled) return null;   // moteur désactivé : tout repasse par Ollama
             if (string.IsNullOrWhiteSpace(modelName)) return null;
-            return All.FirstOrDefault(p =>
-                modelName.Contains(p.Id, StringComparison.OrdinalIgnoreCase));
+            return All.FirstOrDefault(p => string.Equals(modelName, p.Id, StringComparison.OrdinalIgnoreCase))
+                ?? All.OrderByDescending(p => p.Id.Length).FirstOrDefault(p => modelName.Contains(p.Id, StringComparison.OrdinalIgnoreCase));
         }
 
         /// <summary>

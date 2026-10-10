@@ -78,6 +78,61 @@ namespace MedCompanion.Services.Restitutions
                 : ($"(Erreur lors de la génération : {result.error})", context);
         }
 
+        // ── Directives & Cadrage Clinique Initial ────────────────────────────
+
+        /// <summary>
+        /// Propose un cadrage clinique initial en 3 volets (vision médicale / problématique actuelle,
+        /// traitement proposé, école & aménagements) à partir des consultations et bilans du patient.
+        /// Sert à orienter et piloter la génération ultérieure des blocs du dossier.
+        /// </summary>
+        public async Task<(string VisionMedicale, string TraitementPropose, string ProjetEcole)> SuggererCadrageInitialAsync(
+            DossierReading reading,
+            CancellationToken ct = default)
+        {
+            var context = reading.RenderForLlm();
+            if (string.IsNullOrWhiteSpace(context))
+                return ("", "", "");
+
+            var sysPrompt = "Tu es un assistant expert en pédopsychiatrie. Tu aides le praticien à dégager les grandes lignes directrices du dossier avant la rédaction du dossier de restitution.";
+
+            var sb = new StringBuilder();
+            sb.AppendLine("À partir de l'ensemble des éléments du dossier patient ci-dessous (consultations, antécédents, bilans, cartographies) :");
+            sb.AppendLine("Dégage un cadrage clinique initial de travail en 3 volets synthétiques :");
+            sb.AppendLine();
+            sb.AppendLine("1. visionMedicale : Synthèse clinique concise de la problématique actuelle et de l'orientation diagnostique principale (2 à 4 phrases).");
+            sb.AppendLine("2. traitementPropose : Propositions thérapeutiques ou médicamenteuses évoquées ou pertinentes pour ce tableau (ex: indication de suivi, rééducation, ou traitement médicamenteux éventuel à discuter). Si aucun traitement médicamenteux n'est envisagé, l'indiquer explicitement (ex: « Aucun traitement médicamenteux à ce stade »).");
+            sb.AppendLine("3. projetEcole : Aménagements scolaires ou dispositifs d'aide pédagogique recommandés ou en cours (ex: PAP, PPS, AESH, consignes visuelles, tiers-temps).");
+            sb.AppendLine();
+            sb.AppendLine("FORMAT STRICT — Réponds UNIQUEMENT sous forme de JSON valide, aucun texte avant ni après :");
+            sb.AppendLine("{");
+            sb.AppendLine("  \"visionMedicale\": \"...\",");
+            sb.AppendLine("  \"traitementPropose\": \"...\",");
+            sb.AppendLine("  \"projetEcole\": \"...\"");
+            sb.AppendLine("}");
+
+            var userPrompt = BuildSubsectionPrompt(context, sb.ToString(), "clinique");
+            var messages = new List<(string role, string content)> { ("user", userPrompt) };
+            var result = await _llmService.ChatAsync(sysPrompt, messages, 800, ct);
+
+            if (!result.success || string.IsNullOrWhiteSpace(result.result))
+                return ("", "", "");
+
+            try
+            {
+                var json = StripFence(result.result.Trim());
+                using var doc = JsonDocument.Parse(json);
+                var root = doc.RootElement;
+                var vision = root.TryGetProperty("visionMedicale", out var vm) ? vm.GetString() ?? "" : "";
+                var ttt = root.TryGetProperty("traitementPropose", out var tp) ? tp.GetString() ?? "" : "";
+                var ecole = root.TryGetProperty("projetEcole", out var pe) ? pe.GetString() ?? "" : "";
+                return (vision.Trim(), ttt.Trim(), ecole.Trim());
+            }
+            catch
+            {
+                return ("", "", "");
+            }
+        }
+
         // ── Génération progressive page 2 (6 sections successives) ─────────
 
         /// <summary>
@@ -104,6 +159,24 @@ namespace MedCompanion.Services.Restitutions
             {
                 onSectionReady("(Aucun contenu source disponible.)");
                 return;
+            }
+
+            if (dossier is DossierRestitutionInitial dP2)
+            {
+                var sbDirectives = new StringBuilder();
+                if (!string.IsNullOrWhiteSpace(dP2.CadrageVisionMedicale))
+                    sbDirectives.AppendLine($"VISION MÉDICALE DU PRATICIEN : {dP2.CadrageVisionMedicale.Trim()}");
+                if (!string.IsNullOrWhiteSpace(dP2.CadrageTraitementPropose))
+                    sbDirectives.AppendLine($"TRAITEMENT PROPOSÉ : {dP2.CadrageTraitementPropose.Trim()}");
+                if (!string.IsNullOrWhiteSpace(dP2.CadrageProjetEcole))
+                    sbDirectives.AppendLine($"ORIENTATIONS SCOLAIRES : {dP2.CadrageProjetEcole.Trim()}");
+
+                if (sbDirectives.Length > 0)
+                {
+                    context = "== DIRECTIVES ET CADRAGE CLINIQUE DU MÉDECIN ==\n"
+                            + sbDirectives.ToString()
+                            + "\n" + context;
+                }
             }
 
             // Bloc factice pour construire le system prompt (voix livre = parents)
@@ -162,14 +235,15 @@ namespace MedCompanion.Services.Restitutions
             string currentContent,
             string userInstruction,
             DossierReading reading,
-            CancellationToken ct = default)
+            CancellationToken ct = default,
+            RestitutionBase? dossier = null)
         {
             var systemPrompt = BuildSystemPrompt(bloc);
 
             // Un bloc STRUCTURÉ ne se reformule pas comme un texte : sans le rappel de son
             // format, le modèle répond en prose, le rendu ne peut plus la lire, et la saisie du
             // médecin est perdue. On passe donc par la propagation, qui conserve l'existant.
-            var format = BuildFormatBlocStructure(bloc.Key, reading);
+            var format = BuildFormatBlocStructure(bloc.Key, reading, dossier);
             if (format != null)
                 return await PropagerBlocStructureAsync(bloc, currentContent, userInstruction, format, systemPrompt, ct);
 
@@ -215,13 +289,13 @@ namespace MedCompanion.Services.Restitutions
         /// libre. C'est la même que celle de la génération initiale : un bloc n'a qu'un format,
         /// et le rappeler à chaque réécriture est ce qui garantit qu'il reste lisible.
         /// </summary>
-        private static string? BuildFormatBlocStructure(string key, DossierReading reading) => key switch
+        private static string? BuildFormatBlocStructure(string key, DossierReading reading, RestitutionBase? dossier = null) => key switch
         {
-            "pt_s1" => BuildPtS1Instruction(reading),
-            "pt_s2" => BuildPtS2Instruction(reading),
-            "pt_s3" => BuildPtS3Instruction(reading),
-            "pt_s4" => BuildPtS4Instruction(reading),
-            "pt_s5" => BuildPtS5Instruction(reading),
+            "pt_s1" => BuildPtS1Instruction(reading, dossier),
+            "pt_s2" => BuildPtS2Instruction(reading, dossier),
+            "pt_s3" => BuildPtS3Instruction(reading, dossier),
+            "pt_s4" => BuildPtS4Instruction(reading, dossier),
+            "pt_s5" => BuildPtS5Instruction(reading, dossier),
             _       => null
         };
 
@@ -2441,14 +2515,14 @@ namespace MedCompanion.Services.Restitutions
 
             var blocRef    = new RestitutionBloc("synthese_diag_s1", "Compréhension globale", 22, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildSyntheseDiagS1Instruction(reading.LatestBilanFinal);
+            var instr      = BuildSyntheseDiagS1Instruction(reading.LatestBilanFinal, dossier);
             var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(sysPrompt, messages, 500, ct);
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildSyntheseDiagS1Instruction(Models.Evaluations.BilanFinal? bilan)
+        private static string BuildSyntheseDiagS1Instruction(Models.Evaluations.BilanFinal? bilan, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Rédige la SECTION 1 — COMPRÉHENSION GLOBALE DE LA SITUATION.");
@@ -2465,6 +2539,15 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("  • Ne pas nommer explicitement les diagnostics ici (réservé Section 2).");
             sb.AppendLine("  • Ne pas commencer par « L'enfant » — varier les amorces.");
             sb.AppendLine("  • Pas de formule vague (« globalement », « de manière générale »).");
+
+            if (dossier is DossierRestitutionInitial ds1 && !string.IsNullOrWhiteSpace(ds1.CadrageVisionMedicale))
+            {
+                sb.AppendLine();
+                sb.AppendLine("════ DIRECTIVE CLINIQUE DU PRATICIEN — VISION MÉDICALE & PROBLÉMATIQUE ACTUELLE ════");
+                sb.AppendLine("Le médecin a formulé le cadrage diagnostique et clinique suivant pour orienter la synthèse :");
+                sb.AppendLine(ds1.CadrageVisionMedicale.Trim());
+                sb.AppendLine("RÈGLE MAÎTRESSE : La compréhension globale doit impérativement s'articuler autour de cette vision clinique définie par le médecin.");
+            }
 
             if (bilan != null)
             {
@@ -2509,18 +2592,26 @@ namespace MedCompanion.Services.Restitutions
 
             var blocRef    = new RestitutionBloc("synthese_diag_s2", "Diagnostics retenus", 23, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildSyntheseDiagS2Instruction(reading.LatestBilanFinal);
+            var instr      = BuildSyntheseDiagS2Instruction(reading.LatestBilanFinal, dossier);
             var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(sysPrompt, messages, 800, ct);
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildSyntheseDiagS2Instruction(Models.Evaluations.BilanFinal? bilan)
+        private static string BuildSyntheseDiagS2Instruction(Models.Evaluations.BilanFinal? bilan, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Génère les SECTIONS 2+3 — DIAGNOSTICS RETENUS ET ÉLÉMENTS CLINIQUES EN FAVEUR.");
             sb.AppendLine();
+
+            if (dossier is DossierRestitutionInitial ds2 && !string.IsNullOrWhiteSpace(ds2.CadrageVisionMedicale))
+            {
+                sb.AppendLine("════ VISION MÉDICALE DU CLINICIEN (À INTÉGRER EN PRIORITÉ) ════");
+                sb.AppendLine(ds2.CadrageVisionMedicale.Trim());
+                sb.AppendLine("Fais concorder les diagnostics retenus et les éléments cliniques avec cette orientation médicale du praticien.");
+                sb.AppendLine();
+            }
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("[");
             sb.AppendLine("  {");
@@ -2704,14 +2795,14 @@ namespace MedCompanion.Services.Restitutions
 
             var blocRef    = new RestitutionBloc("synthese_diag_s5", "Conclusion intégrative", 26, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildSyntheseDiagS5Instruction(reading.LatestBilanFinal);
+            var instr      = BuildSyntheseDiagS5Instruction(reading.LatestBilanFinal, dossier);
             var userPrompt = BuildSubsectionPrompt(context, instr, "clinique");
             var messages   = new List<(string role, string content)> { ("user", userPrompt) };
             var result     = await _llmService.ChatAsync(sysPrompt, messages, 500, ct);
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildSyntheseDiagS5Instruction(Models.Evaluations.BilanFinal? bilan)
+        private static string BuildSyntheseDiagS5Instruction(Models.Evaluations.BilanFinal? bilan, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Rédige la SECTION 6 — CONCLUSION INTÉGRATIVE.");
@@ -2731,6 +2822,14 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("  • Ne pas ouvrir de nouvelles hypothèses diagnostiques.");
             sb.AppendLine("  • Pas de formule vague (« globalement », « de manière générale »).");
             sb.AppendLine("  • Ne pas commencer par « En conclusion ».");
+
+            if (dossier is DossierRestitutionInitial ds5 && !string.IsNullOrWhiteSpace(ds5.CadrageVisionMedicale))
+            {
+                sb.AppendLine();
+                sb.AppendLine("════ VISION MÉDICALE DU CLINICIEN (ORIENTATION MAÎTRESSE) ════");
+                sb.AppendLine(ds5.CadrageVisionMedicale.Trim());
+                sb.AppendLine("RÈGLE : La conclusion intégrative doit faire écho et valider cette vision clinique du praticien.");
+            }
 
             if (bilan != null && !string.IsNullOrWhiteSpace(bilan.SyntheseIntegrative))
             {
@@ -2762,7 +2861,7 @@ namespace MedCompanion.Services.Restitutions
 
             var blocRef    = new RestitutionBloc("pt_s1", "Prise en charge médicale", 27, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildPtS1Instruction(reading);
+            var instr      = BuildPtS1Instruction(reading, dossier);
 
             // Section déjà remplie : on PROPAGE au lieu de régénérer. Sinon, cliquer Suggérer
             // après avoir saisi un traitement l'effacerait — une fois suffit pour ne plus oser
@@ -2782,11 +2881,30 @@ namespace MedCompanion.Services.Restitutions
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildPtS1Instruction(DossierReading reading)
+        private static string BuildPtS1Instruction(DossierReading reading, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Génère la section 7.1 — PRISE EN CHARGE MÉDICALE du projet thérapeutique.");
             sb.AppendLine();
+
+            if (dossier is DossierRestitutionInitial d1)
+            {
+                if (!string.IsNullOrWhiteSpace(d1.CadrageTraitementPropose))
+                {
+                    sb.AppendLine("════ DIRECTIVE CLINIQUE DU PRATICIEN — TRAITEMENT PROPOSÉ ════");
+                    sb.AppendLine("Le médecin a expressément fixé le traitement et la stratégie médicale suivants :");
+                    sb.AppendLine(d1.CadrageTraitementPropose.Trim());
+                    sb.AppendLine("RÈGLE MAÎTRESSE : cette décision commande obligatoirement la sous-section « traitement.propositions ».");
+                    sb.AppendLine("Décline ce traitement dans « propositions » en précisant le traitement proposé, l'objectif attendu et la surveillance prévue.");
+                    sb.AppendLine();
+                }
+                if (!string.IsNullOrWhiteSpace(d1.CadrageVisionMedicale))
+                {
+                    sb.AppendLine("CADRAGE / VISION MÉDICALE DU CLINICIEN :");
+                    sb.AppendLine(d1.CadrageVisionMedicale.Trim());
+                    sb.AppendLine();
+                }
+            }
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
             sb.AppendLine("  \"intro\": \"1 phrase ANCRÉE DANS CE QUI A ÉTÉ OBSERVÉ chez cet enfant et qui motive un suivi médical. N'ouvre PAS sur le rôle ni sur l'objectif de la section : « La prise en charge médicale vise à… » est la tournure à ne pas écrire.\",");
@@ -2875,7 +2993,7 @@ namespace MedCompanion.Services.Restitutions
 
             var blocRef    = new RestitutionBloc("pt_s2", "Accompagnement psychologique", 28, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildPtS2Instruction(reading);
+            var instr      = BuildPtS2Instruction(reading, dossier);
 
             var dejaEcrit = dossier?.Blocs.FirstOrDefault(b => b.Key == "pt_s2")?.ContenuValide;
             if (!string.IsNullOrWhiteSpace(dejaEcrit) && StripFence(dejaEcrit).Trim() is var dj && dj.Length > 2 && dj != "{}")
@@ -2896,11 +3014,18 @@ namespace MedCompanion.Services.Restitutions
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildPtS2Instruction(DossierReading reading)
+        private static string BuildPtS2Instruction(DossierReading reading, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Génère la section 7.2 — ACCOMPAGNEMENT PSYCHOLOGIQUE du projet thérapeutique.");
             sb.AppendLine();
+
+            if (dossier is DossierRestitutionInitial d2 && !string.IsNullOrWhiteSpace(d2.CadrageVisionMedicale))
+            {
+                sb.AppendLine("CADRAGE / VISION MÉDICALE DU CLINICIEN :");
+                sb.AppendLine(d2.CadrageVisionMedicale.Trim());
+                sb.AppendLine();
+            }
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
             sb.AppendLine("  \"indication\": {");
@@ -2992,7 +3117,7 @@ namespace MedCompanion.Services.Restitutions
 
             var blocRef    = new RestitutionBloc("pt_s3", "Soutien développemental", 29, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildPtS3Instruction(reading);
+            var instr      = BuildPtS3Instruction(reading, dossier);
 
             var dejaEcrit = dossier?.Blocs.FirstOrDefault(b => b.Key == "pt_s3")?.ContenuValide;
             if (!string.IsNullOrWhiteSpace(dejaEcrit) && StripFence(dejaEcrit).Trim() is var dj && dj.Length > 2 && dj != "{}")
@@ -3013,11 +3138,18 @@ namespace MedCompanion.Services.Restitutions
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildPtS3Instruction(DossierReading reading)
+        private static string BuildPtS3Instruction(DossierReading reading, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Génère la section 7.3 — SOUTIEN DÉVELOPPEMENTAL du projet thérapeutique.");
             sb.AppendLine();
+
+            if (dossier is DossierRestitutionInitial d3 && !string.IsNullOrWhiteSpace(d3.CadrageVisionMedicale))
+            {
+                sb.AppendLine("CADRAGE / VISION MÉDICALE DU CLINICIEN :");
+                sb.AppendLine(d3.CadrageVisionMedicale.Trim());
+                sb.AppendLine();
+            }
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
             sb.AppendLine("  \"indication\": {");
@@ -3155,7 +3287,7 @@ namespace MedCompanion.Services.Restitutions
 
             var blocRef    = new RestitutionBloc("pt_s4", "Accompagnement parental, familial et éducatif", 30, "clinique");
             var sysPrompt  = BuildSystemPrompt(blocRef);
-            var instr      = BuildPtS4Instruction(reading);
+            var instr      = BuildPtS4Instruction(reading, dossier);
 
             var dejaEcrit = dossier?.Blocs.FirstOrDefault(b => b.Key == "pt_s4")?.ContenuValide;
             if (!string.IsNullOrWhiteSpace(dejaEcrit) && StripFence(dejaEcrit).Trim() is var dj && dj.Length > 2 && dj != "{}")
@@ -3174,11 +3306,18 @@ namespace MedCompanion.Services.Restitutions
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildPtS4Instruction(DossierReading reading)
+        private static string BuildPtS4Instruction(DossierReading reading, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Génère la section 7.4 — ACCOMPAGNEMENT PARENTAL, FAMILIAL ET ÉDUCATIF du projet thérapeutique.");
             sb.AppendLine();
+
+            if (dossier is DossierRestitutionInitial d4 && !string.IsNullOrWhiteSpace(d4.CadrageVisionMedicale))
+            {
+                sb.AppendLine("CADRAGE / VISION MÉDICALE DU CLINICIEN :");
+                sb.AppendLine(d4.CadrageVisionMedicale.Trim());
+                sb.AppendLine();
+            }
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
             sb.AppendLine("  \"indication\": {");
@@ -3315,7 +3454,7 @@ namespace MedCompanion.Services.Restitutions
 
             var blocRef    = new RestitutionBloc("pt_s5", "École et apprentissages", 31, "clinique");
             var sysPromptS5 = BuildSystemPrompt(blocRef);
-            var instrS5     = BuildPtS5Instruction(reading);
+            var instrS5     = BuildPtS5Instruction(reading, dossier);
 
             // Le cadre scolaire est saisi par le médecin AVANT la génération : dès que le bloc
             // porte quelque chose, on propage — c'est ce qui garantit que les dispositifs qu'il
@@ -3337,11 +3476,29 @@ namespace MedCompanion.Services.Restitutions
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildPtS5Instruction(DossierReading reading)
+        private static string BuildPtS5Instruction(DossierReading reading, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Génère la section 7.5 — ÉCOLE ET APPRENTISSAGES du projet thérapeutique.");
             sb.AppendLine();
+
+            if (dossier is DossierRestitutionInitial d5)
+            {
+                if (!string.IsNullOrWhiteSpace(d5.CadrageProjetEcole))
+                {
+                    sb.AppendLine("════ DIRECTIVE CLINIQUE DU PRATICIEN — VOLET SCOLAIRE & AMÉNAGEMENTS ════");
+                    sb.AppendLine("Le médecin a expressément fixé le cadrage scolaire suivant :");
+                    sb.AppendLine(d5.CadrageProjetEcole.Trim());
+                    sb.AppendLine("RÈGLE MAÎTRESSE : Intègre les dispositifs scolaires mentionnés par le médecin dans « cadreScolaire » (statut, porteur, échéance, degré, objectif) et décline « amenagements » et « coordination » en accord strict avec cette directive.");
+                    sb.AppendLine();
+                }
+                if (!string.IsNullOrWhiteSpace(d5.CadrageVisionMedicale))
+                {
+                    sb.AppendLine("CADRAGE / VISION MÉDICALE DU CLINICIEN :");
+                    sb.AppendLine(d5.CadrageVisionMedicale.Trim());
+                    sb.AppendLine();
+                }
+            }
             sb.AppendLine("FORMAT STRICT — JSON valide uniquement, aucun texte avant ni après :");
             sb.AppendLine("{");
             sb.AppendLine("  \"cadreScolaire\": [");
@@ -3450,7 +3607,7 @@ namespace MedCompanion.Services.Restitutions
             var blocRef    = new RestitutionBloc("conclusion", "Conclusion et perspectives", 32, "mixte");
             var sysPrompt  = BuildSystemPrompt(blocRef);
             var ouvertures = dossier != null ? BuildOuverturesProjet(dossier) : "";
-            var instr      = BuildConclusionInstruction(ouvertures);
+            var instr      = BuildConclusionInstruction(ouvertures, dossier);
 
             // Déjà écrite : on PROPAGE au lieu de régénérer — comme les sections du projet. Vider
             // « ce qui reste ouvert » est une décision du médecin ; une régénération ne doit ni
@@ -3471,11 +3628,33 @@ namespace MedCompanion.Services.Restitutions
             onSectionReady(result.success ? result.result.Trim() : $"(Erreur : {result.error})");
         }
 
-        private static string BuildConclusionInstruction(string ouvertures)
+        private static string BuildConclusionInstruction(string ouvertures, RestitutionBase? dossier = null)
         {
             var sb = new StringBuilder();
             sb.AppendLine("Génère la section 8 — CONCLUSION ET PERSPECTIVES du dossier de restitution.");
             sb.AppendLine();
+
+            if (dossier is DossierRestitutionInitial dc)
+            {
+                if (!string.IsNullOrWhiteSpace(dc.CadrageVisionMedicale))
+                {
+                    sb.AppendLine("DIRECTIVE DU MÉDECIN — VISION GLOBALE DE L'ENFANT :");
+                    sb.AppendLine(dc.CadrageVisionMedicale.Trim());
+                    sb.AppendLine();
+                }
+                if (!string.IsNullOrWhiteSpace(dc.CadrageTraitementPropose))
+                {
+                    sb.AppendLine("DIRECTIVE DU MÉDECIN — TRAITEMENT RETENU :");
+                    sb.AppendLine(dc.CadrageTraitementPropose.Trim());
+                    sb.AppendLine();
+                }
+                if (!string.IsNullOrWhiteSpace(dc.CadrageProjetEcole))
+                {
+                    sb.AppendLine("DIRECTIVE DU MÉDECIN — ORIENTATION SCOLAIRE :");
+                    sb.AppendLine(dc.CadrageProjetEcole.Trim());
+                    sb.AppendLine();
+                }
+            }
             sb.AppendLine("C'est la DERNIÈRE page, et tout le factuel a déjà été dit : la feuille de route est");
             sb.AppendLine("en page 2, les rendez-vous et les prises en charge en section 7, le raisonnement");
             sb.AppendLine("clinique en section 5. Cette page ne les répète pas. Elle fait deux choses que");

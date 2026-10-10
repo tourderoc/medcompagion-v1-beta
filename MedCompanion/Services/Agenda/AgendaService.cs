@@ -215,64 +215,74 @@ namespace MedCompanion.Services.Agenda
                 var lues = creneau.ToList();
                 var dejaLa = duJour.Where(r => r.Debut == debut).ToList();
 
-            foreach (var l in lues)
-            {
-                // 1. Même personne, même heure : c'est le même rendez-vous.
-                var rdv = dejaLa.FirstOrDefault(r => !vus.Contains(r.Id) && MemePersonne(r, l.nom, memeCreneau: true));
-
-                // 2. À défaut, appariement PAR POSITION : la n-ième ligne lue d'un créneau est le
-                //    n-ième rendez-vous déjà connu de ce créneau. C'est ce qui manquait le
-                //    28/09/2026 — trois lectures du même rendez-vous écrites PICON Albert, IPON
-                //    puis IPCHON avaient créé trois rendez-vous, 60 au lieu de 21 sur la journée.
-                //    Des noms mal lus ne se ressemblent pas assez pour être rapprochés ; leur
-                //    RANG, si. On ne crée donc que lorsque le créneau est réellement plus rempli
-                //    qu'avant, jamais parce qu'un nom a été lu autrement.
-                rdv ??= dejaLa.FirstOrDefault(r => !vus.Contains(r.Id));
-
-                // 3. Même personne à une autre heure : elle a été déplacée, on ne duplique pas.
-                rdv ??= duJour.FirstOrDefault(r => !vus.Contains(r.Id) && MemePersonne(r, l.nom, memeCreneau: false));
-
-                if (rdv == null)
+                foreach (var l in lues)
                 {
-                    rdv = new RendezVous
+                    // 1. Même personne, même heure : c'est le même rendez-vous.
+                    var rdv = dejaLa.FirstOrDefault(r => !vus.Contains(r.Id) && MemePersonne(r, l.nom, memeCreneau: true));
+
+                    // 2. À défaut, appariement PAR POSITION uniquement en vue Semaine (quand journeeComplete est faux) :
+                    //    En vue Liste (journeeComplete == vrai), chaque ligne est nette et isolée. Si le nom
+                    //    ne ressemble pas à la personne connue, c'est un NOUVEAU patient qui prend le créneau,
+                    //    et l'ancien rdv sera annulé/barré en fin de traitement.
+                    if (!journeeComplete)
                     {
-                        Id = $"ecran-{jour:yyyyMMdd}-{l.heure:hhmm}-{Identifiant(l.nom)}",
-                        Debut = debut,
-                        DureeMinutes = 30,
-                        Origine = "ecran"
-                    };
-                    AppliquerLigne(rdv, l, journeeComplete);
-                    existants.Add(rdv);
-                    duJour.Add(rdv);
-                    dejaLa.Add(rdv);
-                    changements.Add(new Changement(l.barre ? "annule" : "ajout",
-                        $"{debut:HH'h'mm} {rdv.NomComplet}{(l.barre ? " — annulé" : "")}"));
-                }
-                else
-                {
-                    var avant = (rdv.Debut, rdv.Statut, rdv.Motif);
-                    if (rdv.Debut != debut)
-                    {
-                        changements.Add(new Changement("deplace",
-                            $"{rdv.NomComplet} : {rdv.Debut:HH'h'mm} → {debut:HH'h'mm}"));
-                        rdv.Debut = debut;
+                        rdv ??= dejaLa.FirstOrDefault(r => !vus.Contains(r.Id));
                     }
-                    AppliquerLigne(rdv, l, journeeComplete);
-                    if (avant.Statut != rdv.Statut && rdv.Statut == "Annulé")
-                        changements.Add(new Changement("annule", $"{debut:HH'h'mm} {rdv.NomComplet} — annulé"));
+
+                    // 3. Même personne à une autre heure : elle a été déplacée, on ne duplique pas.
+                    rdv ??= duJour.FirstOrDefault(r => !vus.Contains(r.Id) && MemePersonne(r, l.nom, memeCreneau: false));
+
+                    if (rdv == null)
+                    {
+                        rdv = new RendezVous
+                        {
+                            Id = $"ecran-{jour:yyyyMMdd}-{l.heure:hhmm}-{Identifiant(l.nom)}",
+                            Debut = debut,
+                            DureeMinutes = 30,
+                            Origine = "ecran"
+                        };
+                        AppliquerLigne(rdv, l, journeeComplete);
+                        existants.Add(rdv);
+                        duJour.Add(rdv);
+                        dejaLa.Add(rdv);
+                        changements.Add(new Changement(l.barre ? "annule" : "ajout",
+                            $"{debut:HH'h'mm} {rdv.NomComplet}{(l.barre ? " — annulé" : "")}"));
+                    }
+                    else
+                    {
+                        var avant = (rdv.Debut, rdv.Statut, rdv.Motif);
+                        if (rdv.Debut != debut)
+                        {
+                            changements.Add(new Changement("deplace",
+                                $"{rdv.NomComplet} : {rdv.Debut:HH'h'mm} → {debut:HH'h'mm}"));
+                            rdv.Debut = debut;
+                        }
+                        AppliquerLigne(rdv, l, journeeComplete);
+                        if (avant.Statut != rdv.Statut && rdv.Statut == "Annulé")
+                            changements.Add(new Changement("annule", $"{debut:HH'h'mm} {rdv.NomComplet} — annulé"));
+                        else if (avant.Statut == "Annulé" && rdv.Statut == "À venir")
+                            changements.Add(new Changement("ajout", $"{debut:HH'h'mm} {rdv.NomComplet} — réactivé"));
+                    }
+
+                    rdv.DerniereLecture = DateTime.Now;
+                    vus.Add(rdv.Id);
                 }
-
-                rdv.DerniereLecture = DateTime.Now;
-                vus.Add(rdv.Id);
-            }
             }
 
-            // Les rendez-vous que Med connaît et que la capture ne montre pas. Signalés seulement,
-            // et uniquement quand la capture couvrait toute la journée (vue Liste).
+            // Les rendez-vous que Med connaît et que la capture ne montre pas.
+            // Quand la capture couvrait toute la journée (vue Liste), tout rendez-vous absent
+            // ou remplacé sur un créneau passe « Annulé » pour apparaître barré dans la grille,
+            // exactement comme dans Doctolib.
             if (journeeComplete)
+            {
                 foreach (var oublie in duJour.Where(r => !vus.Contains(r.Id) && r.Statut != "Annulé"))
-                    changements.Add(new Changement("absent",
-                        $"{oublie.Debut:HH'h'mm} {oublie.NomComplet} — dans Med, absent de l'écran"));
+                {
+                    oublie.Statut = "Annulé";
+                    oublie.DerniereLecture = DateTime.Now;
+                    changements.Add(new Changement("annule",
+                        $"{oublie.Debut:HH'h'mm} {oublie.NomComplet} — annulé (absent de l'écran Doctolib)"));
+                }
+            }
 
             EnregistrerMois(jour, existants.OrderBy(r => r.Debut).ToList());
             MettreAJourEtat();
@@ -397,7 +407,7 @@ namespace MedCompanion.Services.Agenda
             if (l.naissance.HasValue) rdv.DateNaissance = l.naissance;
             if (l.telephone.Length > 0) rdv.Telephone = l.telephone;
             if (l.barre) rdv.Statut = "Annulé";
-            else if (string.IsNullOrWhiteSpace(rdv.Statut)) rdv.Statut = "À venir";
+            else if (string.IsNullOrWhiteSpace(rdv.Statut) || (nomFiable && rdv.Statut == "Annulé")) rdv.Statut = "À venir";
         }
 
         /// <summary>Découpe « NOM Prénom » tel que Doctolib l'écrit : le nom en majuscules, le prénom suit.</summary>

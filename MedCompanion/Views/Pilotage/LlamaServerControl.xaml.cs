@@ -305,6 +305,7 @@ namespace MedCompanion.Views.Pilotage
         private static Brush CouleurModele(string? model) => model switch
         {
             null      => new SolidColorBrush(Color.FromRgb(0x55, 0x55, 0x55)),
+            "Swift-1.5-Qwen3.8-27B" => new SolidColorBrush(Color.FromRgb(0x16, 0xA0, 0x85)),
             "Qwen3.8-27B" => new SolidColorBrush(Color.FromRgb(0xE6, 0x7E, 0x22)),
             _ when model.StartsWith("gemma", StringComparison.OrdinalIgnoreCase)
                       => new SolidColorBrush(Color.FromRgb(0x35, 0x98, 0xDB)),

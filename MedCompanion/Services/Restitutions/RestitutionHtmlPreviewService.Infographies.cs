@@ -65,13 +65,13 @@ namespace MedCompanion.Services.Restitutions
             if (!string.IsNullOrWhiteSpace(fiche.Type)) sousTitre.Add(fiche.Type);
             if (fiche.Sujets.Count > 0) sousTitre.Add(string.Join(", ", fiche.Sujets));
 
-            // Une infographie paysage n'occuperait qu'un tiers d'une A4 portrait. Toute la page
-            // bascule alors — en-tête et pied compris — pour que le lecteur tourne la feuille
-            // une fois et lise l'ensemble dans le même sens.
+            // Une infographie paysage n'occuperait qu'un tiers d'une A4 portrait. La page
+            // adopte alors nativement le format A4 paysage (Option A) — en-tête et pied compris —
+            // sans rotation CSS afin d'éviter tout rognage à l'impression ou à l'export PDF.
             var paysage = EstPaysage(fiche.ImagePath);
 
             var sb = new StringBuilder();
-            sb.AppendLine(paysage ? "<div class='page ai-page ai-land'><div class='ai-land-inner'>"
+            sb.AppendLine(paysage ? "<div class='page ai-page ai-land'>"
                                   : "<div class='page ai-page'>");
             sb.AppendLine("  <div class='ai-header'>");
             sb.AppendLine("    <div>");
@@ -89,7 +89,7 @@ namespace MedCompanion.Services.Restitutions
             sb.AppendLine("    Fiche d'information remise aux parents — elle accompagne la consultation et ne remplace pas l'avis du médecin.<br>");
             sb.AppendLine("    Approche systémique et développementale Dr Lassoued Nair, Pédopsychiatre");
             sb.AppendLine("  </div>");
-            sb.AppendLine(paysage ? "</div></div>" : "</div>");
+            sb.AppendLine("</div>");
             return sb.ToString();
         }
 
@@ -104,6 +104,10 @@ namespace MedCompanion.Services.Restitutions
         // (`object-fit: contain`) : une infographie paysage de NotebookLM tient en largeur,
         // une portrait en hauteur, sans jamais déborder ni forcer une seconde page.
         private static string BuildInfographiesCss() => @"<style>
+@page landscape-page {
+  size: A4 landscape;
+  margin: 0;
+}
 .ai-page {
   /* hauteur ferme : sans elle, la zone d'image n'a pas de hauteur à remplir */
   height: 297mm;
@@ -153,21 +157,24 @@ namespace MedCompanion.Services.Restitutions
   max-height: 100%;
   object-fit: contain;
 }
-/* Page basculée : le contenu est mis en page en 297×210 mm puis pivoté d'un quart de tour
-   au centre de la feuille. La rotation ne change pas la place occupée dans le flux, d'où le
-   positionnement absolu — la page hôte est en position:relative et masque ce qui dépasse. */
-.ai-land { padding: 0; }
-.ai-land-inner {
-  position: absolute;
-  top: 50%;
-  left: 50%;
+/* Page basculée nativement (Option A) : pleine page A4 paysage (297×210 mm)
+   sans bidouillage de rotation CSS qui rogne les côtés. */
+.page.ai-land {
+  page: landscape-page;
   width: 297mm;
   height: 210mm;
-  transform: translate(-50%, -50%) rotate(90deg);
-  box-sizing: border-box;
+  min-height: 210mm;
   padding: 22px 34px 24px 34px;
-  display: flex;
-  flex-direction: column;
+}
+@media print {
+  .page.ai-land {
+    page: landscape-page;
+    width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
+    page-break-after: always;
+    break-after: page;
+  }
 }
 .ai-footer {
   margin-top: 14px;

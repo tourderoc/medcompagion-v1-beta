@@ -222,5 +222,11 @@ namespace MedCompanion.Models
                 return label;
             }
         }
+
+        // === Statistiques de suivi (Couverture du dossier bleu) ===
+        public string? FirstConsultDate { get; set; }
+        public int? TotalConsultations { get; set; }
+        public string? TotalConsultationsText { get; set; }
+        public string? LastConsultDate { get; set; }
     }
 }

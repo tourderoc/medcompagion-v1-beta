@@ -94,7 +94,12 @@ namespace MedCompanion.Services.Restitutions
                 r.GeneratedPdfPath = ParseString(yaml, "pdf_path");
 
                 if (r is DossierRestitutionInitial dossierInfos)
+                {
+                    dossierInfos.CadrageVisionMedicale = ParseMultilineString(yaml, "cadrage_vision_medicale") ?? "";
+                    dossierInfos.CadrageTraitementPropose = ParseMultilineString(yaml, "cadrage_traitement_propose") ?? "";
+                    dossierInfos.CadrageProjetEcole = ParseMultilineString(yaml, "cadrage_projet_ecole") ?? "";
                     dossierInfos.InfographiesIds.AddRange(ParseInfographies(yaml));
+                }
 
                 // Parse blocs from YAML section
                 var blocsSection = ParseBlocsMetadata(yaml);
@@ -190,11 +195,18 @@ namespace MedCompanion.Services.Restitutions
             if (!string.IsNullOrWhiteSpace(r.GeneratedPdfPath))
                 sb.AppendLine($"pdf_path: {r.GeneratedPdfPath.Replace("\\", "/")}");
             
-            if (r is DossierRestitutionInitial dossier && dossier.InfographiesIds.Count > 0)
+            if (r is DossierRestitutionInitial dossier)
             {
-                sb.AppendLine("infographies:");
-                foreach (var id in dossier.InfographiesIds)
-                    sb.AppendLine($"  - {id}");
+                WriteYamlMultiline(sb, "cadrage_vision_medicale", dossier.CadrageVisionMedicale);
+                WriteYamlMultiline(sb, "cadrage_traitement_propose", dossier.CadrageTraitementPropose);
+                WriteYamlMultiline(sb, "cadrage_projet_ecole", dossier.CadrageProjetEcole);
+
+                if (dossier.InfographiesIds.Count > 0)
+                {
+                    sb.AppendLine("infographies:");
+                    foreach (var id in dossier.InfographiesIds)
+                        sb.AppendLine($"  - {id}");
+                }
             }
 
             sb.AppendLine("blocs:");
@@ -273,6 +285,36 @@ namespace MedCompanion.Services.Restitutions
                 }
             }
             FlushText();
+        }
+
+        private static void WriteYamlMultiline(StringBuilder sb, string key, string? value)
+        {
+            if (string.IsNullOrWhiteSpace(value)) return;
+            sb.AppendLine($"{key}: |-");
+            foreach (var line in value.Replace("\r\n", "\n").Split('\n'))
+            {
+                sb.AppendLine($"  {line}");
+            }
+        }
+
+        private static string? ParseMultilineString(string yaml, string key)
+        {
+            var mBlock = Regex.Match(yaml, $@"^{Regex.Escape(key)}\s*:\s*\|-?\s*\r?\n((?:(?:  .*|\s*)\r?\n?)*)", RegexOptions.Multiline);
+            if (mBlock.Success)
+            {
+                var rawBlock = mBlock.Groups[1].Value;
+                var lines = rawBlock.Replace("\r\n", "\n").Split('\n');
+                var res = new StringBuilder();
+                foreach (var l in lines)
+                {
+                    if (l.StartsWith("  ")) res.AppendLine(l.Substring(2));
+                    else if (string.IsNullOrWhiteSpace(l)) res.AppendLine();
+                    else break;
+                }
+                var str = res.ToString().TrimEnd();
+                if (!string.IsNullOrWhiteSpace(str)) return str;
+            }
+            return ParseString(yaml, key);
         }
 
         private static string? ParseString(string yaml, string key)

@@ -32,7 +32,7 @@ namespace MedCompanion.ViewModels.Restitutions
     /// </summary>
     public class ConstatQualite : INotifyPropertyChanged
     {
-        /// <summary>1 = mise en page, 2 = contradictions, 3 = linguistique.</summary>
+        /// <summary>0 = complétude des blocs, 1 = mise en page, 2 = contradictions, 3 = linguistique.</summary>
         public int Phase { get; init; }
 
         public GraviteConstat Gravite { get; init; }
@@ -173,6 +173,170 @@ namespace MedCompanion.ViewModels.Restitutions
         // fois, l'estimation se trompait dans les deux sens.
         public Func<Task<string?>>? MesurerPagesDansApercu { get; set; }
 
+        // ── Phase 0 : Complétude et intégrité des blocs ──────────────────────
+
+        private bool _phase0EnCours;
+        public bool Phase0EnCours
+        {
+            get => _phase0EnCours;
+            private set
+            {
+                if (_phase0EnCours == value) return;
+                _phase0EnCours = value;
+                OnPropertyChanged();
+                (LancerPhase0Command as RelayCommand)?.RaiseCanExecuteChanged();
+            }
+        }
+
+        private string _phase0Resume = "";
+        public string Phase0Resume
+        {
+            get => _phase0Resume;
+            private set { if (_phase0Resume == value) return; _phase0Resume = value; OnPropertyChanged(); }
+        }
+
+        public ICommand LancerPhase0Command => _lancerPhase0 ??= new RelayCommand(
+            async _ => await LancerPhase0Async(), _ => !Phase0EnCours);
+
+        private ICommand? _lancerPhase0;
+
+        /// <summary>
+        /// Phase 0 — Contrôle de complétude et d'intégrité des blocs avant export.
+        /// Vérifie que chaque bloc inclus dans le document final est rédigé, ne contient
+        /// pas de texte d'attente résiduel (placeholder) et que les blocs structurés
+        /// (projet thérapeutique, synthèse diagnostique, conclusion) sont techniquement valides.
+        /// </summary>
+        public async Task LancerPhase0Async()
+        {
+            Phase0EnCours = true;
+            Phase0Resume  = "Vérification de la complétude des blocs…";
+            await Task.Yield();
+
+            try
+            {
+                var nouveaux = new List<ConstatQualite>();
+                var blocs = _dossier.Blocs.Where(b => b.IsIncludedInPdf).ToList();
+
+                int vides = 0;
+                int attente = 0;
+                int corrompus = 0;
+
+                foreach (var b in blocs)
+                {
+                    var contenu = (b.ContenuValide ?? "").Trim();
+
+                    // 1. Bloc vide ou quasi-vide
+                    if (string.IsNullOrWhiteSpace(contenu) || contenu == "{}" || contenu == "[]")
+                    {
+                        vides++;
+                        nouveaux.Add(new ConstatQualite
+                        {
+                            Phase    = 0,
+                            Gravite  = GraviteConstat.Bloquant,
+                            Ou       = b.Titre,
+                            BlocKey  = b.Key,
+                            Message  = "Ce bloc est vide. Il n'a pas encore été rédigé ni généré."
+                        });
+                        continue;
+                    }
+
+                    // 2. Texte d'attente résiduel
+                    if (contenu.Contains("(Section à compléter", StringComparison.OrdinalIgnoreCase)
+                     || contenu.Contains("_(à compléter)_", StringComparison.OrdinalIgnoreCase)
+                     || contenu.Contains("(en attente", StringComparison.OrdinalIgnoreCase))
+                    {
+                        attente++;
+                        nouveaux.Add(new ConstatQualite
+                        {
+                            Phase    = 0,
+                            Gravite  = GraviteConstat.Bloquant,
+                            Ou       = b.Titre,
+                            BlocKey  = b.Key,
+                            Message  = "Contient un texte d'attente résiduel (« (Section à compléter... ») non remplacé."
+                        });
+                        continue;
+                    }
+
+                    // 3. Validation de structure des blocs techniques
+                    if (b.Key is "pt_s1" or "pt_s2" or "pt_s3" or "pt_s4" or "pt_s5" or "conclusion"
+                             or "synthese_diag_s2" or "synthese_diag_s3" or "synthese_diag_s4")
+                    {
+                        bool valide = RestitutionHtmlPreviewService.ValiderStructurePtOuDiag(b.Key, contenu);
+                        if (!valide)
+                        {
+                            corrompus++;
+                            nouveaux.Add(new ConstatQualite
+                            {
+                                Phase    = 0,
+                                Gravite  = GraviteConstat.Bloquant,
+                                Ou       = b.Titre,
+                                BlocKey  = b.Key,
+                                Message  = "Structure de données invalide ou corrompue : ce bloc ne s'affichera pas dans le PDF."
+                            });
+                        }
+                    }
+                }
+
+                // Vérification des infographies cochées
+                if (_dossier.InfographiesIds.Count > 0)
+                {
+                    var fichesValides = _previewService?.FichesJointes(_dossier) ?? new List<Models.Infographies.Infographie>();
+                    if (fichesValides.Count < _dossier.InfographiesIds.Count)
+                    {
+                        int absentes = _dossier.InfographiesIds.Count - fichesValides.Count;
+                        nouveaux.Add(new ConstatQualite
+                        {
+                            Phase    = 0,
+                            Gravite  = GraviteConstat.Vigilance,
+                            Ou       = "Annexes — Infographies",
+                            Message  = $"{absentes} fiche(s) cochée(s) sont absentes du disque ou repassées à l'état non validé."
+                        });
+                    }
+                }
+
+                if (nouveaux.Count == 0)
+                {
+                    nouveaux.Add(new ConstatQualite
+                    {
+                        Phase    = 0,
+                        Gravite  = GraviteConstat.Conforme,
+                        Ou       = $"{blocs.Count} blocs inclus",
+                        Message  = "Tous les blocs sont rédigés, sans texte d'attente et avec une structure valide."
+                    });
+                    Phase0Resume = $"{blocs.Count} blocs vérifiés — dossier complet.";
+                }
+                else
+                {
+                    int bloquants = vides + attente + corrompus;
+                    Phase0Resume = bloquants > 0
+                        ? $"{blocs.Count} blocs — {bloquants} anomalie(s) bloquante(s) détectée(s)."
+                        : $"{blocs.Count} blocs — complétude vérifiée avec avertissement(s).";
+                }
+
+                RemplacerConstats(0, nouveaux);
+            }
+            catch (Exception ex)
+            {
+                Phase0Resume = "Le contrôle de complétude a échoué.";
+                RemplacerConstats(0, new[]
+                {
+                    new ConstatQualite
+                    {
+                        Phase    = 0,
+                        Gravite  = GraviteConstat.Vigilance,
+                        Ou       = "Complétude",
+                        Message  = $"Erreur lors de la vérification : {ex.Message}"
+                    }
+                });
+            }
+            finally
+            {
+                Phase0EnCours = false;
+            }
+        }
+
+        // ── Phase 1 : Mise en page ───────────────────────────────────────────
+
         private bool _phase1EnCours;
         public bool Phase1EnCours
         {
@@ -193,7 +357,11 @@ namespace MedCompanion.ViewModels.Restitutions
             private set { if (_phase1Resume == value) return; _phase1Resume = value; OnPropertyChanged(); }
         }
 
-        public ICommand OuvrirQualiteCommand  => _ouvrirQualite  ??= new RelayCommand(_ => ModeQualite = true);
+        public ICommand OuvrirQualiteCommand  => _ouvrirQualite  ??= new RelayCommand(_ =>
+        {
+            ModeQualite = true;
+            _ = LancerPhase0Async();
+        });
         public ICommand FermerQualiteCommand  => _fermerQualite  ??= new RelayCommand(_ => ModeQualite = false);
         public ICommand LancerPhase1Command   => _lancerPhase1   ??= new RelayCommand(
             async _ => await LancerPhase1Async(), _ => !Phase1EnCours);
@@ -433,6 +601,15 @@ namespace MedCompanion.ViewModels.Restitutions
                 if (Constats[i].Phase == phase) Constats.RemoveAt(i);
 
             foreach (var c in nouveaux) Constats.Add(c);
+
+            var tries = Constats.OrderBy(c => c.Phase)
+                               .ThenByDescending(c => c.Gravite == GraviteConstat.Bloquant ? 2 : c.Gravite == GraviteConstat.Vigilance ? 1 : 0)
+                               .ToList();
+            if (!Constats.SequenceEqual(tries))
+            {
+                Constats.Clear();
+                foreach (var c in tries) Constats.Add(c);
+            }
         }
     }
 }

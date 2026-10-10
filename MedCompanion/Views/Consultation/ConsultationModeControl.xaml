@@ -3764,51 +3764,281 @@
                                 </Border>
                             </Grid>
 
-                            <!-- MODE NORMAL : note libre classique -->
-                            <TextBox Grid.Row="1" Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
-                                     AcceptsReturn="True"
-                                     TextWrapping="Wrap"
-                                     VerticalScrollBarVisibility="Auto"
-                                     FontSize="14"
-                                     FontFamily="Segoe UI"
-                                     Padding="10"
-                                     BorderBrush="#E0E0E0"
-                                     BorderThickness="1">
-                                <TextBox.Style>
-                                    <Style TargetType="TextBox">
-                                        <Setter Property="Template">
-                                            <Setter.Value>
-                                                <ControlTemplate TargetType="TextBox">
-                                                    <Border Background="#FAFAFA"
-                                                            BorderBrush="{TemplateBinding BorderBrush}"
-                                                            BorderThickness="{TemplateBinding BorderThickness}"
-                                                            CornerRadius="6">
-                                                        <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
+                            <!-- ══ CARTOUCHE D'ACCUEIL & GESTION DE SÉANCE DU JOUR ══ -->
+                            <!-- Affiché sur l'espace de travail tant que la consultation n'est pas démarrée -->
+                            <Grid Grid.Row="1" Visibility="{Binding IsAccueilSeanceVisible, Converter={StaticResource BoolToVis}}">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <Border Background="White" BorderBrush="#D6E2EC" BorderThickness="1"
+                                            CornerRadius="10" Margin="0,0,0,10" Padding="20">
+                                        <Border.Effect>
+                                            <DropShadowEffect BlurRadius="16" Direction="270" ShadowDepth="2" Opacity="0.06" Color="#1E293B"/>
+                                        </Border.Effect>
+                                        <StackPanel>
+
+                                            <!-- ── 1. EN-TÊTE : SÉANCE DU JOUR & CONTEXTE PATIENT ── -->
+                                            <Border Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1"
+                                                    CornerRadius="8" Padding="16,14" Margin="0,0,0,18">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Gauche : Date & Titre -->
+                                                    <StackPanel Grid.Column="0">
+                                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                            <TextBlock Text="📅" FontSize="20" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                                            <StackPanel>
+                                                                <TextBlock Text="SÉANCE DU JOUR" FontSize="11" FontWeight="Bold" Foreground="#64748B"/>
+                                                                <TextBlock Text="{Binding SeanceDateFullText}" FontSize="16" FontWeight="SemiBold" Foreground="#0F172A"/>
+                                                            </StackPanel>
+                                                        </StackPanel>
+
+                                                        <!-- Badge contextuel : statut dans le parcours -->
+                                                        <Border Margin="0,10,0,0" Padding="10,5" CornerRadius="6" HorizontalAlignment="Left"
+                                                                Background="#EFF6FF" BorderBrush="#BFDBFE" BorderThickness="1">
+                                                            <TextBlock Text="{Binding SeanceContexteBadge}" FontSize="11.5" FontWeight="Medium" Foreground="#1D4ED8"/>
+                                                        </Border>
+                                                    </StackPanel>
+
+                                                    <!-- Droite : Identité du patient -->
+                                                    <Border Grid.Column="1" Background="White" BorderBrush="#E2E8F0" BorderThickness="1"
+                                                            CornerRadius="6" Padding="12,8" VerticalAlignment="Top">
+                                                        <StackPanel HorizontalAlignment="Right">
+                                                            <TextBlock Text="{Binding CurrentPatient.NomComplet, FallbackValue='Patient'}"
+                                                                       FontSize="14" FontWeight="Bold" Foreground="#1E293B" HorizontalAlignment="Right"/>
+                                                            <TextBlock Text="{Binding CurrentPatient.AgeEtDateNaissance, FallbackValue=''}"
+                                                                       FontSize="11" Foreground="#64748B" HorizontalAlignment="Right" Margin="0,2,0,0"/>
+                                                        </StackPanel>
                                                     </Border>
-                                                </ControlTemplate>
-                                            </Setter.Value>
-                                        </Setter>
-                                        <Setter Property="Visibility" Value="Collapsed"/>
-                                        <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsNormalMode}" Value="True">
-                                                <Setter Property="Visibility" Value="Visible"/>
-                                            </DataTrigger>
-                                            <!-- La Restitution 1er entretien passe aussi par ConsultationType.Normal
-                                                 (voir SwitchToRestitutionPremiereConsultation) : sans cette exclusion,
-                                                 cette zone se superpose au panneau Restitution avec le contenu de
-                                                 NoteContent resté en mémoire. -->
-                                            <DataTrigger Binding="{Binding IsRestitutionMode}" Value="True">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                            </DataTrigger>
-                                            <!-- L'écran de choix de la 1ère consultation passe aussi par
-                                                 le type Normal : même exclusion, même raison. -->
-                                            <DataTrigger Binding="{Binding IsChoixPremiereMode}" Value="True">
-                                                <Setter Property="Visibility" Value="Collapsed"/>
-                                            </DataTrigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBox.Style>
-                            </TextBox>
+                                                </Grid>
+                                            </Border>
+
+                                            <!-- ── 2. ACTION MAÎTRESSE : DÉBUTER LA CONSULTATION ── -->
+                                            <TextBlock Text="DÉMARRAGE DE L'ACTE CLINIQUE" FontSize="11" FontWeight="Bold"
+                                                       Foreground="#475569" Margin="0,0,0,8"/>
+
+                                            <Button Command="{Binding DebuterSeanceAutomatiqueCommand}"
+                                                    Cursor="Hand" Margin="0,0,0,16"
+                                                    ToolTip="Démarre immédiatement la séance en ouvrant le formulaire adapté (1ère consultation ou suivi)">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <Border x:Name="HeroBd" Background="#2563EB" CornerRadius="8" Padding="18,14">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+
+                                                                <TextBlock Grid.Column="0" Text="🩺" FontSize="26" VerticalAlignment="Center" Margin="0,0,14,0"/>
+
+                                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding DebuterSeanceButtonTitle}" FontSize="15" FontWeight="Bold" Foreground="White"/>
+                                                                    <TextBlock Text="{Binding DebuterSeanceButtonSubtitle}" FontSize="11.5" Foreground="#DBEAFE" Margin="0,3,0,0"/>
+                                                                </StackPanel>
+
+                                                                <Border Grid.Column="2" Background="#1D4ED8" CornerRadius="14" Width="28" Height="28"
+                                                                        VerticalAlignment="Center" Margin="10,0,0,0">
+                                                                    <TextBlock Text="➔" FontSize="14" FontWeight="Bold" Foreground="White"
+                                                                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                </Border>
+                                                            </Grid>
+                                                        </Border>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="HeroBd" Property="Background" Value="#1D4ED8"/>
+                                                            </Trigger>
+                                                            <Trigger Property="IsPressed" Value="True">
+                                                                <Setter TargetName="HeroBd" Property="Background" Value="#1E40AF"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+
+                                            <!-- ── 3. ÉVÉNEMENTS DU RENDEZ-VOUS (ABSENCE, REPORT, COORDINATION) ── -->
+                                            <TextBlock Text="AUTRES ÉVÉNEMENTS DU RENDEZ-VOUS (NE COMPTENT PAS COMME CONSULTATION MÉDICALE)"
+                                                       FontSize="10.5" FontWeight="Bold" Foreground="#64748B" Margin="0,0,0,8"/>
+
+                                            <Grid Margin="0,0,0,16">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="8"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="8"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="8"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+
+                                                <!-- 1. Patient Absent non excusé -->
+                                                <Button Grid.Column="0" Command="{Binding NewConsultationCommand}" CommandParameter="absent"
+                                                        Cursor="Hand" ToolTip="Enregistre l'absence dans le dossier sans incrémenter le compteur médical">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="BtnBd" Background="#FEF2F2" BorderBrush="#FECACA" BorderThickness="1"
+                                                                    CornerRadius="6" Padding="8,10">
+                                                                <StackPanel HorizontalAlignment="Center">
+                                                                    <TextBlock Text="❌" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                                                    <TextBlock Text="Patient absent" FontSize="11" FontWeight="Bold" Foreground="#991B1B" HorizontalAlignment="Center"/>
+                                                                    <TextBlock Text="Non excusé" FontSize="9.5" Foreground="#B91C1C" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="BtnBd" Property="Background" Value="#FEE2E2"/>
+                                                                    <Setter TargetName="BtnBd" Property="BorderBrush" Value="#F87171"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+
+                                                <!-- 2. Absent excusé -->
+                                                <Button Grid.Column="2" Command="{Binding NewConsultationCommand}" CommandParameter="absent_excuse"
+                                                        Cursor="Hand" ToolTip="Enregistre l'absence excusée (famille a prévenu)">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="BtnBd" Background="#FFFBEB" BorderBrush="#FDE68A" BorderThickness="1"
+                                                                    CornerRadius="6" Padding="8,10">
+                                                                <StackPanel HorizontalAlignment="Center">
+                                                                    <TextBlock Text="⚠️" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                                                    <TextBlock Text="Absent excusé" FontSize="11" FontWeight="Bold" Foreground="#92400E" HorizontalAlignment="Center"/>
+                                                                    <TextBlock Text="Prévenu d'avance" FontSize="9.5" Foreground="#B45309" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="BtnBd" Property="Background" Value="#FEF3C7"/>
+                                                                    <Setter TargetName="BtnBd" Property="BorderBrush" Value="#FBBF24"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+
+                                                <!-- 3. RDV Déplacé / Reporté -->
+                                                <Button Grid.Column="4" Command="{Binding NewConsultationCommand}" CommandParameter="deplace"
+                                                        Cursor="Hand" ToolTip="Enregistre le report du rendez-vous dans le dossier">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="BtnBd" Background="#F0FDF4" BorderBrush="#BBF7D0" BorderThickness="1"
+                                                                    CornerRadius="6" Padding="8,10">
+                                                                <StackPanel HorizontalAlignment="Center">
+                                                                    <TextBlock Text="📅" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                                                    <TextBlock Text="RDV déplacé" FontSize="11" FontWeight="Bold" Foreground="#166534" HorizontalAlignment="Center"/>
+                                                                    <TextBlock Text="Créneau reporté" FontSize="9.5" Foreground="#15803D" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="BtnBd" Property="Background" Value="#DCFCE7"/>
+                                                                    <Setter TargetName="BtnBd" Property="BorderBrush" Value="#4ADE80"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+
+                                                <!-- 4. Note de liaison / Coordination -->
+                                                <Button Grid.Column="6" Command="{Binding NewConsultationCommand}" CommandParameter="liaison"
+                                                        Cursor="Hand" ToolTip="Enregistre une note de liaison (école, orthophoniste, confrère) sans acte clinique">
+                                                    <Button.Template>
+                                                        <ControlTemplate TargetType="Button">
+                                                            <Border x:Name="BtnBd" Background="#F5F3FF" BorderBrush="#DDD6FE" BorderThickness="1"
+                                                                    CornerRadius="6" Padding="8,10">
+                                                                <StackPanel HorizontalAlignment="Center">
+                                                                    <TextBlock Text="📞" FontSize="16" HorizontalAlignment="Center" Margin="0,0,0,4"/>
+                                                                    <TextBlock Text="Note de liaison" FontSize="11" FontWeight="Bold" Foreground="#5B21B6" HorizontalAlignment="Center"/>
+                                                                    <TextBlock Text="Coordination" FontSize="9.5" Foreground="#6D28D9" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                                </StackPanel>
+                                                            </Border>
+                                                            <ControlTemplate.Triggers>
+                                                                <Trigger Property="IsMouseOver" Value="True">
+                                                                    <Setter TargetName="BtnBd" Property="Background" Value="#EDE9FE"/>
+                                                                    <Setter TargetName="BtnBd" Property="BorderBrush" Value="#A78BFA"/>
+                                                                </Trigger>
+                                                            </ControlTemplate.Triggers>
+                                                        </ControlTemplate>
+                                                    </Button.Template>
+                                                </Button>
+                                            </Grid>
+
+                                            <!-- ── 4. PIED : NOTE LIBRE ALTERNATIVE ── -->
+                                            <Border Height="1" Background="#E2E8F0" Margin="0,0,0,12"/>
+
+                                            <Button Command="{Binding BasculerVersNoteLibreCommand}"
+                                                    HorizontalAlignment="Center" Background="Transparent" BorderThickness="0" Cursor="Hand"
+                                                    ToolTip="Ouvre un éditeur de texte libre classique sans formulaire structuré">
+                                                <Button.Template>
+                                                    <ControlTemplate TargetType="Button">
+                                                        <TextBlock x:Name="TxtLnk" Text="📝 Ou rédiger une note libre sans protocole ➔"
+                                                                   FontSize="11.5" Foreground="#64748B"/>
+                                                        <ControlTemplate.Triggers>
+                                                            <Trigger Property="IsMouseOver" Value="True">
+                                                                <Setter TargetName="TxtLnk" Property="Foreground" Value="#2563EB"/>
+                                                                <Setter TargetName="TxtLnk" Property="TextDecorations" Value="Underline"/>
+                                                            </Trigger>
+                                                        </ControlTemplate.Triggers>
+                                                    </ControlTemplate>
+                                                </Button.Template>
+                                            </Button>
+
+                                        </StackPanel>
+                                    </Border>
+                                </ScrollViewer>
+                            </Grid>
+
+                            <!-- MODE NORMAL : note libre classique -->
+                            <Grid Grid.Row="1" Visibility="{Binding IsTextBoxNormalVisible, Converter={StaticResource BoolToVis}}">
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+
+                                <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                                    <Button DockPanel.Dock="Left" Command="{Binding RetourAccueilSeanceCommand}"
+                                            Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1"
+                                            Padding="10,5" Cursor="Hand">
+                                        <Button.Template>
+                                            <ControlTemplate TargetType="Button">
+                                                <Border x:Name="BdBk" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                        BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="12" Padding="{TemplateBinding Padding}">
+                                                    <TextBlock Text="◀ Accueil de la séance" FontSize="11" FontWeight="SemiBold" Foreground="#334155"/>
+                                                </Border>
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                        <Setter TargetName="BdBk" Property="Background" Value="#E2E8F0"/>
+                                                    </Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Button.Template>
+                                    </Button>
+                                    <TextBlock Text="Prise de note libre" FontSize="12" Foreground="#94A3B8" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                                </DockPanel>
+
+                                <TextBox Grid.Row="1" Text="{Binding NoteContent, UpdateSourceTrigger=PropertyChanged}"
+                                         AcceptsReturn="True"
+                                         TextWrapping="Wrap"
+                                         VerticalScrollBarVisibility="Auto"
+                                         FontSize="14"
+                                         FontFamily="Segoe UI"
+                                         Padding="10"
+                                         BorderBrush="#E0E0E0"
+                                         BorderThickness="1">
+                                    <TextBox.Template>
+                                        <ControlTemplate TargetType="TextBox">
+                                            <Border Background="#FAFAFA"
+                                                    BorderBrush="{TemplateBinding BorderBrush}"
+                                                    BorderThickness="{TemplateBinding BorderThickness}"
+                                                    CornerRadius="6">
+                                                <ScrollViewer x:Name="PART_ContentHost" Margin="2"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </TextBox.Template>
+                                </TextBox>
+                            </Grid>
 
                             <!-- V0c : Boutons simples (Interrogatoire vs Observations) -->
                             <WrapPanel Grid.Row="0" Margin="0,0,0,12" VerticalAlignment="Top">
@@ -6265,7 +6495,8 @@
                             </StackPanel>
 
                             <!-- Contenu contextuel -->
-                            <ScrollViewer Grid.Row="2"
+                            <ScrollViewer x:Name="CockpitScrollViewer"
+                                          Grid.Row="2"
                                           VerticalScrollBarVisibility="Auto"
                                           Margin="10,0,10,10">
                                 <StackPanel>
@@ -6578,10 +6809,22 @@
                                                     <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.DobFormatted}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
                                                     <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
                                                 </Grid>
-                                                <Grid Margin="0,20,0,10">
+                                                <Grid Margin="0,15,0,8">
                                                     <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                                     <TextBlock Text="Date 1ère consultation :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
-                                                    <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.FirstConsultDate, FallbackValue='-'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding FirstConsultDateText, FallbackValue='-'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                    <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                </Grid>
+                                                <Grid Margin="0,8,0,8">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Nombre de consultations :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding TotalConsultationsText, FallbackValue='0 consultation'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                    <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                </Grid>
+                                                <Grid Margin="0,8,0,10">
+                                                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                    <TextBlock Text="Dernière consultation :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                    <TextBlock Grid.Column="1" Text="{Binding LastConsultDateText, FallbackValue='-'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
                                                     <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
                                                 </Grid>
                                             </StackPanel>
@@ -6642,10 +6885,22 @@
                                                         <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.DobFormatted}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
                                                         <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
                                                     </Grid>
-                                                    <Grid Margin="0,20,0,10">
+                                                    <Grid Margin="0,15,0,8">
                                                         <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
                                                         <TextBlock Text="Date 1ère consultation :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
-                                                        <TextBlock Grid.Column="1" Text="{Binding CurrentPatient.FirstConsultDate, FallbackValue='-'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding FirstConsultDateText, FallbackValue='-'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                        <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                    </Grid>
+                                                    <Grid Margin="0,8,0,8">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Nombre de consultations :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding TotalConsultationsText, FallbackValue='0 consultation'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
+                                                        <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
+                                                    </Grid>
+                                                    <Grid Margin="0,8,0,10">
+                                                        <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+                                                        <TextBlock Text="Dernière consultation :" FontSize="18" FontWeight="SemiBold" Foreground="White" Margin="0,0,10,6"/>
+                                                        <TextBlock Grid.Column="1" Text="{Binding LastConsultDateText, FallbackValue='-'}" FontSize="20" FontWeight="Bold" Foreground="White" Margin="0,0,0,6"/>
                                                         <Border Grid.ColumnSpan="2" BorderThickness="0,0,0,2" BorderBrush="#B0FFFFFF" VerticalAlignment="Bottom" Margin="0,0,0,2"/>
                                                     </Grid>
                                                 </StackPanel>
@@ -7293,32 +7548,142 @@
                                             </Grid.RowDefinitions>
 
                                             <!-- En-tête -->
-                                            <StackPanel Grid.Row="0" Margin="40,40,40,20">
-                                                <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                                                <TextBlock Text="Historique médical" FontSize="14" Foreground="#7F8C8D"/>
+                                            <StackPanel Grid.Row="0" Margin="40,30,40,15">
+                                                <DockPanel Margin="0,0,0,8">
+                                                    <StackPanel DockPanel.Dock="Left">
+                                                        <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50"/>
+                                                        <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                            <TextBlock Text="Historique médical" FontSize="13" Foreground="#7F8C8D"/>
+                                                            <TextBlock Text=" • " FontSize="13" Foreground="#BDC3C7"/>
+                                                            <TextBlock Text="{Binding TotalConsultationsText}" FontSize="13" FontWeight="SemiBold" Foreground="#2980B9"/>
+                                                        </StackPanel>
+                                                    </StackPanel>
+
+                                                    <!-- Bouton retour vers la liste cartouches visible uniquement en mode détail -->
+                                                    <Button DockPanel.Dock="Right"
+                                                            Command="{Binding BackToConsultationListCommand}"
+                                                            Visibility="{Binding IsViewingConsultationDetail, Converter={StaticResource BoolToVis}}"
+                                                            VerticalAlignment="Center"
+                                                            Cursor="Hand"
+                                                            Background="#F1F5F9" BorderBrush="#CBD5E1" BorderThickness="1"
+                                                            Padding="12,6" Margin="0">
+                                                        <Button.Template>
+                                                            <ControlTemplate TargetType="Button">
+                                                                <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="14" Padding="{TemplateBinding Padding}">
+                                                                    <StackPanel Orientation="Horizontal">
+                                                                        <TextBlock Text="◀ " FontSize="11" Foreground="#334155"/>
+                                                                        <TextBlock Text="Toutes les consultations" FontSize="11.5" FontWeight="SemiBold" Foreground="#334155"/>
+                                                                    </StackPanel>
+                                                                </Border>
+                                                            </ControlTemplate>
+                                                        </Button.Template>
+                                                    </Button>
+                                                </DockPanel>
+
                                                 <!-- Antécédents familiaux -->
-                                                <Border Margin="0,12,0,0" Background="#EAFAF1" BorderBrush="#82E0AA" BorderThickness="1" CornerRadius="8" Padding="12,10"
+                                                <Border Margin="0,6,0,0" Background="#EAFAF1" BorderBrush="#82E0AA" BorderThickness="1" CornerRadius="8" Padding="12,8"
                                                         Visibility="{Binding HasAntecedentsFamiliaux, Converter={StaticResource BoolToVis}}">
                                                     <StackPanel>
-                                                        <TextBlock Text="🧬 Antécédents familiaux" FontSize="13" FontWeight="SemiBold" Foreground="#1E8449" Margin="0,0,0,6"/>
-                                                        <TextBlock Text="{Binding AntecedentsFamiliauxText}" FontSize="12" Foreground="#1D4E29" TextWrapping="Wrap" LineHeight="18"/>
+                                                        <TextBlock Text="🧬 Antécédents familiaux" FontSize="12" FontWeight="SemiBold" Foreground="#1E8449" Margin="0,0,0,4"/>
+                                                        <TextBlock Text="{Binding AntecedentsFamiliauxText}" FontSize="11" Foreground="#1D4E29" TextWrapping="Wrap" LineHeight="16"/>
                                                     </StackPanel>
                                                 </Border>
                                             </StackPanel>
 
-                                            <!-- Note courante (page unique, sans scroll) -->
+                                            <!-- Zone Contenu : Cartouches OU Note détaillée -->
                                             <Grid Grid.Row="1" Margin="40,0,40,10" ClipToBounds="True">
-                                                <TextBlock Text="Aucune note enregistrée." FontSize="12" Foreground="#95A5A6"
-                                                           TextWrapping="Wrap" VerticalAlignment="Top"
-                                                           Visibility="{Binding HasNoConsultationNotes, Converter={StaticResource BoolToVis}}"/>
-                                                <ContentControl Content="{Binding SinglePageNote}"
-                                                                ContentTemplate="{StaticResource NotePageTemplate}"
-                                                                Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}"/>
+                                                <!-- Vue 1 : LISTE DES CARTOUCHES (Quand IsNotViewingConsultationDetail) -->
+                                                <Grid Visibility="{Binding IsNotViewingConsultationDetail, Converter={StaticResource BoolToVis}}">
+                                                    <!-- Message vide -->
+                                                    <Border Visibility="{Binding HasNoConsultationNotes, Converter={StaticResource BoolToVis}}"
+                                                            Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8"
+                                                            Padding="24" Margin="0,20,0,0" VerticalAlignment="Top">
+                                                        <StackPanel HorizontalAlignment="Center">
+                                                            <TextBlock Text="📋" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                                                            <TextBlock Text="Aucune note ou consultation enregistrée" FontSize="14" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                                                            <TextBlock Text="Les consultations honorées, absences et notes de liaison s'afficheront ici sous forme de fiches synthétiques." FontSize="12" Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,6,0,0" TextWrapping="Wrap" TextAlignment="Center"/>
+                                                        </StackPanel>
+                                                    </Border>
+
+                                                    <!-- ScrollViewer des cartouches -->
+                                                    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                                                  Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}">
+                                                        <ItemsControl ItemsSource="{Binding ConsultationNotesChronological}">
+                                                            <ItemsControl.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Button Command="{Binding DataContext.SelectConsultationNoteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                            CommandParameter="{Binding}"
+                                                                            Margin="0,0,0,10" Cursor="Hand" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch">
+                                                                        <Button.Template>
+                                                                            <ControlTemplate TargetType="Button">
+                                                                                <Border x:Name="CardBorder" Background="White" BorderBrush="#E2E8F0" BorderThickness="1.5" CornerRadius="8" Padding="14,12">
+                                                                                    <Border.Effect>
+                                                                                        <DropShadowEffect ShadowDepth="1" BlurRadius="5" Opacity="0.06" Color="#000000"/>
+                                                                                    </Border.Effect>
+                                                                                    <Grid>
+                                                                                        <Grid.RowDefinitions>
+                                                                                            <RowDefinition Height="Auto"/>
+                                                                                            <RowDefinition Height="Auto"/>
+                                                                                            <RowDefinition Height="Auto"/>
+                                                                                        </Grid.RowDefinitions>
+
+                                                                                        <!-- Ligne 1 : Type / Titre + Badge Statut -->
+                                                                                        <DockPanel Grid.Row="0">
+                                                                                            <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                                                <TextBlock Text="{Binding Icon}" FontSize="15" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                                                                                <TextBlock Text="{Binding Type}" FontSize="14" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
+                                                                                            </StackPanel>
+                                                                                            <Border DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                                                                                    Background="{Binding StatutBgColor, Converter={StaticResource StringToBrush}}"
+                                                                                                    BorderBrush="{Binding StatutColor, Converter={StaticResource StringToBrush}}"
+                                                                                                    BorderThickness="1" CornerRadius="12" Padding="10,3">
+                                                                                                <TextBlock Text="{Binding StatutBadge}"
+                                                                                                           Foreground="{Binding StatutColor, Converter={StaticResource StringToBrush}}"
+                                                                                                           FontSize="10.5" FontWeight="Bold"/>
+                                                                                            </Border>
+                                                                                        </DockPanel>
+
+                                                                                        <!-- Ligne 2 : Date -->
+                                                                                        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="23,4,0,6">
+                                                                                            <TextBlock Text="📅 " FontSize="11" Foreground="#94A3B8"/>
+                                                                                            <TextBlock Text="{Binding DateText}" FontSize="11.5" FontWeight="SemiBold" Foreground="#64748B"/>
+                                                                                            <TextBlock Text="  •  " FontSize="11" Foreground="#CBD5E1"/>
+                                                                                            <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#94A3B8" TextTrimming="CharacterEllipsis" MaxWidth="280"/>
+                                                                                        </StackPanel>
+
+                                                                                        <!-- Ligne 3 : Aperçu texte + bouton Consulter -->
+                                                                                        <DockPanel Grid.Row="2" Margin="23,0,0,0">
+                                                                                            <TextBlock DockPanel.Dock="Right" Text="Consulter ➔" FontSize="11" FontWeight="SemiBold" Foreground="#3B82F6" VerticalAlignment="Bottom" Margin="8,0,0,0"/>
+                                                                                            <TextBlock Text="{Binding PreviewText}" FontSize="11.5" Foreground="#475569"
+                                                                                                       TextTrimming="CharacterEllipsis" LineHeight="17" TextWrapping="Wrap" MaxHeight="34"/>
+                                                                                        </DockPanel>
+                                                                                    </Grid>
+                                                                                </Border>
+                                                                                <ControlTemplate.Triggers>
+                                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                                        <Setter TargetName="CardBorder" Property="Background" Value="#F8FAFC"/>
+                                                                                        <Setter TargetName="CardBorder" Property="BorderBrush" Value="#3B82F6"/>
+                                                                                    </Trigger>
+                                                                                </ControlTemplate.Triggers>
+                                                                            </ControlTemplate>
+                                                                        </Button.Template>
+                                                                    </Button>
+                                                                </DataTemplate>
+                                                            </ItemsControl.ItemTemplate>
+                                                        </ItemsControl>
+                                                    </ScrollViewer>
+                                                </Grid>
+
+                                                <!-- Vue 2 : DETAIL D'UNE CONSULTATION (Quand IsViewingConsultationDetail) -->
+                                                <Grid Visibility="{Binding IsViewingConsultationDetail, Converter={StaticResource BoolToVis}}">
+                                                    <ContentControl Content="{Binding SinglePageNote}"
+                                                                    ContentTemplate="{StaticResource NotePageTemplate}"/>
+                                                </Grid>
                                             </Grid>
 
-                                            <!-- Navigation ◀ 1/3 ▶  et zoom A+/A- -->
+                                            <!-- Navigation ◀ 1/3 ▶  et zoom A+/A- (visible uniquement en mode détail) -->
                                             <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,8"
-                                                        Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}">
+                                                        Visibility="{Binding IsViewingConsultationDetail, Converter={StaticResource BoolToVis}}">
                                                 <Button Content="◀" Command="{Binding PrevSinglePageCommand}"
                                                         Width="32" Height="28" FontSize="13" Cursor="Hand"
                                                         Background="Transparent" BorderThickness="1" BorderBrush="#BDC3C7"/>
@@ -7353,7 +7718,7 @@
                                 </Viewbox>
                             </Grid>
 
-                            <!-- MODE PLEIN ECRAN (F3): Double page avec intercalaires -->
+                            <!-- MODE PLEIN ECRAN (F3): Double page Master-Detail avec intercalaires -->
                             <Grid>
                                 <Grid.Style>
                                     <Style TargetType="Grid">
@@ -7367,53 +7732,146 @@
                                 </Grid.Style>
                                 <Viewbox Stretch="Uniform">
                                     <Grid Width="1240" Height="842">
-                                         <!-- Page GAUCHE -->
+                                         <!-- Page GAUCHE (Liste des cartouches) -->
                                          <Border Width="590" Height="842" HorizontalAlignment="Left" Background="White" Effect="{StaticResource PageShadow}">
-                                             <Grid Margin="40">
+                                             <Grid Margin="35,30,35,30">
                                                  <Grid.RowDefinitions>
                                                      <RowDefinition Height="Auto"/>
                                                      <RowDefinition Height="*"/>
                                                  </Grid.RowDefinitions>
-                                                 <StackPanel Grid.Row="0" Margin="0,0,0,20">
-                                                     <TextBlock Text="CONSULTATIONS" FontSize="26" FontWeight="Bold" Foreground="#2C3E50" Margin="0,0,0,10"/>
-                                                     <TextBlock Text="Historique médical" FontSize="14" Foreground="#7F8C8D"/>
+                                                 <StackPanel Grid.Row="0" Margin="0,0,0,16">
+                                                     <TextBlock Text="CONSULTATIONS" FontSize="24" FontWeight="Bold" Foreground="#2C3E50"/>
+                                                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                                         <TextBlock Text="Historique médical" FontSize="13" Foreground="#7F8C8D"/>
+                                                         <TextBlock Text=" • " FontSize="13" Foreground="#BDC3C7"/>
+                                                         <TextBlock Text="{Binding TotalConsultationsText}" FontSize="13" FontWeight="SemiBold" Foreground="#2980B9"/>
+                                                     </StackPanel>
+                                                     <!-- Antécédents familiaux -->
+                                                     <Border Margin="0,10,0,0" Background="#EAFAF1" BorderBrush="#82E0AA" BorderThickness="1" CornerRadius="8" Padding="12,8"
+                                                             Visibility="{Binding HasAntecedentsFamiliaux, Converter={StaticResource BoolToVis}}">
+                                                         <StackPanel>
+                                                             <TextBlock Text="🧬 Antécédents familiaux" FontSize="12" FontWeight="SemiBold" Foreground="#1E8449" Margin="0,0,0,4"/>
+                                                             <TextBlock Text="{Binding AntecedentsFamiliauxText}" FontSize="11" Foreground="#1D4E29" TextWrapping="Wrap" LineHeight="16"/>
+                                                         </StackPanel>
+                                                     </Border>
                                                  </StackPanel>
-                                                 <Grid Grid.Row="1" ClipToBounds="True">
-                                                     <TextBlock Text="Aucune note enregistrée." FontSize="12" Foreground="#95A5A6"
-                                                                TextWrapping="Wrap" VerticalAlignment="Top"
-                                                                Visibility="{Binding HasNoConsultationNotes, Converter={StaticResource BoolToVis}}"/>
-                                                     <ContentControl Content="{Binding LeftPageNote}"
-                                                                     ContentTemplate="{StaticResource NotePageTemplate}"
-                                                                     Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}"/>
+
+                                                 <!-- Liste des cartouches -->
+                                                 <Grid Grid.Row="1">
+                                                     <Border Visibility="{Binding HasNoConsultationNotes, Converter={StaticResource BoolToVis}}"
+                                                             Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8"
+                                                             Padding="20" VerticalAlignment="Top">
+                                                         <StackPanel HorizontalAlignment="Center">
+                                                             <TextBlock Text="📋" FontSize="32" HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                                                             <TextBlock Text="Aucune note enregistrée" FontSize="13" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                                                         </StackPanel>
+                                                     </Border>
+
+                                                     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
+                                                                   Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}">
+                                                         <ItemsControl ItemsSource="{Binding ConsultationNotesChronological}">
+                                                             <ItemsControl.ItemTemplate>
+                                                                 <DataTemplate>
+                                                                     <Button Command="{Binding DataContext.SelectConsultationNoteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                                             CommandParameter="{Binding}"
+                                                                             Margin="0,0,0,10" Cursor="Hand" Background="Transparent" BorderThickness="0" HorizontalContentAlignment="Stretch">
+                                                                         <Button.Template>
+                                                                             <ControlTemplate TargetType="Button">
+                                                                                 <Border x:Name="CardBorder" Background="White" BorderBrush="#E2E8F0" BorderThickness="1.5" CornerRadius="8" Padding="14,11">
+                                                                                     <Border.Effect>
+                                                                                         <DropShadowEffect ShadowDepth="1" BlurRadius="4" Opacity="0.06" Color="#000000"/>
+                                                                                     </Border.Effect>
+                                                                                     <Grid>
+                                                                                         <Grid.RowDefinitions>
+                                                                                             <RowDefinition Height="Auto"/>
+                                                                                             <RowDefinition Height="Auto"/>
+                                                                                             <RowDefinition Height="Auto"/>
+                                                                                         </Grid.RowDefinitions>
+
+                                                                                         <!-- Ligne 1 : Type + Badge Statut -->
+                                                                                         <DockPanel Grid.Row="0">
+                                                                                             <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                                                 <TextBlock Text="{Binding Icon}" FontSize="14" Margin="0,0,7,0" VerticalAlignment="Center"/>
+                                                                                                 <TextBlock Text="{Binding Type}" FontSize="13.5" FontWeight="Bold" Foreground="#1E293B" VerticalAlignment="Center"/>
+                                                                                             </StackPanel>
+                                                                                             <Border DockPanel.Dock="Right" HorizontalAlignment="Right"
+                                                                                                     Background="{Binding StatutBgColor, Converter={StaticResource StringToBrush}}"
+                                                                                                     BorderBrush="{Binding StatutColor, Converter={StaticResource StringToBrush}}"
+                                                                                                     BorderThickness="1" CornerRadius="12" Padding="9,3">
+                                                                                                 <TextBlock Text="{Binding StatutBadge}"
+                                                                                                            Foreground="{Binding StatutColor, Converter={StaticResource StringToBrush}}"
+                                                                                                            FontSize="10" FontWeight="Bold"/>
+                                                                                             </Border>
+                                                                                         </DockPanel>
+
+                                                                                         <!-- Ligne 2 : Date -->
+                                                                                         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="21,4,0,5">
+                                                                                             <TextBlock Text="📅 " FontSize="11" Foreground="#94A3B8"/>
+                                                                                             <TextBlock Text="{Binding DateText}" FontSize="11" FontWeight="SemiBold" Foreground="#64748B"/>
+                                                                                             <TextBlock Text=" • " FontSize="11" Foreground="#CBD5E1"/>
+                                                                                             <TextBlock Text="{Binding Title}" FontSize="11" Foreground="#94A3B8" TextTrimming="CharacterEllipsis" MaxWidth="240"/>
+                                                                                         </StackPanel>
+
+                                                                                         <!-- Ligne 3 : Extrait + Bouton Consulter -->
+                                                                                         <DockPanel Grid.Row="2" Margin="21,0,0,0">
+                                                                                             <TextBlock DockPanel.Dock="Right" Text="Consulter ➔" FontSize="11" FontWeight="SemiBold" Foreground="#3B82F6" VerticalAlignment="Bottom" Margin="6,0,0,0"/>
+                                                                                             <TextBlock Text="{Binding PreviewText}" FontSize="11" Foreground="#475569"
+                                                                                                        TextTrimming="CharacterEllipsis" LineHeight="16" TextWrapping="Wrap" MaxHeight="32"/>
+                                                                                         </DockPanel>
+                                                                                     </Grid>
+                                                                                 </Border>
+                                                                                 <ControlTemplate.Triggers>
+                                                                                     <Trigger Property="IsMouseOver" Value="True">
+                                                                                         <Setter TargetName="CardBorder" Property="Background" Value="#F8FAFC"/>
+                                                                                         <Setter TargetName="CardBorder" Property="BorderBrush" Value="#3B82F6"/>
+                                                                                     </Trigger>
+                                                                                 </ControlTemplate.Triggers>
+                                                                             </ControlTemplate>
+                                                                         </Button.Template>
+                                                                     </Button>
+                                                                 </DataTemplate>
+                                                             </ItemsControl.ItemTemplate>
+                                                         </ItemsControl>
+                                                     </ScrollViewer>
                                                  </Grid>
                                              </Grid>
                                          </Border>
 
-                                         <!-- Page DROITE -->
+                                         <!-- Page DROITE (Détail de la note sélectionnée) -->
                                          <Border Width="590" Height="842" Margin="600,0,50,0" Background="White" Effect="{StaticResource PageShadow}">
-                                             <Grid>
+                                             <Grid Margin="35,30,35,20">
                                                  <Grid.RowDefinitions>
                                                      <RowDefinition Height="*"/>
                                                      <RowDefinition Height="Auto"/>
                                                      <RowDefinition Height="Auto"/>
                                                  </Grid.RowDefinitions>
 
-                                                 <!-- Note page droite du spread (blanche si nombre impair de notes) -->
-                                                 <Grid Grid.Row="0" Margin="40" ClipToBounds="True">
+                                                 <!-- Note sélectionnée -->
+                                                 <Grid Grid.Row="0" ClipToBounds="True">
+                                                     <Border Visibility="{Binding HasNoConsultationNotes, Converter={StaticResource BoolToVis}}"
+                                                             Background="#F8FAFC" BorderBrush="#E2E8F0" BorderThickness="1" CornerRadius="8"
+                                                             Padding="24" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                         <StackPanel HorizontalAlignment="Center">
+                                                             <TextBlock Text="👈" FontSize="36" HorizontalAlignment="Center" Margin="0,0,0,10"/>
+                                                             <TextBlock Text="Sélectionnez une consultation à gauche" FontSize="14" FontWeight="SemiBold" Foreground="#64748B" HorizontalAlignment="Center"/>
+                                                             <TextBlock Text="Le compte-rendu complet s'affichera ici avec possibilité d'édition." FontSize="12" Foreground="#94A3B8" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+                                                         </StackPanel>
+                                                     </Border>
+
                                                      <ContentControl Content="{Binding RightPageNote}"
                                                                      ContentTemplate="{StaticResource NotePageTemplate}"
-                                                                     Visibility="{Binding HasRightPageNote, Converter={StaticResource BoolToVis}}"/>
+                                                                     Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}"/>
                                                  </Grid>
 
-                                                 <!-- Navigation ◀ 1–2/5 ▶  et zoom A+/A- -->
-                                                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,4,0,8"
+                                                 <!-- Navigation ◀ 1/3 ▶  et zoom A+/A- -->
+                                                 <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,8"
                                                              Visibility="{Binding HasConsultationNotes, Converter={StaticResource BoolToVis}}">
-                                                     <Button Content="◀" Command="{Binding PrevSpreadCommand}"
+                                                     <Button Content="◀" Command="{Binding PrevSinglePageCommand}"
                                                              Width="32" Height="28" FontSize="13" Cursor="Hand"
                                                              Background="Transparent" BorderThickness="1" BorderBrush="#BDC3C7"/>
-                                                     <TextBlock Text="{Binding SpreadText}" FontSize="13" Foreground="#555"
+                                                     <TextBlock Text="{Binding SinglePageText}" FontSize="13" Foreground="#555"
                                                                 VerticalAlignment="Center" Margin="12,0"/>
-                                                     <Button Content="▶" Command="{Binding NextSpreadCommand}"
+                                                     <Button Content="▶" Command="{Binding NextSinglePageCommand}"
                                                              Width="32" Height="28" FontSize="13" Cursor="Hand"
                                                              Background="Transparent" BorderThickness="1" BorderBrush="#BDC3C7"/>
                                                      <Separator Width="1" Height="20" Background="#BDC3C7" Margin="10,0"/>
@@ -7427,7 +7885,7 @@
 
                                                  <!-- Fermer -->
                                                  <Button Grid.Row="2" Command="{Binding SelectDossierTabCommand}" CommandParameter="Couverture"
-                                                         Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,30" Padding="20,10"
+                                                         Content="Fermer le dossier" HorizontalAlignment="Center" Margin="0,0,0,10" Padding="20,10"
                                                          Background="{StaticResource DossierBackgroundBrush}" Foreground="White" FontWeight="SemiBold" Cursor="Hand">
                                                      <Button.Template>
                                                          <ControlTemplate TargetType="Button">

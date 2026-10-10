@@ -62,7 +62,7 @@ namespace MedCompanion.Services.Restitutions
   }
 
   function estFigee(page) {
-    return page.classList.contains('cover-page') || page.classList.contains('annexe-page');
+    return page.classList.contains('cover-page') || page.classList.contains('annexe-page') || page.classList.contains('ai-page');
   }
 
   // Le conteneur des cartes est leur parent commun — il varie selon la page

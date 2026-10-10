@@ -92,6 +92,16 @@ namespace MedCompanion.Models
             set { _documentType = value; OnPropertyChanged(); }
         }
 
+        private string? _statut;
+        /// <summary>
+        /// Statut de la consultation ou du rendez-vous (Présent, Absent, Déplacé, etc.)
+        /// </summary>
+        public string? Statut
+        {
+            get => _statut;
+            set { _statut = value; OnPropertyChanged(); }
+        }
+
         private bool _isLoaded = false;
         /// <summary>
         /// Indique si le contenu complet a été chargé (lazy loading)

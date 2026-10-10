@@ -206,6 +206,69 @@ namespace MedCompanion.ViewModels
         /// </summary>
         public ObservableCollection<ChecklistItem> ChecklistItems { get; } = new();
 
+        // ─── Cockpit & Écoute d'ambiance Med ──────────────────────────────────────────
+        private MedEcouteEtat _medEcouteStatut = MedEcouteEtat.Veille;
+        private bool _wasEcouteAmbianceActiveBeforeDictee = false;
+
+        /// <summary>
+        /// État de l'écoute de Med (Veille, Écoute d'ambiance, Dictée prioritaire en cours, Réflexion)
+        /// </summary>
+        public MedEcouteEtat MedEcouteStatut
+        {
+            get => _medEcouteStatut;
+            set
+            {
+                if (SetProperty(ref _medEcouteStatut, value))
+                {
+                    OnPropertyChanged(nameof(IsMedEcouteAmbianceActive));
+                    OnPropertyChanged(nameof(MedEcouteStatutText));
+                    OnPropertyChanged(nameof(MedEcouteStatutColor));
+                    OnPropertyChanged(nameof(MedEcouteStatutBg));
+                }
+            }
+        }
+
+        public bool IsMedEcouteAmbianceActive => MedEcouteStatut == MedEcouteEtat.EcouteAmbiance;
+
+        public string MedEcouteStatutText => MedEcouteStatut switch
+        {
+            MedEcouteEtat.EcouteAmbiance => "🟢 À l'écoute",
+            MedEcouteEtat.DicteeEnCours => "🔴 Dictée active (Med en pause)",
+            MedEcouteEtat.Reflexion => "🟡 Analyse...",
+            _ => "⚪ En veille"
+        };
+
+        public string MedEcouteStatutColor => MedEcouteStatut switch
+        {
+            MedEcouteEtat.EcouteAmbiance => "#15803D",
+            MedEcouteEtat.DicteeEnCours => "#B91C1C",
+            MedEcouteEtat.Reflexion => "#B45309",
+            _ => "#64748B"
+        };
+
+        public string MedEcouteStatutBg => MedEcouteStatut switch
+        {
+            MedEcouteEtat.EcouteAmbiance => "#DCFCE7",
+            MedEcouteEtat.DicteeEnCours => "#FEE2E2",
+            MedEcouteEtat.Reflexion => "#FEF3C7",
+            _ => "#F1F5F9"
+        };
+
+        /// <summary>
+        /// Fil de discussion interactif de la zone centrale Med (Secrétaire, Interne, Confrère, Praticien)
+        /// </summary>
+        public ObservableCollection<MedCockpitMessage> CockpitMessages { get; } = new();
+
+        private string _cockpitInputText = "";
+        /// <summary>
+        /// Texte saisi dans la boîte de dialogue rapide de Med
+        /// </summary>
+        public string CockpitInputText
+        {
+            get => _cockpitInputText;
+            set => SetProperty(ref _cockpitInputText, value);
+        }
+
         #endregion
 
         #region Dossier Patient State
@@ -500,6 +563,9 @@ namespace MedCompanion.ViewModels
                     // zéro, les cotations posées sur un patient restaient affichées sous le
                     // suivant — et la carte du dossier bleu montrait encore l'ancien.
                     ResetCartographieV2ForPatientChange();
+
+                    // Initialise le flux interactif du cockpit Med avec le patient actif
+                    InitializeCockpitFlow();
                 }
             }
         }
@@ -707,6 +773,30 @@ namespace MedCompanion.ViewModels
             set => SetProperty(ref _cartographieStatusMessage, value);
         }
 
+        private int _cartographieStep = 1;
+        /// <summary>
+        /// Étape courante de la Cartographie de l'enfant (1: Questionnaire parents, 2: Profils observés, 3: Feuille remplie, 4: Synthèse).
+        /// </summary>
+        public int CartographieStep
+        {
+            get => _cartographieStep;
+            set
+            {
+                if (SetProperty(ref _cartographieStep, value))
+                {
+                    OnPropertyChanged(nameof(IsCartoStep1));
+                    OnPropertyChanged(nameof(IsCartoStep2));
+                    OnPropertyChanged(nameof(IsCartoStep3));
+                    OnPropertyChanged(nameof(IsCartoStep4));
+                }
+            }
+        }
+
+        public bool IsCartoStep1 => CartographieStep == 1;
+        public bool IsCartoStep2 => CartographieStep == 2;
+        public bool IsCartoStep3 => CartographieStep == 3;
+        public bool IsCartoStep4 => CartographieStep == 4;
+
         /// <summary>Tranche d'âge applicable, affichée avant impression (« 7-9 ans »).</summary>
         public string CartographieTrancheLabel
         {
@@ -811,7 +901,22 @@ namespace MedCompanion.ViewModels
 
             CartoV2Cloturee = true;
             LoadCartographieV2Bilans();
+            RefreshFriseStages();
             CartographieStatusMessage = "🔒 Séance clôturée — la cartographie est en lecture seule.";
+        }
+
+        private void ReopenCartographie()
+        {
+            if (_cartoV2Courante == null) return;
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir)) return;
+
+            _cartoV2Courante.DateCloture = null;
+            _cartoV2.Save(dir, _cartoV2Courante);
+            CartoV2Cloturee = false;
+            LoadCartographieV2Bilans();
+            RefreshFriseStages();
+            CartographieStatusMessage = "🔓 Séance réouverte pour modifications.";
         }
 
         /// <summary>Ouvre le bloc Cartographie dans la zone de travail.</summary>
@@ -826,27 +931,38 @@ namespace MedCompanion.ViewModels
             ShowProfilsObserves = false;
             CartographieStatusMessage = "";
             ProfilsStatusMessage = "";
+            CartographieStep = 1;
             OnPropertyChanged(nameof(CartographieTrancheLabel));
 
-            // Reprise de la séance du jour si elle existe : le médecin peut sortir du bloc et
-            // y revenir en cours de consultation sans reperdre ses cotations.
+            // Reprise de la séance du jour si elle existe, ou de la plus récente
             _cartoV2Courante = null;
             CartoV2Versee    = false;
             CartoV2Cloturee  = false;
             ProfilsObserves.Reset();
+            SyntheseCarto.Charger(null);
 
             var dir = CurrentPatient?.DirectoryPath;
             if (string.IsNullOrEmpty(dir)) return;
 
             var fiche = _cartoV2.LoadForDate(dir, DateTime.Today);
+            if (fiche == null)
+            {
+                var toutes = _cartoV2.LoadAll(dir);
+                if (toutes.Count > 0)
+                {
+                    fiche = toutes.OrderByDescending(f => f.Date).FirstOrDefault();
+                }
+            }
             if (fiche == null) return;
 
             _cartoV2Courante = fiche;
             CartoV2Versee    = fiche.VerseeAuDossier;
             CartoV2Cloturee  = fiche.EstCloturee;
             ProfilsObserves.LoadFrom(fiche.Axes);
-            ProfilsStatusMessage = $"Reprise de la séance du {fiche.Date:dd/MM/yyyy}.";
+            SyntheseCarto.Charger(fiche);
+            ProfilsStatusMessage = $"Séance du {fiche.Date:dd/MM/yyyy}.";
             OnPropertyChanged(nameof(CartographieEtatFeuille));
+            OnPropertyChanged(nameof(PeutDepouiller));
         }
 
         /// <summary>
@@ -982,8 +1098,9 @@ namespace MedCompanion.ViewModels
                 }
 
                 OnPropertyChanged(nameof(CartographieEtatFeuille));
+                OnPropertyChanged(nameof(PeutDepouiller));
                 CartographieStatusMessage =
-                    "✅ Feuille reçue et archivée. La lecture des réponses se fera après la séance.";
+                    "✅ Feuille reçue et archivée.";
             }
             catch (Exception ex)
             {
@@ -1013,7 +1130,27 @@ namespace MedCompanion.ViewModels
                 ? _cartoV2Courante.ReponsesQuestionnaire
                 : null;
 
-            return (_cartoV2Courante?.ScanImagePath, bande, reponses);
+            var imagePath = _cartoV2Courante?.ScanImagePath;
+            if (string.IsNullOrEmpty(imagePath) || !System.IO.File.Exists(imagePath))
+            {
+                var dir = CurrentPatient?.DirectoryPath;
+                if (!string.IsNullOrEmpty(dir))
+                {
+                    var jour = _cartoV2Courante?.Date ?? DateTime.Today;
+                    var destDir = Services.Evaluations.CartographieV2Service.GetDirectory(dir, jour.Year);
+                    if (System.IO.Directory.Exists(destDir))
+                    {
+                        var scanFiles = System.IO.Directory.GetFiles(destDir, $"{jour:yyyy-MM-dd}_questionnaire_scan*");
+                        if (scanFiles.Length > 0)
+                        {
+                            imagePath = scanFiles[0];
+                            if (_cartoV2Courante != null) _cartoV2Courante.ScanImagePath = imagePath;
+                        }
+                    }
+                }
+            }
+
+            return (imagePath, bande, reponses);
         }
 
         /// <summary>
@@ -1043,6 +1180,7 @@ namespace MedCompanion.ViewModels
             }
 
             OnPropertyChanged(nameof(CartographieEtatFeuille));
+            OnPropertyChanged(nameof(PeutDepouiller));
             LoadCartographieV2Bilans();
 
             var lus = scores.Count;
@@ -1051,7 +1189,19 @@ namespace MedCompanion.ViewModels
         }
 
         /// <summary>Vrai dès qu'une feuille a été scannée : le dépouillement devient possible.</summary>
-        public bool PeutDepouiller => !string.IsNullOrEmpty(_cartoV2Courante?.ScanImagePath);
+        public bool PeutDepouiller
+        {
+            get
+            {
+                if (!string.IsNullOrEmpty(_cartoV2Courante?.ScanImagePath)) return true;
+                var dir = CurrentPatient?.DirectoryPath;
+                if (string.IsNullOrEmpty(dir)) return false;
+                var jour = _cartoV2Courante?.Date ?? DateTime.Today;
+                var destDir = Services.Evaluations.CartographieV2Service.GetDirectory(dir, jour.Year);
+                return System.IO.Directory.Exists(destDir) &&
+                       System.IO.Directory.GetFiles(destDir, $"{jour:yyyy-MM-dd}_questionnaire_scan*").Length > 0;
+            }
+        }
 
         // ── Séance 3 : Cartographie de l'environnement ────────────────────────
         // Construite à côté, comme la séance 2 : le bloc Évaluation V1 n'est pas touché, bien
@@ -1063,6 +1213,34 @@ namespace MedCompanion.ViewModels
             get => _isCartoEnvMode;
             set => SetProperty(ref _isCartoEnvMode, value);
         }
+
+        private int _cartoEnvStep = 1;
+        /// <summary>
+        /// Étape courante de la Cartographie de l'environnement &amp; évaluation ciblée (1: Questionnaire parents, 2: Orientation, 3: Évaluation ciblée, 4: Environnement médecin, 5: Feuille parents, 6: Synthèse).
+        /// </summary>
+        public int CartoEnvStep
+        {
+            get => _cartoEnvStep;
+            set
+            {
+                if (SetProperty(ref _cartoEnvStep, value))
+                {
+                    OnPropertyChanged(nameof(IsCartoEnvStep1));
+                    OnPropertyChanged(nameof(IsCartoEnvStep2));
+                    OnPropertyChanged(nameof(IsCartoEnvStep3));
+                    OnPropertyChanged(nameof(IsCartoEnvStep4));
+                    OnPropertyChanged(nameof(IsCartoEnvStep5));
+                    OnPropertyChanged(nameof(IsCartoEnvStep6));
+                }
+            }
+        }
+
+        public bool IsCartoEnvStep1 => CartoEnvStep == 1;
+        public bool IsCartoEnvStep2 => CartoEnvStep == 2;
+        public bool IsCartoEnvStep3 => CartoEnvStep == 3;
+        public bool IsCartoEnvStep4 => CartoEnvStep == 4;
+        public bool IsCartoEnvStep5 => CartoEnvStep == 5;
+        public bool IsCartoEnvStep6 => CartoEnvStep == 6;
 
         private string _cartoEnvStatusMessage = "";
         public string CartoEnvStatusMessage
@@ -1099,8 +1277,9 @@ namespace MedCompanion.ViewModels
             ShowCartoEnvMedecin = false;
             ShowSyntheseSeance3 = false;
             CartoEnvStatusMessage = "";
+            CartoEnvStep = 1;
 
-            // Reprise de la séance du jour si elle existe.
+            // Reprise de la séance du jour si elle existe, ou de la plus récente
             _seanceEnvCourante = null;
             Orientation.Charger(null);
             EvaluationCiblee.Charger(null);
@@ -1112,10 +1291,24 @@ namespace MedCompanion.ViewModels
             var dir = CurrentPatient?.DirectoryPath;
             if (string.IsNullOrEmpty(dir)) return;
 
-            _seanceEnvCourante = _seanceEnv.LoadForDate(dir, DateTime.Today);
+            var fiche = _seanceEnv.LoadForDate(dir, DateTime.Today);
+            if (fiche == null)
+            {
+                var toutes = _seanceEnv.LoadAll(dir);
+                if (toutes.Count > 0)
+                {
+                    fiche = toutes.OrderByDescending(f => f.Date).FirstOrDefault();
+                }
+            }
+
+            _seanceEnvCourante = fiche;
             Orientation.Charger(_seanceEnvCourante);
             EvaluationCiblee.Charger(_seanceEnvCourante);
             CartoEnvMedecin.Charger(_seanceEnvCourante);
+            if (_seanceEnvCourante != null)
+            {
+                SyntheseSeance3.Charger(_seanceEnvCourante);
+            }
             FeuilleEnvStatus = "";
             OnPropertyChanged(nameof(FeuilleEnvEtatText));
             OnPropertyChanged(nameof(SyntheseSeance3EtatText));
@@ -1128,7 +1321,7 @@ namespace MedCompanion.ViewModels
         private void OuvrirOrientation()
         {
             Orientation.Status = "";
-            ShowOrientation = true;
+            CartoEnvStep = 2;
         }
 
         // ── Évaluation ciblée (carte 3 de la séance 3) ────────────────────────
@@ -1145,7 +1338,7 @@ namespace MedCompanion.ViewModels
         private void OuvrirEvaluationCiblee()
         {
             EvaluationCiblee.Status = "";
-            ShowEvaluationCiblee = true;
+            CartoEnvStep = 3;
         }
 
         /// <summary>
@@ -1330,6 +1523,19 @@ namespace MedCompanion.ViewModels
             SeanceEnvClotureStatus = manquants.Count == 0
                 ? "🔒 Séance terminée et enregistrée — la fiche est en lecture seule."
                 : $"🔒 Séance terminée — {manquants.Count} partie(s) restée(s) incomplète(s), consignée(s) comme telles.";
+        }
+
+        private void ReopenSeanceEnv()
+        {
+            if (_seanceEnvCourante == null) return;
+            var dir = CurrentPatient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir)) return;
+
+            _seanceEnvCourante.DateCloture = null;
+            _seanceEnv.Save(dir, _seanceEnvCourante);
+            SeanceEnvCloturee = false;
+            SeanceEnvClotureStatus = "🔓 Séance réouverte pour modifications.";
+            LoadSeanceEnvBilans();
         }
 
         // ── Synthèse de la séance 3 (carte 6) ────────────────────────────────
@@ -2042,6 +2248,7 @@ namespace MedCompanion.ViewModels
             OnPropertyChanged(nameof(HasCartographieSyntheseBlocs));
 
             LoadSeanceEnvBilans();
+            RefreshFriseStages();
         }
 
         /// <summary>
@@ -2795,6 +3002,8 @@ namespace MedCompanion.ViewModels
                     OnPropertyChanged(nameof(IsSuiviMode));
                     OnPropertyChanged(nameof(IsNormalMode));
                     OnPropertyChanged(nameof(PeutTerminerPremiere));
+                    OnPropertyChanged(nameof(IsAccueilSeanceVisible));
+                    OnPropertyChanged(nameof(IsTextBoxNormalVisible));
                     if (value == ConsultationType.PremiereConsultation)
                         InitInterrogatoireBlocks();
                     // Forcer la notification même si InterrogatoireState n'a pas changé de valeur
@@ -2822,10 +3031,59 @@ namespace MedCompanion.ViewModels
                 {
                     OnPropertyChanged(nameof(IsNotEditingConsultation));
                     OnPropertyChanged(nameof(PeutTerminerPremiere));
+                    OnPropertyChanged(nameof(IsAccueilSeanceVisible));
+                    OnPropertyChanged(nameof(IsTextBoxNormalVisible));
                 }
             }
         }
         public bool IsNotEditingConsultation => !_isEditingConsultation;
+
+        private bool _isForceNoteLibre;
+        public bool IsForceNoteLibre
+        {
+            get => _isForceNoteLibre;
+            set
+            {
+                if (SetProperty(ref _isForceNoteLibre, value))
+                {
+                    OnPropertyChanged(nameof(IsAccueilSeanceVisible));
+                    OnPropertyChanged(nameof(IsTextBoxNormalVisible));
+                }
+            }
+        }
+
+        public bool IsAccueilSeanceVisible =>
+            !_isForceNoteLibre &&
+            !IsEditingConsultation &&
+            IsNormalMode &&
+            !IsChoixPremiereMode &&
+            !IsRestitutionMode &&
+            !IsSyntheseGlobaleMode &&
+            !IsCartographieMode;
+
+        public bool IsTextBoxNormalVisible =>
+            (_isForceNoteLibre || IsEditingConsultation) &&
+            IsNormalMode &&
+            !IsChoixPremiereMode &&
+            !IsRestitutionMode &&
+            !IsSyntheseGlobaleMode &&
+            !IsCartographieMode;
+
+        public string DebuterSeanceButtonTitle => TotalConsultationsCount == 0
+            ? "🩺 DÉBUTER LA 1ÈRE CONSULTATION"
+            : "🩺 DÉBUTER LA CONSULTATION DE SUIVI";
+
+        public string DebuterSeanceButtonSubtitle => TotalConsultationsCount == 0
+            ? "Anamnèse, interrogatoire structuré & antécédents"
+            : "Évaluation clinique, traitement & point de suivi";
+
+        public string SeanceContexteBadge => TotalConsultationsCount == 0
+            ? "🆕 Nouveau patient — Aucune consultation enregistrée"
+            : $"📋 Patient en suivi • {TotalConsultationsText} • Dernière le {LastConsultDateText}";
+
+        public string SeanceDateFullText => ConsultationDate == DateTime.MinValue
+            ? DateTime.Now.ToString("dddd d MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"))
+            : ConsultationDate.ToString("dddd d MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
 
         /// <summary>
         /// Une 1ère consultation est ouverte : le bouton « Terminer » de la frise est proposé, à
@@ -3176,6 +3434,10 @@ namespace MedCompanion.ViewModels
             IsReadingPastConsultationMode = false;
             IsReadingPastPremiereConsultationMode = false;
             SelectedPastConsultation = null;
+            _isForceNoteLibre = false;
+            OnPropertyChanged(nameof(IsForceNoteLibre));
+            OnPropertyChanged(nameof(IsAccueilSeanceVisible));
+            OnPropertyChanged(nameof(IsTextBoxNormalVisible));
             // Ne touche pas à IsEditingConsultation qui a une sémantique légèrement différente,
             // bien qu'il soit souvent basculé en même temps.
         }
@@ -3345,7 +3607,14 @@ namespace MedCompanion.ViewModels
         public bool IsChoixPremiereMode
         {
             get => _isChoixPremiereMode;
-            set => SetProperty(ref _isChoixPremiereMode, value);
+            set
+            {
+                if (SetProperty(ref _isChoixPremiereMode, value))
+                {
+                    OnPropertyChanged(nameof(IsAccueilSeanceVisible));
+                    OnPropertyChanged(nameof(IsTextBoxNormalVisible));
+                }
+            }
         }
 
         private bool _premiereEnCours;
@@ -3615,6 +3884,15 @@ namespace MedCompanion.ViewModels
                     // Bascule en mode "Synthèse Globale" : ouvre le brouillon courant
                     // ou crée un nouveau brouillon v(N+1).
                     OuvrirSyntheseGlobale();
+                    break;
+
+                case "absent":
+                case "absent_excuse":
+                case "deplace":
+                case "annule":
+                case "liaison":
+                case "note_liaison":
+                    _ = CreerEvenementDossierAsync(type);
                     break;
 
                 case "suivi":
@@ -8236,6 +8514,10 @@ source: ""MedCompanion""
         public ICommand SetMedChecklistCommand { get; }
         public ICommand ToggleMedVoiceCommand { get; }
         public ICommand ToggleMedExpandedCommand { get; }
+        public ICommand ToggleMedEcouteAmbianceCommand { get; }
+        public ICommand ExecuteCockpitActionCommand { get; }
+        public ICommand SendCockpitMessageCommand { get; }
+        public ICommand ClearCockpitMessagesCommand { get; }
 
         public ICommand SelectDossierTabCommand { get; }
 
@@ -8261,6 +8543,9 @@ source: ""MedCompanion""
         public ICommand ClosePastConsultationCommand { get; }
         public ICommand DeleteSelectedPastConsultationCommand { get; }
         public ICommand ViewPastPremiereStepCommand { get; }
+        public ICommand DebuterSeanceAutomatiqueCommand { get; }
+        public ICommand BasculerVersNoteLibreCommand { get; }
+        public ICommand RetourAccueilSeanceCommand { get; }
 
         /// <summary>Refait proposer les axes et qualificatifs par le modèle. Efface les choix.</summary>
         public ICommand RegeneratePastSuggestionsCommand { get; private set; } = null!;
@@ -8301,6 +8586,10 @@ source: ""MedCompanion""
         public ICommand RedigerSyntheseSeance3Command { get; private set; } = null!;
         public ICommand EnregistrerSyntheseSeance3Command { get; private set; } = null!;
         public ICommand TerminerSeanceEnvCommand { get; private set; } = null!;
+        public ICommand SetCartoEnvStepCommand { get; private set; } = null!;
+        public ICommand ReopenSeanceEnvCommand { get; private set; } = null!;
+        public ICommand SetCartographieStepCommand { get; private set; } = null!;
+        public ICommand ReopenCartographieCommand { get; private set; } = null!;
         public ICommand CloseCartographieCommand { get; private set; } = null!;
         public ICommand OpenProfilsObservesCommand { get; private set; } = null!;
         public ICommand CloseProfilsObservesCommand { get; private set; } = null!;
@@ -8409,6 +8698,41 @@ source: ""MedCompanion""
             ToggleMedVoiceCommand   = new RelayCommand(_ => IsMedVoiceOn = !IsMedVoiceOn);
             ToggleMedExpandedCommand = new RelayCommand(_ => IsMedExpanded = !IsMedExpanded);
 
+            ToggleMedEcouteAmbianceCommand = new RelayCommand(_ =>
+            {
+                if (MedEcouteStatut == MedEcouteEtat.EcouteAmbiance)
+                {
+                    MedEcouteStatut = MedEcouteEtat.Veille;
+                    _wasEcouteAmbianceActiveBeforeDictee = false;
+                }
+                else
+                {
+                    MedEcouteStatut = MedEcouteEtat.EcouteAmbiance;
+                }
+            });
+
+            ExecuteCockpitActionCommand = new RelayCommand(param =>
+            {
+                if (param is MedCockpitAction action)
+                {
+                    ExecuteCockpitAction(action);
+                }
+                else if (param is string actionKey)
+                {
+                    ExecuteCockpitAction(new MedCockpitAction { ActionKey = actionKey });
+                }
+            });
+
+            SendCockpitMessageCommand = new RelayCommand(_ =>
+            {
+                SendCockpitMessage();
+            }, _ => !string.IsNullOrWhiteSpace(CockpitInputText));
+
+            ClearCockpitMessagesCommand = new RelayCommand(_ =>
+            {
+                InitializeCockpitFlow();
+            });
+
             // Command Dossier Tab
             SelectDossierTabCommand = new RelayCommand(param =>
             {
@@ -8500,6 +8824,13 @@ source: ""MedCompanion""
                 {
                     if (_whisperService == null) return;
 
+                    // Suspendre immédiatement l'écoute d'ambiance de Med au profit de la dictée
+                    if (MedEcouteStatut == MedEcouteEtat.EcouteAmbiance)
+                    {
+                        _wasEcouteAmbianceActiveBeforeDictee = true;
+                        MedEcouteStatut = MedEcouteEtat.DicteeEnCours;
+                    }
+
                     // Le LLM n'est PLUS déchargé avant la dictée. Il l'était quand Whisper et le
                     // modèle de langage partageaient la même carte et se disputaient sa VRAM.
                     // Depuis le 11/09/2026, Whisper a la 3050 et le LLM la 5060 Ti : le décharger ne
@@ -8522,6 +8853,17 @@ source: ""MedCompanion""
                     if (_whisperService == null) return;
                     await _whisperService.StopAsync();
                     IsRecording = false;
+
+                    // Rétablir l'écoute d'ambiance si elle était active avant la dictée
+                    if (_wasEcouteAmbianceActiveBeforeDictee)
+                    {
+                        _wasEcouteAmbianceActiveBeforeDictee = false;
+                        MedEcouteStatut = MedEcouteEtat.EcouteAmbiance;
+                    }
+                    else if (MedEcouteStatut == MedEcouteEtat.DicteeEnCours)
+                    {
+                        MedEcouteStatut = MedEcouteEtat.Veille;
+                    }
 
                     // En mode Suivi : la "pause" déclenche automatiquement l'extraction IA
                     // → les puces sont cumulées et la transcription brute est vidée
@@ -8558,6 +8900,29 @@ source: ""MedCompanion""
             CommencerPremiereCommand   = new RelayCommand(_ => CommencerPremiereConsultation(),   _ => CurrentPatient != null);
             PoursuivrePremiereCommand  = new RelayCommand(_ => PoursuivrePremiereConsultation(),  _ => CurrentPatient != null);
             RecommencerPremiereCommand = new RelayCommand(_ => RecommencerPremiereConsultation(), _ => CurrentPatient != null);
+
+            DebuterSeanceAutomatiqueCommand = new RelayCommand(_ =>
+            {
+                if (CurrentPatient == null) return;
+                if (TotalConsultationsCount == 0)
+                {
+                    StartNewConsultation("premiere");
+                }
+                else
+                {
+                    StartNewConsultation("suivi");
+                }
+            });
+
+            BasculerVersNoteLibreCommand = new RelayCommand(_ =>
+            {
+                IsForceNoteLibre = true;
+            });
+
+            RetourAccueilSeanceCommand = new RelayCommand(_ =>
+            {
+                IsForceNoteLibre = false;
+            });
 
             // Hub : ouvrir une carte passée (lecture)
             OpenCardCommand = new RelayCommand(param =>
@@ -8710,13 +9075,22 @@ source: ""MedCompanion""
                 _ => EnregistrerEvaluationCiblee(),
                 _ => CurrentPatient != null);
 
-            OpenCartoEnvMedecinCommand  = new RelayCommand(_ => OuvrirCartoEnvMedecin());
+            OpenCartoEnvMedecinCommand  = new RelayCommand(_ => CartoEnvStep = 4);
             CloseCartoEnvMedecinCommand = new RelayCommand(_ => ShowCartoEnvMedecin = false);
             EnregistrerCotationEnvCommand = new RelayCommand(
                 _ => EnregistrerCotationEnv(),
                 _ => CurrentPatient != null);
 
-            OpenSyntheseSeance3Command  = new RelayCommand(_ => OuvrirSyntheseSeance3());
+            OpenSyntheseSeance3Command  = new RelayCommand(_ =>
+            {
+                if (_seanceEnvCourante != null)
+                {
+                    _seanceEnvCourante.CotationsEnv = CartoEnvMedecin.ToDictionary();
+                    _seanceEnvCourante.Axes         = EvaluationCiblee.ToList();
+                }
+                SyntheseSeance3.Charger(_seanceEnvCourante);
+                CartoEnvStep = 6;
+            });
             CloseSyntheseSeance3Command = new RelayCommand(_ => ShowSyntheseSeance3 = false);
             RedigerSyntheseSeance3Command = new RelayCommand(
                 async _ => await RedigerSyntheseSeance3Async(),
@@ -8729,14 +9103,72 @@ source: ""MedCompanion""
                 _ => TerminerSeanceEnv(),
                 _ => CurrentPatient != null && !SeanceEnvCloturee);
 
+            SetCartoEnvStepCommand = new RelayCommand(param =>
+            {
+                if (param != null && int.TryParse(param.ToString(), out int s))
+                {
+                    CartoEnvStep = s;
+                    if (s == 6)
+                    {
+                        if (_seanceEnvCourante != null)
+                        {
+                            _seanceEnvCourante.CotationsEnv = CartoEnvMedecin.ToDictionary();
+                            _seanceEnvCourante.Axes         = EvaluationCiblee.ToList();
+                        }
+                        SyntheseSeance3.Charger(_seanceEnvCourante);
+                    }
+                }
+            });
+
+            ReopenSeanceEnvCommand = new RelayCommand(
+                _ => ReopenSeanceEnv(),
+                _ => _seanceEnvCourante != null && SeanceEnvCloturee);
+
             CloseCartographieCommand = new RelayCommand(_ =>
             {
                 ShowProfilsObserves = false;
                 IsCartographieMode  = false;
             });
 
-            OpenProfilsObservesCommand  = new RelayCommand(_ => ShowProfilsObserves = true);
-            CloseProfilsObservesCommand = new RelayCommand(_ => ShowProfilsObserves = false);
+            SetCartographieStepCommand = new RelayCommand(param =>
+            {
+                if (param != null && int.TryParse(param.ToString(), out int s))
+                {
+                    CartographieStep = s;
+                    if (s == 2)
+                    {
+                        ShowProfilsObserves = true;
+                        ShowSyntheseCarto = false;
+                    }
+                    else if (s == 4)
+                    {
+                        SyntheseCarto.Charger(_cartoV2Courante);
+                        ShowSyntheseCarto = true;
+                        ShowProfilsObserves = false;
+                    }
+                    else
+                    {
+                        ShowProfilsObserves = false;
+                        ShowSyntheseCarto = false;
+                    }
+                }
+            });
+
+            ReopenCartographieCommand = new RelayCommand(
+                _ => ReopenCartographie(),
+                _ => _cartoV2Courante != null && CartoV2Cloturee);
+
+            OpenProfilsObservesCommand  = new RelayCommand(_ =>
+            {
+                CartographieStep = 2;
+                ShowProfilsObserves = true;
+                ShowSyntheseCarto = false;
+            });
+            CloseProfilsObservesCommand = new RelayCommand(_ =>
+            {
+                ShowProfilsObserves = false;
+                CartographieStep = 1;
+            });
 
             SaveProfilsObservesCommand = new RelayCommand(
                 _ => SaveProfilsObserves(),
@@ -8747,8 +9179,18 @@ source: ""MedCompanion""
                 _ => CloturerSeanceCarto(),
                 _ => _cartoV2Courante != null && !CartoV2Cloturee);
 
-            OpenSyntheseCartoCommand  = new RelayCommand(_ => OuvrirSyntheseCarto());
-            CloseSyntheseCartoCommand = new RelayCommand(_ => ShowSyntheseCarto = false);
+            OpenSyntheseCartoCommand  = new RelayCommand(_ =>
+            {
+                SyntheseCarto.Charger(_cartoV2Courante);
+                CartographieStep = 4;
+                ShowSyntheseCarto = true;
+                ShowProfilsObserves = false;
+            });
+            CloseSyntheseCartoCommand = new RelayCommand(_ =>
+            {
+                ShowSyntheseCarto = false;
+                CartographieStep = 1;
+            });
             GenererSyntheseCartoCommand = new RelayCommand(
                 async _ => await GenererSyntheseCartoAsync(),
                 _ => SyntheseCarto.PeutGenerer);
@@ -9120,6 +9562,187 @@ source: ""MedCompanion""
         public ObservableCollection<CartographieEnvironnementBilanCardViewModel> CartographieEnvironnementBilans { get; } = new();
         public bool HasCartographieEnvironnementBilans => CartographieEnvironnementBilans.Count > 0;
 
+        // ── Statistiques du dossier (Couverture) ──────────────────────────────
+        private string _firstConsultDateText = "-";
+        public string FirstConsultDateText
+        {
+            get => _firstConsultDateText;
+            private set => SetProperty(ref _firstConsultDateText, value);
+        }
+
+        private int _totalConsultationsCount = 0;
+        public int TotalConsultationsCount
+        {
+            get => _totalConsultationsCount;
+            private set => SetProperty(ref _totalConsultationsCount, value);
+        }
+
+        private string _totalConsultationsText = "-";
+        public string TotalConsultationsText
+        {
+            get => _totalConsultationsText;
+            private set => SetProperty(ref _totalConsultationsText, value);
+        }
+
+        private string _lastConsultDateText = "-";
+        public string LastConsultDateText
+        {
+            get => _lastConsultDateText;
+            private set => SetProperty(ref _lastConsultDateText, value);
+        }
+
+        // ── Cartouches & Détail (Onglet CONSULT.) ─────────────────────────────
+        private ConsultationNoteViewModel? _selectedConsultationNote;
+        public ConsultationNoteViewModel? SelectedConsultationNote
+        {
+            get => _selectedConsultationNote;
+            set
+            {
+                if (SetProperty(ref _selectedConsultationNote, value))
+                {
+                    OnPropertyChanged(nameof(IsViewingConsultationDetail));
+                    OnPropertyChanged(nameof(IsNotViewingConsultationDetail));
+                    OnPropertyChanged(nameof(SinglePageNote));
+                    OnPropertyChanged(nameof(RightPageNote));
+                    if (value != null)
+                    {
+                        var idx = ConsultationNotes.IndexOf(value);
+                        if (idx >= 0)
+                        {
+                            _singlePageIndex = idx;
+                            NotifyPageChange();
+                        }
+                    }
+                }
+            }
+        }
+
+        public bool IsViewingConsultationDetail => SelectedConsultationNote != null;
+        public bool IsNotViewingConsultationDetail => SelectedConsultationNote == null;
+
+        public ObservableCollection<ConsultationNoteViewModel> ConsultationNotesChronological { get; } = new();
+
+        public ICommand SelectConsultationNoteCommand => new RelayCommand(param =>
+        {
+            if (param is ConsultationNoteViewModel note)
+            {
+                SelectedConsultationNote = note;
+            }
+        });
+
+        public ICommand BackToConsultationListCommand => new RelayCommand(_ =>
+        {
+            SelectedConsultationNote = null;
+        });
+
+        public ICommand CreerEvenementDossierCommand => new RelayCommand(async param =>
+        {
+            if (param is string type)
+                await CreerEvenementDossierAsync(type);
+        });
+
+        public async Task CreerEvenementDossierAsync(string type, string? observation = null)
+        {
+            if (_currentPatient == null || string.IsNullOrEmpty(_currentPatient.DirectoryPath))
+                return;
+
+            try
+            {
+                var now = DateTime.Now;
+                var notesDir = Path.Combine(_currentPatient.DirectoryPath, now.Year.ToString(), "notes");
+                Directory.CreateDirectory(notesDir);
+
+                string fileNameSuffix;
+                string title;
+                string yamlType;
+                string yamlStatut;
+                string mdContent;
+
+                switch (type.ToLowerInvariant())
+                {
+                    case "absent":
+                        fileNameSuffix = "absence";
+                        title = $"Absence du {now:dd/MM/yyyy}";
+                        yamlType = "Absence";
+                        yamlStatut = "Absent";
+                        mdContent = $@"# Rendez-vous non honoré
+- **Statut** : Patient absent (non excusé)
+- **Date & Heure** : {now:dd MMMM yyyy à HH:mm}
+- **Observations** : {observation ?? "Le patient ne s'est pas présenté au rendez-vous sans prévenir le cabinet."}";
+                        break;
+
+                    case "absent_excuse":
+                        fileNameSuffix = "absence_excusee";
+                        title = $"Absence excusée du {now:dd/MM/yyyy}";
+                        yamlType = "Absence excusée";
+                        yamlStatut = "Absent excusé";
+                        mdContent = $@"# Rendez-vous non honoré
+- **Statut** : Absence excusée
+- **Date & Heure** : {now:dd MMMM yyyy à HH:mm}
+- **Motif / Observations** : {observation ?? "Absence signalée par les parents / la famille."}";
+                        break;
+
+                    case "deplace":
+                    case "annule":
+                        fileNameSuffix = "rdv_deplace";
+                        title = $"RDV reporté / annulé du {now:dd/MM/yyyy}";
+                        yamlType = "Déplacé / Annulé";
+                        yamlStatut = "Déplacé / Annulé";
+                        mdContent = $@"# Rendez-vous déplacé / reporté
+- **Statut** : Déplacé / Reporté
+- **Date d'origine** : {now:dd MMMM yyyy à HH:mm}
+- **Observations** : {observation ?? "Rendez-vous déplacé à la demande de la famille ou réorganisé."}";
+                        break;
+
+                    case "liaison":
+                    case "note_liaison":
+                    default:
+                        fileNameSuffix = "liaison";
+                        title = $"Note de liaison du {now:dd/MM/yyyy}";
+                        yamlType = "Note de liaison";
+                        yamlStatut = "Note de liaison";
+                        mdContent = $@"# Note de liaison / coordination
+- **Type** : Échange téléphonique / liaison extérieure
+- **Date & Heure** : {now:dd MMMM yyyy à HH:mm}
+- **Interlocuteur** : {observation ?? "École / Professionnel de santé / Famille"}
+- **Contenu de l'échange** : 
+";
+                        break;
+                }
+
+                var stamp = now.ToString("yyyy-MM-dd_HHmm");
+                var filePath = Path.Combine(notesDir, $"{stamp}_{fileNameSuffix}.md");
+
+                var noteFullText = $@"---
+patient: ""{_currentPatient.NomComplet}""
+date: ""{now:yyyy-MM-ddTHH:mm:ss}""
+title: ""{title}""
+type: ""{yamlType}""
+statut: ""{yamlStatut}""
+source: ""MedCompanion""
+---
+
+{mdContent}
+";
+
+                await File.WriteAllTextAsync(filePath, noteFullText, System.Text.Encoding.UTF8);
+                await RefreshConsultationNotesAsync();
+
+                var nouvelleNote = ConsultationNotesChronological.FirstOrDefault(n => n.FilePath == filePath)
+                                   ?? ConsultationNotes.FirstOrDefault(n => n.FilePath == filePath);
+                if (nouvelleNote != null)
+                {
+                    SelectedConsultationNote = nouvelleNote;
+                }
+
+                ActiveDossierTab = DossierTab.Consultations;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[CreerEvenementDossierAsync] Erreur : {ex.Message}");
+            }
+        }
+
         public bool HasNoConsultationNotes => ConsultationNotes.Count == 0;
         public bool HasConsultationNotes   => ConsultationNotes.Count > 0;
 
@@ -9130,21 +9753,37 @@ source: ""MedCompanion""
             var pages = await _dossierDataService.LoadConsultationsAsync(patientSnapshot.NomComplet);
             if (CurrentPatient != patientSnapshot) return; // patient changé pendant l'attente IO
             ConsultationNotes.Clear();
+            ConsultationNotesChronological.Clear();
             foreach (var p in pages)
             {
-                var noteVm = new ConsultationNoteViewModel(p.Title, p.FilePath ?? "", p.Content ?? "");
+                var noteVm = new ConsultationNoteViewModel(p.Title, p.FilePath ?? "", p.Content ?? "", p.Date, p.DocumentType, p.Statut);
                 noteVm.DeleteRequested += vm =>
                 {
                     ConsultationNotes.Remove(vm);
+                    ConsultationNotesChronological.Remove(vm);
+                    if (SelectedConsultationNote == vm)
+                        SelectedConsultationNote = null;
                     OnPropertyChanged(nameof(HasNoConsultationNotes));
                     OnPropertyChanged(nameof(HasConsultationNotes));
                     _singlePageIndex = Math.Max(0, Math.Min(_singlePageIndex, ConsultationNotes.Count - 1));
                     _spreadIndex     = Math.Max(0, Math.Min(_spreadIndex,     SpreadCount - 1));
                     NotifyPageChange();
                     NotifySpreadChange();
+                    RecalculerStatistiquesConsultations();
                 };
                 ConsultationNotes.Add(noteVm);
             }
+
+            // Tri antéchronologique (les plus récentes en haut) pour l'affichage en cartouches
+            var sortedDesc = ConsultationNotes
+                .OrderByDescending(n => n.Date > DateTime.MinValue ? n.Date : DateTime.MinValue)
+                .ThenByDescending(n => n.Title)
+                .ToList();
+            foreach (var n in sortedDesc)
+                ConsultationNotesChronological.Add(n);
+
+            RecalculerStatistiquesConsultations();
+
             OnPropertyChanged(nameof(HasNoConsultationNotes));
             OnPropertyChanged(nameof(HasConsultationNotes));
             ResetPagination();
@@ -9154,6 +9793,67 @@ source: ""MedCompanion""
             LoadSyntheseGlobaleCards();
             LoadProjetTherapeutiqueCards();
             RefreshSyntheseUpdateBadge();
+        }
+
+        private void RecalculerStatistiquesConsultations()
+        {
+            var consultsReelles = ConsultationNotes
+                .Where(n => n.IsConsultationMedicale && n.Date > DateTime.MinValue)
+                .OrderBy(n => n.Date)
+                .ToList();
+
+            if (consultsReelles.Count > 0)
+            {
+                FirstConsultDateText = consultsReelles.First().DateShortText;
+                LastConsultDateText  = consultsReelles.Last().DateShortText;
+                TotalConsultationsCount = consultsReelles.Count;
+                TotalConsultationsText = TotalConsultationsCount == 1 ? "1 consultation" : $"{TotalConsultationsCount} consultations";
+            }
+            else if (ConsultationNotes.Count > 0)
+            {
+                var notesDatees = ConsultationNotes.Where(n => n.Date > DateTime.MinValue).OrderBy(n => n.Date).ToList();
+                if (notesDatees.Count > 0)
+                {
+                    FirstConsultDateText = notesDatees.First().DateShortText;
+                    LastConsultDateText  = notesDatees.Last().DateShortText;
+                    TotalConsultationsCount = notesDatees.Count;
+                    TotalConsultationsText = TotalConsultationsCount == 1 ? "1 consultation" : $"{TotalConsultationsCount} consultations";
+                }
+                else
+                {
+                    FirstConsultDateText = "-";
+                    LastConsultDateText  = "-";
+                    TotalConsultationsCount = ConsultationNotes.Count;
+                    TotalConsultationsText = TotalConsultationsCount == 1 ? "1 consultation" : $"{TotalConsultationsCount} consultations";
+                }
+            }
+            else
+            {
+                FirstConsultDateText = "-";
+                LastConsultDateText  = "-";
+                TotalConsultationsCount = 0;
+                TotalConsultationsText = "0 consultation";
+            }
+
+            if (CurrentPatient != null)
+            {
+                CurrentPatient.FirstConsultDate = FirstConsultDateText;
+                CurrentPatient.TotalConsultations = TotalConsultationsCount;
+                CurrentPatient.TotalConsultationsText = TotalConsultationsText;
+                CurrentPatient.LastConsultDate = LastConsultDateText;
+                OnPropertyChanged(nameof(CurrentPatient));
+            }
+
+            OnPropertyChanged(nameof(FirstConsultDateText));
+            OnPropertyChanged(nameof(TotalConsultationsCount));
+            OnPropertyChanged(nameof(TotalConsultationsText));
+            OnPropertyChanged(nameof(LastConsultDateText));
+            OnPropertyChanged(nameof(DebuterSeanceButtonTitle));
+            OnPropertyChanged(nameof(DebuterSeanceButtonSubtitle));
+            OnPropertyChanged(nameof(SeanceContexteBadge));
+            OnPropertyChanged(nameof(SeanceDateFullText));
+            OnPropertyChanged(nameof(IsAccueilSeanceVisible));
+            OnPropertyChanged(nameof(IsTextBoxNormalVisible));
         }
 
         /// <summary>
@@ -9242,12 +9942,56 @@ source: ""MedCompanion""
             // d'attente pendant que le médecin voit l'enfant et remplit les 3 profils.
             // Disponible dès que la 1ère consultation est clôturée (le questionnaire tire ses
             // illustrations de cet entretien) et que l'âge est dans la fourchette 3-11.
+            bool cartoCompleted = false;
+            bool cartoInProgress = false;
+            DateTime? cartoDate = null;
+
+            if (_cartoV2Courante != null)
+            {
+                cartoDate = _cartoV2Courante.Date;
+                if (_cartoV2Courante.EstCloturee || CartoV2Cloturee)
+                    cartoCompleted = true;
+                else if (_cartoV2Courante.NbAxesRenseignes > 0 || _cartoV2Courante.QuestionnaireLu || !string.IsNullOrEmpty(_cartoV2Courante.ScanImagePath))
+                    cartoInProgress = true;
+            }
+
+            if (!cartoCompleted && CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
+            {
+                try
+                {
+                    var fiches = _cartoV2.LoadAll(CurrentPatient.DirectoryPath);
+                    var closed = fiches.FirstOrDefault(f => f.EstCloturee);
+                    if (closed != null)
+                    {
+                        cartoCompleted = true;
+                        cartoDate = closed.Date;
+                    }
+                    else if (fiches.Count > 0 && !cartoInProgress)
+                    {
+                        var anyFiche = fiches.OrderByDescending(f => f.Date).First();
+                        cartoDate = anyFiche.Date;
+                        if (anyFiche.NbAxesRenseignes > 0 || anyFiche.QuestionnaireLu || !string.IsNullOrEmpty(anyFiche.ScanImagePath))
+                            cartoInProgress = true;
+                    }
+                }
+                catch { }
+            }
+
+            FriseStageStatus cartoStatus;
+            if (cartoCompleted)
+                cartoStatus = FriseStageStatus.Completed;
+            else if (cartoInProgress || IsCartographieMode)
+                cartoStatus = FriseStageStatus.InProgress;
+            else
+                cartoStatus = FriseStageStatus.Available;
+
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "cartographie",
                 Label  = "Cartographie de l'enfant",
                 Icon   = "🧩",
-                Status = FriseStageStatus.Available,
+                Status = cartoStatus,
+                Date   = cartoDate,
                 ActivateCommand = new Commands.RelayCommand(_ => EnterCartographieMode())
             });
 
@@ -9461,13 +10205,13 @@ source: ""MedCompanion""
             ConsultationNotes.Count == 0 ? 0 : (int)Math.Ceiling(ConsultationNotes.Count / 2.0);
 
         public ConsultationNoteViewModel? SinglePageNote =>
-            ConsultationNotes.Count > 0 ? ConsultationNotes[Math.Clamp(_singlePageIndex, 0, ConsultationNotes.Count - 1)] : null;
+            SelectedConsultationNote ?? (ConsultationNotes.Count > 0 ? ConsultationNotes[Math.Clamp(_singlePageIndex, 0, ConsultationNotes.Count - 1)] : null);
 
         public ConsultationNoteViewModel? LeftPageNote  =>
             ConsultationNotes.ElementAtOrDefault(_spreadIndex * 2);
 
         public ConsultationNoteViewModel? RightPageNote =>
-            ConsultationNotes.ElementAtOrDefault(_spreadIndex * 2 + 1);
+            SelectedConsultationNote ?? (ConsultationNotes.ElementAtOrDefault(_spreadIndex * 2 + 1) ?? ConsultationNotes.FirstOrDefault());
 
         public bool   HasPrevSingle  => _singlePageIndex > 0;
         public bool   HasNextSingle  => _singlePageIndex < ConsultationNotes.Count - 1;
@@ -10014,7 +10758,10 @@ source: ""MedCompanion""
             var utilisee = imagePath ?? imageFiche;
             var saisie = new MedCompanion.Dialogs.CartographieSaisieDialog(
                 utilisee, bande.Value, reponses,
-                _cartoV2Courante?.Informateur, _cartoV2Courante?.InformateurNom);
+                _cartoV2Courante?.Informateur, _cartoV2Courante?.InformateurNom)
+            {
+                Owner = System.Windows.Application.Current?.MainWindow
+            };
 
             // La feuille utilisée pour dépouiller est retenue dans la fiche. Sans ça, un
             // dépouillement lancé depuis le crayon du dossier — donc sur un fichier que la fiche
@@ -10246,7 +10993,439 @@ source: ""MedCompanion""
             ChecklistItems.Add(new ChecklistItem { Text = "Tolérance traitement", Source = "auto" });
             ChecklistItems.Add(new ChecklistItem { Text = "Situation scolaire", Source = "auto" });
             ChecklistItems.Add(new ChecklistItem { Text = "Qualité du sommeil", Source = "auto" });
+
+            // Initialiser le Cockpit conversationnel Med
+            InitializeCockpitFlow();
         }
+
+        #region Cockpit Med Interaction Logic
+
+        /// <summary>
+        /// Initialise le flux de conversation du cockpit selon le patient actif
+        /// </summary>
+        public void InitializeCockpitFlow()
+        {
+            CockpitMessages.Clear();
+
+            string nomPatient = CurrentPatient != null 
+                ? $"{CurrentPatient.Nom} {CurrentPatient.Prenom}".Trim() 
+                : "Tao DALMAU";
+
+            var msgSecretaire = new MedCockpitMessage
+            {
+                Role = MedRole.Secretaire,
+                Content = $"{nomPatient} (09h00) est annoncé en salle d'attente.\nSouhaitez-vous faire entrer le patient en consultation ?",
+                Timestamp = DateTime.Now
+            };
+
+            msgSecretaire.Actions.Add(new MedCockpitAction
+            {
+                Label = "✅ Présent / Entré",
+                ActionKey = "patient_present",
+                StyleVariant = "Success"
+            });
+            msgSecretaire.Actions.Add(new MedCockpitAction
+            {
+                Label = "❌ Absent",
+                ActionKey = "patient_absent",
+                StyleVariant = "Danger"
+            });
+            msgSecretaire.Actions.Add(new MedCockpitAction
+            {
+                Label = "⏱️ En retard (10 min)",
+                ActionKey = "patient_retard",
+                StyleVariant = "Warning"
+            });
+            msgSecretaire.NotifyActionsChanged();
+
+            CockpitMessages.Add(msgSecretaire);
+        }
+
+        /// <summary>
+        /// Exécute une action rapide du cockpit Med (clic sur un chip Oui/Non, Présent/Absent, etc.)
+        /// </summary>
+        private void ExecuteCockpitAction(MedCockpitAction action)
+        {
+            if (action == null) return;
+            action.IsEnabled = false;
+
+            string nomPatient = CurrentPatient != null 
+                ? $"{CurrentPatient.Nom} {CurrentPatient.Prenom}".Trim() 
+                : "Tao DALMAU";
+
+            switch (action.ActionKey)
+            {
+                case "patient_present":
+                {
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Praticien,
+                        Content = $"✅ {nomPatient} est présent et installé.",
+                        Timestamp = DateTime.Now
+                    });
+
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Secretaire,
+                        Content = $"Rendez-vous validé. Dossier de {nomPatient} actif et verrouillé.",
+                        Timestamp = DateTime.Now
+                    });
+
+                    var msgInterne = new MedCockpitMessage
+                    {
+                        Role = MedRole.Interne,
+                        Content = $"📋 Dossier {nomPatient} (6 ans) :\n• Motif : Suivi TDAH & réévaluation posologique.\n• Antécédent : Ritaline LP 20mg le matin depuis 3 mois.\n• Points clés : Contrôler appétit/poids, sommeil (heure d'endormissement) et retour de l'école.",
+                        Timestamp = DateTime.Now
+                    };
+                    msgInterne.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "📂 Consulter note précédente",
+                        ActionKey = "view_last_note",
+                        StyleVariant = "Primary"
+                    });
+                    msgInterne.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "⚖️ Constantes (Poids/Taille/TA)",
+                        ActionKey = "suggest_constantes",
+                        StyleVariant = "Secondary"
+                    });
+                    msgInterne.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "🩺 Débuter la consultation",
+                        ActionKey = "start_consultation",
+                        StyleVariant = "Success"
+                    });
+                    msgInterne.NotifyActionsChanged();
+                    CockpitMessages.Add(msgInterne);
+                    break;
+                }
+
+                case "start_consultation":
+                {
+                    DebuterSeanceAutomatiqueCommand?.Execute(null);
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Confrere,
+                        Content = "Entretien démarré. Dès que vous activez la dictée au micro, l'écoute d'ambiance se coupe automatiquement pour libérer 100% de la puissance pour Whisper.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+
+                case "patient_absent":
+                {
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Praticien,
+                        Content = $"❌ {nomPatient} ne s'est pas présenté au rendez-vous.",
+                        Timestamp = DateTime.Now
+                    });
+
+                    _ = CreerEvenementDossierAsync("absent", $"Le patient {nomPatient} ne s'est pas présenté au rendez-vous.");
+
+                    var msgSecr = new MedCockpitMessage
+                    {
+                        Role = MedRole.Secretaire,
+                        Content = $"Créneau de {nomPatient} marqué non honoré et enregistré dans le dossier patient (sans impacter le nombre de consultations). Que souhaitez-vous faire ?",
+                        Timestamp = DateTime.Now
+                    };
+                    msgSecr.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "📅 Reprogrammer sur l'agenda",
+                        ActionKey = "reschedule_rdv",
+                        StyleVariant = "Primary"
+                    });
+                    msgSecr.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "✉️ Archiver sans relance",
+                        ActionKey = "close_absent",
+                        StyleVariant = "Secondary"
+                    });
+                    msgSecr.NotifyActionsChanged();
+                    CockpitMessages.Add(msgSecr);
+                    break;
+                }
+
+                case "patient_retard":
+                {
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Praticien,
+                        Content = "⏱️ Le patient est signalé en retard de 10 minutes.",
+                        Timestamp = DateTime.Now
+                    });
+
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Secretaire,
+                        Content = "Créneau maintenu en attente. Dossier prêt dès son entrée.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+
+                case "view_last_note":
+                {
+                    ActiveDossierTab = DossierTab.Synthese;
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Interne,
+                        Content = "Synthèse et historique du patient affichés dans le dossier à droite.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+
+                case "suggest_constantes":
+                {
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Interne,
+                        Content = "Dernières constantes enregistrées (12/06) : Poids = 21.4 kg (M+0.5 DS), FC = 84 bpm, TA = 100/65 mmHg.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+
+                case "ack_ready":
+                {
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Confrere,
+                        Content = "Entretien démarré. Dès que vous activez la dictée au micro, l'écoute d'ambiance se coupe automatiquement pour libérer 100% de la puissance pour Whisper.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+
+                case "reschedule_rdv":
+                {
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Secretaire,
+                        Content = "Demande de reprogrammation enregistrée pour transmission au secrétariat.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+
+                case "close_absent":
+                {
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Secretaire,
+                        Content = "Absence archivée dans le dossier administratif.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+
+                case "copy_to_note":
+                {
+                    if (!string.IsNullOrWhiteSpace(action.Payload as string))
+                    {
+                        NoteContent += (string.IsNullOrWhiteSpace(NoteContent) ? "" : "\n") + action.Payload;
+                    }
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Med,
+                        Content = "Éléments ajoutés à la note en cours.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+
+                case "draft_letter_medecin":
+                {
+                    MedMode = MedConsultationMode.Suggestions;
+
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Praticien,
+                        Content = "Préparer un courrier pour le médecin traitant.",
+                        Timestamp = DateTime.Now
+                    });
+
+                    var msgLtr = new MedCockpitMessage
+                    {
+                        Role = MedRole.Interne,
+                        Content = $"✉️ Courrier médecin traitant généré pour {nomPatient} :\n« Cher confrère, j'ai revu ce jour {nomPatient}. L'examen clinique et les échelles confirment une bonne réponse thérapeutique. Conduite à tenir : poursuite du traitement et bilan psychomoteur en cours. »",
+                        Timestamp = DateTime.Now
+                    };
+                    msgLtr.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "📋 Insérer dans la note",
+                        ActionKey = "copy_to_note",
+                        Payload = $"Courrier médecin traitant : suivi {nomPatient}, réponse clinique favorable, poursuite de la prise en charge.",
+                        StyleVariant = "Primary"
+                    });
+                    msgLtr.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "📂 Voir onglet Documents",
+                        ActionKey = "view_docs",
+                        StyleVariant = "Secondary"
+                    });
+                    msgLtr.NotifyActionsChanged();
+                    CockpitMessages.Add(msgLtr);
+                    break;
+                }
+
+                case "draft_amenagements_ecole":
+                {
+                    MedMode = MedConsultationMode.Suggestions;
+
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Praticien,
+                        Content = "Générer les préconisations d'aménagements scolaires (PAP/PPS).",
+                        Timestamp = DateTime.Now
+                    });
+
+                    var msgPap = new MedCockpitMessage
+                    {
+                        Role = MedRole.Interne,
+                        Content = $"🏫 Préconisations pédagogiques et scolaires pour {nomPatient} :\n• Tiers-temps pour les évaluations écrites\n• Fractionnement des consignes et vérification de la compréhension\n• Place devant, proche de l'enseignant et loin des distractions\n• Clémence pour le soin et valorisation de l'engagement",
+                        Timestamp = DateTime.Now
+                    };
+                    msgPap.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "📋 Insérer dans la note",
+                        ActionKey = "copy_to_note",
+                        Payload = "Aménagements scolaires (PAP/PPS) : Tiers-temps, consignes fractionnées, placement stratégique, clémence soin.",
+                        StyleVariant = "Primary"
+                    });
+                    msgPap.NotifyActionsChanged();
+                    CockpitMessages.Add(msgPap);
+                    break;
+                }
+
+                case "open_demarche_mdph":
+                {
+                    MedMode = MedConsultationMode.Suggestions;
+
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Praticien,
+                        Content = "Initier le dossier MDPH (CERFA 15695*01).",
+                        Timestamp = DateTime.Now
+                    });
+
+                    var msgMdph = new MedCockpitMessage
+                    {
+                        Role = MedRole.Secretaire,
+                        Content = $"📋 Volet médical MDPH préparé pour {nomPatient} : retentissement sur les apprentissages et l'autonomie documenté.",
+                        Timestamp = DateTime.Now
+                    };
+                    msgMdph.Actions.Add(new MedCockpitAction
+                    {
+                        Label = "📂 Ouvrir onglet Administratif",
+                        ActionKey = "view_admin",
+                        StyleVariant = "Primary"
+                    });
+                    msgMdph.NotifyActionsChanged();
+                    CockpitMessages.Add(msgMdph);
+                    break;
+                }
+
+                case "view_docs":
+                {
+                    ActiveDossierTab = DossierTab.Documents;
+                    break;
+                }
+
+                case "view_admin":
+                {
+                    ActiveDossierTab = DossierTab.Administratif;
+                    break;
+                }
+
+                default:
+                {
+                    CockpitMessages.Add(new MedCockpitMessage
+                    {
+                        Role = MedRole.Med,
+                        Content = $"Option \"{action.Label}\" enregistrée.",
+                        Timestamp = DateTime.Now
+                    });
+                    break;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Traite l'envoi d'une question ou réponse libre posée à Med dans le cockpit
+        /// </summary>
+        private void SendCockpitMessage()
+        {
+            if (string.IsNullOrWhiteSpace(CockpitInputText)) return;
+
+            string question = CockpitInputText.Trim();
+            CockpitInputText = "";
+
+            CockpitMessages.Add(new MedCockpitMessage
+            {
+                Role = MedRole.Praticien,
+                Content = question,
+                Timestamp = DateTime.Now
+            });
+
+            string qLower = question.ToLowerInvariant();
+            if (qLower.Contains("posologie") || qLower.Contains("dose") || qLower.Contains("mg"))
+            {
+                var rep = new MedCockpitMessage
+                {
+                    Role = MedRole.Confrere,
+                    Content = "Méthylphénidate LP : initiation 10-20 mg/jour le matin. Titration hebdomadaire par paliers de 10 mg. Dose max recommandée : 1 mg/kg/j (ou 60 mg/j). Surveillance : tension artérielle, fréquence cardiaque, courbe de poids.",
+                    Timestamp = DateTime.Now
+                };
+                rep.Actions.Add(new MedCockpitAction
+                {
+                    Label = "📋 Insérer dans la note",
+                    ActionKey = "copy_to_note",
+                    Payload = "Posologie MPH : initiation 10-20 mg/j matin, palier hebdo 10 mg. Max 1 mg/kg/j. Contrôle TA/FC/Poids.",
+                    StyleVariant = "Primary"
+                });
+                rep.NotifyActionsChanged();
+                CockpitMessages.Add(rep);
+            }
+            else if (qLower.Contains("sommeil") || qLower.Contains("dort") || qLower.Contains("reveil") || qLower.Contains("coucher"))
+            {
+                CockpitMessages.Add(new MedCockpitMessage
+                {
+                    Role = MedRole.Interne,
+                    Content = "Si difficultés d'endormissement sous MPH : avancer la prise à 7h30-8h00. Éviter toute prise après 14h. Vérifier l'arrêt des écrans 1h avant le coucher. Si insomnie rebelle : réévaluer durée d'action (libération 8h vs 12h) ou mélatonine LP 1-2 mg.",
+                    Timestamp = DateTime.Now
+                });
+            }
+            else if (qLower.Contains("poids") || qLower.Contains("appetit") || qLower.Contains("mange") || qLower.Contains("repas"))
+            {
+                CockpitMessages.Add(new MedCockpitMessage
+                {
+                    Role = MedRole.Interne,
+                    Content = "Anorexie induite au déjeuner fréquente. Conseils hygiéno-diététiques : solide petit-déjeuner protéiné avant la prise du comprimé, collation dense au goûter (fruits secs, laitage) et dîner normal.",
+                    Timestamp = DateTime.Now
+                });
+            }
+            else
+            {
+                var rep = new MedCockpitMessage
+                {
+                    Role = MedRole.Med,
+                    Content = $"Message bien reçu : \"{question}\". Je le garde en mémoire pour la synthèse de cette consultation.",
+                    Timestamp = DateTime.Now
+                };
+                rep.Actions.Add(new MedCockpitAction
+                {
+                    Label = "👍 Parfait",
+                    ActionKey = "ack_general",
+                    StyleVariant = "Secondary"
+                });
+                rep.NotifyActionsChanged();
+                CockpitMessages.Add(rep);
+            }
+        }
+
+        #endregion
 
         #endregion
     }

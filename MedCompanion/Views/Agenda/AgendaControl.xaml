@@ -244,7 +244,7 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
-                <TextBlock Text="Med ne modifie rien : vérifiez ces points dans Doctolib." FontSize="10"
+                <TextBlock Text="Les rendez-vous modifiés ou annulés sont synchronisés dans votre agenda Med." FontSize="10"
                            Foreground="#7D3C98" FontStyle="Italic" Margin="0,6,0,0"/>
             </StackPanel>
         </Border>

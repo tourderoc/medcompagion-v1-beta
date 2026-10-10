@@ -167,5 +167,19 @@ namespace MedCompanion.Models.Restitutions
         /// proposer, il n'en ajoute jamais.
         /// </summary>
         public List<string> InfographiesIds { get; } = new();
+
+        // ── Directives & Cadrage Clinique Initial ────────────────────────────
+        // Saisies par le praticien en début de restitution pour piloter et orienter
+        // la synthèse diagnostique, le projet médical et le volet scolaire lors
+        // de la génération séquentielle des blocs.
+
+        private string _cadrageVisionMedicale = string.Empty;
+        public string CadrageVisionMedicale { get => _cadrageVisionMedicale; set => SetProperty(ref _cadrageVisionMedicale, value); }
+
+        private string _cadrageTraitementPropose = string.Empty;
+        public string CadrageTraitementPropose { get => _cadrageTraitementPropose; set => SetProperty(ref _cadrageTraitementPropose, value); }
+
+        private string _cadrageProjetEcole = string.Empty;
+        public string CadrageProjetEcole { get => _cadrageProjetEcole; set => SetProperty(ref _cadrageProjetEcole, value); }
     }
 }

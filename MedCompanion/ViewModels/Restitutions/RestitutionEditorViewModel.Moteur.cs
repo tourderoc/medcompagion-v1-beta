@@ -24,13 +24,14 @@ namespace MedCompanion.ViewModels.Restitutions
     /// </summary>
     public partial class RestitutionEditorViewModel
     {
+        public const string MoteurSwiftQwen      = "Swift 1.5 Qwen (IQ3_S + MTP)";
         public const string MoteurQwen           = "Qwen 3.8-27B";
         public const string MoteurGemmaQuantifie = "Gemma 4 QAT — contexte q8_0";
         public const string MoteurGemmaPlein     = "Gemma 4 QAT — contexte non quantifié";
 
         public IReadOnlyList<string> MoteursGeneration { get; } = new[]
         {
-            MoteurQwen, MoteurGemmaQuantifie, MoteurGemmaPlein
+            MoteurSwiftQwen, MoteurQwen, MoteurGemmaQuantifie, MoteurGemmaPlein
         };
 
         private string? _moteurGeneration;
@@ -66,23 +67,32 @@ namespace MedCompanion.ViewModels.Restitutions
             try
             {
                 var p = LlamaCppServerManager.CurrentProfile;
-                if (p == null) return MoteurQwen;
+                if (p == null) return MoteurSwiftQwen;
+                if (p.Id == LlamaCppProfiles.SwiftQwen.Id) return MoteurSwiftQwen;
                 if (p.Id == LlamaCppProfiles.Qwen.Id) return MoteurQwen;
                 return p.KvQuantized ? MoteurGemmaQuantifie : MoteurGemmaPlein;
             }
-            catch { return MoteurQwen; }
+            catch { return MoteurSwiftQwen; }
         }
 
         private void AppliquerMoteur(string choix)
         {
             try
             {
-                var versQwen = choix == MoteurQwen;
-                var profil   = versQwen ? LlamaCppProfiles.Qwen : LlamaCppProfiles.Gemma4Qat;
-
-                // Le cache KV n'est réglé que sur le profil concerné : basculer sur Qwen ne doit
-                // pas modifier au passage la configuration de Gemma.
-                if (!versQwen) profil.KvQuantized = choix == MoteurGemmaQuantifie;
+                LlamaCppModelProfile profil;
+                if (choix == MoteurSwiftQwen)
+                {
+                    profil = LlamaCppProfiles.SwiftQwen;
+                }
+                else if (choix == MoteurQwen)
+                {
+                    profil = LlamaCppProfiles.Qwen;
+                }
+                else
+                {
+                    profil = LlamaCppProfiles.Gemma4Qat;
+                    profil.KvQuantized = choix == MoteurGemmaQuantifie;
+                }
 
                 LlamaCppServerManager.CurrentProfile = profil;
                 LlamaCppProfiles.SaveSettings();

@@ -168,7 +168,7 @@ namespace MedCompanion.Views.Restitutions
     // couverture est un gabarit à champs, l'annexe méthodologique une ressource figée. Les
     // signaler « à 95 % » chaque fois apprend à ignorer le rapport. Un DÉBORDEMENT y reste
     // signalé — sur une page invariante, ce serait un défaut du gabarit, pas du dossier.
-    var fixe = p.classList.contains('cover-page') || p.classList.contains('annexe-page');
+    var fixe = p.classList.contains('cover-page') || p.classList.contains('annexe-page') || p.classList.contains('ai-page');
 
     out.push({ i: i + 1, h: contenu, t: titre, x: fixe ? 1 : 0 });
   }

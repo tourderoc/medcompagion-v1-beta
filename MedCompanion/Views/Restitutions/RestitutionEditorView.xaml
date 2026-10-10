@@ -167,6 +167,154 @@
         <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="0,0,10,0"
                       Visibility="{Binding ModeQualite, Converter={StaticResource BoolToVisInverse}}">
             <StackPanel>
+            <!-- 🧭 Directives & Cadrage Clinique Initial (Pilote la génération séquentielle) -->
+            <Border Background="White" BorderBrush="#2980B9" BorderThickness="3,1,1,1" CornerRadius="8" Padding="14" Margin="0,0,0,15" SnapsToDevicePixels="True">
+                <Border.Effect>
+                    <DropShadowEffect ShadowDepth="1" BlurRadius="6" Opacity="0.08" Color="#2C3E50"/>
+                </Border.Effect>
+                <StackPanel>
+                    <!-- En-tête de la carte avec titre, bouton de suggestion et bascule replier/déplier -->
+                    <Grid Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="Auto"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                <TextBlock Text="🧭" FontSize="16" Margin="0,0,8,0" VerticalAlignment="Center"/>
+                                <TextBlock Text="Directives &amp; Cadrage Clinique Initial" FontSize="15" FontWeight="Bold" Foreground="#1B4F72" VerticalAlignment="Center"/>
+                                <Border Background="#EBF5FB" BorderBrush="#AED6F1" BorderThickness="1" CornerRadius="4" Padding="6,2" Margin="10,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Pilote l'IA" FontSize="10" FontWeight="SemiBold" Foreground="#2980B9"/>
+                                </Border>
+                            </StackPanel>
+                            <TextBlock Text="Saisissez vos décisions clés ici pour orienter la synthèse, le traitement et le volet scolaire dès l'ouverture du dossier."
+                                       FontSize="11" Foreground="#5D6D7E" Margin="24,2,0,0" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Bouton Suggérer depuis le dossier -->
+                            <Button Command="{Binding SuggererCadrageCommand}"
+                                    Padding="10,6" Background="#EBF5FB" BorderBrush="#AED6F1" BorderThickness="1" Cursor="Hand"
+                                    ToolTip="Analyse les notes de consultation et bilans du dossier pour pré-remplir automatiquement ces 3 axes.">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                                                BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="4" Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#D6EAF8"/></Trigger>
+                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#F2F3F4"/><Setter Property="BorderBrush" Value="#BDC3C7"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <Button.Content>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="✨" FontSize="12" Margin="0,0,6,0" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCadrageGenerating}" Value="True">
+                                                            <Setter Property="Text" Value="⏳"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock FontSize="12" FontWeight="SemiBold" Foreground="#1B4F72" VerticalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="Suggérer depuis le dossier"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding IsCadrageGenerating}" Value="True">
+                                                            <Setter Property="Text" Value="Analyse en cours..."/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Button.Content>
+                            </Button>
+
+                            <!-- Bouton Replier / Déplier -->
+                            <ToggleButton x:Name="ToggleCadrageCard" IsChecked="True" Background="Transparent" BorderThickness="0" Cursor="Hand" Margin="8,0,0,0" VerticalAlignment="Center"
+                                          ToolTip="Replier / Déplier le panneau de cadrage">
+                                <ToggleButton.Template>
+                                    <ControlTemplate TargetType="ToggleButton">
+                                        <Border Background="#F2F4F4" CornerRadius="4" Padding="6,4">
+                                            <TextBlock x:Name="ChevronIcon" Text="▲" FontSize="10" Foreground="#7F8C8D"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsChecked" Value="False">
+                                                <Setter TargetName="ChevronIcon" Property="Text" Value="▼"/>
+                                            </Trigger>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="ChevronIcon" Property="Foreground" Value="#2980B9"/>
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </ToggleButton.Template>
+                            </ToggleButton>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Corps dépliable avec les 3 directives -->
+                    <StackPanel Visibility="{Binding IsChecked, ElementName=ToggleCadrageCard, Converter={StaticResource BoolToVis}}">
+                        <Border Height="1" Background="#EAECEE" Margin="0,2,0,10"/>
+
+                        <!-- 1. Vision Médicale -->
+                        <StackPanel Margin="0,0,0,10">
+                            <Grid Margin="0,0,0,4">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🩺" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Vision médicale / Problématique actuelle" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="Pilote : Synthèse diagnostique (p. 22), Restitution parents (p. 2) &amp; Conclusion (p. 31)"
+                                           FontSize="10" Foreground="#7F8C8D" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                            <TextBox Text="{Binding CadrageVisionMedicale, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="55" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                     FontSize="12" Padding="8,6" Background="#FAFAFA" BorderBrush="#D5D8DC" BorderThickness="1"
+                                     ToolTip="Ex : TDAH combiné sévère avec retentissement exécutif majeur, anxiété de performance secondaire, bilan orthophonique rassurant."/>
+                        </StackPanel>
+
+                        <!-- 2. Traitement Proposé -->
+                        <StackPanel Margin="0,0,0,10">
+                            <Grid Margin="0,0,0,4">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="💊" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Traitement proposé &amp; Prise en charge" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="Pilote : Projet médical (p. 27), Restitution parents (p. 2) &amp; Synthèse"
+                                           FontSize="10" Foreground="#7F8C8D" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                            <TextBox Text="{Binding CadrageTraitementPropose, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="50" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                     FontSize="12" Padding="8,6" Background="#FAFAFA" BorderBrush="#D5D8DC" BorderThickness="1"
+                                     ToolTip="Ex : Initiation MPH (Quasym LP 10mg le matin, titration à S+2), guidance parentale Barkley, suivi trimestriel."/>
+                        </StackPanel>
+
+                        <!-- 3. École & Aménagements Pédagogiques -->
+                        <StackPanel Margin="0,0,0,4">
+                            <Grid Margin="0,0,0,4">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <TextBlock Text="🏫" FontSize="13" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="École &amp; Aménagements pédagogiques" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50" VerticalAlignment="Center"/>
+                                </StackPanel>
+                                <TextBlock Text="Pilote : Volet école (p. 31) &amp; Aménagements prioritaires"
+                                           FontSize="10" Foreground="#7F8C8D" FontStyle="Italic" HorizontalAlignment="Right" VerticalAlignment="Center"/>
+                            </Grid>
+                            <TextBox Text="{Binding CadrageProjetEcole, UpdateSourceTrigger=PropertyChanged}"
+                                     AcceptsReturn="True" TextWrapping="Wrap" MinHeight="50" MaxHeight="120" VerticalScrollBarVisibility="Auto"
+                                     FontSize="12" Padding="8,6" Background="#FAFAFA" BorderBrush="#D5D8DC" BorderThickness="1"
+                                     ToolTip="Ex : Demande de PAP ou renouvellement, AESH mutualisée, tiers-temps aux évaluations, réduction de la copie, placement au premier rang."/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
             <ItemsControl ItemsSource="{Binding Blocs}">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
@@ -2235,7 +2383,7 @@
                         </Button>
                         <StackPanel>
                             <TextBlock Text="Contrôle qualité du dossier" FontSize="15" FontWeight="Bold" Foreground="#4A235A"/>
-                            <TextBlock Text="Trois phases. Rien ne se corrige tout seul — vous décidez à chaque point."
+                            <TextBlock Text="Quatre volets : Complétude des blocs, Mise en page, Contradictions, Fluidité."
                                        FontSize="11" Foreground="#7D6B8A" Margin="0,2,0,0"/>
                         </StackPanel>
                     </DockPanel>
@@ -2247,13 +2395,56 @@
                     <StackPanel>
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="MOTEUR" FontSize="9" FontWeight="SemiBold" Foreground="#7F8C8D"
-                                       VerticalAlignment="Center" Margin="0,0,10,0"/>
+                                        VerticalAlignment="Center" Margin="0,0,10,0"/>
                             <ComboBox ItemsSource="{Binding MoteursQualite}"
                                       SelectedItem="{Binding MoteurQualite, Mode=TwoWay}"
                                       Width="120" FontSize="11" Padding="4,2"/>
                         </StackPanel>
                         <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6" Margin="0,6,0,0"
                                    Text="Sert aux phases 2 et 3. Chaque constat porte le nom du moteur qui l&#39;a produit — pour comparer, lancez les deux AVANT d&#39;accepter quoi que ce soit : une correction déjà appliquée change le texte que le second moteur lira."/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Phase 0 -->
+                <Border DockPanel.Dock="Top" Padding="14,12" BorderBrush="#E8EDF3" BorderThickness="0,0,0,1">
+                    <StackPanel>
+                        <DockPanel>
+                            <Button DockPanel.Dock="Right" Command="{Binding LancerPhase0Command}"
+                                    Padding="12,6" FontSize="11" Cursor="Hand" VerticalAlignment="Top"
+                                    Background="#6C3483" Foreground="White" BorderThickness="0">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Border Background="{TemplateBinding Background}" CornerRadius="4"
+                                                Padding="{TemplateBinding Padding}">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        </Border>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Background" Value="#5B2C6F"/></Trigger>
+                                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Background" Value="#BDC3C7"/></Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <TextBlock>
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="Vérifier la complétude"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Phase0EnCours}" Value="True">
+                                                    <Setter Property="Text" Value="⏳ Vérification…"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </Button>
+                            <StackPanel>
+                                <TextBlock Text="0 · Complétude des blocs" FontSize="12" FontWeight="SemiBold" Foreground="#1B4F72"/>
+                                <TextBlock Text="{Binding Phase0Resume}" FontSize="11" Foreground="#16A085" Margin="0,2,0,0"
+                                           TextWrapping="Wrap"/>
+                            </StackPanel>
+                        </DockPanel>
+                        <TextBlock TextWrapping="Wrap" FontSize="10" Foreground="#95A5A6" Margin="0,7,0,0"
+                                   Text="Vérifie que tous les blocs inclus dans le document sont rédigés, ne comportent aucun texte d&#39;attente résiduel et que leur format de données est interprétable avant l&#39;export PDF."/>
                     </StackPanel>
                 </Border>
 

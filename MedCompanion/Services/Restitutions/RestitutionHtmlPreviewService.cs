@@ -435,6 +435,15 @@ namespace MedCompanion.Services.Restitutions
         /// </summary>
         private static string ScopeBodySelectorToCoverPage(string css)
         {
+            // Les règles @page globales sont déjà définies au niveau document dans BuildWrapperCss().
+            // Un @page résiduel dans un style injecté écraserait les @page nommées (ex: landscape-page)
+            // sous Chromium. On retire donc les directives @page de la couverture.
+            css = System.Text.RegularExpressions.Regex.Replace(
+                css,
+                @"@page[^{]*\{[^}]*\}",
+                "",
+                System.Text.RegularExpressions.RegexOptions.Multiline);
+
             // Remplace au DEBUT d'une règle : `body {` ou `body,` ou `body\n{`
             // mais pas `bodyfoo` ou `.foo body`. On utilise des motifs ancrés sur
             // début de ligne / après accolade / après virgule.
@@ -1633,7 +1642,7 @@ namespace MedCompanion.Services.Restitutions
         /// « indispensable » + « professionnel à trouver » désigne le point de blocage du
         /// parcours — le plus urgent, et celui sur lequel personne n'est encore engagé.
         /// </summary>
-        private sealed class PtAction
+        internal sealed class PtAction
         {
             public string Quoi         { get; set; } = "";
             public string Porteur      { get; set; } = "";
@@ -1682,12 +1691,12 @@ namespace MedCompanion.Services.Restitutions
             _                                                          => "#5D6D7E",
         };
 
-        private sealed class PtS1Traitement
+        internal sealed class PtS1Traitement
         {
             public string       SituationActuelle { get; set; } = "";
             public List<string> Propositions      { get; set; } = new();
         }
-        private sealed class PtS1Data
+        internal sealed class PtS1Data
         {
             public string         Intro        { get; set; } = "";
             public List<string>   Objectifs    { get; set; } = new();
@@ -1702,20 +1711,62 @@ namespace MedCompanion.Services.Restitutions
             public List<PtAction> Suivi        { get; set; } = new();
         }
 
-        private static PtS1Data? TryParsePtS1Json(string? text)
+        /// <summary>
+        /// Désérialise du JSON avec tolérance maximale : supprime d'éventuels blocs markdown,
+        /// tolère la casse des propriétés, et si le contenu a été échappé par le LLM (ex: chaîne littérale
+        /// avec \" et \n), tente un dé-échappement Regex.Unescape de secours.
+        /// </summary>
+        public static T? DeserializeFlexibleJson<T>(string? text, bool isArray = false) where T : class
         {
             if (string.IsNullOrWhiteSpace(text)) return null;
             try
             {
-                var start = text.IndexOf('{');
-                var end   = text.LastIndexOf('}');
+                var raw = text.Trim();
+                if (raw.StartsWith("```"))
+                {
+                    var nl = raw.IndexOf('\n');
+                    if (nl >= 0)
+                    {
+                        raw = raw.Substring(nl + 1);
+                        if (raw.EndsWith("```")) raw = raw.Substring(0, raw.Length - 3).TrimEnd();
+                    }
+                }
+
+                char openChar = isArray ? '[' : '{';
+                char closeChar = isArray ? ']' : '}';
+
+                var start = raw.IndexOf(openChar);
+                var end = raw.LastIndexOf(closeChar);
                 if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
+                var json = raw.Substring(start, end - start + 1);
+
                 var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                return JsonSerializer.Deserialize<PtS1Data>(json, opts);
+                try
+                {
+                    return JsonSerializer.Deserialize<T>(json, opts);
+                }
+                catch
+                {
+                    try
+                    {
+                        var unescaped = Regex.Unescape(json);
+                        var uStart = unescaped.IndexOf(openChar);
+                        var uEnd = unescaped.LastIndexOf(closeChar);
+                        if (uStart >= 0 && uEnd > uStart)
+                        {
+                            var uJson = unescaped.Substring(uStart, uEnd - uStart + 1);
+                            return JsonSerializer.Deserialize<T>(uJson, opts);
+                        }
+                    }
+                    catch { }
+                }
+                return null;
             }
             catch { return null; }
         }
+
+        internal static PtS1Data? TryParsePtS1Json(string? text) =>
+            DeserializeFlexibleJson<PtS1Data>(text);
 
         private string BuildPtS1Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
         {
@@ -1905,7 +1956,7 @@ namespace MedCompanion.Services.Restitutions
         /// prescription implicite, et un enfant déjà suivi se voyait proposer un projet écrit
         /// comme si l'on partait de zéro.
         /// </summary>
-        private sealed class PtIndication
+        internal sealed class PtIndication
         {
             public string Degre               { get; set; } = "";
             public string Porteur             { get; set; } = "";
@@ -1950,7 +2001,7 @@ namespace MedCompanion.Services.Restitutions
             return sb.ToString();
         }
 
-        private sealed class PtS2Data
+        internal sealed class PtS2Data
         {
             public PtIndication Indication       { get; set; } = new();
             public string       Intro            { get; set; } = "";
@@ -1964,20 +2015,8 @@ namespace MedCompanion.Services.Restitutions
             public List<string> Articulation     { get; set; } = new();
         }
 
-        private static PtS2Data? TryParsePtS2Json(string? text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            try
-            {
-                var start = text.IndexOf('{');
-                var end   = text.LastIndexOf('}');
-                if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                return JsonSerializer.Deserialize<PtS2Data>(json, opts);
-            }
-            catch { return null; }
-        }
+        internal static PtS2Data? TryParsePtS2Json(string? text) =>
+            DeserializeFlexibleJson<PtS2Data>(text);
 
         private string BuildPtS2Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
         {
@@ -2104,7 +2143,7 @@ namespace MedCompanion.Services.Restitutions
         /// Mêlées dans une même liste, elles pesaient pareil : un parent pouvait engager la
         /// sophrologie — immédiate et gratuite — et différer l'orthophonie.
         /// </summary>
-        private sealed class PtS3Data
+        internal sealed class PtS3Data
         {
             public PtIndication  Indication       { get; set; } = new();
             public string        Intro            { get; set; } = "";
@@ -2115,20 +2154,8 @@ namespace MedCompanion.Services.Restitutions
             public List<string>  Reevaluation     { get; set; } = new();
         }
 
-        private static PtS3Data? TryParsePtS3Json(string? text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            try
-            {
-                var start = text.IndexOf('{');
-                var end   = text.LastIndexOf('}');
-                if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                return JsonSerializer.Deserialize<PtS3Data>(json, opts);
-            }
-            catch { return null; }
-        }
+        internal static PtS3Data? TryParsePtS3Json(string? text) =>
+            DeserializeFlexibleJson<PtS3Data>(text);
 
         private string BuildPtS3Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
         {
@@ -2246,7 +2273,7 @@ namespace MedCompanion.Services.Restitutions
         /// TIERS dans le quotidien (SESSAD, éducateur, AEMO — autres circuits, autres délais),
         /// et ce que la FAMILLE ajuste seule, qui ne se programme ni ne se hiérarchise.
         /// </summary>
-        private sealed class PtS4Data
+        internal sealed class PtS4Data
         {
             public PtIndication  Indication              { get; set; } = new();
             public string        Intro                   { get; set; } = "";
@@ -2257,20 +2284,8 @@ namespace MedCompanion.Services.Restitutions
             public List<string>  ReperesEvolution        { get; set; } = new();
         }
 
-        private static PtS4Data? TryParsePtS4Json(string? text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            try
-            {
-                var start = text.IndexOf('{');
-                var end   = text.LastIndexOf('}');
-                if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                return JsonSerializer.Deserialize<PtS4Data>(json, opts);
-            }
-            catch { return null; }
-        }
+        internal static PtS4Data? TryParsePtS4Json(string? text) =>
+            DeserializeFlexibleJson<PtS4Data>(text);
 
         private string BuildPtS4Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
         {
@@ -2382,7 +2397,7 @@ namespace MedCompanion.Services.Restitutions
         /// Le modèle ne propose donc jamais de dispositif : il décline ce que le médecin a posé,
         /// ou, si rien n'est posé, se limite à des conseils applicables sans procédure.
         /// </summary>
-        private sealed class PtS5Data
+        internal sealed class PtS5Data
         {
             public List<PtAction> CadreScolaire    { get; set; } = new();
             public string        Intro             { get; set; } = "";
@@ -2391,20 +2406,8 @@ namespace MedCompanion.Services.Restitutions
             public List<string>  ReperesEvolution  { get; set; } = new();
         }
 
-        private static PtS5Data? TryParsePtS5Json(string? text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            try
-            {
-                var start = text.IndexOf('{');
-                var end   = text.LastIndexOf('}');
-                if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                return JsonSerializer.Deserialize<PtS5Data>(json, opts);
-            }
-            catch { return null; }
-        }
+        internal static PtS5Data? TryParsePtS5Json(string? text) =>
+            DeserializeFlexibleJson<PtS5Data>(text);
 
         private string BuildPtS5Page(string? contenu, CoverFields cover, int pageNumber, int totalPages)
         {
@@ -2501,27 +2504,15 @@ namespace MedCompanion.Services.Restitutions
         /// les deux autres. Ne restent que ce que cette page est seule à porter — l'enfant rendu
         /// entier, ses forces, et ce qui n'est pas encore tranché.
         /// </summary>
-        private sealed class ConclusionData
+        internal sealed class ConclusionData
         {
             public string       Intro       { get; set; } = "";
             public List<string> Forces      { get; set; } = new();
             public List<string> ResteOuvert { get; set; } = new();
         }
 
-        private static ConclusionData? TryParseConclusionJson(string? text)
-        {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            try
-            {
-                var start = text.IndexOf('{');
-                var end   = text.LastIndexOf('}');
-                if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                return JsonSerializer.Deserialize<ConclusionData>(json, opts);
-            }
-            catch { return null; }
-        }
+        internal static ConclusionData? TryParseConclusionJson(string? text) =>
+            DeserializeFlexibleJson<ConclusionData>(text);
 
         /// <summary>
         /// Ce que le dossier dit de lui-même — texte FIXE, jamais généré, comme le rôle du
@@ -2702,85 +2693,77 @@ namespace MedCompanion.Services.Restitutions
             return sb.ToString();
         }
 
-        private sealed class DiagS2Item
+        internal sealed class DiagS2Item
         {
             public string         Label     { get; set; } = "";
             public string         Certitude { get; set; } = "";
             public List<string>   Elements  { get; set; } = new();
         }
 
-        private static List<DiagS2Item>? TryParseDiagS2Json(string? text)
+        internal static List<DiagS2Item>? TryParseDiagS2Json(string? text)
         {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            try
-            {
-                var start = text.IndexOf('[');
-                var end   = text.LastIndexOf(']');
-                if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var list = JsonSerializer.Deserialize<List<DiagS2Item>>(json, opts);
-                return list is { Count: > 0 } ? list : null;
-            }
-            catch { return null; }
+            var list = DeserializeFlexibleJson<List<DiagS2Item>>(text, isArray: true);
+            return list is { Count: > 0 } ? list : null;
         }
 
-        private sealed class DiagS3Item
+        internal sealed class DiagS3Item
         {
             public string         Label      { get; set; } = "";
             public string         Conclusion { get; set; } = "";
             public List<string>   Arguments  { get; set; } = new();
         }
 
-        private static List<DiagS3Item>? TryParseDiagS3Json(string? text)
+        internal static List<DiagS3Item>? TryParseDiagS3Json(string? text)
         {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            try
-            {
-                var start = text.IndexOf('[');
-                var end   = text.LastIndexOf(']');
-                if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var list = JsonSerializer.Deserialize<List<DiagS3Item>>(json, opts);
-                return list is { Count: > 0 } ? list : null;
-            }
-            catch { return null; }
+            var list = DeserializeFlexibleJson<List<DiagS3Item>>(text, isArray: true);
+            return list is { Count: > 0 } ? list : null;
         }
 
-        private sealed class DiagS4Enfant
+        internal sealed class DiagS4Enfant
         {
             public List<string> Forces     { get; set; } = new();
             public List<string> Fragilites { get; set; } = new();
         }
-        private sealed class DiagS4Environnement
+        internal sealed class DiagS4Environnement
         {
             public List<string> Protecteurs { get; set; } = new();
             public List<string> Aggravants  { get; set; } = new();
         }
-        private sealed class DiagS4Data
+        internal sealed class DiagS4Data
         {
             public DiagS4Enfant       Enfant       { get; set; } = new();
             public DiagS4Environnement Environnement { get; set; } = new();
         }
 
-        private static DiagS4Data? TryParseDiagS4Json(string? text)
+        internal static DiagS4Data? TryParseDiagS4Json(string? text)
         {
-            if (string.IsNullOrWhiteSpace(text)) return null;
-            try
+            var data = DeserializeFlexibleJson<DiagS4Data>(text);
+            if (data == null) return null;
+            bool hasContent = data.Enfant.Forces.Count > 0 || data.Enfant.Fragilites.Count > 0
+                           || data.Environnement.Protecteurs.Count > 0 || data.Environnement.Aggravants.Count > 0;
+            return hasContent ? data : null;
+        }
+
+        /// <summary>
+        /// Valide la conformité structurelle des blocs de données sérialisés (projet de soin, synthèse diagnostique, conclusion).
+        /// Utilisé notamment par la Phase 0 du contrôle qualité.
+        /// </summary>
+        public static bool ValiderStructurePtOuDiag(string key, string? contenu)
+        {
+            if (string.IsNullOrWhiteSpace(contenu)) return false;
+            return key switch
             {
-                var start = text.IndexOf('{');
-                var end   = text.LastIndexOf('}');
-                if (start < 0 || end <= start) return null;
-                var json = text.Substring(start, end - start + 1);
-                var opts = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-                var data = JsonSerializer.Deserialize<DiagS4Data>(json, opts);
-                if (data == null) return null;
-                bool hasContent = data.Enfant.Forces.Count > 0 || data.Enfant.Fragilites.Count > 0
-                               || data.Environnement.Protecteurs.Count > 0 || data.Environnement.Aggravants.Count > 0;
-                return hasContent ? data : null;
-            }
-            catch { return null; }
+                "pt_s1" => TryParsePtS1Json(contenu) != null,
+                "pt_s2" => TryParsePtS2Json(contenu) != null,
+                "pt_s3" => TryParsePtS3Json(contenu) != null,
+                "pt_s4" => TryParsePtS4Json(contenu) != null,
+                "pt_s5" => TryParsePtS5Json(contenu) != null,
+                "conclusion" => TryParseConclusionJson(contenu) != null,
+                "synthese_diag_s2" => TryParseDiagS2Json(contenu) != null,
+                "synthese_diag_s3" => TryParseDiagS3Json(contenu) != null,
+                "synthese_diag_s4" => TryParseDiagS4Json(contenu) != null,
+                _ => true
+            };
         }
 
         private static (string dotClass, string label) MapCertitudeToDot(string certitude) =>
@@ -5351,6 +5334,14 @@ namespace MedCompanion.Services.Restitutions
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; background: #DDD; }
 body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
+@page {
+  size: A4 portrait;
+  margin: 0;
+}
+@page landscape-page {
+  size: A4 landscape;
+  margin: 0;
+}
 .page {
   background: white;
   width: 210mm;
@@ -5359,6 +5350,12 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
   box-shadow: 0 4px 12px rgba(0,0,0,0.15);
   position: relative;
   overflow: hidden;
+}
+.page.ai-land {
+  page: landscape-page;
+  width: 297mm;
+  min-height: 210mm;
+  height: 210mm;
 }
 .cover-page { padding: 0; /* le template gère son propre padding */ }
 .draft-page {
@@ -5403,6 +5400,12 @@ body { font-family: 'Nunito', 'Segoe UI', Arial, sans-serif; padding: 20px; }
     break-after: page;
     height: 297mm;
     overflow: hidden;
+  }
+  .page.ai-land {
+    page: landscape-page;
+    width: 297mm !important;
+    height: 210mm !important;
+    min-height: 210mm !important;
   }
   .page:last-child { page-break-after: avoid; break-after: avoid; }
 }

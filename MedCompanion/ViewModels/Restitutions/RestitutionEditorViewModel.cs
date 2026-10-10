@@ -952,9 +952,8 @@ namespace MedCompanion.ViewModels.Restitutions
             _syncingPt = true;
             try
             {
-                var json = StripMarkdownFence(Model.ContenuValide ?? "");
-                if (string.IsNullOrWhiteSpace(json) || json == "{}") return;
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                using var doc = TryParseJsonDoc(Model.ContenuValide);
+                if (doc == null) return;
                 var root = doc.RootElement;
                 foreach (var field in PtFields)
                 {
@@ -1156,9 +1155,8 @@ namespace MedCompanion.ViewModels.Restitutions
             try
             {
                 DiagS2Items.Clear();
-                var json = StripMarkdownFence(Model.ContenuValide ?? "");
-                if (string.IsNullOrWhiteSpace(json) || json == "[]") return;
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                using var doc = TryParseJsonDoc(Model.ContenuValide);
+                if (doc == null) return;
                 var root = doc.RootElement;
                 if (root.ValueKind != System.Text.Json.JsonValueKind.Array) return;
                 foreach (var el in root.EnumerateArray())
@@ -1213,9 +1211,8 @@ namespace MedCompanion.ViewModels.Restitutions
             try
             {
                 DiagS3Items.Clear();
-                var json = StripMarkdownFence(Model.ContenuValide ?? "");
-                if (string.IsNullOrWhiteSpace(json) || json == "[]") return;
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                using var doc = TryParseJsonDoc(Model.ContenuValide);
+                if (doc == null) return;
                 var root = doc.RootElement;
                 if (root.ValueKind != System.Text.Json.JsonValueKind.Array) return;
                 foreach (var el in root.EnumerateArray())
@@ -1271,9 +1268,8 @@ namespace MedCompanion.ViewModels.Restitutions
             {
                 S4Vm.Forces.Clear(); S4Vm.Fragilites.Clear();
                 S4Vm.Protecteurs.Clear(); S4Vm.Aggravants.Clear();
-                var json = StripMarkdownFence(Model.ContenuValide ?? "");
-                if (string.IsNullOrWhiteSpace(json) || json == "{}") return;
-                using var doc = System.Text.Json.JsonDocument.Parse(json);
+                using var doc = TryParseJsonDoc(Model.ContenuValide);
+                if (doc == null) return;
                 var root = doc.RootElement;
                 if (root.TryGetProperty("enfant", out var enfant))
                 {
@@ -1333,6 +1329,26 @@ namespace MedCompanion.ViewModels.Restitutions
             finally { _syncingS4 = false; }
         }
 
+        private static System.Text.Json.JsonDocument? TryParseJsonDoc(string? raw)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) return null;
+            var json = StripMarkdownFence(raw);
+            if (string.IsNullOrWhiteSpace(json) || json == "{}" || json == "[]") return null;
+            try
+            {
+                return System.Text.Json.JsonDocument.Parse(json);
+            }
+            catch
+            {
+                try
+                {
+                    var unescaped = System.Text.RegularExpressions.Regex.Unescape(json);
+                    return System.Text.Json.JsonDocument.Parse(unescaped);
+                }
+                catch { return null; }
+            }
+        }
+
         private static string StripMarkdownFence(string s)
         {
             var t = s.Trim();
@@ -1351,9 +1367,24 @@ namespace MedCompanion.ViewModels.Restitutions
             get => Model.ContenuValide;
             set
             {
-                if (Model.ContenuValide != value)
+                var val = value ?? "";
+                if (!string.IsNullOrWhiteSpace(val) && (IsPtBloc || IsSyntheseDiagS2 || IsSyntheseDiagS3 || IsSyntheseDiagS4 || IsConclusion))
                 {
-                    Model.ContenuValide = value;
+                    if (val.Contains("\\\"") || val.Contains("\\n"))
+                    {
+                        try
+                        {
+                            var unescaped = System.Text.RegularExpressions.Regex.Unescape(val.Trim());
+                            if (unescaped.StartsWith("{") || unescaped.StartsWith("["))
+                                val = unescaped;
+                        }
+                        catch { }
+                    }
+                }
+
+                if (Model.ContenuValide != val)
+                {
+                    Model.ContenuValide = val;
                     OnPropertyChanged();
                     if (IsCouverture) ParseContenuToCouvertureFields();
                     if (IsRestitutionParents) ParseContenuToParentsFields();
@@ -1533,6 +1564,66 @@ namespace MedCompanion.ViewModels.Restitutions
         public ICommand GenerateAllCommand     { get; }
         public ICommand StopGenerationCommand  { get; }
         public ICommand CloseCommand           { get; }
+        public ICommand SuggererCadrageCommand { get; }
+
+        // ── Directives & Cadrage Clinique Initial ────────────────────────────
+
+        public string CadrageVisionMedicale
+        {
+            get => _dossier.CadrageVisionMedicale;
+            set
+            {
+                if (_dossier.CadrageVisionMedicale != value)
+                {
+                    _dossier.CadrageVisionMedicale = value ?? "";
+                    OnPropertyChanged();
+                    TriggerDebouncedSave();
+                }
+            }
+        }
+
+        public string CadrageTraitementPropose
+        {
+            get => _dossier.CadrageTraitementPropose;
+            set
+            {
+                if (_dossier.CadrageTraitementPropose != value)
+                {
+                    _dossier.CadrageTraitementPropose = value ?? "";
+                    OnPropertyChanged();
+                    TriggerDebouncedSave();
+                }
+            }
+        }
+
+        public string CadrageProjetEcole
+        {
+            get => _dossier.CadrageProjetEcole;
+            set
+            {
+                if (_dossier.CadrageProjetEcole != value)
+                {
+                    _dossier.CadrageProjetEcole = value ?? "";
+                    OnPropertyChanged();
+                    TriggerDebouncedSave();
+                }
+            }
+        }
+
+        private bool _isCadrageGenerating;
+        public bool IsCadrageGenerating
+        {
+            get => _isCadrageGenerating;
+            set
+            {
+                if (_isCadrageGenerating != value)
+                {
+                    _isCadrageGenerating = value;
+                    OnPropertyChanged();
+                    (SuggererCadrageCommand as RelayCommand)?.RaiseCanExecuteChanged();
+                }
+            }
+        }
 
         public event Action? RequestClose;
 
@@ -1654,10 +1745,11 @@ namespace MedCompanion.ViewModels.Restitutions
 
             ChargerAnnexesInfographies();
 
-            SaveCommand           = new RelayCommand(async _ => await SaveAsync());
-            GenerateAllCommand    = new RelayCommand(async _ => await GenerateAllAsync(), _ => !IsGeneratingAll);
-            StopGenerationCommand = new RelayCommand(_ => StopGeneration(),               _ =>  IsGeneratingAll);
-            CloseCommand          = new RelayCommand(_ => RequestClose?.Invoke());
+            SaveCommand            = new RelayCommand(async _ => await SaveAsync());
+            GenerateAllCommand     = new RelayCommand(async _ => await GenerateAllAsync(), _ => !IsGeneratingAll);
+            StopGenerationCommand  = new RelayCommand(_ => StopGeneration(),               _ =>  IsGeneratingAll);
+            CloseCommand           = new RelayCommand(_ => RequestClose?.Invoke());
+            SuggererCadrageCommand = new RelayCommand(async _ => await SuggererCadrageAsync(), _ => !IsGeneratingAll && !IsCadrageGenerating);
         }
 
         /// <summary>
@@ -1688,6 +1780,75 @@ namespace MedCompanion.ViewModels.Restitutions
             _previewDebounceTimer.Start();
         }
 
+        private void TriggerDebouncedSave()
+        {
+            if (_previewDebounceTimer == null)
+            {
+                _previewDebounceTimer = new System.Windows.Threading.DispatcherTimer
+                {
+                    Interval = TimeSpan.FromMilliseconds(500)
+                };
+                _previewDebounceTimer.Tick += async (s, _) =>
+                {
+                    _previewDebounceTimer.Stop();
+                    await SaveAsync();
+                    PreviewRefreshRequested?.Invoke();
+                };
+            }
+            _previewDebounceTimer.Stop();
+            _previewDebounceTimer.Start();
+        }
+
+        private async Task SuggererCadrageAsync()
+        {
+            if (IsCadrageGenerating) return;
+            IsCadrageGenerating = true;
+            StatusMessage = "⏳ Analyse du dossier patient pour suggérer le cadrage initial...";
+            try
+            {
+                _currentReading ??= await _dossierReader.ReadAsync(_patientName);
+                var ct = _generationCts?.Token ?? CancellationToken.None;
+                var (vision, ttt, ecole) = await _suggesterService.SuggererCadrageInitialAsync(_currentReading, ct);
+
+                bool modified = false;
+                if (!string.IsNullOrWhiteSpace(vision))
+                {
+                    CadrageVisionMedicale = vision;
+                    modified = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(ttt))
+                {
+                    CadrageTraitementPropose = ttt;
+                    modified = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(ecole))
+                {
+                    CadrageProjetEcole = ecole;
+                    modified = true;
+                }
+
+                if (modified)
+                {
+                    await SaveAsync();
+                    StatusMessage = "✓ Directives et cadrage initial suggérés depuis le dossier.";
+                }
+                else
+                {
+                    StatusMessage = "ℹ Cadrage : aucun élément pertinent extrait du dossier.";
+                }
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = $"❌ Erreur suggestion cadrage : {ex.Message}";
+            }
+            finally
+            {
+                IsCadrageGenerating = false;
+            }
+        }
+
         // ── Reformulation d'un bloc texte libre avec instruction ─────────────────
 
         private async Task ReformulateBlocAsync(RestitutionBlocViewModel blocVm)
@@ -1704,7 +1865,7 @@ namespace MedCompanion.ViewModels.Restitutions
                 StatusMessage   = $"✍ Reformulation — {blocVm.Title}...";
 
                 var newContent = await _suggesterService.ReformuleBlocWithInstructionAsync(
-                    blocVm.Model, blocVm.Contenu, instruction, _currentReading!, ct);
+                    blocVm.Model, blocVm.Contenu, instruction, _currentReading!, ct, _dossier);
 
                 if (!string.IsNullOrWhiteSpace(newContent) && !ct.IsCancellationRequested)
                 {
