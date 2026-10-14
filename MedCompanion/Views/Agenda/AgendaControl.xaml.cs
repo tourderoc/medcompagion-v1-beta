@@ -55,7 +55,20 @@ namespace MedCompanion.Views.Agenda
                 if (e.PropertyName != nameof(AgendaViewModel.Titre)) return;
                 Dispatcher.BeginInvoke(new Action(Mesurer), DispatcherPriority.Loaded);
             };
+
+            // Le fil de la journée se relit tant que l'agenda est à l'écran : une note enregistrée
+            // à 14 h doit faire passer le rendez-vous en « terminé » sans rien toucher.
+            _minuterieFil.Tick += async (_, _) =>
+            {
+                if (IsVisible) await _viewModel.ActualiserFilAsync();
+            };
+            IsVisibleChanged += (_, _) =>
+            {
+                if (IsVisible) _minuterieFil.Start(); else _minuterieFil.Stop();
+            };
         }
+
+        private readonly DispatcherTimer _minuterieFil = new() { Interval = TimeSpan.FromMinutes(3) };
 
         private void Mesurer()
             => _viewModel.DefinirHauteurDisponible(CorpsScroll.ViewportHeight > 0
@@ -155,6 +168,7 @@ namespace MedCompanion.Views.Agenda
             _viewModel.Aujourdhui();
             _viewModel.DefinirHauteurDisponible(CorpsScroll.ActualHeight);
             _viewModel.Rafraichir();
+            _ = _viewModel.ActualiserFilAsync();
         }
 
         /// <summary>

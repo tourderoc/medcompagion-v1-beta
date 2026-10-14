@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -55,13 +56,33 @@ namespace MedCompanion.Services.Agenda
         /// Élimine tout risque d'hallucination de créneaux inexistants par le modèle.
         /// </summary>
         public static List<byte[]> DecouperLignesJour(byte[] capture)
+            => DecouperLignesJourDetail(capture).Lignes.Select(l => l.Image).ToList();
+
+        /// <summary>Une ligne de la vue Liste. <see cref="Annulee"/> vient des pixels, pas du modèle.</summary>
+        /// <summary><see cref="Sombres"/> : pixels comptés dans la colonne du ▷, pour recalibrer le
+        /// seuil si Doctolib change d'apparence.</summary>
+        public record LigneDecoupee(byte[] Image, bool Annulee, int Sombres);
+
+        /// <summary>Les lignes, et sous le tableau la zone « Nombre de rendez-vous : N ».</summary>
+        public record DecoupageListe(List<LigneDecoupee> Lignes, byte[]? Pied);
+
+        /// <summary>
+        /// Découpe la vue Liste ligne par ligne et dit, pour chacune, si le rendez-vous est annulé.
+        ///
+        /// Le signe retenu n'est pas le trait de rature — un pixel d'épaisseur, que le modèle vision
+        /// ne voit pas (mesuré le 26/09/2026, et encore le 14/10 : 4 annulations manquées sur 4) —
+        /// mais le petit ▷ que Doctolib met devant chaque rendez-vous valide et retire des annulés.
+        /// Il est toujours au même endroit, gris foncé sur blanc : les pixels le trouvent sans erreur.
+        /// </summary>
+        public static DecoupageListe DecouperLignesJourDetail(byte[] capture)
         {
-            var bandes = new List<byte[]>();
+            var bandes = new List<LigneDecoupee>();
+            var vide = new DecoupageListe(bandes, null);
             var source = Charger(capture);
-            if (source == null) return bandes;
+            if (source == null) return vide;
 
             int w = source.PixelWidth, h = source.PixelHeight;
-            if (w < 400 || h < 300) return bandes;
+            if (w < 400 || h < 300) return vide;
 
             var converti = new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
             int stride = w * 4;
@@ -92,7 +113,7 @@ namespace MedCompanion.Services.Agenda
                     separateurs.Add(y);
             }
 
-            if (separateurs.Count == 0) return bandes;
+            if (separateurs.Count == 0) return vide;
 
             // Regrouper les séparateurs consécutifs (distance <= 6 px)
             var groupes = new List<int>();
@@ -107,6 +128,7 @@ namespace MedCompanion.Services.Agenda
             }
 
             int largeurLigne = Math.Min(w - xStart - 20, Math.Max((int)(w * 0.72), 1350));
+            int derniereLigneBas = 0;
 
             for (int i = 0; i < groupes.Count; i++)
             {
@@ -134,13 +156,51 @@ namespace MedCompanion.Services.Agenda
                         var rect = new Int32Rect(xStart, yTop, largeurLigne, rowH);
                         var crop = new CroppedBitmap(source, rect);
                         var agrandie = new TransformedBitmap(crop, new ScaleTransform(Agrandissement, Agrandissement));
-                        bandes.Add(EnPng(agrandie));
+                        var sombres = PixelsPictogramme(pixels, stride, w, xStart, yTop, yBottom);
+                        bandes.Add(new LigneDecoupee(EnPng(agrandie), sombres < SeuilPictogramme, sombres));
+                        derniereLigneBas = yBottom;
                     }
                 }
             }
 
-            return bandes;
+            // Sous la dernière ligne : « Nombre de rendez-vous : N », que Doctolib compte sans les
+            // annulés. C'est le contrôle de la lecture entière.
+            byte[]? pied = null;
+            if (derniereLigneBas > 0 && derniereLigneBas + 20 < h)
+            {
+                int hp = Math.Min(110, h - derniereLigneBas - 2);
+                int lp = Math.Min(w - xStart, Math.Max(420, (int)(w * 0.25)));
+                var crop = new CroppedBitmap(source, new Int32Rect(xStart, derniereLigneBas + 2, lp, hp));
+                pied = EnPng(new TransformedBitmap(crop, new ScaleTransform(2, 2)));
+            }
+
+            return new DecoupageListe(bandes, pied);
         }
+
+        /// <summary>
+        /// Le ▷ des rendez-vous valides : des pixels gris foncés NEUTRES dans l'étroite colonne qui
+        /// précède l'horaire. « Neutres » écarte le liseré vert du motif et la pastille bleue de
+        /// l'heure courante, qui débordent dans cette zone.
+        /// </summary>
+        private static int PixelsPictogramme(byte[] pixels, int stride, int w, int xStart, int yTop, int yBottom)
+        {
+            int xFin = Math.Min(w - 1, xStart + (int)(w * 0.032));
+            int sombres = 0;
+            for (int y = yTop + 3; y < yBottom - 2; y++)
+                for (int x = xStart; x < xFin; x++)
+                {
+                    int i = y * stride + x * 4;
+                    byte b = pixels[i], g = pixels[i + 1], r = pixels[i + 2];
+                    int max = Math.Max(r, Math.Max(g, b)), min = Math.Min(r, Math.Min(g, b));
+                    double lum = 0.114 * b + 0.587 * g + 0.299 * r;
+                    if (lum < 160 && max - min < 40) sombres++;
+                }
+            return sombres;
+        }
+
+        /// <summary>Pixels sombres minimum pour dire qu'un ▷ est là. Mesuré le 14/10/2026 : à
+        /// calibrer sur les captures, voir PLAN_JOURNEE_COMPAGNON.md.</summary>
+        internal const int SeuilPictogramme = 6;
 
         // ── Rendez-vous annulés : le trait de rature ────────────────────────
         //

@@ -1051,6 +1051,19 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>Carte du patient : à la place du dossier bleu, un second clic y revient.</summary>
+    private async void OpenCarteBtn_Click(object sender, RoutedEventArgs e)
+    {
+        var vm = ConsultationModeContent.GetViewModel();
+        if (vm?.CurrentPatient == null)
+        {
+            StatusTextBlock.Text = "⚠️ Sélectionnez un patient pour voir sa carte.";
+            StatusTextBlock.Foreground = new SolidColorBrush(Colors.Orange);
+            return;
+        }
+        await vm.BasculerCarteAsync();
+    }
+
     private void OpenDoctolibBtn_Click(object sender, RoutedEventArgs e)
     {
         if (_selectedPatient == null)

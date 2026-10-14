@@ -220,6 +220,22 @@ namespace MedCompanion.Services.Agenda
                     // 1. Même personne, même heure : c'est le même rendez-vous.
                     var rdv = dejaLa.FirstOrDefault(r => !vus.Contains(r.Id) && MemePersonne(r, l.nom, memeCreneau: true));
 
+                    // Une ligne annulée ne fait qu'annuler ce qu'elle désigne exactement. Elle ne crée
+                    // rien — l'agenda de Med ne garde que les rendez-vous valides (décidé le 14/10/2026) —
+                    // et ne s'apparie ni par position ni à une autre heure : l'enfant reprogrammé plus
+                    // tard dans la journée serait pris pour un déplacement, puis annulé.
+                    if (l.barre)
+                    {
+                        if (rdv != null && rdv.Statut != "Annulé")
+                        {
+                            rdv.Statut = "Annulé";
+                            rdv.DerniereLecture = DateTime.Now;
+                            changements.Add(new Changement("annule", $"{debut:HH'h'mm} {rdv.NomComplet} — annulé"));
+                        }
+                        if (rdv != null) vus.Add(rdv.Id);
+                        continue;
+                    }
+
                     // 2. À défaut, appariement PAR POSITION uniquement en vue Semaine (quand journeeComplete est faux) :
                     //    En vue Liste (journeeComplete == vrai), chaque ligne est nette et isolée. Si le nom
                     //    ne ressemble pas à la personne connue, c'est un NOUVEAU patient qui prend le créneau,

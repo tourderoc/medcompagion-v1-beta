@@ -835,6 +835,41 @@
                 </StackPanel>
                 
                 <StackPanel Grid.Column="3" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <!-- Carte du patient (PLAN_CARTE_PATIENT.md) : à la place du dossier bleu.
+                         Seulement en mode Consultation, où le dossier bleu existe. -->
+                    <Button x:Name="OpenCarteBtn"
+                            Content="🧭 Carte"
+                            Height="40"
+                            Padding="14,0"
+                            Margin="0,0,10,0"
+                            FontSize="13"
+                            FontWeight="SemiBold"
+                            Background="#5F9EAE"
+                            Foreground="White"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Click="OpenCarteBtn_Click"
+                            Visibility="{Binding Visibility, ElementName=ConsultationModeContent}"
+                            ToolTip="Voir le patient d'un coup d'œil (un second clic revient au dossier)">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="Template">
+                                    <Setter.Value>
+                                        <ControlTemplate TargetType="Button">
+                                            <Border Background="{TemplateBinding Background}" CornerRadius="6" Padding="{TemplateBinding Padding}">
+                                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                            </Border>
+                                        </ControlTemplate>
+                                    </Setter.Value>
+                                </Setter>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#4A8796"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
                     <Button x:Name="OpenDoctolibBtn"
                             Content="🔗 Doctolib"
                             Height="40"

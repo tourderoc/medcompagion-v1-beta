@@ -669,6 +669,7 @@
 
                 <!-- Liste des blocs mémoire -->
                 <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel>
                     <ItemsControl ItemsSource="{Binding MemoryBlocks}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -854,6 +855,41 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <!-- Registre des passages : qui est venu, quand. En lecture seule, tenu par Med
+                         depuis l'agenda et les dossiers — jamais de contenu clinique ici. -->
+                    <Border Margin="0,0,0,12" Background="White" CornerRadius="8"
+                            BorderThickness="1" BorderBrush="#E0E0E0" Padding="12">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                <TextBlock Text="📒" FontSize="16" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                <TextBlock Text="Registre des passages" FontSize="14" FontWeight="SemiBold"
+                                           Foreground="#2C3E50" VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock Text="Qui est venu, quand — le détail reste dans le dossier"
+                                       FontSize="11" Foreground="#95A5A6" Margin="0,0,0,8"/>
+
+                            <ItemsControl ItemsSource="{Binding RegistrePassages}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <StackPanel Margin="0,0,0,6">
+                                            <TextBlock Text="{Binding Nom, Mode=OneWay}" FontSize="12"
+                                                       FontWeight="SemiBold" Foreground="#34495E"/>
+                                            <TextBlock Text="{Binding Quand, Mode=OneWay}" FontSize="11"
+                                                       Foreground="#7F8C8D" TextWrapping="Wrap"/>
+                                            <TextBlock Text="{Binding Prochain, Mode=OneWay}" FontSize="11"
+                                                       Foreground="#2E86C1"
+                                                       Visibility="{Binding AProchain, Converter={StaticResource BoolToVis}}"/>
+                                        </StackPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+
+                            <TextBlock Text="{Binding RegistreResume}" FontSize="10" Foreground="#BDC3C7"
+                                       TextWrapping="Wrap" Margin="0,4,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    </StackPanel>
                 </ScrollViewer>
             </Grid>
         </Border>

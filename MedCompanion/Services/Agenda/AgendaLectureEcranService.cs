@@ -90,6 +90,38 @@ namespace MedCompanion.Services.Agenda
         }
 
         /// <summary>
+        /// Lit « Nombre de rendez-vous : N » sous le tableau de la vue Liste. Doctolib y compte
+        /// toutes les lignes affichées, annulées comprises (vérifié le 14/10/2026 : 25 = 21 valides
+        /// + 4 annulés) : c'est le contrôle que Med a bien lu toute la liste.
+        /// </summary>
+        public async Task<(bool success, int nombre, string? error)> LireNombreRendezVousAsync(byte[] pied)
+        {
+            var prompt = new StringBuilder();
+            prompt.AppendLine("Cette image est le bas d'une liste de rendez-vous. Elle contient une ligne");
+            prompt.AppendLine("« Nombre de rendez-vous : N ». Recopie ce nombre N.");
+            prompt.AppendLine("Réponds UNIQUEMENT : {\"rendez_vous\": 25}  — ou {\"rendez_vous\": null} si la ligne n'y est pas.");
+
+            var (ok, brut, erreur) = await _vision.AnalyzeImageAsync(prompt.ToString(), pied, maxTokens: 60);
+            if (!ok) return (false, 0, erreur ?? "échec du modèle");
+
+            var texte = brut ?? "";
+            int debut = texte.IndexOf('{'), fin = texte.LastIndexOf('}');
+            if (debut < 0 || fin <= debut) return (false, 0, "le modèle n'a pas rendu de JSON");
+            try
+            {
+                using var doc = JsonDocument.Parse(texte[debut..(fin + 1)]);
+                if (doc.RootElement.TryGetProperty("rendez_vous", out var n) && n.ValueKind == JsonValueKind.Number
+                    && n.TryGetInt32(out var nombre) && nombre >= 0)
+                    return (true, nombre, null);
+                return (false, 0, "nombre de rendez-vous absent");
+            }
+            catch (Exception ex)
+            {
+                return (false, 0, $"JSON illisible : {ex.Message}");
+            }
+        }
+
+        /// <summary>
         /// Lit une seule ligne, déjà repérée comme barrée par l'analyse des pixels et découpée
         /// autour du trait. Le modèle ne voit pas la rature sur une capture entière ; ici, il n'a
         /// qu'à lire l'heure et le nom, sur une image agrandie trois fois.

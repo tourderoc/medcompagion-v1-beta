@@ -189,7 +189,12 @@ namespace MedCompanion.ViewModels.Agenda
 
             var debut = _modeSemaine ? DebutSemaine(_jour) : _jour.Date;
             var fin   = _modeSemaine ? debut.AddDays(5) : _jour.Date;   // lundi → samedi
-            var rdvs  = _service.Charger(debut, fin);
+            // L'agenda de Med ne montre que les rendez-vous valides (décidé le 14/10/2026) : un
+            // annulé n'attend personne et brouillerait le fil de la journée. Il reste dans le
+            // fichier du mois, pour l'historique.
+            var rdvs  = _service.Charger(debut, fin)
+                .Where(r => !(r.Statut ?? "").StartsWith("Annul", StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
             CalculerPlageEtEchelle(rdvs);
 
@@ -198,14 +203,79 @@ namespace MedCompanion.ViewModels.Agenda
 
             Jours.Clear();
             for (var d = debut; d <= fin; d = d.AddDays(1))
-                Jours.Add(new JourAgenda(d, rdvs.Where(r => r.Debut.Date == d.Date).ToList(),
-                                         HeureDebut, PixelsParMinute));
+            {
+                var duJour = rdvs.Where(r => r.Debut.Date == d.Date).ToList();
+
+                // Le fil de Med ne concerne que ce qui a déjà eu lieu ou a lieu aujourd'hui :
+                // un rendez-vous de demain n'a pas d'état à lire dans le dossier.
+                var etats = d.Date <= DateTime.Today && duJour.Count > 0
+                    ? _journee.Calculer(d, duJour, avecHorsAgenda: false).RendezVous
+                    : new List<Models.Journee.RendezVousDuJour>();
+                if (d.Date == DateTime.Today) _etatsAujourdhui = etats;
+
+                Jours.Add(new JourAgenda(d, duJour, etats, HeureDebut, PixelsParMinute));
+            }
 
             foreach (var nom in new[] { nameof(Titre), nameof(Fraicheur), nameof(EstPerime), nameof(RappelImport),
                                         nameof(HeureCouranteVisible), nameof(MargeHeureCourante),
                                         nameof(HauteurGrille), nameof(HauteurHeure), nameof(LibelleVider),
-                                        nameof(Diagnostic) })
+                                        nameof(Diagnostic), nameof(ResumeFil), nameof(AResumeFil) })
                 OnPropertyChanged(nom);
+        }
+
+        // ── Fil de la journée (PLAN_JOURNEE_COMPAGNON.md, étape 1) ──────────
+
+        private readonly Services.Journee.JourneeService _journee = Services.Journee.JourneeService.Instance;
+        private Models.Journee.FilDuJour? _filAujourdhui;   // pour le hors-agenda (parcours de tous les dossiers)
+        private List<Models.Journee.RendezVousDuJour> _etatsAujourdhui = new();   // ce que montrent les pastilles
+
+        /// <summary>
+        /// Où en est la journée, en une ligne : visible quand l'agenda montre aujourd'hui. C'est
+        /// l'étape 1 — Med constate ; c'est la secrétaire (étape 2) qui demandera quoi faire.
+        /// </summary>
+        public string ResumeFil
+        {
+            get
+            {
+                if (_modeSemaine || _jour.Date != DateTime.Today) return "";
+                var r = _etatsAujourdhui;
+                var parts = new List<string>();
+                void Ajouter(int n, string libelle) { if (n > 0) parts.Add($"{n} {libelle}"); }
+
+                Ajouter(r.Count(x => x.Etat == Models.Journee.EtatRendezVous.Termine), "terminé(s)");
+                Ajouter(r.Count(x => x.Etat == Models.Journee.EtatRendezVous.EnCours), "en cours");
+                Ajouter(r.Count(x => x.Etat == Models.Journee.EtatRendezVous.SansNote), "sans note");
+                Ajouter(r.Count(x => x.Etat == Models.Journee.EtatRendezVous.SansNouvelles), "sans aucune trace");
+                Ajouter(r.Count(x => x.Etat is Models.Journee.EtatRendezVous.Absent or Models.Journee.EtatRendezVous.Excuse), "absent(s)");
+                Ajouter(r.Count(x => x.Etat == Models.Journee.EtatRendezVous.Deplace), "déplacé(s)");
+                Ajouter(r.Count(x => x.Etat == Models.Journee.EtatRendezVous.AVenir), "à venir");
+                Ajouter(r.Count(x => x.Etat == Models.Journee.EtatRendezVous.DossierIncertain), "sans dossier sûr");
+
+                var texte = parts.Count == 0 ? "Aucun rendez-vous aujourd'hui." : string.Join(" · ", parts);
+                if (_filAujourdhui != null && _filAujourdhui.HorsAgenda.Count > 0)
+                    texte += " · hors agenda : " + string.Join(", ",
+                        _filAujourdhui.HorsAgenda.Select(h => $"{h.Nom} ({h.Quoi.ToLowerInvariant()})"));
+                return "Fil du jour : " + texte;
+            }
+        }
+
+        public bool AResumeFil => ResumeFil.Length > 0;
+
+        /// <summary>
+        /// Relie les nouveaux dossiers, relit la journée et met à jour la mémoire de Med. Lancé à
+        /// l'ouverture de l'agenda puis toutes les quelques minutes tant qu'il est affiché.
+        /// </summary>
+        public async System.Threading.Tasks.Task ActualiserFilAsync()
+        {
+            try
+            {
+                _filAujourdhui = await _journee.ActualiserAujourdhuiAsync();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[AgendaViewModel] Fil du jour : {ex.Message}");
+            }
+            Rafraichir();
         }
 
         // ── Lecture du matin : deuxième lecture, jamais la source ────────────
@@ -247,6 +317,7 @@ namespace MedCompanion.ViewModels.Agenda
             Ecarts.Clear();
             var journal = new List<AgendaService.Changement>();
             var erreurs = new List<string>();
+            var controles = new List<string>();
             var joursTouches = new HashSet<DateTime>();
             int lues = 0;
 
@@ -283,7 +354,8 @@ namespace MedCompanion.ViewModels.Agenda
                     else
                     {
                         var jour = capture.Prise.Date;
-                        var lignesDecoupees = AgendaImageService.DecouperLignesJour(image);
+                        var decoupage = AgendaImageService.DecouperLignesJourDetail(image);
+                        var lignesDecoupees = decoupage.Lignes;
 
                         if (lignesDecoupees.Count > 0)
                         {
@@ -291,10 +363,12 @@ namespace MedCompanion.ViewModels.Agenda
                             for (int i = 0; i < lignesDecoupees.Count; i++)
                             {
                                 ResumeLecture = $"Med lit la journée, ligne {i + 1} sur {lignesDecoupees.Count}…";
-                                var (okLigne, ligneLue, errLigne) = await _lecture.LireLigneJourAsync(lignesDecoupees[i], jour);
+                                var (okLigne, ligneLue, errLigne) = await _lecture.LireLigneJourAsync(lignesDecoupees[i].Image, jour);
                                 if (okLigne && ligneLue != null)
                                 {
-                                    lignesJour.Add(ligneLue);
+                                    // Annulé ou non : ce sont les pixels qui le disent (le ▷ des rendez-vous
+                                    // valides), jamais le modèle, qui ne voit pas le trait de rature.
+                                    lignesJour.Add(ligneLue with { Barre = lignesDecoupees[i].Annulee });
                                     lues++;
                                 }
                                 else if (!string.IsNullOrWhiteSpace(errLigne) && !errLigne.Contains("ignorée"))
@@ -303,9 +377,31 @@ namespace MedCompanion.ViewModels.Agenda
                                 }
                             }
 
+                            // Contrôle : Doctolib compte toutes les lignes affichées, annulées comprises.
+                            int? annonce = null;
+                            if (decoupage.Pied != null)
+                            {
+                                ResumeLecture = "Med vérifie le nombre de rendez-vous affiché par Doctolib…";
+                                var (okN, n, _) = await _lecture.LireNombreRendezVousAsync(decoupage.Pied);
+                                if (okN) annonce = n;
+                            }
+                            bool listeComplete = lignesJour.Count == lignesDecoupees.Count
+                                                 && (annonce == null || annonce == lignesJour.Count);
+                            if (annonce.HasValue && annonce != lignesJour.Count)
+                                journal.Add(new AgendaService.Changement("conflit",
+                                    $"{jour:dd/MM} : Doctolib affiche {annonce} rendez-vous, Med en a lu {lignesJour.Count} — " +
+                                    "capture incomplète ou ligne mal lue, refaites « Capturer le jour »"));
+                            else if (annonce.HasValue)
+                                controles.Add($"{jour:dd/MM} : {annonce}/{annonce} lignes lues, " +
+                                              $"{lignesJour.Count(l => l.Barre)} annulée(s) écartée(s)");
+
                             if (lignesJour.Count > 0)
                             {
-                                journal.AddRange(_service.FusionnerLectureEcran(jour, Convertir(lignesJour), journeeComplete: true));
+                                // Ce que la capture ne montre plus passe « Annulé » — mais seulement si
+                                // TOUTES les lignes ont été lues : une ligne illisible ferait sinon
+                                // annuler à tort le rendez-vous qu'elle portait.
+                                journal.AddRange(_service.FusionnerLectureEcran(jour, Convertir(lignesJour),
+                                                                                journeeComplete: listeComplete));
                                 joursTouches.Add(jour);
                             }
                         }
@@ -354,6 +450,7 @@ namespace MedCompanion.ViewModels.Agenda
                 ResumeLecture = journal.Count == 0
                     ? $"Mise à jour du {DateTime.Now:HH'h'mm} : {lues} rendez-vous lus, rien de nouveau."
                     : $"Mise à jour du {DateTime.Now:HH'h'mm} : {lues} rendez-vous lus, {journal.Count} changement(s).";
+                if (controles.Count > 0) ResumeLecture += " Contrôle Doctolib : " + string.Join(" · ", controles) + ".";
                 if (erreurs.Count > 0) ResumeLecture += " Échecs : " + string.Join(" · ", erreurs);
 
                 Rafraichir();
@@ -482,11 +579,15 @@ namespace MedCompanion.ViewModels.Agenda
     /// <summary>Une colonne de la grille : un jour et ses blocs, déjà placés.</summary>
     public class JourAgenda
     {
-        public JourAgenda(DateTime date, List<RendezVous> rdvs, int heureDebut, double pixelsParMinute)
+        public JourAgenda(DateTime date, List<RendezVous> rdvs, List<Models.Journee.RendezVousDuJour> etats,
+                          int heureDebut, double pixelsParMinute)
         {
             Date = date;
             Blocs = new ObservableCollection<BlocRendezVous>(
                 Placer(rdvs.OrderBy(r => r.Debut).ToList(), heureDebut, pixelsParMinute));
+
+            foreach (var b in Blocs)
+                b.EtatMed = etats.FirstOrDefault(e => ReferenceEquals(e.Rdv, b.Rdv));
         }
 
         public DateTime Date { get; }
@@ -565,6 +666,14 @@ namespace MedCompanion.ViewModels.Agenda
         public int Colonne { get; }
         public int Largeur { get; }
 
+        /// <summary>Ce que Med déduit du dossier pour ce rendez-vous (fil de la journée), ou rien
+        /// pour un jour à venir.</summary>
+        public Models.Journee.RendezVousDuJour? EtatMed { get; set; }
+
+        public string PastilleMed => EtatMed?.Icone ?? "";
+        public string CouleurMed  => EtatMed?.Couleur ?? "#7F8C8D";
+        public bool APastilleMed  => PastilleMed.Length > 0;
+
         private double MinutesDepuisDebut =>
             Math.Max(0, (Rdv.Debut.TimeOfDay - TimeSpan.FromHours(_heureDebut)).TotalMinutes);
 
@@ -632,6 +741,11 @@ namespace MedCompanion.ViewModels.Agenda
                 if (Rdv.NouveauPatient) l.Add("Nouveau patient");
                 if (!string.IsNullOrWhiteSpace(Rdv.Notes)) l.Add("Note : " + Rdv.Notes);
                 if (ADouteStatut) l.Add("⚠ Rendez-vous passé encore « À venir » : pointage oublié, ou patient absent ?");
+                if (EtatMed != null && EtatMed.Etat != Models.Journee.EtatRendezVous.AVenir)
+                {
+                    var preuves = EtatMed.Preuves.Count > 0 ? $" ({string.Join(" · ", EtatMed.Preuves)})" : "";
+                    l.Add($"Med : {EtatMed.Libelle}{preuves}");
+                }
                 return string.Join("\n", l.Where(s => !string.IsNullOrWhiteSpace(s)));
             }
         }

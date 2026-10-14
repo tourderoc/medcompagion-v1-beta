@@ -1322,6 +1322,8 @@ namespace MedCompanion.ViewModels
         {
             Orientation.Status = "";
             CartoEnvStep = 2;
+            // La vue par étapes (IsCartoEnvStepN) n'existe pas dans le XAML : c'est ce drapeau qui ouvre l'écran
+            ShowOrientation = true;
         }
 
         // ── Évaluation ciblée (carte 3 de la séance 3) ────────────────────────
@@ -1339,6 +1341,7 @@ namespace MedCompanion.ViewModels
         {
             EvaluationCiblee.Status = "";
             CartoEnvStep = 3;
+            ShowEvaluationCiblee = true;
         }
 
         /// <summary>
@@ -1519,6 +1522,7 @@ namespace MedCompanion.ViewModels
 
             SeanceEnvCloturee = true;
             LoadSeanceEnvBilans();
+            RefreshFriseStages();   // l'étape passe en « Clôturée » sur la frise
 
             SeanceEnvClotureStatus = manquants.Count == 0
                 ? "🔒 Séance terminée et enregistrée — la fiche est en lecture seule."
@@ -1536,6 +1540,7 @@ namespace MedCompanion.ViewModels
             SeanceEnvCloturee = false;
             SeanceEnvClotureStatus = "🔓 Séance réouverte pour modifications.";
             LoadSeanceEnvBilans();
+            RefreshFriseStages();
         }
 
         // ── Synthèse de la séance 3 (carte 6) ────────────────────────────────
@@ -3080,6 +3085,180 @@ namespace MedCompanion.ViewModels
         public string SeanceContexteBadge => TotalConsultationsCount == 0
             ? "🆕 Nouveau patient — Aucune consultation enregistrée"
             : $"📋 Patient en suivi • {TotalConsultationsText} • Dernière le {LastConsultDateText}";
+
+        // ── Carte du patient (PLAN_CARTE_PATIENT.md) ──────────────────────────
+        // Affichée à la place du dossier bleu par le bouton « Carte » du bandeau patient.
+
+        private readonly Services.Carte.CartePatientService _carteService = new();
+
+        private bool _isCarteVisible;
+        public bool IsCarteVisible
+        {
+            get => _isCarteVisible;
+            private set
+            {
+                if (SetProperty(ref _isCarteVisible, value))
+                    OnPropertyChanged(nameof(IsDossierBleuVisible));
+            }
+        }
+
+        public bool IsDossierBleuVisible => !IsCarteVisible;
+
+        private Models.Carte.CartePatient? _carte;
+        public Models.Carte.CartePatient? Carte
+        {
+            get => _carte;
+            private set => SetProperty(ref _carte, value);
+        }
+
+        public ICommand FermerCarteCommand => new RelayCommand(_ => IsCarteVisible = false);
+
+        // Étape 2 : compléter depuis les notes ce que ni l'admin ni la 1ère consultation ne disent.
+
+        private string _carteStatut = "";
+        /// <summary>« Med relit les notes… », ou l'erreur : affiché dans l'en-tête de la carte.</summary>
+        public string CarteStatut
+        {
+            get => _carteStatut;
+            private set => SetProperty(ref _carteStatut, value);
+        }
+
+        private bool _completionEnCours;
+
+        public ICommand CompleterCarteCommand => new RelayCommand(
+            async _ => await CompleterCarteAsync(),
+            _ => !_completionEnCours && Carte?.PeutCompleter == true && _llmService != null);
+
+        private async Task CompleterCarteAsync()
+        {
+            var patient = CurrentPatient;
+            var dir = patient?.DirectoryPath;
+            var manquants = Carte?.ChampsManquants.ToList();
+            if (string.IsNullOrEmpty(dir) || _llmService == null || manquants == null || manquants.Count == 0) return;
+
+            _completionEnCours = true;
+            CarteStatut = "⏳ Med relit les notes du dossier…";
+            try
+            {
+                var (ok, extraits, err) = await new Services.Carte.CarteExtractionService(_llmService).ExtraireAsync(dir);
+                if (CurrentPatient != patient) return;   // patient changé pendant la lecture
+                if (!ok)
+                {
+                    CarteStatut = $"❌ {err}";
+                    return;
+                }
+                CarteStatut = "";
+
+                var dlg = new Dialogs.CarteCompletionDialog(patient!.NomComplet, manquants, extraits)
+                {
+                    Owner = System.Windows.Application.Current?.MainWindow
+                };
+                if (dlg.ShowDialog() != true || dlg.Valides == null) return;
+
+                Services.Carte.CartePatientService.EnregistrerCompletion(dir, dlg.Valides);
+                await RafraichirCarteAsync();
+            }
+            catch (Exception ex)
+            {
+                CarteStatut = $"❌ {ex.Message}";
+            }
+            finally
+            {
+                _completionEnCours = false;
+                System.Windows.Input.CommandManager.InvalidateRequerySuggested();
+            }
+        }
+
+        /// <summary>Le bouton du bandeau : ouvre la carte, ou revient au dossier si elle est ouverte.</summary>
+        public async Task BasculerCarteAsync()
+        {
+            if (IsCarteVisible) { IsCarteVisible = false; return; }
+            await RafraichirCarteAsync();
+            IsCarteVisible = Carte != null;
+        }
+
+        /// <summary>Relit le dossier et reconstruit la carte. Rapide (fichiers seulement), mais hors
+        /// du fil de l'interface : un dossier chargé de documents ne doit pas figer l'écran.</summary>
+        private async Task RafraichirCarteAsync()
+        {
+            var patient = CurrentPatient;
+            var dir = patient?.DirectoryPath;
+            if (string.IsNullOrEmpty(dir)) { Carte = null; return; }
+
+            var suivi = new Services.Carte.CartePatientService.Suivi(
+                TotalConsultationsCount > 0 ? TotalConsultationsText : "",
+                FirstConsultDateText ?? "", LastConsultDateText ?? "",
+                FriseStages.Select(s => (s.Label, (int)s.Status, s.Date)).ToList());
+            try
+            {
+                var carte = await Task.Run(() => _carteService.Construire(dir, suivi));
+                if (CurrentPatient == patient) Carte = carte;   // patient changé pendant la lecture
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[Carte] {ex.Message}");
+                Carte = null;
+            }
+        }
+
+        // ── Séance du jour déjà faite ─────────────────────────────────────────
+        // Une note datée d'aujourd'hui, ou une séance (cartographie de l'enfant, environnement)
+        // clôturée aujourd'hui : le rendez-vous du jour est consigné, « Débuter » et les boutons
+        // absent / excusé / déplacé n'ont plus lieu d'être à l'accueil.
+
+        private string _seanceDuJourResume = "";
+        public string SeanceDuJourResume
+        {
+            get => _seanceDuJourResume;
+            private set
+            {
+                if (SetProperty(ref _seanceDuJourResume, value))
+                {
+                    OnPropertyChanged(nameof(HasSeanceDuJourFaite));
+                    OnPropertyChanged(nameof(IsSeanceDuJourAFaire));
+                }
+            }
+        }
+
+        public bool HasSeanceDuJourFaite => !string.IsNullOrEmpty(SeanceDuJourResume);
+        public bool IsSeanceDuJourAFaire => !HasSeanceDuJourFaite;
+
+        /// <summary>Le type d'une note tel que le YAML l'écrit (« consultation-suivi ») → en clair.</summary>
+        private static string LibelleTypeNote(string type) => (type ?? "").Trim().ToLowerInvariant() switch
+        {
+            "consultation-premiere" => "1ère consultation",
+            "consultation-suivi"    => "Consultation de suivi",
+            "note-structuree"       => "Note structurée",
+            "note"                  => "Note",
+            var t when t.Length == 0 => "Note",
+            var t when t.Contains('-') || t.Contains('_')
+                => char.ToUpper(t[0]) + t[1..].Replace('-', ' ').Replace('_', ' '),
+            _ => type!
+        };
+
+        private void RafraichirSeanceDuJour()
+        {
+            var lignes = new List<string>();
+            var today = DateTime.Today;
+
+            foreach (var n in ConsultationNotes.Where(n => n.Date.Date == today))
+                lignes.Add($"{n.Icon} {LibelleTypeNote(n.Type)}");
+
+            var dir = CurrentPatient?.DirectoryPath;
+            if (!string.IsNullOrEmpty(dir))
+            {
+                try
+                {
+                    foreach (var c in _cartoV2.LoadAll(dir).Where(c => c.DateCloture?.Date == today))
+                        lignes.Add($"🧩 Cartographie de l'enfant — clôturée à {c.DateCloture:HH\\hmm}");
+                    foreach (var s in _seanceEnv.LoadAll(dir).Where(s => s.DateCloture?.Date == today))
+                        lignes.Add($"🌳 Environnement & évaluation ciblée — clôturée à {s.DateCloture:HH\\hmm}");
+                }
+                catch { /* un fichier illisible ne doit pas bloquer l'accueil */ }
+            }
+
+            SeanceDuJourResume = string.Join("\n", lignes.Distinct());
+        }
 
         public string SeanceDateFullText => ConsultationDate == DateTime.MinValue
             ? DateTime.Now.ToString("dddd d MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"))
@@ -8844,6 +9023,10 @@ source: ""MedCompanion""
                     var modelManager = new WhisperModelManager { ModelSize = _selectedWhisperModel };
                     await _whisperService.StartAsync(modelManager);
                     IsRecording = true;
+
+                    // Fil de la journée : une dictée ne laisse pas de fichier avant l'extraction,
+                    // c'est pourtant la preuve la plus nette que le patient est là.
+                    Services.Journee.JourneeService.Instance.SignalerActivite(CurrentPatient?.DirectoryPath);
                 },
                 _ => (IsInSaisieMode || IsSuiviMode) && !IsRecording && _whisperService != null);
 
@@ -9075,7 +9258,11 @@ source: ""MedCompanion""
                 _ => EnregistrerEvaluationCiblee(),
                 _ => CurrentPatient != null);
 
-            OpenCartoEnvMedecinCommand  = new RelayCommand(_ => CartoEnvStep = 4);
+            OpenCartoEnvMedecinCommand  = new RelayCommand(_ =>
+            {
+                CartoEnvStep = 4;
+                OuvrirCartoEnvMedecin();
+            });
             CloseCartoEnvMedecinCommand = new RelayCommand(_ => ShowCartoEnvMedecin = false);
             EnregistrerCotationEnvCommand = new RelayCommand(
                 _ => EnregistrerCotationEnv(),
@@ -9083,13 +9270,8 @@ source: ""MedCompanion""
 
             OpenSyntheseSeance3Command  = new RelayCommand(_ =>
             {
-                if (_seanceEnvCourante != null)
-                {
-                    _seanceEnvCourante.CotationsEnv = CartoEnvMedecin.ToDictionary();
-                    _seanceEnvCourante.Axes         = EvaluationCiblee.ToList();
-                }
-                SyntheseSeance3.Charger(_seanceEnvCourante);
                 CartoEnvStep = 6;
+                OuvrirSyntheseSeance3();
             });
             CloseSyntheseSeance3Command = new RelayCommand(_ => ShowSyntheseSeance3 = false);
             RedigerSyntheseSeance3Command = new RelayCommand(
@@ -9752,6 +9934,7 @@ source: ""MedCompanion""
             var patientSnapshot = CurrentPatient;
             var pages = await _dossierDataService.LoadConsultationsAsync(patientSnapshot.NomComplet);
             if (CurrentPatient != patientSnapshot) return; // patient changé pendant l'attente IO
+            var selectedFilePath = SelectedConsultationNote?.FilePath;
             ConsultationNotes.Clear();
             ConsultationNotesChronological.Clear();
             foreach (var p in pages)
@@ -9788,11 +9971,20 @@ source: ""MedCompanion""
             OnPropertyChanged(nameof(HasConsultationNotes));
             ResetPagination();
 
+            // Les ViewModels viennent d'être recréés : rattacher le détail ouvert à sa nouvelle instance, ou le fermer
+            SelectedConsultationNote = string.IsNullOrEmpty(selectedFilePath)
+                ? null
+                : ConsultationNotes.FirstOrDefault(n => n.FilePath == selectedFilePath);
+
             LoadConsultationCards();
             LoadEvaluationCards();
             LoadSyntheseGlobaleCards();
             LoadProjetTherapeutiqueCards();
             RefreshSyntheseUpdateBadge();
+
+            // La carte reste ouverte d'un patient à l'autre : elle se reconstruit une fois les
+            // consultations et la frise du nouveau patient en place.
+            if (IsCarteVisible) await RafraichirCarteAsync();
         }
 
         private void RecalculerStatistiquesConsultations()
@@ -9883,6 +10075,7 @@ source: ""MedCompanion""
         /// </summary>
         private void RefreshFriseStages()
         {
+            RafraichirSeanceDuJour();   // mêmes déclencheurs : clôture d'une séance, note enregistrée
             FriseStages.Clear();
 
             // ── Étape 1 : 1ère consultation ────────────────────────────────────────────
@@ -9998,12 +10191,43 @@ source: ""MedCompanion""
             // ── Étape 3 : Cartographie de l'environnement + évaluation ciblée ───────────
             // 3ᵉ séance. Même forme que la cartographie de l'enfant : la feuille part en salle
             // d'attente pendant que le médecin travaille avec l'enfant et la famille.
+            // Statut lu comme pour la cartographie de l'enfant : une fiche close l'emporte.
+            bool envCompleted = false;
+            bool envInProgress = IsCartoEnvMode;
+            DateTime? envDate = null;
+
+            if (CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
+            {
+                try
+                {
+                    var seances = _seanceEnv.LoadAll(CurrentPatient.DirectoryPath);
+                    var close = seances.FirstOrDefault(s => s.EstCloturee);
+                    if (close != null)
+                    {
+                        envCompleted = true;
+                        envDate = close.Date;
+                    }
+                    else if (seances.Count > 0)
+                    {
+                        var derniere = seances[0];   // LoadAll trie de la plus récente à la plus ancienne
+                        envDate = derniere.Date;
+                        if (derniere.HasOrientation || derniere.HasEvaluation || derniere.HasCotationEnv
+                            || derniere.HasReponsesParent || derniere.HasSynthese)
+                            envInProgress = true;
+                    }
+                }
+                catch { }
+            }
+
             FriseStages.Add(new FriseStageViewModel
             {
                 Key    = "cartographie_env",
                 Label  = "Environnement & évaluation",
                 Icon   = "🌳",
-                Status = FriseStageStatus.Available,
+                Status = envCompleted  ? FriseStageStatus.Completed
+                       : envInProgress ? FriseStageStatus.InProgress
+                       : FriseStageStatus.Available,
+                Date   = envDate,
                 ActivateCommand = new Commands.RelayCommand(_ => EnterCartoEnvMode())
             });
 
@@ -10011,7 +10235,11 @@ source: ""MedCompanion""
             // Suit directement les deux cartographies : les anciennes étapes Évaluation,
             // Synthèse et Projet thérapeutique ne font plus partie du parcours. Le clic ouvre
             // le Dossier de Restitution — même chemin que l'ancien bouton du panneau Med.
+            // Seul le Dossier de Restitution V2 (type DossierInitial) compte : les anciennes
+            // restitutions de 1er entretien (restitution_PremierEntretien_*.pdf) sont dans le même
+            // dossier et faisaient passer l'étape en « Clôturée » à tort.
             bool restitutionCompleted = false;
+            bool restitutionInProgress = false;
             if (CurrentPatient != null && !string.IsNullOrEmpty(CurrentPatient.DirectoryPath))
             {
                 try
@@ -10019,8 +10247,21 @@ source: ""MedCompanion""
                     foreach (var yearDir in System.IO.Directory.GetDirectories(CurrentPatient.DirectoryPath))
                     {
                         var rDir = System.IO.Path.Combine(yearDir, "restitutions");
-                        if (System.IO.Directory.Exists(rDir) && System.IO.Directory.GetFiles(rDir, "*.pdf").Length > 0)
-                        { restitutionCompleted = true; break; }
+                        if (!System.IO.Directory.Exists(rDir)) continue;
+                        foreach (var md in System.IO.Directory.GetFiles(rDir, "restitution_DossierInitial_*.md"))
+                        {
+                            restitutionInProgress = true;
+                            // Clôturée = validée, ou PDF exporté (l'export pose pdf_path dans le .md)
+                            foreach (var ligne in System.IO.File.ReadLines(md))
+                            {
+                                var l = ligne.Trim();
+                                if (l.StartsWith("statut:") && l.EndsWith("Validee", StringComparison.OrdinalIgnoreCase)
+                                    || l.StartsWith("pdf_path:") && l.Length > "pdf_path:".Length)
+                                { restitutionCompleted = true; break; }
+                            }
+                            if (restitutionCompleted) break;
+                        }
+                        if (restitutionCompleted) break;
                     }
                 }
                 catch { }
@@ -10031,7 +10272,9 @@ source: ""MedCompanion""
                 Key    = "restitution",
                 Label  = "Restitution",
                 Icon   = "📝",
-                Status = restitutionCompleted ? FriseStageStatus.Completed : FriseStageStatus.Available,
+                Status = restitutionCompleted  ? FriseStageStatus.Completed
+                       : restitutionInProgress ? FriseStageStatus.InProgress
+                       : FriseStageStatus.Available,
                 ActivateCommand = RestitutionsHub.CreateNewCommand
             });
 
@@ -10384,6 +10627,10 @@ source: ""MedCompanion""
 
             // Vider immédiatement pour ne pas afficher les notes du patient précédent
             ConsultationNotes.Clear();
+            ConsultationNotesChronological.Clear();
+            SelectedConsultationNote = null; // sinon le détail du patient précédent reste ouvert dans CONSULT.
+            SeanceDuJourResume = "";         // recalculé au chargement des notes du nouveau patient
+            Carte = null;                    // celle du patient précédent ne doit pas rester affichée
             OnPropertyChanged(nameof(HasNoConsultationNotes));
             OnPropertyChanged(nameof(HasConsultationNotes));
             ResetPagination();

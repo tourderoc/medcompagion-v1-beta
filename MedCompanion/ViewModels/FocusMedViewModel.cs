@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using System.Windows.Input;
@@ -483,6 +484,65 @@ namespace MedCompanion.ViewModels
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"[FocusMedViewModel] Erreur init mémoire: {ex.Message}");
+            }
+
+            // Registre des passages : affiché tout de suite, puis complété en arrière-plan avec
+            // les jours écoulés depuis la dernière ouverture.
+            var journee = Services.Journee.JourneeService.Instance;
+            journee.RegistreMisAJour += () =>
+                System.Windows.Application.Current?.Dispatcher.BeginInvoke(new Action(ChargerRegistre));
+            ChargerRegistre();
+            _ = journee.ConsoliderAsync();
+        }
+
+        // ── Registre des passages (mémoire de Med, PLAN_JOURNEE_COMPAGNON.md) ──
+
+        /// <summary>Nombre de lignes montrées : les plus récentes. Le registre complet reste sur disque.</summary>
+        private const int LignesRegistreAffichees = 12;
+
+        /// <summary>Une ligne du registre, mise en forme pour l'écran.</summary>
+        public sealed class LignePassage
+        {
+            public string Nom { get; init; } = "";
+            public string Quand { get; init; } = "";
+            public string Prochain { get; init; } = "";
+            public bool AProchain => Prochain.Length > 0;
+        }
+
+        public ObservableCollection<LignePassage> RegistrePassages { get; } = new();
+
+        private string _registreResume = "";
+        public string RegistreResume
+        {
+            get => _registreResume;
+            set => SetProperty(ref _registreResume, value);
+        }
+
+        private void ChargerRegistre()
+        {
+            try
+            {
+                var registre = Services.Journee.JourneeService.Instance.ChargerRegistre();
+                RegistrePassages.Clear();
+                foreach (var e in registre.Entrees.OrderByDescending(e => e.DernierRdv ?? DateTime.MinValue)
+                                                  .Take(LignesRegistreAffichees))
+                {
+                    var date = e.DernierRdv?.Date == DateTime.Today ? "aujourd'hui" : $"le {e.DernierRdv:dd/MM}";
+                    RegistrePassages.Add(new LignePassage
+                    {
+                        Nom = e.Nom,
+                        Quand = $"{date} · {e.DernierEtat}",
+                        Prochain = e.ProchainRdv.HasValue ? $"prochain RDV le {e.ProchainRdv:dd/MM}" : ""
+                    });
+                }
+
+                RegistreResume = registre.Entrees.Count == 0
+                    ? "(vide) — se remplit avec l'agenda et les dossiers"
+                    : $"{registre.Entrees.Count} patients en mémoire · s'efface après 6 mois sans venue ni rendez-vous";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"[FocusMedViewModel] Registre : {ex.Message}");
             }
         }
 

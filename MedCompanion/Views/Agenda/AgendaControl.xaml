@@ -107,6 +107,11 @@
                                 </Style.Triggers>
                             </Style>
                         </StackPanel.Resources>
+                        <!-- État déduit par Med du dossier (fil de la journée) : ✓ noté, ✎ venu sans
+                             note, ? aucune trace… Le détail est dans l'info-bulle. -->
+                        <TextBlock Text="{Binding PastilleMed, Mode=OneWay}" Foreground="{Binding CouleurMed}"
+                                   FontSize="11" FontWeight="Bold" Margin="0,0,4,0"
+                                   Visibility="{Binding APastilleMed, Converter={StaticResource BoolToVis}}"/>
                         <TextBlock Text="{Binding Heure, Mode=OneWay}" FontWeight="Bold"
                                    Style="{StaticResource TexteBloc}"/>
                         <TextBlock Text="{Binding NomComplet, Mode=OneWay}" Margin="4,0,0,0"
@@ -216,6 +221,9 @@
                 <TextBlock Text="{Binding Fraicheur}" FontSize="12" FontWeight="SemiBold" Foreground="#2C3E50"/>
                 <TextBlock Text="{Binding RappelImport}" FontSize="11" Foreground="#7A5C24" TextWrapping="Wrap"
                            Margin="0,3,0,0" Visibility="{Binding EstPerime, Converter={StaticResource BoolToVis}}"/>
+                <TextBlock Text="{Binding ResumeFil}" FontSize="11.5" Foreground="#1A3A6A" TextWrapping="Wrap"
+                           Margin="0,4,0,0" Visibility="{Binding AResumeFil, Converter={StaticResource BoolToVis}}"
+                           ToolTip="Ce que Med déduit des dossiers : note ou séance écrite, dictée, dossier modifié pendant le rendez-vous, boutons absent / excusé / déplacé. Survolez un rendez-vous pour le détail."/>
             </StackPanel>
         </Border>
 

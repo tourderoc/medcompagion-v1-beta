@@ -94,6 +94,8 @@ Puis, une fois A en place : **C — la journée assistée**.
 
 ## Chantier C — La journée assistée (plus tard)
 
+> **Suite depuis le 12/10/2026 : [PLAN_JOURNEE_COMPAGNON.md](PLAN_JOURNEE_COMPAGNON.md)**. On y trouve la mémoire de Med séparée du dossier (registre des passages), l'écoute prolongée jusqu'à la fin de la consultation et l'ordre des étapes. La vision ci-dessous reste valable.
+
 Med suit l'état de chaque rendez-vous (à venir, en cours, terminé, non honoré) et, en fin de journée, rappelle ce qui n'a pas été noté : « la consultation de 14 h n'a pas de note, comment s'est-elle passée ? ». Puis la préparation avant chaque consultation : dernière note, points restés ouverts, bilans attendus, ordonnance à renouveler.
 
 **Deux règles posées dès maintenant :** rien ne s'écrit sans le médecin, et **Med se tait pendant la consultation**, comme le mode silencieux actuel.
@@ -119,6 +121,22 @@ Med n'est pas un outil qu'on ouvre, c'est **un compagnon présent toute la journ
 **Un écueil du mode collègue :** « comment était ta journée ? » sonnera faux, Med n'en a pas eu. Le registre juste est de raconter **la journée du médecin** — dix-neuf rendez-vous, deux annulations depuis hier soir, trois attestations en attente. La chaleur vient du ton, pas de faire semblant d'avoir une vie.
 
 **Pas d'apprentissage automatique pour décider** (examiné le 26/09 à propos des modèles contrastifs type CLM) : Med aura déjà en main le motif, l'âge, le dossier et son contenu. Ce sont des **règles**, instantanées, gratuites, et surtout explicables — ce qui compte quand un outil conseille un médecin. Le seul endroit où un modèle d'embedding se justifierait est la barre de commande (« prépare une attestation pour l'école de Théa » : choisir parmi une trentaine d'actions sans passer 14 s dans Qwen), et un petit modèle du commerce avec quelques phrases d'exemple par action suffirait — rien à entraîner.
+
+## Annulations : décision du 14/10/2026
+
+**L'agenda de Med ne montre que les rendez-vous valides.** Les annulés ne s'affichent plus et ne comptent pas dans le fil de la journée. Ils restent dans le fichier du mois, pour l'historique.
+
+**Le signe d'une annulation est l'absence du petit ▷,** pas le trait de rature :
+- Doctolib met ce ▷ devant chaque rendez-vous valide de la vue Liste et le retire des annulés.
+- Le trait de rature fait un pixel d'épaisseur, et le modèle vision ne le voit pas : 4 manqués sur 4 le 14/10.
+- Le ▷, lui, se mesure par les pixels (`AgendaImageService.DecouperLignesJourDetail`). Sur 8 captures du 08 au 14/10, on compte 32 à 34 pixels sombres sur chaque ligne valide et **0** sur chaque annulée : aucun cas douteux.
+- Le modèle ne fait plus que lire le texte.
+
+**Contrôle de lecture :** « Nombre de rendez-vous : N », sous la liste Doctolib, compte **toutes** les lignes, annulées comprises (25 = 21 + 4 le 14/10). Med le lit et le compare au nombre de lignes lues, puis signale tout écart.
+
+**Garde-fou :** un rendez-vous absent de l'écran ne passe « Annulé » que si toutes les lignes ont été lues. Avant, une seule ligne illisible faisait annuler à tort le rendez-vous qu'elle portait.
+
+**Une ligne annulée ne crée jamais de rendez-vous.** Elle ne s'apparie qu'au même patient, sur le même créneau.
 
 ## Ordre proposé
 
