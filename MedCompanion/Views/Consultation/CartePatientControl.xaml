@@ -2,11 +2,13 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:carte="clr-namespace:MedCompanion.Models.Carte"
+             xmlns:conv="clr-namespace:MedCompanion.Converters"
              Background="Transparent">
     <!-- Carte du patient (PLAN_CARTE_PATIENT.md) : affichée à la place du dossier bleu, au même
          format de page. DataContext = ConsultationModeViewModel ; tout se lit dans Carte. -->
     <UserControl.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+        <conv:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis"/>
 
         <!-- Une ligne : intitulé facultatif + valeur. Gris italique quand l'information manque.
              Runs en OneWay : un Run se lie en TwoWay par défaut, ce qui lève une exception sur une
@@ -56,7 +58,8 @@
     </UserControl.Resources>
 
     <Viewbox Stretch="Uniform">
-        <Border Width="595" Height="842" Background="White" CornerRadius="6"
+        <!-- 595 de large en page (dossier bleu) ; 1240 en plein écran (F3) : AppliquerDisposition -->
+        <Border x:Name="Page" Width="595" Height="842" Background="White" CornerRadius="6"
                 BorderBrush="#5F9EAE" BorderThickness="2">
             <Border.Effect>
                 <DropShadowEffect ShadowDepth="5" BlurRadius="15" Opacity="0.25" Color="#2C3E50"/>
@@ -74,6 +77,15 @@
                     <Button DockPanel.Dock="Right" Content="✕ Dossier" Command="{Binding FermerCarteCommand}"
                             FontSize="11" Padding="10,4" Cursor="Hand" Background="#F1F5F9" BorderBrush="#CBD5E1"
                             ToolTip="Revenir au dossier bleu"/>
+                    <!-- Plein écran : le mode F3 du dossier, où la carte se déploie en étoile -->
+                    <Button DockPanel.Dock="Right" Content="⛶ Plein écran" Command="{Binding SwitchToDossierCommand}"
+                            FontSize="11" Padding="10,4" Margin="0,0,8,0" Cursor="Hand" Background="#F1F5F9" BorderBrush="#CBD5E1"
+                            Visibility="{Binding IsFocusDossier, Converter={StaticResource InverseBoolToVis}}"
+                            ToolTip="Agrandir la carte (F3)"/>
+                    <Button DockPanel.Dock="Right" Content="↙ Réduire" Command="{Binding SwitchToConsultationCommand}"
+                            FontSize="11" Padding="10,4" Margin="0,0,8,0" Cursor="Hand" Background="#F1F5F9" BorderBrush="#CBD5E1"
+                            Visibility="{Binding IsFocusDossier, Converter={StaticResource BoolToVis}}"
+                            ToolTip="Revenir à l'écran partagé (F2)"/>
                     <!-- Étape 2 : compléter depuis les notes ce qui manque (dossiers anciens surtout) -->
                     <Button DockPanel.Dock="Right" Content="✨ Compléter avec Med" Command="{Binding CompleterCarteCommand}"
                             FontSize="11" Padding="10,4" Margin="0,0,8,0" Cursor="Hand"
@@ -92,11 +104,15 @@
                         <!-- Les traits, dessinés derrière les blocs une fois la mise en page faite -->
                         <Canvas x:Name="Traits" IsHitTestVisible="False"/>
 
-                        <Grid>
+                        <!-- Places des blocs fixées par AppliquerDisposition (code associé) : deux
+                             colonnes en page, trois en plein écran, l'enfant toujours au centre. -->
+                        <Grid x:Name="Disposition">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="28"/>
-                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition x:Name="Col0" Width="*"/>
+                                <ColumnDefinition x:Name="Col1" Width="28"/>
+                                <ColumnDefinition x:Name="Col2" Width="*"/>
+                                <ColumnDefinition x:Name="Col3" Width="0"/>
+                                <ColumnDefinition x:Name="Col4" Width="0"/>
                             </Grid.ColumnDefinitions>
                             <Grid.RowDefinitions>
                                 <RowDefinition Height="Auto"/>
@@ -147,12 +163,14 @@
                                             Content="{Binding Carte.Courriers}" ContentTemplate="{StaticResource BlocTemplate}"/>
                             <ContentControl x:Name="BlocTraitement" Grid.Row="3" Grid.Column="2" Margin="0,0,0,10"
                                             Content="{Binding Carte.Traitement}" ContentTemplate="{StaticResource BlocTemplate}"/>
-                            <ContentControl x:Name="BlocAutour" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="3"
-                                            HorizontalAlignment="Center" Width="400" Margin="0,0,0,10"
+                            <ContentControl x:Name="BlocAutour" Grid.Row="4" Grid.Column="0" Margin="0,0,0,10"
                                             Content="{Binding Carte.Autour}" ContentTemplate="{StaticResource BlocTemplate}"/>
+                            <!-- Points ouverts : ce qui attend une action (matière du futur rôle d'interne) -->
+                            <ContentControl x:Name="BlocPoints" Grid.Row="4" Grid.Column="2" Margin="0,0,0,10"
+                                            Content="{Binding Carte.PointsOuverts}" ContentTemplate="{StaticResource BlocTemplate}"/>
 
                             <!-- Le parcours 3-11 ans -->
-                            <Border Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" BorderBrush="#CBD5E1"
+                            <Border x:Name="BlocParcours" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="3" BorderBrush="#CBD5E1"
                                     BorderThickness="0,1,0,0" Padding="0,8,0,0"
                                     Visibility="{Binding Carte.AParcours, Converter={StaticResource BoolToVis}}">
                                 <StackPanel>

@@ -36,6 +36,22 @@ namespace MedCompanion.ViewModels
         public string DateText => Date == DateTime.MinValue ? "" : Date.ToString("dd MMMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
         public string DateShortText => Date == DateTime.MinValue ? "" : Date.ToString("dd/MM/yyyy");
         public string Type     { get; }
+
+        /// <summary>Le type pour l'écran : « consultation-premiere » → « 1ère consultation ».
+        /// <see cref="Type"/> reste le code, sur lequel s'appuie la logique.</summary>
+        public string TypeAffiche => LibelleType(Type);
+
+        public static string LibelleType(string? type) => (type ?? "").Trim().ToLowerInvariant() switch
+        {
+            "consultation-premiere" => "1ère consultation",
+            "consultation-suivi"    => "Consultation de suivi",
+            "note-structuree"       => "Note structurée",
+            "note"                  => "Note",
+            var t when t.Length == 0 => "Note",
+            var t when t.Contains('-') || t.Contains('_')
+                => char.ToUpper(t[0]) + t[1..].Replace('-', ' ').Replace('_', ' '),
+            _ => type!
+        };
         public string Statut   { get; }
         public string StatutBadge { get; }
         public string StatutColor { get; }

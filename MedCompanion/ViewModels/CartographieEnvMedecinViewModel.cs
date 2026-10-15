@@ -67,6 +67,9 @@ namespace MedCompanion.ViewModels
         public int NbCote    => Lignes.Count(l => l.EstMedecin && l.Reponse != ReponseProposition.NonObservee);
         public int NbParent  => Lignes.Count(l => l.EstParent);
 
+        /// <summary>Une nervure qui n'a que des items de la feuille parents ne s'affiche pas côté médecin.</summary>
+        public bool AItemsMedecin => NbMedecin > 0;
+
         /// <summary>
         /// Ce que la nervure attend encore. On n'affiche PAS de couleur ici : une nervure se lit sur
         /// ses deux moitiés, et la moitié parent n'arrive qu'au dépouillement de la feuille. Colorer
@@ -104,6 +107,9 @@ namespace MedCompanion.ViewModels
         public int NbCote    => Nervures.Sum(n => n.NbCote);
 
         public string AvancementText => $"{NbCote}/{NbMedecin}";
+
+        /// <summary>Idem pour une feuille entière : rien à coter ici, rien à montrer.</summary>
+        public bool AItemsMedecin => NbMedecin > 0;
 
         internal void Rafraichir()
         {

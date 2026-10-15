@@ -44,11 +44,12 @@ namespace MedCompanion.Services.Carte
             carte.Famille = Famille(carte, patient, formulaire, premiere, completion);
             carte.Motif = Motif(carte, premiere, completion);
             carte.Suivi = BlocSuivi(dossierPatient, suivi);
-            carte.Bilans = Bilans(dossierPatient, info);
+            carte.Bilans = Bilans(dossierPatient, info, out var bilansEnAttente);
             carte.Courriers = Courriers(dossierPatient);
             carte.Traitement = Traitement(dossierPatient);
             carte.Autour = Autour(patient, info);
             Parcours(carte, suivi);
+            carte.PointsOuverts = PointsOuverts(carte, dossierPatient, suivi, bilansEnAttente);
 
             // Un champ déjà soumis au médecin — même laissé vide, parce que les notes n'en disaient
             // rien — n'est plus « à compléter » : sinon Med le reproposerait à chaque ouverture.
@@ -216,7 +217,7 @@ namespace MedCompanion.Services.Carte
 
             // Garde : seulement si elle a un sens.
             bool ensemble = situation.Contains("ensemble", StringComparison.OrdinalIgnoreCase);
-            if (!ensemble)
+            if (situation.Length > 0 && !ensemble)
             {
                 string garde = situationAdmin == "separes_garde_alternee" || f?.SituationFamiliale == "garde_alternee"
                     ? "alternée"
@@ -328,8 +329,20 @@ namespace MedCompanion.Services.Carte
 
             var prochain = ProchainRdv(Path.GetFileName(dossierPatient));
             if (prochain.HasValue) bloc.Ajouter("Prochain RDV", prochain.Value.ToString("dddd d MMMM 'à' HH'h'mm", Fr));
-            else bloc.Manque("Prochain RDV", "aucun à l'agenda");
+            else
+            {
+                // L'agenda de Med ne voit que la période importée : « aucun » n'a de sens que jusque-là.
+                var fin = FinAgendaConnu();
+                bloc.Manque("Prochain RDV", fin.HasValue ? $"aucun à l'agenda (connu jusqu'au {fin:dd/MM})" : "aucun à l'agenda");
+            }
             return bloc;
+        }
+
+        /// <summary>Dernier jour couvert par l'agenda local (import CSV ou lecture d'écran).</summary>
+        private static DateTime? FinAgendaConnu()
+        {
+            try { return new AgendaService().ChargerEtat().PeriodeFin; }
+            catch { return null; }
         }
 
         private static bool Vraie(string s) => !string.IsNullOrWhiteSpace(s) && s != "-";
@@ -365,7 +378,8 @@ namespace MedCompanion.Services.Carte
             @"(ecg|électrocardio|electrocardio|eeg|irm|échograph|echograph|cardi|orthophon|psychomot|neuropsy|ophtalm|orl|audiogramme|polysomno|génétique|genetique)",
             RegexOptions.IgnoreCase);
 
-        private static BlocCarte Bilans(string dossierPatient, string info)
+        private static BlocCarte Bilans(string dossierPatient, string info,
+                                        out List<(DateTime date, string texte, string chemin)> enAttenteSortie)
         {
             var bloc = new BlocCarte("🧪", "Bilans", "documents + courriers + ordonnances");
             var auteurs = LireIntervenants(info)
@@ -413,6 +427,7 @@ namespace MedCompanion.Services.Carte
                 if (!recu) enAttente.Add((c.date, $"{Tronquer(c.objet, 60)} — demandé le {c.date:dd/MM/yyyy}", c.chemin));
             }
 
+            enAttenteSortie = enAttente;
             if (enAttente.Count == 0) bloc.Manque("Demandés en attente", "aucun");
             else
             {
@@ -595,6 +610,99 @@ namespace MedCompanion.Services.Carte
                 carte.Parcours.Add(new EtapeParcours { Libelle = libelle, Etat = etat, Date = date });
             }
             if (carte.Parcours.Count > 0) carte.Parcours[^1].Derniere = true;
+        }
+
+        // ── Points ouverts (étape 4) ────────────────────────────────────────
+
+        /// <summary>Un bilan demandé n'est « en retard » qu'après ce délai : avant, il est juste attendu.</summary>
+        private const int JoursAvantRelanceBilan = 21;
+
+        /// <summary>Une ordonnance est signalée à partir de 7 jours avant sa fin, et jusqu'à 3 mois après.</summary>
+        private const int JoursAvantFinOrdonnance = 7;
+
+        /// <summary>
+        /// Ce qui attend une action, et rien d'autre (règle « ne rapporter que l'actionnable ») :
+        /// chaque ligne doit pouvoir se traiter — relancer, renouveler, finir, demander, programmer.
+        /// Calculé par des règles, sans IA : c'est la matière du futur rôle d'interne.
+        /// </summary>
+        private static BlocCarte PointsOuverts(CartePatient carte, string dossierPatient, Suivi suivi,
+                                               List<(DateTime date, string texte, string chemin)> bilansEnAttente)
+        {
+            var bloc = new BlocCarte("⚑", "Points ouverts", "règles, sans IA");
+            var aujourdhui = DateTime.Today;
+
+            // 1. Bilans demandés et pas reçus après 3 semaines : à relancer. Pas une demande restée
+            //    en brouillon — elle n'est jamais partie, c'est le point 3 qui la signale.
+            var brouillons = LireCourriers(dossierPatient).Where(c => c.brouillon).ToList();
+            var cheminsBrouillons = brouillons.Select(c => c.chemin).ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var b in bilansEnAttente.Where(b => (aujourdhui - b.date.Date).TotalDays >= JoursAvantRelanceBilan
+                                                         && !cheminsBrouillons.Contains(b.chemin))
+                                             .OrderBy(b => b.date).Take(2))
+                bloc.Ajouter("", $"Relancer : {Tronquer(b.texte, 70)}", b.chemin);
+
+            // 2. Ordonnance qui arrive à sa fin, ou terminée depuis peu.
+            var fin = FinDerniereOrdonnance(dossierPatient);
+            if (fin.HasValue)
+            {
+                var (date, finTraitement, chemin) = fin.Value;
+                var reste = (finTraitement.Date - aujourdhui).TotalDays;
+                if (reste <= JoursAvantFinOrdonnance && reste >= -90)
+                    bloc.Ajouter("", reste >= 0
+                        ? $"Ordonnance du {date:dd/MM} : se termine le {finTraitement:dd/MM}"
+                        : $"Ordonnance du {date:dd/MM} terminée le {finTraitement:dd/MM}", chemin);
+            }
+
+            // 3. Courriers restés en brouillon.
+            foreach (var c in brouillons.Take(2))
+                bloc.Ajouter("", $"Courrier du {c.date:dd/MM} resté en brouillon"
+                                 + (c.objet.Length > 0 ? $" ({Tronquer(c.objet, 40)})" : ""), c.chemin);
+
+            // 4. Ce qui est à demander à la famille : ce qu'aucune source ne dit.
+            var aDemander = new List<string>();
+            if (carte.ScolariteVide) aDemander.Add("classe et école");
+            else if (carte.Scolarite.Contains("(avant cette rentrée)")) aDemander.Add("classe de cette rentrée");
+            // La garde ne se demande qu'une fois la séparation connue : d'abord la situation.
+            if (carte.Famille.Lignes.Any(l => l.Vide && l.Libelle == "Parents")) aDemander.Add("situation des parents");
+            else if (carte.Famille.Lignes.Any(l => l.Vide && l.Libelle == "Garde")) aDemander.Add("mode de garde");
+            if (carte.Autour.Lignes.Any(l => l.Vide && l.Libelle == "Médecin traitant")) aDemander.Add("médecin traitant");
+            if (aDemander.Count > 0) bloc.Ajouter("À demander", string.Join(", ", aDemander));
+
+            // 5. Suivi actif sans prochain rendez-vous — seulement si l'agenda voit assez loin pour
+            //    l'affirmer : un enfant vu chaque mois a pu reprendre rendez-vous au-delà.
+            bool sansProchain = carte.Suivi.Lignes.Any(l => l.Vide && l.Libelle == "Prochain RDV");
+            bool agendaAssezLoin = FinAgendaConnu() is { } finAgenda && finAgenda >= aujourdhui.AddDays(35);
+            if (sansProchain && agendaAssezLoin
+                && DateTime.TryParseExact(suivi.Derniere, "dd/MM/yyyy", Fr, DateTimeStyles.None, out var derniere)
+                && (aujourdhui - derniere).TotalDays <= 90)
+                bloc.Ajouter("", "Pas de prochain rendez-vous à l'agenda");
+
+            if (bloc.Lignes.Count == 0) bloc.Manque("", "rien en suspens");
+            return bloc;
+        }
+
+        /// <summary>
+        /// Date et fin de la dernière ordonnance Med : la date + la plus longue durée prescrite
+        /// (« 1 mois », « 15 jours », « 2 semaines », parfois collés : « 1mois »).
+        /// </summary>
+        private static (DateTime date, DateTime fin, string chemin)? FinDerniereOrdonnance(string dossierPatient)
+        {
+            var derniere = Fichiers(dossierPatient, "ordonnances", "MED_*.md")
+                .Select(f => (chemin: f, date: DateDuNomCompact(Path.GetFileName(f)) ?? File.GetLastWriteTime(f)))
+                .OrderByDescending(x => x.date).FirstOrDefault();
+            if (derniere.chemin == null) return null;
+
+            string texte;
+            try { texte = File.ReadAllText(derniere.chemin, Encoding.UTF8); } catch { return null; }
+
+            int jours = 0;
+            foreach (Match m in Regex.Matches(texte, @"\*\*Durée\s*:\*\*\s*(\d+)\s*([a-zé]+)", RegexOptions.IgnoreCase))
+            {
+                int n = int.Parse(m.Groups[1].Value);
+                var unite = m.Groups[2].Value.ToLowerInvariant();
+                int d = unite.StartsWith("mois") ? n * 30 : unite.StartsWith("sem") ? n * 7 : unite.StartsWith("j") ? n : 0;
+                jours = Math.Max(jours, d);
+            }
+            return jours == 0 ? null : (derniere.date, derniere.date.AddDays(jours), derniere.chemin);
         }
 
         // ── 1ère consultation ───────────────────────────────────────────────

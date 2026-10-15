@@ -132,6 +132,9 @@ namespace MedCompanion.Models.Carte
         public BlocCarte Traitement { get; set; } = new("💊", "Traitement", "");
         public BlocCarte Autour { get; set; } = new("🤝", "Autour de l'enfant", "");
 
+        /// <summary>Ce qui attend une action du médecin (étape 4) : la matière du futur rôle d'interne.</summary>
+        public BlocCarte PointsOuverts { get; set; } = new("⚑", "Points ouverts", "");
+
         public List<EtapeParcours> Parcours { get; } = new();
         public bool AParcours => Parcours.Count > 0;
 

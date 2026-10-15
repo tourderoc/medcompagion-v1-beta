@@ -81,4 +81,21 @@ Voir un patient **d'un coup d'œil**, sans relire trois notes : qui il est, sa f
    >
    > Le plan initial prévoyait Gemma aussi pour les dossiers à 1ère consultation structurée. Ce n'est pas nécessaire : l'étape 1 lit déjà leurs blocs. Fratrie, motif, âge des parents : Med pré-remplit depuis la 1ère consultation puis les notes, le médecin valide ou corrige, et c'est enregistré dans le dossier patient. Med ne retouche plus ce qui a été validé.
 3. **Les liens vers les sources** (clic : ouvrir la note, le bilan, le courrier, l'ordonnance) et l'agrandissement plein écran (F3).
-4. **Plus tard, pour l'interne :** les points ouverts (à revoir, bilans attendus non reçus, ordonnance à renouveler), à partir des mêmes données.
+   > **Faite le 14/10/2026.** Les liens existaient depuis l'étape 1.
+   >
+   > **Le plein écran :** « ⛶ Plein écran » passe en F3, « ↙ Réduire » revient en F2. En F3, la page s'élargit à 1 240 et passe en **trois colonnes** : l'enfant au centre exact, huit blocs autour (Famille, Motif, Bilans / Suivi, Traitement / Courriers, Autour, Points ouverts), le parcours dessous.
+   >
+   > Les blocs sont les mêmes ; seule leur place change (`CartePatientControl.AppliquerDisposition`). Les traits partent vers le bord du bloc qui fait face à l'enfant.
+4. **Pour l'interne : les points ouverts.**
+   > **Faite le 14/10/2026, par des règles, sans IA.** Le bloc « ⚑ Points ouverts » ne liste que ce qui attend une action :
+   > - un bilan demandé et pas reçu après 21 jours (« Relancer ») ;
+   > - la dernière ordonnance Med qui se termine dans 7 jours, ou qui est terminée depuis moins de 3 mois (date plus la plus longue durée prescrite) ;
+   > - un courrier resté en brouillon ;
+   > - ce qui est à demander (classe et école, classe de cette rentrée, situation des parents, puis le mode de garde une fois la séparation connue, médecin traitant) ;
+   > - un suivi actif sans prochain rendez-vous.
+   >
+   > **Deux garde-fous :**
+   > - Une demande de bilan restée en brouillon n'est pas « à relancer » : elle n'est jamais partie.
+   > - « Pas de prochain rendez-vous » ne s'affiche que si l'agenda de Med couvre au moins 35 jours. Le 14/10, il s'arrête au 29/10, et un enfant vu chaque mois a pu reprendre rendez-vous au-delà. Le bloc Suivi dit « connu jusqu'au 29/10 ».
+   >
+   > **Plus tard :** les « points à revoir » écrits dans la dernière note (sommeil à réévaluer…) demanderont une lecture par le modèle. Ils sont laissés pour le rôle d'interne du plan de la journée.

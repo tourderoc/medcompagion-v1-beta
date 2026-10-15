@@ -3224,17 +3224,7 @@ namespace MedCompanion.ViewModels
         public bool IsSeanceDuJourAFaire => !HasSeanceDuJourFaite;
 
         /// <summary>Le type d'une note tel que le YAML l'écrit (« consultation-suivi ») → en clair.</summary>
-        private static string LibelleTypeNote(string type) => (type ?? "").Trim().ToLowerInvariant() switch
-        {
-            "consultation-premiere" => "1ère consultation",
-            "consultation-suivi"    => "Consultation de suivi",
-            "note-structuree"       => "Note structurée",
-            "note"                  => "Note",
-            var t when t.Length == 0 => "Note",
-            var t when t.Contains('-') || t.Contains('_')
-                => char.ToUpper(t[0]) + t[1..].Replace('-', ' ').Replace('_', ' '),
-            _ => type!
-        };
+        private static string LibelleTypeNote(string type) => ConsultationNoteViewModel.LibelleType(type);
 
         private void RafraichirSeanceDuJour()
         {
